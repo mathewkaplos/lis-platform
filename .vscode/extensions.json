@@ -1,0 +1,19 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "yoavbls.pretty-ts-errors",
+    "usernamehw.errorlens",
+
+    "bradlc.vscode-tailwindcss",
+    "Prisma.prisma",
+    "humao.rest-client",
+    "ms-azuretools.vscode-docker",
+
+    "eamodio.gitlens",
+    "GitHub.vscode-pull-request-github",
+
+    "ms-playwright.playwright",
+    "vitest.explorer"
+  ]
+}

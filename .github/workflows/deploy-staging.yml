@@ -1,0 +1,73 @@
+name: Deploy to Staging
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/lis-platform-api:latest
+
+      - name: Build and push web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/lis-platform-web:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up deploy key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > deploy_key
+          chmod 600 deploy_key
+
+      - name: Copy compose file to droplet
+        run: |
+          scp -i deploy_key -o StrictHostKeyChecking=no \
+            infra/docker-compose.staging.yml \
+            root@${{ secrets.DEPLOY_HOST }}:/opt/lis/docker-compose.yml
+
+      - name: Pull and restart on droplet
+        run: |
+          ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} '
+            cd /opt/lis &&
+            echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" > .env &&
+            echo "SENTRY_DSN=${{ secrets.SENTRY_DSN }}" >> .env &&
+            docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} &&
+            docker compose pull &&
+            docker compose up -d
+          '
+
+      - name: Smoke test
+        run: |
+          sleep 8
+          ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} \
+            'curl -sf http://localhost:4000/health'
+
+      - name: Clean up deploy key
+        if: always()
+        run: rm -f deploy_key

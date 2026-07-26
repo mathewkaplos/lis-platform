@@ -1,0 +1,1546 @@
+{
+  "epics": [
+    {
+      "id": "EPIC-001",
+      "title": "Platform Foundation",
+      "priority": "Critical",
+      "milestone": "M0",
+      "file": "github/issues/epics/EPIC-001-platform-foundation.md",
+      "deps": []
+    },
+    {
+      "id": "EPIC-002",
+      "title": "Identity, Access & Design System",
+      "priority": "Critical",
+      "milestone": "M2",
+      "file": "github/issues/epics/EPIC-002-identity-access-design-system.md",
+      "deps": [
+        "EPIC-001"
+      ]
+    },
+    {
+      "id": "EPIC-003",
+      "title": "Pre-Analytical Workflow",
+      "priority": "Critical",
+      "milestone": "M3",
+      "file": "github/issues/epics/EPIC-003-pre-analytical-workflow.md",
+      "deps": [
+        "EPIC-002"
+      ]
+    },
+    {
+      "id": "EPIC-004",
+      "title": "Analytical Core",
+      "priority": "Critical",
+      "milestone": "M4",
+      "file": "github/issues/epics/EPIC-004-analytical-core.md",
+      "deps": [
+        "EPIC-003"
+      ]
+    },
+    {
+      "id": "EPIC-005",
+      "title": "Automation & Instruments",
+      "priority": "High",
+      "milestone": "M6",
+      "file": "github/issues/epics/EPIC-005-automation-instruments.md",
+      "deps": [
+        "EPIC-004"
+      ]
+    },
+    {
+      "id": "EPIC-006",
+      "title": "Configuration & Reporting",
+      "priority": "High",
+      "milestone": "M7",
+      "file": "github/issues/epics/EPIC-006-configuration-reporting.md",
+      "deps": [
+        "EPIC-005"
+      ]
+    },
+    {
+      "id": "EPIC-007",
+      "title": "Interoperability & Portals",
+      "priority": "High",
+      "milestone": "M8",
+      "file": "github/issues/epics/EPIC-007-interoperability-portals.md",
+      "deps": [
+        "EPIC-006"
+      ]
+    },
+    {
+      "id": "EPIC-008",
+      "title": "Governed AI",
+      "priority": "Medium",
+      "milestone": "M9",
+      "file": "github/issues/epics/EPIC-008-governed-ai.md",
+      "deps": [
+        "EPIC-007"
+      ]
+    },
+    {
+      "id": "EPIC-009",
+      "title": "Commercial Readiness",
+      "priority": "High",
+      "milestone": "M10",
+      "file": "github/issues/epics/EPIC-009-commercial-readiness.md",
+      "deps": [
+        "EPIC-008"
+      ]
+    }
+  ],
+  "features": [
+    {
+      "id": "FEAT-001",
+      "title": "Monorepo & toolchain",
+      "priority": "Critical",
+      "milestone": "M0",
+      "epic": "EPIC-001",
+      "effort": "2.5",
+      "area": "infra",
+      "file": "github/issues/features/FEAT-001-monorepo-toolchain.md",
+      "deps": []
+    },
+    {
+      "id": "FEAT-002",
+      "title": "CI/CD & environments",
+      "priority": "Critical",
+      "milestone": "M0",
+      "epic": "EPIC-001",
+      "effort": "6",
+      "area": "infra",
+      "file": "github/issues/features/FEAT-002-ci-cd-environments.md",
+      "deps": [
+        "FEAT-001"
+      ]
+    },
+    {
+      "id": "FEAT-003",
+      "title": "AI engineering substrate",
+      "priority": "Critical",
+      "milestone": "M0",
+      "epic": "EPIC-001",
+      "effort": "6",
+      "area": "ai",
+      "file": "github/issues/features/FEAT-003-ai-engineering-substrate.md",
+      "deps": [
+        "FEAT-001"
+      ]
+    },
+    {
+      "id": "FEAT-004",
+      "title": "Catalog metadata model",
+      "priority": "Critical",
+      "milestone": "M1",
+      "epic": "EPIC-001",
+      "effort": "5",
+      "area": "db",
+      "file": "github/issues/features/FEAT-004-catalog-metadata-model.md",
+      "deps": [
+        "FEAT-002"
+      ]
+    },
+    {
+      "id": "FEAT-005",
+      "title": "Observation store",
+      "priority": "Critical",
+      "milestone": "M1",
+      "epic": "EPIC-001",
+      "effort": "5",
+      "area": "db",
+      "file": "github/issues/features/FEAT-005-observation-store.md",
+      "deps": [
+        "FEAT-004"
+      ]
+    },
+    {
+      "id": "FEAT-006",
+      "title": "Order, specimen & tenancy spine",
+      "priority": "Critical",
+      "milestone": "M1",
+      "epic": "EPIC-001",
+      "effort": "5",
+      "area": "db",
+      "file": "github/issues/features/FEAT-006-order-specimen-tenancy-spine.md",
+      "deps": [
+        "FEAT-005"
+      ]
+    },
+    {
+      "id": "FEAT-007",
+      "title": "Clinical validation harness",
+      "priority": "High",
+      "milestone": "M1",
+      "epic": "EPIC-001",
+      "effort": "2",
+      "area": "backend",
+      "file": "github/issues/features/FEAT-007-clinical-validation-harness.md",
+      "deps": [
+        "FEAT-005"
+      ]
+    },
+    {
+      "id": "FEAT-008",
+      "title": "Authentication (Keycloak/OIDC)",
+      "priority": "Critical",
+      "milestone": "M2",
+      "epic": "EPIC-002",
+      "effort": "6",
+      "area": "backend",
+      "file": "github/issues/features/FEAT-008-authentication-keycloak-oidc.md",
+      "deps": [
+        "FEAT-006"
+      ]
+    },
+    {
+      "id": "FEAT-009",
+      "title": "Authorization & audit",
+      "priority": "Critical",
+      "milestone": "M2",
+      "epic": "EPIC-002",
+      "effort": "2",
+      "area": "backend",
+      "file": "github/issues/features/FEAT-009-authorization-audit.md",
+      "deps": [
+        "FEAT-008"
+      ]
+    },
+    {
+      "id": "FEAT-010",
+      "title": "Design system v1",
+      "priority": "Critical",
+      "milestone": "M2",
+      "epic": "EPIC-002",
+      "effort": "5.5",
+      "area": "design",
+      "file": "github/issues/features/FEAT-010-design-system-v1.md",
+      "deps": [
+        "FEAT-008"
+      ]
+    },
+    {
+      "id": "FEAT-011",
+      "title": "Patient management",
+      "priority": "Critical",
+      "milestone": "M3",
+      "epic": "EPIC-003",
+      "effort": "6",
+      "area": "fullstack",
+      "file": "github/issues/features/FEAT-011-patient-management.md",
+      "deps": [
+        "FEAT-010"
+      ]
+    },
+    {
+      "id": "FEAT-012",
+      "title": "Order entry",
+      "priority": "Critical",
+      "milestone": "M3",
+      "epic": "EPIC-003",
+      "effort": "5",
+      "area": "fullstack",
+      "file": "github/issues/features/FEAT-012-order-entry.md",
+      "deps": [
+        "FEAT-011"
+      ]
+    },
+    {
+      "id": "FEAT-013",
+      "title": "Accessioning, labels & reception",
+      "priority": "Critical",
+      "milestone": "M3",
+      "epic": "EPIC-003",
+      "effort": "6",
+      "area": "fullstack",
+      "file": "github/issues/features/FEAT-013-accessioning-labels-reception.md",
+      "deps": [
+        "FEAT-012"
+      ]
+    },
+    {
+      "id": "FEAT-014",
+      "title": "Result entry engine",
+      "priority": "Critical",
+      "milestone": "M4",
+      "epic": "EPIC-004",
+      "effort": "8",
+      "area": "fullstack",
+      "file": "github/issues/features/FEAT-014-result-entry-engine.md",
+      "deps": [
+        "FEAT-013"
+      ]
+    },
+    {
+      "id": "FEAT-015",
+      "title": "Verification & criticals",
+      "priority": "Critical",
+      "milestone": "M4",
+      "epic": "EPIC-004",
+      "effort": "4",
+      "area": "backend",
+      "file": "github/issues/features/FEAT-015-verification-criticals.md",
+      "deps": [
+        "FEAT-014"
+      ]
+    },
+    {
+      "id": "FEAT-016",
+      "title": "Minimal report",
+      "priority": "Critical",
+      "milestone": "M4",
+      "epic": "EPIC-004",
+      "effort": "5",
+      "area": "fullstack",
+      "file": "github/issues/features/FEAT-016-minimal-report.md",
+      "deps": [
+        "FEAT-015"
+      ]
+    },
+    {
+      "id": "FEAT-017",
+      "title": "Minimal worklist",
+      "priority": "High",
+      "milestone": "M4",
+      "epic": "EPIC-004",
+      "effort": "3",
+      "area": "fullstack",
+      "file": "github/issues/features/FEAT-017-minimal-worklist.md",
+      "deps": [
+        "FEAT-014"
+      ]
+    },
+    {
+      "id": "FEAT-018",
+      "title": "QC materials & results as Observations",
+      "priority": "Critical",
+      "milestone": "M5",
+      "epic": "EPIC-004",
+      "effort": "5",
+      "area": "backend",
+      "file": "github/issues/features/FEAT-018-qc-materials-results-as-observations.md",
+      "deps": [
+        "FEAT-016"
+      ]
+    },
+    {
+      "id": "FEAT-019",
+      "title": "Levey-Jennings + Westgard engine",
+      "priority": "Critical",
+      "milestone": "M5",
+      "epic": "EPIC-004",
+      "effort": "5",
+      "area": "fullstack",
+      "file": "github/issues/features/FEAT-019-levey-jennings-westgard-engine.md",
+      "deps": [
+        "FEAT-018"
+      ]
+    },
+    {
+      "id": "FEAT-020",
+      "title": "QC gating of result release",
+      "priority": "Critical",
+      "milestone": "M5",
+      "epic": "EPIC-004",
+      "effort": "3",
+      "area": "backend",
+      "file": "github/issues/features/FEAT-020-qc-gating-of-result-release.md",
+      "deps": [
+        "FEAT-019"
+      ]
+    },
+    {
+      "id": "FEAT-021",
+      "title": "Critical notification, read-back & escalation",
+      "priority": "Critical",
+      "milestone": "M5",
+      "epic": "EPIC-004",
+      "effort": "5",
+      "area": "fullstack",
+      "file": "github/issues/features/FEAT-021-critical-notification-read-back-escalation.md",
+      "deps": [
+        "FEAT-015"
+      ]
+    },
+    {
+      "id": "FEAT-022",
+      "title": "Worklist v2 (SLA, assignment, bulk)",
+      "priority": "High",
+      "milestone": "M5",
+      "epic": "EPIC-004",
+      "effort": "4",
+      "area": "frontend",
+      "file": "github/issues/features/FEAT-022-worklist-v2-sla-assignment-bulk.md",
+      "deps": [
+        "FEAT-017"
+      ]
+    },
+    {
+      "id": "FEAT-023",
+      "title": "Haematology CBC + differential",
+      "priority": "Critical",
+      "milestone": "M5",
+      "epic": "EPIC-004",
+      "effort": "5",
+      "area": "fullstack",
+      "file": "github/issues/features/FEAT-023-haematology-cbc-differential.md",
+      "deps": [
+        "FEAT-014"
+      ]
+    },
+    {
+      "id": "FEAT-024",
+      "title": "Peripheral film structured reporting",
+      "priority": "Medium",
+      "milestone": "M5",
+      "epic": "EPIC-004",
+      "effort": "3",
+      "area": "fullstack",
+      "file": "github/issues/features/FEAT-024-peripheral-film-structured-reporting.md",
+      "deps": [
+        "FEAT-023"
+      ]
+    },
+    {
+      "id": "FEAT-025",
+      "title": "Delta checks",
+      "priority": "High",
+      "milestone": "M5",
+      "epic": "EPIC-004",
+      "effort": "2",
+      "area": "backend",
+      "file": "github/issues/features/FEAT-025-delta-checks.md",
+      "deps": [
+        "FEAT-015"
+      ]
+    },
+    {
+      "id": "FEAT-026",
+      "title": "Edge integration gateway",
+      "priority": "Critical",
+      "milestone": "M6",
+      "epic": "EPIC-005",
+      "effort": "6",
+      "area": "infra",
+      "file": "github/issues/features/FEAT-026-edge-integration-gateway.md",
+      "deps": [
+        "FEAT-020"
+      ]
+    },
+    {
+      "id": "FEAT-027",
+      "title": "Analyzer #1 driver + idempotent ingestion",
+      "priority": "Critical",
+      "milestone": "M6",
+      "epic": "EPIC-005",
+      "effort": "8",
+      "area": "backend",
+      "file": "github/issues/features/FEAT-027-analyzer-1-driver-idempotent-ingestion.md",
+      "deps": [
+        "FEAT-026"
+      ]
+    },
+    {
+      "id": "FEAT-028",
+      "title": "Transactional outbox + event bus",
+      "priority": "Critical",
+      "milestone": "M6",
+      "epic": "EPIC-005",
+      "effort": "4",
+      "area": "backend",
+      "file": "github/issues/features/FEAT-028-transactional-outbox-event-bus.md",
+      "deps": [
+        "FEAT-006"
+      ]
+    },
+    {
+      "id": "FEAT-029",
+      "title": "Metadata workflow engine",
+      "priority": "Critical",
+      "milestone": "M6",
+      "epic": "EPIC-005",
+      "effort": "8",
+      "area": "backend",
+      "file": "github/issues/features/FEAT-029-metadata-workflow-engine.md",
+      "deps": [
+        "FEAT-028"
+      ]
+    },
+    {
+      "id": "FEAT-030",
+      "title": "Reflex rules",
+      "priority": "High",
+      "milestone": "M6",
+      "epic": "EPIC-005",
+      "effort": "3",
+      "area": "backend",
+      "file": "github/issues/features/FEAT-030-reflex-rules.md",
+      "deps": [
+        "FEAT-029"
+      ]
+    },
+    {
+      "id": "FEAT-031",
+      "title": "Auto-verification (deny-by-default)",
+      "priority": "Critical",
+      "milestone": "M6",
+      "epic": "EPIC-005",
+      "effort": "5",
+      "area": "backend",
+      "file": "github/issues/features/FEAT-031-auto-verification-deny-by-default.md",
+      "deps": [
+        "FEAT-029"
+      ]
+    },
+    {
+      "id": "FEAT-032",
+      "title": "Template engine (config-driven, versioned)",
+      "priority": "Critical",
+      "milestone": "M7",
+      "epic": "EPIC-006",
+      "effort": "8",
+      "area": "backend",
+      "file": "github/issues/features/FEAT-032-template-engine-config-driven-versioned.md",
+      "deps": [
+        "FEAT-016"
+      ]
+    },
+    {
+      "id": "FEAT-033",
+      "title": "Cumulative & clinical reports",
+      "priority": "High",
+      "milestone": "M7",
+      "epic": "EPIC-006",
+      "effort": "5",
+      "area": "fullstack",
+      "file": "github/issues/features/FEAT-033-cumulative-clinical-reports.md",
+      "deps": [
+        "FEAT-032"
+      ]
+    },
+    {
+      "id": "FEAT-034",
+      "title": "Operational reports (TAT, workload)",
+      "priority": "High",
+      "milestone": "M7",
+      "epic": "EPIC-006",
+      "effort": "4",
+      "area": "fullstack",
+      "file": "github/issues/features/FEAT-034-operational-reports-tat-workload.md",
+      "deps": [
+        "FEAT-022"
+      ]
+    },
+    {
+      "id": "FEAT-035",
+      "title": "Admin catalog UI",
+      "priority": "Critical",
+      "milestone": "M7",
+      "epic": "EPIC-006",
+      "effort": "6",
+      "area": "frontend",
+      "file": "github/issues/features/FEAT-035-admin-catalog-ui.md",
+      "deps": [
+        "FEAT-004"
+      ]
+    },
+    {
+      "id": "FEAT-036",
+      "title": "HL7 v2 inbound/outbound via ACL",
+      "priority": "Critical",
+      "milestone": "M8",
+      "epic": "EPIC-007",
+      "effort": "8",
+      "area": "backend",
+      "file": "github/issues/features/FEAT-036-hl7-v2-inbound-outbound-via-acl.md",
+      "deps": [
+        "FEAT-028"
+      ]
+    },
+    {
+      "id": "FEAT-037",
+      "title": "FHIR R4 fa\u00e7ade",
+      "priority": "High",
+      "milestone": "M8",
+      "epic": "EPIC-007",
+      "effort": "6",
+      "area": "backend",
+      "file": "github/issues/features/FEAT-037-fhir-r4-fa-ade.md",
+      "deps": [
+        "FEAT-005"
+      ]
+    },
+    {
+      "id": "FEAT-038",
+      "title": "Clinician portal",
+      "priority": "Critical",
+      "milestone": "M8",
+      "epic": "EPIC-007",
+      "effort": "8",
+      "area": "frontend",
+      "file": "github/issues/features/FEAT-038-clinician-portal.md",
+      "deps": [
+        "FEAT-033"
+      ]
+    },
+    {
+      "id": "FEAT-039",
+      "title": "Patient portal",
+      "priority": "High",
+      "milestone": "M8",
+      "epic": "EPIC-007",
+      "effort": "6",
+      "area": "frontend",
+      "file": "github/issues/features/FEAT-039-patient-portal.md",
+      "deps": [
+        "FEAT-033"
+      ]
+    },
+    {
+      "id": "FEAT-040",
+      "title": "Fine-grained ABAC / relationship authz",
+      "priority": "High",
+      "milestone": "M8",
+      "epic": "EPIC-007",
+      "effort": "5",
+      "area": "backend",
+      "file": "github/issues/features/FEAT-040-fine-grained-abac-relationship-authz.md",
+      "deps": [
+        "FEAT-009"
+      ]
+    },
+    {
+      "id": "FEAT-041",
+      "title": "Governed Inference Layer",
+      "priority": "Critical",
+      "milestone": "M9",
+      "epic": "EPIC-008",
+      "effort": "5",
+      "area": "ai",
+      "file": "github/issues/features/FEAT-041-governed-inference-layer.md",
+      "deps": [
+        "FEAT-033"
+      ]
+    },
+    {
+      "id": "FEAT-042",
+      "title": "AI narrative drafting (advisory)",
+      "priority": "High",
+      "milestone": "M9",
+      "epic": "EPIC-008",
+      "effort": "4",
+      "area": "ai",
+      "file": "github/issues/features/FEAT-042-ai-narrative-drafting-advisory.md",
+      "deps": [
+        "FEAT-041"
+      ]
+    },
+    {
+      "id": "FEAT-043",
+      "title": "AI cumulative summaries",
+      "priority": "Medium",
+      "milestone": "M9",
+      "epic": "EPIC-008",
+      "effort": "3",
+      "area": "ai",
+      "file": "github/issues/features/FEAT-043-ai-cumulative-summaries.md",
+      "deps": [
+        "FEAT-041"
+      ]
+    },
+    {
+      "id": "FEAT-044",
+      "title": "AI evaluation harness",
+      "priority": "Critical",
+      "milestone": "M9",
+      "epic": "EPIC-008",
+      "effort": "3",
+      "area": "ai",
+      "file": "github/issues/features/FEAT-044-ai-evaluation-harness.md",
+      "deps": [
+        "FEAT-041"
+      ]
+    },
+    {
+      "id": "FEAT-045",
+      "title": "Tenancy tiers (schema/DB isolation)",
+      "priority": "Critical",
+      "milestone": "M10",
+      "epic": "EPIC-009",
+      "effort": "8",
+      "area": "infra",
+      "file": "github/issues/features/FEAT-045-tenancy-tiers-schema-db-isolation.md",
+      "deps": [
+        "FEAT-006"
+      ]
+    },
+    {
+      "id": "FEAT-046",
+      "title": "Billing & payments (incl. mobile money)",
+      "priority": "Critical",
+      "milestone": "M10",
+      "epic": "EPIC-009",
+      "effort": "10",
+      "area": "fullstack",
+      "file": "github/issues/features/FEAT-046-billing-payments-incl-mobile-money.md",
+      "deps": [
+        "FEAT-012"
+      ]
+    },
+    {
+      "id": "FEAT-047",
+      "title": "Visual report designer v1",
+      "priority": "High",
+      "milestone": "M10",
+      "epic": "EPIC-009",
+      "effort": "12",
+      "area": "frontend",
+      "file": "github/issues/features/FEAT-047-visual-report-designer-v1.md",
+      "deps": [
+        "FEAT-032"
+      ]
+    },
+    {
+      "id": "FEAT-048",
+      "title": "Internationalization",
+      "priority": "Medium",
+      "milestone": "M10",
+      "epic": "EPIC-009",
+      "effort": "5",
+      "area": "frontend",
+      "file": "github/issues/features/FEAT-048-internationalization.md",
+      "deps": [
+        "FEAT-010"
+      ]
+    },
+    {
+      "id": "FEAT-049",
+      "title": "Self-service onboarding",
+      "priority": "High",
+      "milestone": "M10",
+      "epic": "EPIC-009",
+      "effort": "6",
+      "area": "fullstack",
+      "file": "github/issues/features/FEAT-049-self-service-onboarding.md",
+      "deps": [
+        "FEAT-045"
+      ]
+    },
+    {
+      "id": "FEAT-050",
+      "title": "DR, backup rehearsal & scale hardening",
+      "priority": "Critical",
+      "milestone": "M10",
+      "epic": "EPIC-009",
+      "effort": "6",
+      "area": "infra",
+      "file": "github/issues/features/FEAT-050-dr-backup-rehearsal-scale-hardening.md",
+      "deps": [
+        "FEAT-045"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Init pnpm monorepo, workspaces, shared presets",
+      "priority": "Critical",
+      "milestone": "M0",
+      "feature": "FEAT-001",
+      "size": "M (1 day)",
+      "area": "infra",
+      "file": "github/issues/tasks/TASK-001-init-pnpm-monorepo-workspaces-shared-presets.md",
+      "deps": []
+    },
+    {
+      "id": "TASK-002",
+      "title": "Scaffold apps/api (NestJS+Fastify) with /health",
+      "priority": "Critical",
+      "milestone": "M0",
+      "feature": "FEAT-001",
+      "size": "S (0.5 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-002-scaffold-apps-api-nestjs-fastify-with-health.md",
+      "deps": [
+        "TASK-001"
+      ]
+    },
+    {
+      "id": "TASK-003",
+      "title": "Scaffold apps/web (Next.js+Tailwind)",
+      "priority": "Critical",
+      "milestone": "M0",
+      "feature": "FEAT-001",
+      "size": "S (0.5 day)",
+      "area": "frontend",
+      "file": "github/issues/tasks/TASK-003-scaffold-apps-web-next-js-tailwind.md",
+      "deps": [
+        "TASK-001"
+      ]
+    },
+    {
+      "id": "TASK-004",
+      "title": "Create packages/domain, ui, config stubs",
+      "priority": "Critical",
+      "milestone": "M0",
+      "feature": "FEAT-001",
+      "size": "S (0.5 day)",
+      "area": "infra",
+      "file": "github/issues/tasks/TASK-004-create-packages-domain-ui-config-stubs.md",
+      "deps": [
+        "TASK-001"
+      ]
+    },
+    {
+      "id": "TASK-005",
+      "title": "Docker Compose: Postgres 16 + Valkey; db:reset",
+      "priority": "Critical",
+      "milestone": "M0",
+      "feature": "FEAT-001",
+      "size": "S (0.5 day)",
+      "area": "infra",
+      "file": "github/issues/tasks/TASK-005-docker-compose-postgres-16-valkey-db-reset.md",
+      "deps": [
+        "TASK-001"
+      ]
+    },
+    {
+      "id": "TASK-006",
+      "title": "GitHub Actions PR workflow (lint/typecheck/test/build)",
+      "priority": "Critical",
+      "milestone": "M0",
+      "feature": "FEAT-002",
+      "size": "M (1 day)",
+      "area": "infra",
+      "file": "github/issues/tasks/TASK-006-github-actions-pr-workflow-lint-typecheck-test-build.md",
+      "deps": [
+        "TASK-001"
+      ]
+    },
+    {
+      "id": "TASK-007",
+      "title": "Multi-stage Dockerfiles for api and web",
+      "priority": "Critical",
+      "milestone": "M0",
+      "feature": "FEAT-002",
+      "size": "M (1 day)",
+      "area": "infra",
+      "file": "github/issues/tasks/TASK-007-multi-stage-dockerfiles-for-api-and-web.md",
+      "deps": [
+        "TASK-002"
+      ]
+    },
+    {
+      "id": "TASK-008",
+      "title": "Provision staging via OpenTofu in infra/",
+      "priority": "Critical",
+      "milestone": "M0",
+      "feature": "FEAT-002",
+      "size": "L (2 days)",
+      "area": "infra",
+      "file": "github/issues/tasks/TASK-008-provision-staging-via-opentofu-in-infra.md",
+      "deps": [
+        "TASK-007"
+      ]
+    },
+    {
+      "id": "TASK-009",
+      "title": "Deploy-on-merge workflow + smoke test",
+      "priority": "Critical",
+      "milestone": "M0",
+      "feature": "FEAT-002",
+      "size": "M (1 day)",
+      "area": "infra",
+      "file": "github/issues/tasks/TASK-009-deploy-on-merge-workflow-smoke-test.md",
+      "deps": [
+        "TASK-008"
+      ]
+    },
+    {
+      "id": "TASK-010",
+      "title": "Sentry + structured logging with correlation IDs",
+      "priority": "High",
+      "milestone": "M0",
+      "feature": "FEAT-002",
+      "size": "S (0.5 day)",
+      "area": "infra",
+      "file": "github/issues/tasks/TASK-010-sentry-structured-logging-with-correlation-ids.md",
+      "deps": [
+        "TASK-002"
+      ]
+    },
+    {
+      "id": "TASK-011",
+      "title": "Write AGENTS.md and CLAUDE.md",
+      "priority": "Critical",
+      "milestone": "M0",
+      "feature": "FEAT-003",
+      "size": "M (1 day)",
+      "area": "ai",
+      "file": "github/issues/tasks/TASK-011-write-agents-md-and-claude-md.md",
+      "deps": [
+        "TASK-001"
+      ]
+    },
+    {
+      "id": "TASK-012",
+      "title": "Scaffold lis-engineering repo; import 56-doc KB",
+      "priority": "Critical",
+      "milestone": "M0",
+      "feature": "FEAT-003",
+      "size": "M (1 day)",
+      "area": "ai",
+      "file": "github/issues/tasks/TASK-012-scaffold-lis-engineering-repo-import-56-doc-kb.md",
+      "deps": []
+    },
+    {
+      "id": "TASK-013",
+      "title": "Write implementation-proposal and ADR templates",
+      "priority": "Critical",
+      "milestone": "M0",
+      "feature": "FEAT-003",
+      "size": "S (0.5 day)",
+      "area": "ai",
+      "file": "github/issues/tasks/TASK-013-write-implementation-proposal-and-adr-templates.md",
+      "deps": [
+        "TASK-012"
+      ]
+    },
+    {
+      "id": "TASK-014",
+      "title": "Author plan + develop workflow skills",
+      "priority": "Critical",
+      "milestone": "M0",
+      "feature": "FEAT-003",
+      "size": "M (1 day)",
+      "area": "ai",
+      "file": "github/issues/tasks/TASK-014-author-plan-develop-workflow-skills.md",
+      "deps": [
+        "TASK-013"
+      ]
+    },
+    {
+      "id": "TASK-015",
+      "title": "Constitution CI gate (invariant enforcement)",
+      "priority": "Critical",
+      "milestone": "M0",
+      "feature": "FEAT-003",
+      "size": "L (2 days)",
+      "area": "infra",
+      "file": "github/issues/tasks/TASK-015-constitution-ci-gate-invariant-enforcement.md",
+      "deps": [
+        "TASK-006"
+      ]
+    },
+    {
+      "id": "TASK-016",
+      "title": "Migration: analyte, unit, code_system_value",
+      "priority": "Critical",
+      "milestone": "M1",
+      "feature": "FEAT-004",
+      "size": "M (1 day)",
+      "area": "db",
+      "file": "github/issues/tasks/TASK-016-migration-analyte-unit-code-system-value.md",
+      "deps": [
+        "TASK-005"
+      ]
+    },
+    {
+      "id": "TASK-017",
+      "title": "Migration: test_definition, test_analyte, panel",
+      "priority": "Critical",
+      "milestone": "M1",
+      "feature": "FEAT-004",
+      "size": "M (1 day)",
+      "area": "db",
+      "file": "github/issues/tasks/TASK-017-migration-test-definition-test-analyte-panel.md",
+      "deps": [
+        "TASK-016"
+      ]
+    },
+    {
+      "id": "TASK-018",
+      "title": "Migration: reference_range (sex/age/method/criticals/versioned)",
+      "priority": "Critical",
+      "milestone": "M1",
+      "feature": "FEAT-004",
+      "size": "L (2 days)",
+      "area": "db",
+      "file": "github/issues/tasks/TASK-018-migration-reference-range-sex-age-method-criticals-versioned.md",
+      "deps": [
+        "TASK-016"
+      ]
+    },
+    {
+      "id": "TASK-019",
+      "title": "Seed design partner's real chemistry catalog",
+      "priority": "High",
+      "milestone": "M1",
+      "feature": "FEAT-004",
+      "size": "M (1 day)",
+      "area": "db",
+      "file": "github/issues/tasks/TASK-019-seed-design-partner-s-real-chemistry-catalog.md",
+      "deps": [
+        "TASK-018"
+      ]
+    },
+    {
+      "id": "TASK-020",
+      "title": "Migration: observation (type-partitioned values)",
+      "priority": "Critical",
+      "milestone": "M1",
+      "feature": "FEAT-005",
+      "size": "L (2 days)",
+      "area": "db",
+      "file": "github/issues/tasks/TASK-020-migration-observation-type-partitioned-values.md",
+      "deps": [
+        "TASK-018"
+      ]
+    },
+    {
+      "id": "TASK-021",
+      "title": "Append-only enforcement + result_history",
+      "priority": "Critical",
+      "milestone": "M1",
+      "feature": "FEAT-005",
+      "size": "M (1 day)",
+      "area": "db",
+      "file": "github/issues/tasks/TASK-021-append-only-enforcement-result-history.md",
+      "deps": [
+        "TASK-020"
+      ]
+    },
+    {
+      "id": "TASK-022",
+      "title": "Partitioning + trend indexes on observation",
+      "priority": "High",
+      "milestone": "M1",
+      "feature": "FEAT-005",
+      "size": "M (1 day)",
+      "area": "db",
+      "file": "github/issues/tasks/TASK-022-partitioning-trend-indexes-on-observation.md",
+      "deps": [
+        "TASK-020"
+      ]
+    },
+    {
+      "id": "TASK-023",
+      "title": "Migration: order, ordered_test, specimen, M:N link",
+      "priority": "Critical",
+      "milestone": "M1",
+      "feature": "FEAT-006",
+      "size": "M (1 day)",
+      "area": "db",
+      "file": "github/issues/tasks/TASK-023-migration-order-ordered-test-specimen-m-n-link.md",
+      "deps": [
+        "TASK-020"
+      ]
+    },
+    {
+      "id": "TASK-024",
+      "title": "tenant_id + RLS policies on all tenant tables",
+      "priority": "Critical",
+      "milestone": "M1",
+      "feature": "FEAT-006",
+      "size": "L (2 days)",
+      "area": "db",
+      "file": "github/issues/tasks/TASK-024-tenant-id-rls-policies-on-all-tenant-tables.md",
+      "deps": [
+        "TASK-023"
+      ]
+    },
+    {
+      "id": "TASK-025",
+      "title": "audit_event table with hash chain + writer",
+      "priority": "Critical",
+      "milestone": "M1",
+      "feature": "FEAT-006",
+      "size": "M (1 day)",
+      "area": "db",
+      "file": "github/issues/tasks/TASK-025-audit-event-table-with-hash-chain-writer.md",
+      "deps": [
+        "TASK-024"
+      ]
+    },
+    {
+      "id": "TASK-026",
+      "title": "Golden-dataset test runner in CI",
+      "priority": "High",
+      "milestone": "M1",
+      "feature": "FEAT-007",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-026-golden-dataset-test-runner-in-ci.md",
+      "deps": [
+        "TASK-020"
+      ]
+    },
+    {
+      "id": "TASK-027",
+      "title": "First golden dataset: chemistry ranges + criticals",
+      "priority": "Critical",
+      "milestone": "M1",
+      "feature": "FEAT-007",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-027-first-golden-dataset-chemistry-ranges-criticals.md",
+      "deps": [
+        "TASK-026"
+      ]
+    },
+    {
+      "id": "TASK-028",
+      "title": "Deploy Keycloak; realm, clients, roles",
+      "priority": "Critical",
+      "milestone": "M2",
+      "feature": "FEAT-008",
+      "size": "L (2 days)",
+      "area": "infra",
+      "file": "github/issues/tasks/TASK-028-deploy-keycloak-realm-clients-roles.md",
+      "deps": [
+        "TASK-009"
+      ]
+    },
+    {
+      "id": "TASK-029",
+      "title": "API auth guard: JWT validation, tenant/user context",
+      "priority": "Critical",
+      "milestone": "M2",
+      "feature": "FEAT-008",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-029-api-auth-guard-jwt-validation-tenant-user-context.md",
+      "deps": [
+        "TASK-028"
+      ]
+    },
+    {
+      "id": "TASK-030",
+      "title": "Bind RLS session variable to authenticated tenant",
+      "priority": "Critical",
+      "milestone": "M2",
+      "feature": "FEAT-008",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-030-bind-rls-session-variable-to-authenticated-tenant.md",
+      "deps": [
+        "TASK-029"
+      ]
+    },
+    {
+      "id": "TASK-031",
+      "title": "Web auth: login, session, protected routes, sign-out",
+      "priority": "Critical",
+      "milestone": "M2",
+      "feature": "FEAT-008",
+      "size": "M (1 day)",
+      "area": "frontend",
+      "file": "github/issues/tasks/TASK-031-web-auth-login-session-protected-routes-sign-out.md",
+      "deps": [
+        "TASK-029"
+      ]
+    },
+    {
+      "id": "TASK-032",
+      "title": "Role model + capability checks (enter != verify)",
+      "priority": "Critical",
+      "milestone": "M2",
+      "feature": "FEAT-009",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-032-role-model-capability-checks-enter-verify.md",
+      "deps": [
+        "TASK-030"
+      ]
+    },
+    {
+      "id": "TASK-033",
+      "title": "Audit interceptor on every clinical mutation",
+      "priority": "Critical",
+      "milestone": "M2",
+      "feature": "FEAT-009",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-033-audit-interceptor-on-every-clinical-mutation.md",
+      "deps": [
+        "TASK-025"
+      ]
+    },
+    {
+      "id": "TASK-034",
+      "title": "Stitch reference screens; extract tokens to packages/ui",
+      "priority": "Critical",
+      "milestone": "M2",
+      "feature": "FEAT-010",
+      "size": "M (1 day)",
+      "area": "design",
+      "file": "github/issues/tasks/TASK-034-stitch-reference-screens-extract-tokens-to-packages-ui.md",
+      "deps": [
+        "TASK-031"
+      ]
+    },
+    {
+      "id": "TASK-035",
+      "title": "Build 6 primitives (DataTable, StatusPill, FilterBar, SlideOver, StatCard, FormField)",
+      "priority": "Critical",
+      "milestone": "M2",
+      "feature": "FEAT-010",
+      "size": "L (2 days)",
+      "area": "frontend",
+      "file": "github/issues/tasks/TASK-035-build-6-primitives-datatable-statuspill-filterbar-slideover-statcard-formfield.md",
+      "deps": [
+        "TASK-034"
+      ]
+    },
+    {
+      "id": "TASK-036",
+      "title": "App shell: sidebar, top bar, org/branch switcher, theme, palette",
+      "priority": "Critical",
+      "milestone": "M2",
+      "feature": "FEAT-010",
+      "size": "M (1 day)",
+      "area": "frontend",
+      "file": "github/issues/tasks/TASK-036-app-shell-sidebar-top-bar-org-branch-switcher-theme-palette.md",
+      "deps": [
+        "TASK-035"
+      ]
+    },
+    {
+      "id": "TASK-037",
+      "title": "Storybook + axe a11y check in CI",
+      "priority": "High",
+      "milestone": "M2",
+      "feature": "FEAT-010",
+      "size": "S (0.5 day)",
+      "area": "frontend",
+      "file": "github/issues/tasks/TASK-037-storybook-axe-a11y-check-in-ci.md",
+      "deps": [
+        "TASK-035"
+      ]
+    },
+    {
+      "id": "TASK-038",
+      "title": "Migration: patient + identifiers + alerts",
+      "priority": "Critical",
+      "milestone": "M3",
+      "feature": "FEAT-011",
+      "size": "M (1 day)",
+      "area": "db",
+      "file": "github/issues/tasks/TASK-038-migration-patient-identifiers-alerts.md",
+      "deps": [
+        "TASK-024"
+      ]
+    },
+    {
+      "id": "TASK-039",
+      "title": "API: create/search/get patient (Zod + OpenAPI)",
+      "priority": "Critical",
+      "milestone": "M3",
+      "feature": "FEAT-011",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-039-api-create-search-get-patient-zod-openapi.md",
+      "deps": [
+        "TASK-038"
+      ]
+    },
+    {
+      "id": "TASK-040",
+      "title": "Registration form + duplicate detection",
+      "priority": "Critical",
+      "milestone": "M3",
+      "feature": "FEAT-011",
+      "size": "L (2 days)",
+      "area": "frontend",
+      "file": "github/issues/tasks/TASK-040-registration-form-duplicate-detection.md",
+      "deps": [
+        "TASK-039"
+      ]
+    },
+    {
+      "id": "TASK-041",
+      "title": "Patient search + profile screens",
+      "priority": "Critical",
+      "milestone": "M3",
+      "feature": "FEAT-011",
+      "size": "M (1 day)",
+      "area": "frontend",
+      "file": "github/issues/tasks/TASK-041-patient-search-profile-screens.md",
+      "deps": [
+        "TASK-040"
+      ]
+    },
+    {
+      "id": "TASK-042",
+      "title": "API: create order + ordered tests; cancel action",
+      "priority": "Critical",
+      "milestone": "M3",
+      "feature": "FEAT-012",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-042-api-create-order-ordered-tests-cancel-action.md",
+      "deps": [
+        "TASK-039"
+      ]
+    },
+    {
+      "id": "TASK-043",
+      "title": "Order builder UI (catalog, panels, summary)",
+      "priority": "Critical",
+      "milestone": "M3",
+      "feature": "FEAT-012",
+      "size": "L (2 days)",
+      "area": "frontend",
+      "file": "github/issues/tasks/TASK-043-order-builder-ui-catalog-panels-summary.md",
+      "deps": [
+        "TASK-042"
+      ]
+    },
+    {
+      "id": "TASK-044",
+      "title": "Order list + detail screens",
+      "priority": "High",
+      "milestone": "M3",
+      "feature": "FEAT-012",
+      "size": "M (1 day)",
+      "area": "frontend",
+      "file": "github/issues/tasks/TASK-044-order-list-detail-screens.md",
+      "deps": [
+        "TASK-043"
+      ]
+    },
+    {
+      "id": "TASK-045",
+      "title": "Accession number generation (collision-safe)",
+      "priority": "Critical",
+      "milestone": "M3",
+      "feature": "FEAT-013",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-045-accession-number-generation-collision-safe.md",
+      "deps": [
+        "TASK-042"
+      ]
+    },
+    {
+      "id": "TASK-046",
+      "title": "Label rendering (Code128+DataMatrix) + print pipeline",
+      "priority": "Critical",
+      "milestone": "M3",
+      "feature": "FEAT-013",
+      "size": "L (2 days)",
+      "area": "fullstack",
+      "file": "github/issues/tasks/TASK-046-label-rendering-code128-datamatrix-print-pipeline.md",
+      "deps": [
+        "TASK-045"
+      ]
+    },
+    {
+      "id": "TASK-047",
+      "title": "Reception screen: scan-to-receive, coded rejection",
+      "priority": "Critical",
+      "milestone": "M3",
+      "feature": "FEAT-013",
+      "size": "M (1 day)",
+      "area": "fullstack",
+      "file": "github/issues/tasks/TASK-047-reception-screen-scan-to-receive-coded-rejection.md",
+      "deps": [
+        "TASK-045"
+      ]
+    },
+    {
+      "id": "TASK-048",
+      "title": "Collection queue screen",
+      "priority": "High",
+      "milestone": "M3",
+      "feature": "FEAT-013",
+      "size": "M (1 day)",
+      "area": "frontend",
+      "file": "github/issues/tasks/TASK-048-collection-queue-screen.md",
+      "deps": [
+        "TASK-047"
+      ]
+    },
+    {
+      "id": "TASK-049",
+      "title": "Range-resolution service + snapshot onto observation",
+      "priority": "Critical",
+      "milestone": "M4",
+      "feature": "FEAT-014",
+      "size": "L (2 days)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-049-range-resolution-service-snapshot-onto-observation.md",
+      "deps": [
+        "TASK-018"
+      ]
+    },
+    {
+      "id": "TASK-050",
+      "title": "Flagging service (N/H/L/HH/LL) with boundary correctness",
+      "priority": "Critical",
+      "milestone": "M4",
+      "feature": "FEAT-014",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-050-flagging-service-n-h-l-hh-ll-with-boundary-correctness.md",
+      "deps": [
+        "TASK-049"
+      ]
+    },
+    {
+      "id": "TASK-051",
+      "title": "Result entry API (draft/submit, typed values)",
+      "priority": "Critical",
+      "milestone": "M4",
+      "feature": "FEAT-014",
+      "size": "L (2 days)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-051-result-entry-api-draft-submit-typed-values.md",
+      "deps": [
+        "TASK-050"
+      ]
+    },
+    {
+      "id": "TASK-052",
+      "title": "Result entry UI (analyte grid, live flags, autosave)",
+      "priority": "Critical",
+      "milestone": "M4",
+      "feature": "FEAT-014",
+      "size": "L (2 days)",
+      "area": "frontend",
+      "file": "github/issues/tasks/TASK-052-result-entry-ui-analyte-grid-live-flags-autosave.md",
+      "deps": [
+        "TASK-051"
+      ]
+    },
+    {
+      "id": "TASK-053",
+      "title": "Calculated fields (eGFR, LDL) server-side",
+      "priority": "High",
+      "milestone": "M4",
+      "feature": "FEAT-014",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-053-calculated-fields-egfr-ldl-server-side.md",
+      "deps": [
+        "TASK-051"
+      ]
+    },
+    {
+      "id": "TASK-054",
+      "title": "Critical detection + CriticalValueDetected event",
+      "priority": "Critical",
+      "milestone": "M4",
+      "feature": "FEAT-015",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-054-critical-detection-criticalvaluedetected-event.md",
+      "deps": [
+        "TASK-050"
+      ]
+    },
+    {
+      "id": "TASK-055",
+      "title": "Verification action + append-only versioning",
+      "priority": "Critical",
+      "milestone": "M4",
+      "feature": "FEAT-015",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-055-verification-action-append-only-versioning.md",
+      "deps": [
+        "TASK-051"
+      ]
+    },
+    {
+      "id": "TASK-056",
+      "title": "Finalization block on unacknowledged critical (409)",
+      "priority": "Critical",
+      "milestone": "M4",
+      "feature": "FEAT-015",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-056-finalization-block-on-unacknowledged-critical-409.md",
+      "deps": [
+        "TASK-054"
+      ]
+    },
+    {
+      "id": "TASK-057",
+      "title": "Verification UI (delta/QC/prior context, verify+next)",
+      "priority": "Critical",
+      "milestone": "M4",
+      "feature": "FEAT-015",
+      "size": "M (1 day)",
+      "area": "frontend",
+      "file": "github/issues/tasks/TASK-057-verification-ui-delta-qc-prior-context-verify-next.md",
+      "deps": [
+        "TASK-055"
+      ]
+    },
+    {
+      "id": "TASK-058",
+      "title": "Config template \u2192 HTML \u2192 PDF (hash-stamped)",
+      "priority": "Critical",
+      "milestone": "M4",
+      "feature": "FEAT-016",
+      "size": "L (2 days)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-058-config-template-html-pdf-hash-stamped.md",
+      "deps": [
+        "TASK-055"
+      ]
+    },
+    {
+      "id": "TASK-059",
+      "title": "Report data assembly with snapshotted ranges",
+      "priority": "Critical",
+      "milestone": "M4",
+      "feature": "FEAT-016",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-059-report-data-assembly-with-snapshotted-ranges.md",
+      "deps": [
+        "TASK-058"
+      ]
+    },
+    {
+      "id": "TASK-060",
+      "title": "Report viewer + download screen",
+      "priority": "High",
+      "milestone": "M4",
+      "feature": "FEAT-016",
+      "size": "M (1 day)",
+      "area": "frontend",
+      "file": "github/issues/tasks/TASK-060-report-viewer-download-screen.md",
+      "deps": [
+        "TASK-059"
+      ]
+    },
+    {
+      "id": "TASK-061",
+      "title": "Worklist query API with filters + TAT",
+      "priority": "High",
+      "milestone": "M4",
+      "feature": "FEAT-017",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-061-worklist-query-api-with-filters-tat.md",
+      "deps": [
+        "TASK-051"
+      ]
+    },
+    {
+      "id": "TASK-062",
+      "title": "Worklist UI (tabs, filters, priority, TAT)",
+      "priority": "High",
+      "milestone": "M4",
+      "feature": "FEAT-017",
+      "size": "L (2 days)",
+      "area": "frontend",
+      "file": "github/issues/tasks/TASK-062-worklist-ui-tabs-filters-priority-tat.md",
+      "deps": [
+        "TASK-061"
+      ]
+    }
+  ]
+}

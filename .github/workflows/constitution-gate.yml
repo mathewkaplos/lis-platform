@@ -1,0 +1,25 @@
+name: Constitution Gate
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  check-invariants:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Block free-text clinical value columns
+        run: |
+          if git diff origin/main...HEAD -- 'db/migrations/*' | grep -E '^\+.*\b(result|value|finding)\b.*\btext\b' ; then
+            echo "::error::A migration appears to add a free-text column for clinical data (Law #1). If this is a legitimate non-clinical text field, adjust this check's pattern."
+            exit 1
+          fi
+      - name: Require RLS alongside any new tenant table
+        run: |
+          added_tables=$(git diff origin/main...HEAD -- 'db/migrations/*' | grep -oE '^\+CREATE TABLE \w+' | awk '{print $NF}' || true)
+          for t in $added_tables; do
+            if ! git diff origin/main...HEAD -- 'db/migrations/*' | grep -q "ENABLE ROW LEVEL SECURITY.*$t\|ON $t"; then
+              echo "::error::New table '$t' has no RLS policy in this diff (Law #4)."
+              exit 1
+            fi
+          done

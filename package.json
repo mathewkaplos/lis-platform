@@ -1,7 +1,9 @@
 {
   "name": "lis-platform",
   "private": true,
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "pnpm --parallel --filter=./apps/* dev",
     "build": "pnpm -r build",
@@ -9,5 +11,9 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "db:reset": "bash scripts/db-reset.sh"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.6",
+    "typescript": "5.9.3"
   }
 }

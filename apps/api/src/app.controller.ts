@@ -10,4 +10,9 @@ export class AppController {
       ts: new Date().toISOString(),
     };
   }
+
+  @Get('debug-sentry')
+  throwError() {
+    throw new Error('Sentry test error — TASK-010 verification');
+  }
 }

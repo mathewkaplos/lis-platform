@@ -1,0 +1,3 @@
+do_token       = "REPLACE_ME"
+droplet_id     = "REPLACE_ME"
+ssh_allowed_ip = "REPLACE_ME/32"

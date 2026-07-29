@@ -16,7 +16,10 @@ services:
     image: ghcr.io/mathewkaplos/lis-platform-api:latest
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/lis
+      # NOT the postgres superuser — RLS never applies to a superuser or
+      # table-owning role, so the API must connect as lis_app (created by
+      # db/migrations/0002_app_role.sql) for tenant isolation to be real.
+      DATABASE_URL: postgresql://lis_app:${LIS_APP_DB_PASSWORD}@postgres:5432/lis
       NODE_ENV: staging
       SENTRY_DSN: ${SENTRY_DSN}
     ports: ["4000:4000"]

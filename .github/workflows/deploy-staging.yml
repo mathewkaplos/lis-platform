@@ -70,6 +70,7 @@ jobs:
           ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} '
             cd /opt/lis &&
             echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" > .env &&
+            echo "LIS_APP_DB_PASSWORD=${{ secrets.LIS_APP_DB_PASSWORD }}" >> .env &&
             echo "SENTRY_DSN=${{ secrets.SENTRY_DSN }}" >> .env &&
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} &&
             docker compose pull &&

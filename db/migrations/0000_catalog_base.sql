@@ -1,3 +1,4 @@
+-- RLS-exempt per ADR-0004 (global reference data, identical across tenants)
 CREATE TABLE "analyte" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"code_system_value_id" uuid NOT NULL,
@@ -8,6 +9,7 @@ CREATE TABLE "analyte" (
 	CONSTRAINT "analyte_code_system_value_id_unique" UNIQUE("code_system_value_id")
 );
 --> statement-breakpoint
+-- RLS-exempt per ADR-0004 (global reference data, identical across tenants)
 CREATE TABLE "code_system_value" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"system" text NOT NULL,
@@ -17,6 +19,7 @@ CREATE TABLE "code_system_value" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+-- RLS-exempt per ADR-0004 (global reference data, identical across tenants)
 CREATE TABLE "unit" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"code_system_value_id" uuid NOT NULL,

@@ -1,18 +1,14 @@
+import './instrument';
+
 import { randomUUID } from 'crypto';
 import { NestFactory } from '@nestjs/core';
 import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
-import * as Sentry from '@sentry/node';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    environment: process.env.NODE_ENV,
-  });
-
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({ genReqId: () => randomUUID(), logger: true }),

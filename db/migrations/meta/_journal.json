@@ -78,6 +78,13 @@
       "when": 1785421140162,
       "tag": "0010_audit_event",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1785425000000,
+      "tag": "0011_observation_fk_integrity",
+      "breakpoints": true
     }
   ]
 }

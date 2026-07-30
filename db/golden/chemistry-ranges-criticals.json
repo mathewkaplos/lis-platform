@@ -1,0 +1,33 @@
+{
+  "_meta": {
+    "description": "TASK-027 (FEAT-007): golden dataset of expected chemistry reference ranges and critical thresholds. Mirrors db/seed/chemistry-catalog.sql's reference_range rows 1:1 — packages/db/src/golden-dataset-check.ts (TASK-026) asserts the live reference_range table matches this file exactly, in both directions.",
+    "status": "PLACEHOLDER — NOT PARTNER-VALIDATED. Every entry below is a generic, widely-published adult reference interval / panic threshold from standard clinical chemistry literature, not reviewed or signed off by a design-partner lab. Design-partner sign-off is tracked as an open follow-up issue, not yet satisfied. Do not treat these values as clinically authoritative for a real report.",
+    "tenantId": "00000000-0000-0000-0000-000000000001",
+    "sourceSeed": "db/seed/chemistry-catalog.sql"
+  },
+  "entries": [
+    { "analyte": "Glucose", "sex": null, "condition": "fasting", "rangeType": "normal", "low": 70, "high": 99, "source": "Standard adult fasting reference interval (generic clinical chemistry literature) -- placeholder, not partner-validated" },
+    { "analyte": "Glucose", "sex": null, "condition": null, "rangeType": "critical", "low": null, "high": 40, "source": "Generic critical-low (panic) threshold, widely published -- placeholder" },
+    { "analyte": "Glucose", "sex": null, "condition": null, "rangeType": "critical", "low": 500, "high": null, "source": "Generic critical-high (panic) threshold, widely published -- placeholder" },
+    { "analyte": "Urea Nitrogen (BUN)", "sex": null, "condition": null, "rangeType": "normal", "low": 7, "high": 20, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Creatinine", "sex": "M", "condition": null, "rangeType": "normal", "low": 0.74, "high": 1.35, "source": "Standard adult male reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Creatinine", "sex": "F", "condition": null, "rangeType": "normal", "low": 0.59, "high": 1.04, "source": "Standard adult female reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Sodium", "sex": null, "condition": null, "rangeType": "normal", "low": 136, "high": 145, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Sodium", "sex": null, "condition": null, "rangeType": "critical", "low": null, "high": 120, "source": "Generic critical-low (panic) threshold -- placeholder" },
+    { "analyte": "Sodium", "sex": null, "condition": null, "rangeType": "critical", "low": 160, "high": null, "source": "Generic critical-high (panic) threshold -- placeholder" },
+    { "analyte": "Potassium", "sex": null, "condition": null, "rangeType": "normal", "low": 3.5, "high": 5.1, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Potassium", "sex": null, "condition": null, "rangeType": "critical", "low": null, "high": 2.5, "source": "Generic critical-low (panic) threshold -- placeholder" },
+    { "analyte": "Potassium", "sex": null, "condition": null, "rangeType": "critical", "low": 6.5, "high": null, "source": "Generic critical-high (panic) threshold -- placeholder" },
+    { "analyte": "Chloride", "sex": null, "condition": null, "rangeType": "normal", "low": 98, "high": 107, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Carbon Dioxide (CO2)", "sex": null, "condition": null, "rangeType": "normal", "low": 23, "high": 29, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Calcium", "sex": null, "condition": null, "rangeType": "normal", "low": 8.6, "high": 10.2, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Calcium", "sex": null, "condition": null, "rangeType": "critical", "low": null, "high": 6.0, "source": "Generic critical-low (panic) threshold -- placeholder" },
+    { "analyte": "Calcium", "sex": null, "condition": null, "rangeType": "critical", "low": 13.0, "high": null, "source": "Generic critical-high (panic) threshold -- placeholder" },
+    { "analyte": "Total Protein", "sex": null, "condition": null, "rangeType": "normal", "low": 6.0, "high": 8.3, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Albumin", "sex": null, "condition": null, "rangeType": "normal", "low": 3.5, "high": 5.0, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Total Bilirubin", "sex": null, "condition": null, "rangeType": "normal", "low": 0.1, "high": 1.2, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Alkaline Phosphatase", "sex": null, "condition": null, "rangeType": "normal", "low": 44, "high": 147, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "AST (SGOT)", "sex": null, "condition": null, "rangeType": "normal", "low": 8, "high": 48, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "ALT (SGPT)", "sex": null, "condition": null, "rangeType": "normal", "low": 7, "high": 56, "source": "Standard adult reference interval -- placeholder, not partner-validated" }
+  ]
+}

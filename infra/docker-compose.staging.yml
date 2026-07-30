@@ -32,7 +32,10 @@ services:
       # NOT the postgres superuser — RLS never applies to a superuser or
       # table-owning role, so the API must connect as lis_app (created by
       # db/migrations/0002_app_role.sql) for tenant isolation to be real.
-      DATABASE_URL: postgresql://lis_app:${LIS_APP_DB_PASSWORD}@postgres:5432/lis
+      # Must be named APP_DATABASE_URL, not DATABASE_URL — apps/api/src/auth/db.ts
+      # (TASK-030) reads APP_DATABASE_URL specifically and requiredEnv()s it;
+      # matches local .env/.env.example and pr.yml's naming.
+      APP_DATABASE_URL: postgresql://lis_app:${LIS_APP_DB_PASSWORD}@postgres:5432/lis
       NODE_ENV: staging
       SENTRY_DSN: ${SENTRY_DSN}
       # Internal Docker-network hostname, matching every other inter-service

@@ -11,10 +11,18 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: lis_test
+          # Must match db-reset.sh / docker-compose.yml's local DB name ("lis"),
+          # not an independent CI-only name — 0002_app_role.sql hardcodes
+          # `GRANT CONNECT ON DATABASE "lis"`, and migrations are never edited
+          # after the fact, so the database this migration runs against must
+          # actually be named "lis" (TASK-026/FEAT-007 finding).
+          POSTGRES_DB: lis
         ports: ["5432:5432"]
         options: >-
           --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lis
+      APP_DATABASE_URL: postgresql://lis_app:lis_app_ci_password@localhost:5432/lis
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -24,5 +32,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
+      # TASK-026 (FEAT-007): CI's first-ever migrate+seed sequence. Mirrors
+      # scripts/db-reset.sh's local sequence exactly (migrate as postgres,
+      # set lis_app's password out-of-band, seed as postgres so RLS never
+      # gets in the way of the seed itself) rather than inventing a second,
+      # CI-only bootstrap path.
+      - run: pnpm --filter @lis/db migrate
+      - run: psql "$DATABASE_URL" -c "ALTER ROLE lis_app WITH PASSWORD 'lis_app_ci_password';"
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/chemistry-catalog.sql
+      - run: pnpm run-golden-datasets
       - run: pnpm test
       - run: pnpm build

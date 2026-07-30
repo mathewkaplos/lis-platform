@@ -121,6 +121,24 @@
           "temporary": false
         }
       ]
+    },
+    {
+      "username": "test-user-2",
+      "email": "test-user-2@example.invalid",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Test",
+      "lastName": "User Two",
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000002"]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "test-password-2",
+          "temporary": false
+        }
+      ]
     }
   ]
 }

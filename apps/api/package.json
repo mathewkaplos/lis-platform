@@ -17,16 +17,18 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
-    "test:e2e": "vitest run --config ./test/vitest.e2e.config.ts",
+    "test:e2e": "DB_POOL_MAX=1 vitest run --config ./test/vitest.e2e.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@lis/db": "workspace:*",
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/platform-fastify": "^11.1.28",
     "@sentry/nestjs": "^10.68.0",
     "@sentry/profiling-node": "^10.68.0",
+    "drizzle-orm": "^0.45.2",
     "jose": "^5.9.6",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"

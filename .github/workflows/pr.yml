@@ -46,6 +46,14 @@ jobs:
             -v "${{ github.workspace }}/infra/keycloak/lis-realm.json:/opt/keycloak/data/import/lis-realm.json" \
             quay.io/keycloak/keycloak:26.0 start-dev --import-realm
       - run: pnpm install --frozen-lockfile
+      # TASK-030 (FEAT-008): apps/api is the first-ever consumer of a
+      # workspace package's real exports (@lis/db) — packages/domain/@lis/ui
+      # were already listed as deps elsewhere but never actually imported.
+      # @lis/db's package.json points types/main at dist/, so apps/api's
+      # own lint (type-aware) and typecheck both need it built first, not
+      # just installed — pnpm's own dependency-graph ordering doesn't build
+      # a package just because a dependent's script runs.
+      - run: pnpm --filter @lis/db build
       - run: pnpm lint
       - run: pnpm typecheck
       # TASK-026 (FEAT-007): CI's first-ever migrate+seed sequence. Mirrors

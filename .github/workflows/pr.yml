@@ -23,12 +23,28 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lis
       APP_DATABASE_URL: postgresql://lis_app:lis_app_ci_password@localhost:5432/lis
+      # Matches TASK-028's local docker-compose Keycloak service (also
+      # localhost:8080) — same realm-import file, no CI-specific override
+      # needed. See infra/keycloak/README.md.
+      KEYCLOAK_ISSUER_URL: http://localhost:8080/realms/lis
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with: { version: 9 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: 'pnpm' }
+      # TASK-029 (FEAT-008): GitHub Actions `services:` only supports an
+      # image's default entrypoint — Keycloak's needs an explicit
+      # `start-dev --import-realm` command, which `services:` cannot pass.
+      # Run it as a plain background container instead (same image/realm
+      # file as local dev), launched early so its ~15s startup overlaps
+      # with lint/typecheck/build rather than blocking on its own.
+      - run: |
+          docker run -d --name keycloak -p 8080:8080 \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
+            -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+            -v "${{ github.workspace }}/infra/keycloak/lis-realm.json:/opt/keycloak/data/import/lis-realm.json" \
+            quay.io/keycloak/keycloak:26.0 start-dev --import-realm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
@@ -42,4 +58,16 @@ jobs:
       - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/chemistry-catalog.sql
       - run: pnpm run-golden-datasets
       - run: pnpm test
+      # TASK-029: waits here, not right after launch — gives Keycloak's own
+      # ~15s startup the whole lint/typecheck/migrate/seed/test window above
+      # to overlap with, instead of a dedicated blocking wait.
+      - run: |
+          for i in $(seq 1 24); do
+            curl -sf http://localhost:8080/realms/lis/.well-known/openid-configuration > /dev/null && exit 0
+            sleep 5
+          done
+          echo "Keycloak did not become ready in time" >&2
+          docker logs keycloak
+          exit 1
+      - run: pnpm --filter api test:e2e
       - run: pnpm build

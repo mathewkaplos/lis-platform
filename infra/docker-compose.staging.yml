@@ -12,6 +12,19 @@ services:
     image: valkey/valkey:8
     restart: unless-stopped
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    ports: ["8080:8080"]
+    # Deploy step (deploy-staging.yml) strips the local/CI-only test-user block
+    # via jq before this file lands here — staging never receives the
+    # checked-in test-password user. See infra/keycloak/README.md.
+    volumes: ["./keycloak/lis-realm.json:/opt/keycloak/data/import/lis-realm.json"]
+
   api:
     image: ghcr.io/mathewkaplos/lis-platform-api:latest
     restart: unless-stopped

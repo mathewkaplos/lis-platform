@@ -47,7 +47,8 @@ export const observation = pgTable(
     valueNum: numeric("value_num"), // quantity
     valueCode: text("value_code"), // coded/ordinal
     valueBool: boolean("value_bool"), // boolean
-    valueText: text("value_text"), // text/datetime (ISO-8601) — no dedicated timestamp column in KB-06's DDL
+    valueText: text("value_text"), // text
+    valueDatetime: timestamp("value_datetime", { withTimezone: true }), // datetime
     valueJson: jsonb("value_json"), // table/structured/ratio payloads
     unitId: uuid("unit_id").references(() => unit.id), // canonical unit, traceable (mirrors reference_range.unitId)
     unit: text("unit"), // UCUM display, snapshotted at write time — never recomputed later
@@ -90,7 +91,7 @@ export const observation = pgTable(
     check("ck_observation_coded_value", sql`(${table.dataType} <> 'coded') OR (${table.valueCode} IS NOT NULL)`),
     check("ck_observation_boolean_value", sql`(${table.dataType} <> 'boolean') OR (${table.valueBool} IS NOT NULL)`),
     check("ck_observation_text_value", sql`(${table.dataType} <> 'text') OR (${table.valueText} IS NOT NULL)`),
-    check("ck_observation_datetime_value", sql`(${table.dataType} <> 'datetime') OR (${table.valueText} IS NOT NULL)`),
+    check("ck_observation_datetime_value", sql`(${table.dataType} <> 'datetime') OR (${table.valueDatetime} IS NOT NULL)`),
     check("ck_observation_table_value", sql`(${table.dataType} <> 'table') OR (${table.valueJson} IS NOT NULL)`),
     check("ck_observation_structured_value", sql`(${table.dataType} <> 'structured') OR (${table.valueJson} IS NOT NULL)`),
     check("ck_observation_attachment_value", sql`(${table.dataType} <> 'attachment') OR (${table.valueJson} IS NOT NULL)`),

@@ -51,6 +51,13 @@ the fact"; here, "never configured out-of-band").
   `db/seed/chemistry-catalog.sql`, `rls-isolation-check.ts`, and
   `golden-dataset-check.ts` — so tokens issued for this user compose with existing seed
   data.
+- **A second user, `test-user-2`, carries `tenant_id`
+  `00000000-0000-0000-0000-000000000002`** — TASK-030's addition, reusing
+  `rls-isolation-check.ts`'s existing `TENANT_B` convention rather than inventing a new
+  UUID. Exists solely so TASK-030's cross-tenant isolation proof can be exercised
+  through the live API with two real, differently-tenanted tokens, not just one —
+  nothing seeds real data against this tenant; its only job is to prove it sees zero
+  rows of `test-user`'s tenant's data.
 
 ## Local dev
 

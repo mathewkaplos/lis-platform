@@ -29,6 +29,7 @@ import * as schema from "./schema";
 import { order, orderedTest } from "./schema/order";
 import { specimen, specimenFulfillment } from "./schema/specimen";
 import { observation } from "./schema/observation";
+import { writeAuditEvent } from "./audit";
 
 type Db = ReturnType<typeof createDb>;
 
@@ -151,6 +152,20 @@ async function insertFixtures(db: Db) {
     valueNum: "5.2",
     source: "manual",
     amendmentOf: obs.id,
+  });
+
+  // audit_event fixture, via the real writer (TASK-025) rather than a
+  // direct insert — exercises the same hash-chain path any real caller
+  // would use, matching the same "trigger the real path" reasoning as the
+  // observation/result_history fixture above.
+  await writeAuditEvent(db, {
+    tenantId: TENANT_A,
+    actorPrincipalId: "99999999-9999-9999-9999-999999999999",
+    actorRole: "lab_technician",
+    actorType: "human",
+    action: "specimen.receive",
+    resourceType: "specimen",
+    resourceId: sp.id,
   });
 }
 

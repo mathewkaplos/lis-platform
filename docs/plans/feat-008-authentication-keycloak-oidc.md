@@ -36,10 +36,15 @@ verbatim here (see §5/§6).
   everything-as-code convention (migrations, Terraform, GH Actions).
 - `docker-compose.yml` — new `keycloak` service (local dev), importing the realm above.
 - `infra/docker-compose.staging.yml` — new `keycloak` service, `KEYCLOAK_ADMIN_PASSWORD`
-  and `KEYCLOAK_CLIENT_SECRET` sourced from `.env`, same pattern
-  `LIS_APP_DB_PASSWORD`/`SENTRY_DSN` already use.
-- `.github/workflows/deploy-staging.yml` — two new `secrets.*` entries written to the
-  remote `.env`, mirroring the existing `LIS_APP_DB_PASSWORD` block.
+  sourced from `.env`, same pattern `LIS_APP_DB_PASSWORD`/`SENTRY_DSN` already use.
+  (No client-secret env var: `lis-web` is a public PKCE client per §5, so there is no
+  client secret to manage — corrected from this proposal's original draft, which
+  assumed one before the client type was actually decided.)
+- `.github/workflows/deploy-staging.yml` — one new `secrets.KEYCLOAK_ADMIN_PASSWORD`
+  entry written to the remote `.env`, mirroring the existing `LIS_APP_DB_PASSWORD`
+  block; a `jq`-based step strips the local/CI-only test user out of
+  `infra/keycloak/lis-realm.json` before it reaches the staging droplet (see
+  `infra/keycloak/README.md`).
 - `.github/workflows/pr.yml` — a CI `keycloak` service + realm-import step, needed for
   TASK-029/030's integration tests; same "CI does not inherit local dev's bootstrap"
   lesson `engineering/testing` Skill entry #3 already established for Postgres.

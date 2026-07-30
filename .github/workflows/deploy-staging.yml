@@ -59,11 +59,26 @@ jobs:
         run: tailscale ping -c 3 ${{ secrets.DEPLOY_HOST }}
       # --- end new steps ---
 
-      - name: Copy compose file to droplet
+      - name: Strip local/CI-only test user from the realm export for staging
         run: |
+          # infra/keycloak/lis-realm.json is the single source of truth for
+          # realm/client/scope config, shared with local dev and CI. Its
+          # checked-in test-user has a well-known password (test-password) —
+          # fine for an ephemeral local/CI container, not for a
+          # network-reachable staging droplet. Strip .users at deploy time
+          # rather than maintaining a second, drift-prone realm file.
+          jq 'del(.users)' infra/keycloak/lis-realm.json > /tmp/lis-realm.staging.json
+
+      - name: Copy compose file and realm config to droplet
+        run: |
+          ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} \
+            'mkdir -p /opt/lis/keycloak'
           scp -i deploy_key -o StrictHostKeyChecking=no \
             infra/docker-compose.staging.yml \
             root@${{ secrets.DEPLOY_HOST }}:/opt/lis/docker-compose.yml
+          scp -i deploy_key -o StrictHostKeyChecking=no \
+            /tmp/lis-realm.staging.json \
+            root@${{ secrets.DEPLOY_HOST }}:/opt/lis/keycloak/lis-realm.json
 
       - name: Pull and restart on droplet
         run: |
@@ -72,6 +87,7 @@ jobs:
             echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" > .env &&
             echo "LIS_APP_DB_PASSWORD=${{ secrets.LIS_APP_DB_PASSWORD }}" >> .env &&
             echo "SENTRY_DSN=${{ secrets.SENTRY_DSN }}" >> .env &&
+            echo "KEYCLOAK_ADMIN_PASSWORD=${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}" >> .env &&
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} &&
             docker compose pull &&
             docker compose up -d

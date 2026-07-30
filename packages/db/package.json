@@ -8,7 +8,8 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
     "generate": "drizzle-kit generate",
-    "migrate": "tsx src/migrate.ts"
+    "migrate": "tsx src/migrate.ts",
+    "rls-check": "tsx src/rls-isolation-check.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

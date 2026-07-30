@@ -1,0 +1,209 @@
+/**
+ * TASK-024 (FEAT-006): cross-table RLS isolation check.
+ *
+ * Per the approved FEAT-006 proposal §5/§10 Q4, this task produces no new
+ * RLS-policy SQL — Constitution Law #4 already forces every tenant table to
+ * carry tenant_id + RLS from the migration that creates it (TASK-023's own
+ * migration, in this repo's case). What TASK-024 actually delivers is the
+ * proof: a real, repeatable check that (a) structurally audits every table
+ * in the schema for the RLS-enabled + policy-present pair, so a future table
+ * that forgets one can't slip through unnoticed, and (b) exercises real
+ * cross-tenant data access and confirms the wrong tenant sees nothing.
+ *
+ * Deliberately NOT wired into CI here. CI (`pr.yml`) provisions a real
+ * Postgres service but has no DATABASE_URL/migration step at all yet —
+ * building that out is FEAT-007/TASK-026's explicit job ("golden-dataset
+ * test runner in CI"), not TASK-024's. This runs against a real Postgres
+ * instance manually (`pnpm --filter @lis/db rls-check`, after `pnpm
+ * db:reset`) until that CI harness exists, at which point it's a natural
+ * fit to wire in as-is.
+ *
+ * Connects as `lis_app` (APP_DATABASE_URL), never `postgres` — the
+ * BYPASSRLS/superuser lesson from TASK-017 applies here more than anywhere:
+ * this script's entire purpose is proving RLS actually restricts, which a
+ * superuser connection would silently no-op.
+ */
+import { sql } from "drizzle-orm";
+import { createDb } from "./client";
+import * as schema from "./schema";
+import { order, orderedTest } from "./schema/order";
+import { specimen, specimenFulfillment } from "./schema/specimen";
+import { observation } from "./schema/observation";
+
+type Db = ReturnType<typeof createDb>;
+
+const APP_DATABASE_URL = process.env.APP_DATABASE_URL;
+if (!APP_DATABASE_URL) {
+  throw new Error("APP_DATABASE_URL is not set (must connect as lis_app, not postgres)");
+}
+
+// TENANT_A is the chemistry-catalog seed's fixed tenant (db/seed/chemistry-catalog.sql)
+// — reused here rather than duplicated, since it already has real rows in
+// analyte/unit/code_system_value/panel/panel_test/test_analyte/test_definition/
+// reference_range. TENANT_B is deliberately never written to by anything —
+// its entire purpose is to prove it sees zero rows of TENANT_A's data.
+const TENANT_A = "00000000-0000-0000-0000-000000000001";
+const TENANT_B = "00000000-0000-0000-0000-000000000002";
+
+async function setTenant(db: Db, tenantId: string) {
+  await db.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, false)`);
+}
+
+async function structuralSweep(db: Db): Promise<{ tables: string[]; failures: string[] }> {
+  // Every ordinary or partitioned-parent table in `public` that carries a
+  // tenant_id column (relispartition excludes observation's physical yearly
+  // partitions — RLS on the parent already covers them transparently, per
+  // TASK-022's own verification; testing the parent is sufficient and avoids
+  // 6 redundant per-partition entries).
+  const tables = await db.execute<{ relname: string }>(sql`
+    SELECT c.relname
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relkind IN ('r','p')
+      AND NOT c.relispartition
+      AND EXISTS (
+        SELECT 1 FROM information_schema.columns col
+        WHERE col.table_schema = 'public' AND col.table_name = c.relname AND col.column_name = 'tenant_id'
+      )
+    ORDER BY c.relname;
+  `);
+
+  const failures: string[] = [];
+  const tableNames = tables.rows.map((r) => r.relname);
+
+  for (const table of tableNames) {
+    const rls = await db.execute<{ relrowsecurity: boolean }>(
+      sql`SELECT relrowsecurity FROM pg_class WHERE relname = ${table} AND relnamespace = 'public'::regnamespace`,
+    );
+    const policyCount = await db.execute<{ count: string }>(
+      sql`SELECT count(*)::text AS count FROM pg_policies WHERE schemaname = 'public' AND tablename = ${table}`,
+    );
+    if (!rls.rows[0]?.relrowsecurity) {
+      failures.push(`${table}: has tenant_id but ROW LEVEL SECURITY is not enabled (Constitution Law #4)`);
+    }
+    if (Number(policyCount.rows[0]?.count ?? 0) === 0) {
+      failures.push(`${table}: has tenant_id but no RLS policy exists (Constitution Law #4)`);
+    }
+  }
+
+  return { tables: tableNames, failures };
+}
+
+// Inserts one fixture row per table the chemistry-catalog seed doesn't
+// already cover, under TENANT_A, so the live leak check below has real data
+// to prove isolation against on every tenant table, not just the ones the
+// seed happens to populate.
+async function insertFixtures(db: Db) {
+  await setTenant(db, TENANT_A);
+
+  const [testDef] = await db.select().from(schema.testDefinition).where(sql`tenant_id = ${TENANT_A}`).limit(1);
+  const [analyte] = await db.select().from(schema.analyte).limit(1); // global, per ADR-0004
+  if (!testDef || !analyte) {
+    throw new Error("chemistry-catalog seed data not found — run `pnpm db:reset` first");
+  }
+
+  const [ord] = await db
+    .insert(order)
+    .values({ tenantId: TENANT_A, patientId: "99999999-9999-9999-9999-999999999999" })
+    .returning();
+  const [ot] = await db
+    .insert(orderedTest)
+    .values({ tenantId: TENANT_A, orderId: ord.id, testDefinitionId: testDef.id })
+    .returning();
+  const [sp] = await db
+    .insert(specimen)
+    .values({ tenantId: TENANT_A, accessionNumber: `RLS-CHECK-${Date.now()}`, specimenType: "blood_edta" })
+    .returning();
+  await db.insert(specimenFulfillment).values({ tenantId: TENANT_A, specimenId: sp.id, orderedTestId: ot.id });
+
+  const [obs] = await db
+    .insert(observation)
+    .values({
+      tenantId: TENANT_A,
+      orderedTestId: ot.id,
+      analyteId: analyte.id,
+      specimenId: sp.id,
+      patientId: "99999999-9999-9999-9999-999999999999",
+      dataType: "quantity",
+      valueNum: "5.0",
+      source: "manual",
+    })
+    .returning();
+
+  // result_history is populated only by fn_observation_supersede (TASK-021),
+  // never a direct insert (see result-history.ts's own header comment) — a
+  // hand-crafted row here would also hit a real precision mismatch (drizzle
+  // round-trips created_at through a JS Date, which truncates Postgres's
+  // microsecond timestamptz to milliseconds, breaking the composite FK's
+  // exact-equality lookup). Inserting a second, amending observation
+  // triggers the real fn_observation_link_created_at + fn_observation_supersede
+  // chain, which computes the companion *_created_at columns and the
+  // result_history row entirely in SQL, at full precision, exactly as any
+  // real correction would in production.
+  await db.insert(observation).values({
+    tenantId: TENANT_A,
+    orderedTestId: ot.id,
+    analyteId: analyte.id,
+    specimenId: sp.id,
+    patientId: "99999999-9999-9999-9999-999999999999",
+    dataType: "quantity",
+    valueNum: "5.2",
+    source: "manual",
+    amendmentOf: obs.id,
+  });
+}
+
+async function liveLeakCheck(db: Db, tables: string[]): Promise<string[]> {
+  const failures: string[] = [];
+  for (const table of tables) {
+    await setTenant(db, TENANT_A);
+    const a = await db.execute<{ count: string }>(sql.raw(`SELECT count(*)::text AS count FROM "${table}"`));
+    await setTenant(db, TENANT_B);
+    const b = await db.execute<{ count: string }>(sql.raw(`SELECT count(*)::text AS count FROM "${table}"`));
+
+    const countA = Number(a.rows[0]?.count ?? 0);
+    const countB = Number(b.rows[0]?.count ?? 0);
+
+    if (countA === 0) {
+      failures.push(`${table}: tenant A has 0 rows — cannot prove isolation without fixture data`);
+    }
+    if (countB !== 0) {
+      failures.push(`${table}: tenant B (wrong tenant) sees ${countB} row(s) — RLS LEAK`);
+    }
+  }
+  return failures;
+}
+
+async function main() {
+  const db = createDb(APP_DATABASE_URL);
+
+  console.log("TASK-024: cross-table RLS isolation check (connected as lis_app)\n");
+
+  console.log("--- Structural sweep: every tenant_id table must have RLS enabled + a policy ---");
+  const { tables, failures: structuralFailures } = await structuralSweep(db);
+  console.log(`Found ${tables.length} tenant-scoped tables: ${tables.join(", ")}`);
+  structuralFailures.forEach((f) => console.log(`FAIL: ${f}`));
+  if (structuralFailures.length === 0) console.log("PASS: every tenant table has RLS enabled and a policy.\n");
+
+  console.log("--- Fixture setup under TENANT_A ---");
+  await insertFixtures(db);
+  console.log("Fixtures inserted for order/ordered_test/specimen/specimen_fulfillment/observation/result_history.\n");
+
+  console.log("--- Live cross-tenant leak check: TENANT_B must see 0 rows of TENANT_A's data ---");
+  const leakFailures = await liveLeakCheck(db, tables);
+  leakFailures.forEach((f) => console.log(`FAIL: ${f}`));
+  if (leakFailures.length === 0) console.log("PASS: no cross-tenant leak detected on any of the tables above.\n");
+
+  const allFailures = [...structuralFailures, ...leakFailures];
+  if (allFailures.length > 0) {
+    console.error(`\n${allFailures.length} failure(s). See above.`);
+    process.exit(1);
+  }
+  console.log(`All checks passed across ${tables.length} tenant-scoped tables.`);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

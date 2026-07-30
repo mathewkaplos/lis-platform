@@ -21,16 +21,31 @@ the fact"; here, "never configured out-of-band").
   TASK-028's own AC and CI/dev verification scripts can request a token directly for a
   test user without a full browser round-trip — real user login (TASK-031) always uses
   the Authorization Code + PKCE flow, never this grant.
-- **`lis-web` only has the custom `tenant` client scope, not Keycloak's built-in
-  `web-origins`/`profile`/`roles` scopes.** A hand-authored partial realm import does
-  not auto-provision Keycloak's built-in scopes the way creating a realm through the
-  admin console does (confirmed directly: referencing them by name in
-  `defaultClientScopes` without defining them produced `Referenced client scope ...
-  doesn't exist. Ignoring` on import). Since realm roles are deliberately not modeled
-  yet (see above) and CORS/`web-origins` enforcement isn't exercised by any AC until
-  TASK-031 (web login), these are left out now rather than defined speculatively —
-  add them properly (with real protocol-mapper definitions, not just a name reference)
-  when TASK-031 actually needs browser-origin enforcement.
+- **`lis-web`'s default scopes are exactly `tenant`, `openid`, and `basic` — not
+  Keycloak's full built-in set (`web-origins`/`profile`/`roles`/etc.).** A
+  hand-authored partial realm import does not auto-provision Keycloak's built-in
+  scopes the way creating a realm through the admin console does: referencing any
+  built-in scope by name in `defaultClientScopes` without also defining it produces
+  `Referenced client scope ... doesn't exist. Ignoring` on import (confirmed directly,
+  TASK-028) — and simply omitting a scope produces no warning at all, so a missing
+  scope is silent until something downstream notices the missing claim.
+  - **`openid` and `basic` are not optional decorations — TASK-029 needed them for
+    real.** The token this realm originally issued had `"scope": "tenant"` only, no
+    `sub` claim at all — `apps/api`'s auth guard (TASK-029) correctly rejected every
+    token as a result, since it can't resolve "which user" without `sub`. Root cause,
+    confirmed by comparing against a realm created via Keycloak's own Admin REST API
+    (which fills in every default automatically) rather than guessed: `sub` is not
+    hardcoded into every access token — it comes from the built-in `basic` scope's
+    `oidc-sub-mapper` protocol mapper, and Keycloak only actually treats a client as a
+    normal OIDC client (governing which core claims apply) once `openid` is an
+    explicitly present scope. Neither is auto-added by a hand-authored import, same as
+    the `web-origins`/`profile`/`roles` finding above — so both are now defined here
+    in full (matching the Admin-API-created realm's real `basic`/`openid` scope
+    definitions exactly, not approximated) and granted as default scopes.
+  - `web-origins`/`profile`/`roles` remain deliberately omitted: realm roles aren't
+    modeled yet (see above), and CORS/`web-origins` enforcement isn't exercised by any
+    AC until TASK-031 (web login) — add them properly (real protocol-mapper
+    definitions, not a name reference) when that task actually needs them.
 - **The seeded `test-user`'s `tenant_id` attribute is the existing fixed seed tenant**
   (`00000000-0000-0000-0000-000000000001`) already used throughout
   `db/seed/chemistry-catalog.sql`, `rls-isolation-check.ts`, and

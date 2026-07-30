@@ -35,8 +35,15 @@ services:
       DATABASE_URL: postgresql://lis_app:${LIS_APP_DB_PASSWORD}@postgres:5432/lis
       NODE_ENV: staging
       SENTRY_DSN: ${SENTRY_DSN}
+      # Internal Docker-network hostname, matching every other inter-service
+      # reference in this file (postgres:5432, etc.). Assumes Keycloak's own
+      # inferred `iss` claim matches this hostname — true only because
+      # staging is Tailscale-only today, not exposed on a public domain
+      # behind a reverse proxy yet. Revisit alongside the already-flagged
+      # start-dev/TLS hardening gap (TASK-028) before any public exposure.
+      KEYCLOAK_ISSUER_URL: http://keycloak:8080/realms/lis
     ports: ["4000:4000"]
-    depends_on: [postgres, valkey]
+    depends_on: [postgres, valkey, keycloak]
 
   web:
     image: ghcr.io/mathewkaplos/lis-platform-web:latest

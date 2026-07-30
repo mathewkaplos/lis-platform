@@ -77,7 +77,14 @@ export const observation = pgTable(
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
 
     previousObservationId: uuid("previous_observation_id").references((): AnyPgColumn => observation.id), // delta/trend chain
-    amendmentOf: uuid("amendment_of").references((): AnyPgColumn => observation.id), // correction lineage, enforced append-only in TASK-021
+    amendmentOf: uuid("amendment_of").references((): AnyPgColumn => observation.id), // correction lineage (new->old)
+    // (old->new), per ADR-0007: reconciles Constitution Law #2's literal
+    // "superseded_by links old to new" with amendment_of's opposite direction.
+    // `WHERE superseded_by IS NULL` is the cheap "current observations only"
+    // filter; amendment_of stays as the O(1) "what did this correct" lookup.
+    // Maintained only by the TASK-021 trigger (fn_observation_supersede /
+    // fn_observation_append_only) — never set by a direct application UPDATE.
+    supersededBy: uuid("superseded_by").references((): AnyPgColumn => observation.id),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

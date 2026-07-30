@@ -19,4 +19,7 @@ docker compose exec -T postgres psql -U postgres -d lis -c \
   "ALTER ROLE lis_app WITH PASSWORD '${LIS_APP_DB_PASSWORD:-lis_app_dev_password}';" >/dev/null
 echo "lis_app role password set."
 
-echo "NOT YET IMPLEMENTED: seed. Tracked in FEAT-004 / TASK-019 / #13 (M1) — see docs/plans/feat-004-catalog-metadata-model.md."
+# Seeded as postgres (migrations-only role) so RLS never gets in the way of
+# the seed itself; the app connects as lis_app afterward, as it always does.
+docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/chemistry-catalog.sql
+echo "Seed applied: chemistry-catalog.sql (placeholder standard panel — see its header comment)."

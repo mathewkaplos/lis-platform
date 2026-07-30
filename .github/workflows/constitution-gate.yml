@@ -10,7 +10,14 @@ jobs:
         with: { fetch-depth: 0 }
       - name: Block free-text clinical value columns
         run: |
-          if git diff origin/main...HEAD -- 'db/migrations/*' | grep -E '^\+.*\b(result|value|finding)\b.*\btext\b' ; then
+          # Scoped to *.sql only -- db/migrations/meta/*.json is Drizzle's
+          # auto-generated snapshot/journal metadata, not a human-authored
+          # migration. Its JSON serializes CHECK-constraint SQL as quoted
+          # strings (e.g. "value": "(...<> 'text') OR (...value_text...)"),
+          # which this regex's naive word-boundary matching flags as a
+          # free-text column even when none exists (found via TASK-020,
+          # observation.data_type is a proper ENUM per ADR-0006).
+          if git diff origin/main...HEAD -- 'db/migrations/*.sql' | grep -E '^\+.*\b(result|value|finding)\b.*\btext\b' ; then
             echo "::error::A migration appears to add a free-text column for clinical data (Law #1). If this is a legitimate non-clinical text field, adjust this check's pattern."
             exit 1
           fi
@@ -22,9 +29,9 @@ jobs:
           # tables on any Drizzle-generated migration -- silently, since the
           # gate was written. Strip quotes to get the bare identifier, and
           # tolerate optional quotes on the RLS-line match too.
-          added_tables=$(git diff origin/main...HEAD -- 'db/migrations/*' | grep -oE '^\+CREATE TABLE "?[A-Za-z0-9_]+"?' | tr -d '"' | awk '{print $NF}' || true)
+          added_tables=$(git diff origin/main...HEAD -- 'db/migrations/*.sql' | grep -oE '^\+CREATE TABLE "?[A-Za-z0-9_]+"?' | tr -d '"' | awk '{print $NF}' || true)
           for t in $added_tables; do
-            if ! git diff origin/main...HEAD -- 'db/migrations/*' | grep -qE "ENABLE ROW LEVEL SECURITY.*\"?$t\"?|ON \"?$t\"?"; then
+            if ! git diff origin/main...HEAD -- 'db/migrations/*.sql' | grep -qE "ENABLE ROW LEVEL SECURITY.*\"?$t\"?|ON \"?$t\"?"; then
               echo "::error::New table '$t' has no RLS policy in this diff (Law #4)."
               exit 1
             fi

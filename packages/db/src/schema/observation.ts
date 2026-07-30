@@ -120,6 +120,16 @@ export const observation = pgTable(
     check("ck_observation_table_value", sql`(${table.dataType} <> 'table') OR (${table.valueJson} IS NOT NULL)`),
     check("ck_observation_structured_value", sql`(${table.dataType} <> 'structured') OR (${table.valueJson} IS NOT NULL)`),
     check("ck_observation_attachment_value", sql`(${table.dataType} <> 'attachment') OR (${table.valueJson} IS NOT NULL)`),
+    // MATCH FULL per ADR-0008's second addendum -- not representable by
+    // drizzle-kit's foreignKey() builder (no `match` option), so
+    // db/migrations/0011_observation_fk_integrity.sql hand-adds it after this
+    // constraint is created; this declaration models the columns only, same
+    // "drizzle can't express it, hand-written SQL is the source of truth"
+    // pattern as this file's PARTITION BY note above. Without MATCH FULL,
+    // Postgres's default MATCH SIMPLE skips the whole FK check whenever the
+    // companion *_created_at column is NULL -- which is exactly the state
+    // fn_observation_link_created_at leaves it in when the caller-supplied id
+    // doesn't exist, silently letting a bad id through.
     foreignKey({
       columns: [table.previousObservationId, table.previousObservationCreatedAt],
       foreignColumns: [table.id, table.createdAt],

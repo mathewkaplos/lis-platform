@@ -36,6 +36,14 @@ export const resultHistory = pgTable(
 
     status: text("status").notNull(),
     supersededBy: uuid("superseded_by").notNull(), // the observation that replaced it, snapshotted at archive time
+    // Companion to supersededBy, added by 0011_observation_fk_integrity.sql:
+    // ADR-0008's original migration left superseded_by with no FK at all, an
+    // omission inconsistent with this schema's full-integrity principle.
+    // NOT NULL (unlike observation's own previousObservationCreatedAt/
+    // amendmentOfCreatedAt) because a result_history row never exists without
+    // a successor -- set atomically with supersededBy from NEW.created_at
+    // inside fn_observation_supersede, never a caller-supplied lookup.
+    supersededByCreatedAt: timestamp("superseded_by_created_at", { withTimezone: true }).notNull(),
 
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -45,6 +53,11 @@ export const resultHistory = pgTable(
       columns: [table.observationId, table.observationCreatedAt],
       foreignColumns: [observation.id, observation.createdAt],
       name: "result_history_observation_id_created_at_fk",
+    }),
+    foreignKey({
+      columns: [table.supersededBy, table.supersededByCreatedAt],
+      foreignColumns: [observation.id, observation.createdAt],
+      name: "result_history_superseded_by_created_at_fk",
     }),
     tenantIsolation(),
   ],

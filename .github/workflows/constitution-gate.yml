@@ -29,9 +29,22 @@ jobs:
           # tables on any Drizzle-generated migration -- silently, since the
           # gate was written. Strip quotes to get the bare identifier, and
           # tolerate optional quotes on the RLS-line match too.
+          # The "ENABLE ROW LEVEL SECURITY.*table" alternative below never
+          # actually matches real SQL -- ALTER TABLE always puts the table
+          # name BEFORE that phrase (ALTER TABLE "x" ENABLE ROW LEVEL
+          # SECURITY), never after. Every migration until TASK-022 only ever
+          # passed via the "ON table" alternative (CREATE POLICY ... ON
+          # "table"). TASK-022 introduces partition child tables that
+          # legitimately have no CREATE POLICY of their own (they inherit
+          # the parent's single policy per Postgres partitioning semantics)
+          # but do have their own correctly-ordered ALTER TABLE ... ENABLE
+          # ROW LEVEL SECURITY line -- which neither existing alternative
+          # could recognize. Added the correctly-ordered pattern as a third
+          # alternative rather than working around it in the migration SQL,
+          # same fix-the-gate precedent as TASK-020's meta/*.json finding.
           added_tables=$(git diff origin/main...HEAD -- 'db/migrations/*.sql' | grep -oE '^\+CREATE TABLE "?[A-Za-z0-9_]+"?' | tr -d '"' | awk '{print $NF}' || true)
           for t in $added_tables; do
-            if ! git diff origin/main...HEAD -- 'db/migrations/*.sql' | grep -qE "ENABLE ROW LEVEL SECURITY.*\"?$t\"?|ON \"?$t\"?"; then
+            if ! git diff origin/main...HEAD -- 'db/migrations/*.sql' | grep -qE "ALTER TABLE \"?$t\"?[[:space:]]*ENABLE ROW LEVEL SECURITY|ENABLE ROW LEVEL SECURITY.*\"?$t\"?|ON \"?$t\"?"; then
               echo "::error::New table '$t' has no RLS policy in this diff (Law #4)."
               exit 1
             fi

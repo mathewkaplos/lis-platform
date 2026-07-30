@@ -14,7 +14,7 @@ A commercial Laboratory Information System. Modular monolith.
 - pnpm dev — run everything
 - pnpm test — unit tests
 - pnpm typecheck — tsc --noEmit
-- pnpm db:reset — drop, recreate local DB containers, migrate (seed not yet wired up; tracked in FEAT-004/TASK-019/#13, M1)
+- pnpm db:reset — drop, recreate local DB containers, migrate, seed (standard placeholder CMP panel; see TASK-019/#13, closed)
 - pnpm lint — eslint
 
 ## Structure

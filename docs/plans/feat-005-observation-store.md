@@ -202,6 +202,22 @@ milestone, so there is no data-loss exposure from rolling back.
 4. **RESOLVED 2026-07-30 — confirmed.** One proposal for all of FEAT-005;
    TASK-020 starts now; TASK-021–022 follow as separate reviewed PRs under this
    same approval — same basis as FEAT-004's proposal.
+5. **RESOLVED 2026-07-30 — additive: keep `amendment_of`, add `superseded_by`.**
+   Constitution Law #2 says `superseded_by` links old to new; `observation` (as
+   merged in TASK-020) has `amendment_of`, which links new to old — the
+   structural inverse, not a synonym. Found on a direct line-by-line review of
+   the merged migration against the Constitution's literal text, not during
+   TASK-020's own review.
+   - `amendment_of` (new→old, already merged, unchanged) stays as the O(1)
+     "what did this row correct" lookup. `superseded_by` (old→new) is added by
+     TASK-021, set on the predecessor row in the same transaction/trigger that
+     inserts the new row and sets its `amendment_of` — giving `superseded_by IS
+     NULL` as the cheap, single-column "current observations only" filter the
+     Constitution's wording implies, without reworking TASK-020's already-shipped
+     code.
+   - Full analysis and the rejected alternatives (rewrite the Constitution;
+     replace `amendment_of` entirely) are in **ADR-0007** (accepted).
 
-**Approved 2026-07-30.** Status moved to APPROVED once ADR-0005 and ADR-0006 were
-accepted and committed; TASK-020 implementation begins from this point.
+**Approved 2026-07-30** — full FEAT-005 scope. TASK-020 was approved and merged
+(PR #153, #155) once ADR-0005/0006 were accepted; TASK-021/022 were additionally
+gated on Q5 above pending ADR-0007, which is now accepted. TASK-021 may proceed.

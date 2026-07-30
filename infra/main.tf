@@ -5,7 +5,7 @@ provider "digitalocean" {
 resource "digitalocean_droplet" "staging" {
   name   = "lis-staging"
   region = "nyc1"
-  size   = "s-1vcpu-512mb-10gb"
+  size   = "s-1vcpu-1gb"
   image  = "ubuntu-24-04-x64"
 }
 

@@ -9,7 +9,12 @@ argument-hint: (no arguments needed)
 Follow the session-start playbook exactly:
 ~/work/lis-engineering/playbooks/session-start/CHECKLIST.md
 
-Run the engineering-radar Skill as part of orientation:
+Invoke the engineering-radar Skill as part of orientation — call the Skill
+tool with skill: "engineering-radar" (it is a registered Skill; this repo has
+its own thin entrypoint at .claude/skills/engineering-radar/SKILL.md, which
+points at the real checklist in lis-engineering). If that call ever reports
+the skill as unavailable (e.g. newly registered and not yet loaded into this
+session's skill listing), fall back to reading the underlying file directly:
 ~/work/lis-engineering/skills/workflow/engineering-radar/SKILL.md
 
 Produce the Session Report per the current template:

@@ -1,4 +1,4 @@
-import { pgTable, uuid, numeric, boolean, text, jsonb, timestamp, index, pgPolicy } from "drizzle-orm/pg-core";
+import { pgTable, uuid, numeric, boolean, text, jsonb, timestamp, index, pgPolicy, foreignKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { observation, observationDataType } from "./observation";
 
@@ -19,9 +19,12 @@ export const resultHistory = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tenantId: uuid("tenant_id").notNull(),
-    observationId: uuid("observation_id")
-      .notNull()
-      .references(() => observation.id), // the version being archived
+    observationId: uuid("observation_id").notNull(), // the version being archived
+    // Companion to observationId, per ADR-0008's addendum: observation's
+    // primary key is composite (id, created_at) post-partitioning, so this
+    // FK must be composite too. Set by fn_observation_supersede alongside
+    // observationId — both selected from the same source row.
+    observationCreatedAt: timestamp("observation_created_at", { withTimezone: true }).notNull(),
 
     dataType: observationDataType("data_type").notNull(),
     valueNum: numeric("value_num"),
@@ -36,5 +39,13 @@ export const resultHistory = pgTable(
 
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("ix_result_history_observation").on(table.observationId), tenantIsolation()],
+  (table) => [
+    index("ix_result_history_observation").on(table.observationId),
+    foreignKey({
+      columns: [table.observationId, table.observationCreatedAt],
+      foreignColumns: [observation.id, observation.createdAt],
+      name: "result_history_observation_id_created_at_fk",
+    }),
+    tenantIsolation(),
+  ],
 ).enableRLS();

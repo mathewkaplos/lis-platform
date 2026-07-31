@@ -106,9 +106,22 @@ jobs:
 
       - name: Smoke test
         run: |
-          sleep 8
-          ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} \
-            'curl -sf http://localhost:4000/health'
+          # A flat `sleep 8` false-alarmed once Keycloak started doing a real
+          # JVM boot + realm import (post-#189 fix) instead of crash-looping
+          # instantly: on the resource-constrained (1 vCPU/1GB) droplet, the
+          # stack can take longer than 8s to settle. Retry with backoff
+          # instead of guessing a fixed wait.
+          ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} '
+            for i in $(seq 1 10); do
+              if curl -sf http://localhost:4000/health; then
+                exit 0
+              fi
+              echo "health check attempt $i failed, retrying in 5s..."
+              sleep 5
+            done
+            echo "health check did not succeed after 10 attempts"
+            exit 1
+          '
 
       - name: Clean up deploy key
         if: always()

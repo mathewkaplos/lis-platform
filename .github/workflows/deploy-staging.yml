@@ -169,8 +169,19 @@ jobs:
             "ghcr.io/${{ github.repository_owner }}/lis-platform-migrator:latest" \
             pnpm --filter @lis/db migrate < /dev/null
 
-          docker compose exec -T postgres psql -U postgres -d lis \
-            -v pw="$LIS_APP_DB_PASSWORD" -c "ALTER ROLE lis_app WITH PASSWORD :'pw';" < /dev/null
+          # psql's `:'var'` colon-interpolation (set via -v) did not fire
+          # when combined with -c in practice here -- ended up with the
+          # literal text `:'pw'` reaching the SQL parser (syntax error at
+          # or near ":"). Sidestep psql's own interpolation entirely: let
+          # bash substitute the real password (already proven safe -- the
+          # same mechanism builds DATABASE_URL above) into the SQL text via
+          # an *unquoted*, command-specific heredoc, which is a deliberate
+          # explicit stdin redirect for this one command (same safety
+          # rationale as the seed step's `< seed/....sql` below) and does
+          # not reintroduce the outer-script stdin-consumption bug.
+          docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 <<PSQLEOF
+          ALTER ROLE lis_app WITH PASSWORD '$LIS_APP_DB_PASSWORD';
+          PSQLEOF
 
           docker compose exec -T postgres psql -U postgres -d lis \
             -v ON_ERROR_STOP=1 -f - < seed/chemistry-catalog.sql

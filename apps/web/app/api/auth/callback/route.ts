@@ -15,7 +15,11 @@ interface LisIdTokenClaims {
 }
 
 function toLoginRedirect(origin: string): NextResponse {
-  return NextResponse.redirect(new URL('/api/auth/login', origin));
+  const response = NextResponse.redirect(new URL('/api/auth/login', origin));
+  // The verifier/state/nonce in this cookie are single-use -- a failed
+  // exchange must not leave them behind for a second attempt to replay.
+  response.cookies.delete({ name: PKCE_COOKIE_NAME, path: '/api/auth' });
+  return response;
 }
 
 export async function GET(request: NextRequest) {

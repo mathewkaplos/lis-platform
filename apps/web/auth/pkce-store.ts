@@ -18,11 +18,17 @@ export interface PkceState {
   redirectTo: string;
 }
 
+// Distinguishes this token type from a session token (see session.ts's own
+// SESSION_AUDIENCE comment) -- both share SESSION_SECRET, so without a
+// per-type audience the two would be interchangeable HS256 JWTs.
+const PKCE_AUDIENCE = 'lis:pkce';
+
 export async function signPkceState(payload: PkceState): Promise<string> {
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(PKCE_TTL)
+    .setAudience(PKCE_AUDIENCE)
     .sign(SESSION_SECRET);
 }
 
@@ -30,7 +36,20 @@ export async function verifyPkceState(
   token: string,
 ): Promise<PkceState | undefined> {
   try {
-    const { payload } = await jwtVerify<PkceState>(token, SESSION_SECRET);
+    const { payload } = await jwtVerify<PkceState>(token, SESSION_SECRET, {
+      audience: PKCE_AUDIENCE,
+    });
+    if (
+      typeof payload.codeVerifier !== 'string' ||
+      payload.codeVerifier.length === 0 ||
+      typeof payload.state !== 'string' ||
+      payload.state.length === 0 ||
+      typeof payload.nonce !== 'string' ||
+      payload.nonce.length === 0 ||
+      typeof payload.redirectTo !== 'string'
+    ) {
+      return undefined;
+    }
     return {
       codeVerifier: payload.codeVerifier,
       state: payload.state,

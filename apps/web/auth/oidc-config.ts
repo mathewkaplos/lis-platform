@@ -49,7 +49,14 @@ export function getOidcConfig(): Promise<client.Configuration> {
         // TLS termination exists in front of Keycloak.
         execute: [client.allowInsecureRequests],
       },
-    );
+    ).catch((error: unknown) => {
+      // Do not memoize a failed discovery -- e.g. Keycloak not ready yet
+      // when the first login request lands. Without this, every future
+      // /api/auth/* request would reject for the whole process lifetime,
+      // recoverable only by a restart.
+      configPromise = undefined;
+      throw error;
+    });
   }
   return configPromise;
 }

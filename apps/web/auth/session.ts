@@ -20,11 +20,19 @@ export interface SessionPayload {
   idToken: string;
 }
 
+// Session and PKCE-state tokens share one secret (see secret.ts) -- this
+// audience is what keeps the two token types from being interchangeable.
+// Without it, a PKCE cookie (obtainable by any anonymous visitor just by
+// hitting /api/auth/login) would verify successfully if copied into the
+// session cookie slot, since both are just HS256 JWTs over the same key.
+const SESSION_AUDIENCE = 'lis:session';
+
 export async function signSession(payload: SessionPayload): Promise<string> {
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(SESSION_TTL)
+    .setAudience(SESSION_AUDIENCE)
     .sign(SESSION_SECRET);
 }
 
@@ -32,7 +40,23 @@ export async function verifySession(
   token: string,
 ): Promise<SessionPayload | undefined> {
   try {
-    const { payload } = await jwtVerify<SessionPayload>(token, SESSION_SECRET);
+    const { payload } = await jwtVerify<SessionPayload>(token, SESSION_SECRET, {
+      audience: SESSION_AUDIENCE,
+    });
+    // Belt and suspenders on top of the audience check: never return an
+    // object proxy.ts's `if (session)` would treat as authenticated unless
+    // every field is actually shaped like a real session.
+    if (
+      typeof payload.sub !== 'string' ||
+      payload.sub.length === 0 ||
+      typeof payload.tenantId !== 'string' ||
+      payload.tenantId.length === 0 ||
+      !Array.isArray(payload.roles) ||
+      !payload.roles.every((role) => typeof role === 'string') ||
+      typeof payload.idToken !== 'string'
+    ) {
+      return undefined;
+    }
     return {
       sub: payload.sub,
       tenantId: payload.tenantId,

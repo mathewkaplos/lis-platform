@@ -18,6 +18,25 @@ Two parts:
    migrations automatically (idempotent — Drizzle tracks applied migrations),
    instead of this silently regressing again on the next schema change.
 
+## Incident during rollout (2026-07-31) and follow-up fix
+The first real run of this change OOM'd the droplet: `free -h` via console
+showed 951Mi/961Mi used, 0B swap, and Docker itself became unresponsive
+(`docker compose ps` hung). Root cause: the deploy step left the *previous*
+deploy's `api`/`web` containers running the whole time, so old-api + old-web
++ postgres + valkey + keycloak + the new migrator container were all alive
+concurrently on a 1 vCPU/1GB droplet with zero memory limits anywhere.
+
+Follow-up fix (same PR): `docker compose stop api web` before migrating;
+bring up only `postgres` (not also `valkey`/`keycloak`) for the migration
+window; explicit `mem_limit` on every compose service plus a capped
+`JAVA_OPTS_APPEND` on Keycloak (previously unbounded JVM heap sizing was the
+single biggest consumer); `--memory=192m` on the bare `docker run` migrator
+invocation. Swap (not present on the droplet at all — 0B) added directly on
+the droplet as a manual one-time OS command, not via Terraform: `infra/main.tf`
+imported this droplet from an already-existing one rather than creating it,
+so adding `user_data`/cloud-init now risks Terraform wanting to force-replace
+it on a future `apply`.
+
 ## 2. Affected files
 - `.github/workflows/deploy-staging.yml` — add a "Build and push migrator"
   step (build-and-push job); restructure the deploy job to bring up

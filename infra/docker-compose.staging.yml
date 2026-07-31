@@ -1,7 +1,18 @@
 services:
+  # TASK-198 follow-up: this droplet is a 1 vCPU/1GB box (infra/main.tf,
+  # s-1vcpu-1gb) with zero memory limits set anywhere -- confirmed directly
+  # via console access that it OOM'd (free -h: 951Mi/961Mi used, 0B swap)
+  # during the migration-bootstrap deploy. Every service below now has an
+  # explicit mem_limit so one runaway container (Keycloak's JVM, historically
+  # the heaviest) can be OOM-killed on its own instead of starving the whole
+  # host. Budget: 192+48+320+128+160 = 848m of ~961Mi total, leaving ~110Mi
+  # for the OS/docker daemon -- paired with the swapfile added directly on
+  # the droplet (not here; see infra/keycloak/README.md-adjacent note in the
+  # deploy workflow) as the safety net for brief overshoots.
   postgres:
     image: postgres:16
     restart: unless-stopped
+    mem_limit: 192m
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -11,14 +22,22 @@ services:
   valkey:
     image: valkey/valkey:8
     restart: unless-stopped
+    mem_limit: 48m
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     restart: unless-stopped
     command: ["start-dev", "--import-realm"]
+    mem_limit: 320m
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      # Without this, the JVM's default heap sizing (a fraction of *host*
+      # memory when no cgroup limit is visible to it, or of the mem_limit
+      # above once it is) has historically been the single biggest memory
+      # consumer of the 5 services on this droplet. Capped well under
+      # mem_limit to leave room for metaspace/thread stacks/native memory.
+      JAVA_OPTS_APPEND: "-Xms64m -Xmx224m"
     ports: ["8080:8080"]
     # Deploy step (deploy-staging.yml) strips the local/CI-only test-user block
     # via jq before this file lands here — staging never receives the
@@ -28,6 +47,7 @@ services:
   api:
     image: ghcr.io/mathewkaplos/lis-platform-api:latest
     restart: unless-stopped
+    mem_limit: 128m
     environment:
       # NOT the postgres superuser — RLS never applies to a superuser or
       # table-owning role, so the API must connect as lis_app (created by
@@ -51,6 +71,7 @@ services:
   web:
     image: ghcr.io/mathewkaplos/lis-platform-web:latest
     restart: unless-stopped
+    mem_limit: 160m
     environment:
       NODE_ENV: production
       SESSION_SECRET: ${SESSION_SECRET}

@@ -110,15 +110,21 @@ jobs:
 
       - name: Pull and restart on droplet
         run: |
-          # TASK-198: api/web must not start until the schema exists and
-          # lis_app has a real password -- staging Postgres had never been
-          # migrated (confirmed via \dt/\du on the droplet: zero relations,
-          # no lis_app role). Bring up postgres/valkey/keycloak first, wait
-          # for Postgres readiness, migrate + set lis_app's password + seed,
-          # only then bring up api/web. Piped via stdin (bash -s) rather than
-          # a single-quoted ssh argument so the ALTER ROLE step below can use
-          # psql's `:'var'` literal-quoting syntax without fighting local
-          # shell quote-escaping.
+          # TASK-198 follow-up: the first run of this migration step OOM'd
+          # the droplet (1 vCPU/1GB, confirmed via console: free -h showed
+          # 951Mi/961Mi used, 0B swap, docker itself became unresponsive).
+          # Root cause: old api/web from the *previous* deploy were left
+          # running the whole time, so old-api + old-web + postgres + valkey
+          # + keycloak + the new migrator container were all alive at once.
+          # Fix: stop api/web first (frees their memory immediately), and
+          # only bring up postgres (not also valkey/keycloak) for the
+          # migration window itself -- the smallest footprint that can
+          # actually run migrate/ALTER ROLE/seed. valkey/keycloak/api/web all
+          # start together afterward, same as before; the #199 smoke-test
+          # retry loop already tolerates that overlap. Piped via stdin
+          # (bash -s) rather than a single-quoted ssh argument so the ALTER
+          # ROLE step below can use psql's `:'var'` literal-quoting syntax
+          # without fighting local shell quote-escaping.
           ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} bash -s <<'REMOTE'
           set -euo pipefail
           cd /opt/lis
@@ -131,11 +137,13 @@ jobs:
           SESSION_SECRET=${{ secrets.SESSION_SECRET }}
           ENVEOF
 
+          docker compose stop api web || true
+
           docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
           docker compose pull
           docker pull ghcr.io/${{ github.repository_owner }}/lis-platform-migrator:latest
 
-          docker compose up -d postgres valkey keycloak
+          docker compose up -d postgres
 
           ready=false
           for i in $(seq 1 24); do
@@ -154,7 +162,7 @@ jobs:
           . ./.env
           set +a
 
-          docker run --rm --network lis_staging_net \
+          docker run --rm --memory=192m --network lis_staging_net \
             -e DATABASE_URL="postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/lis" \
             "ghcr.io/${{ github.repository_owner }}/lis-platform-migrator:latest" \
             pnpm --filter @lis/db migrate
@@ -165,7 +173,7 @@ jobs:
           docker compose exec -T postgres psql -U postgres -d lis \
             -v ON_ERROR_STOP=1 -f - < seed/chemistry-catalog.sql
 
-          docker compose up -d api web
+          docker compose up -d valkey keycloak api web
           REMOTE
 
       - name: Smoke test

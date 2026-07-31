@@ -10,12 +10,19 @@ the fact"; here, "never configured out-of-band").
 - **One realm (`lis`) for every tenant**, `tenant_id` carried as a per-user attribute
   and mapped into the `tenant_id` token claim by the `tenant` client scope. See
   ADR-0009.
-- **No realm roles are defined here.** TASK-028's own AC is limited to token issuance
-  ("a test user can obtain a valid token against the configured realm"); the actual
-  RBAC+ABAC capability model (`enter_result`/`verify`/`signing_authority`-per-discipline,
-  etc.) is specified in KB-10 (Authorization) and belongs to FEAT-009 (Authorization &
-  audit) — a later M2 feature. Inventing role names here would risk conflicting with
-  that not-yet-designed model; deferred deliberately, not an oversight.
+- **Two realm roles are defined here (`technologist`, `verifier`) — TASK-032
+  (FEAT-009), not TASK-028.** TASK-028's own AC was limited to token issuance; role
+  modeling was deliberately deferred at the time (see git history for this file's
+  original note) because the RBAC+ABAC capability model (KB-10) hadn't been designed
+  yet. ADR-0011 made that decision: roles live as Keycloak realm roles (carried into
+  the token via the `roles` client scope, `oidc-usermodel-realm-role-mapper`, defined
+  in full per this realm's established gotcha below), not a new Postgres table.
+  Capability→role mapping (`enter_result`/`verify`) is centralized in application code
+  (`apps/api/src/auth/capabilities.ts`), not in Keycloak. Only these two roles are
+  provisioned — KB-10's fuller role list (`pathologist`, `admin`, etc.) and its ABAC
+  attributes (`facility_id`, `discipline`, `signing_authority`, `data_scope`) remain
+  unmodeled until a future task genuinely needs them; see ADR-0011 for the full
+  reasoning and rejected alternatives.
 - **`lis-web` is a public client** (Authorization Code + PKCE, no client secret) per
   KB-09's OAuth 2.1 framing. `directAccessGrantsEnabled: true` is turned on *only* so
   TASK-028's own AC and CI/dev verification scripts can request a token directly for a
@@ -71,6 +78,11 @@ the fact"; here, "never configured out-of-band").
   through the live API with two real, differently-tenanted tokens, not just one —
   nothing seeds real data against this tenant; its only job is to prove it sees zero
   rows of `test-user`'s tenant's data.
+- **A third user, `test-user-3`, carries no `realmRoles` at all** — TASK-032's
+  addition, deliberately left with an empty roles claim to exercise ADR-0011's explicit
+  fail-closed acceptance criterion: a token with no realm role is denied every
+  capability check, not silently granted one. `test-user`/`test-user-2` can no longer
+  serve this purpose once TASK-032 gave them real roles.
 
 ## Local dev
 

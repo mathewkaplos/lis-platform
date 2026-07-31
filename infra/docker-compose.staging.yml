@@ -51,6 +51,30 @@ services:
   web:
     image: ghcr.io/mathewkaplos/lis-platform-web:latest
     restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      SESSION_SECRET: ${SESSION_SECRET}
+      # Same internal-hostname caveat as api's KEYCLOAK_ISSUER_URL above,
+      # but with a real consequence here: apps/web builds both server-side
+      # (discovery/token-exchange) AND browser-facing (authorization/
+      # end-session redirect) URLs from this one value. A container-internal
+      # hostname is correct for the former and unreachable for the latter —
+      # RP-initiated login/logout will not actually complete against a real
+      # external browser until the start-dev/KC_HOSTNAME hardening TASK-028
+      # already flagged is done (infra/keycloak/README.md). Not solved here;
+      # local dev (single shared localhost:8080) is unaffected and is what
+      # this task's AC was verified against.
+      #
+      # A second, related consequence of the same "no TLS yet" gap: with
+      # NODE_ENV=production (set above), apps/web's session/pkce cookies are
+      # correctly marked Secure -- which a browser will silently refuse to
+      # store/send back over plain HTTP. Confirmed directly (docker run
+      # against this image with NODE_ENV=production, real Set-Cookie header
+      # inspected). Not a bug in the cookie logic -- Secure-over-HTTPS-only
+      # is the correct behavior for any real deployment; it just means login
+      # cannot work end-to-end on staging until real TLS termination exists,
+      # same gap, not a second one to separately track.
+      KEYCLOAK_ISSUER_URL: http://keycloak:8080/realms/lis
     ports: ["3000:3000"]
     depends_on: [api]
 

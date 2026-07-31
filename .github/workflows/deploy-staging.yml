@@ -33,6 +33,16 @@ jobs:
           file: apps/web/Dockerfile
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/lis-platform-web:latest
+          # TASK-031: `next build` requiredEnv()s SESSION_SECRET at module
+          # load (see apps/web/Dockerfile's own ARG) -- this is a build-time-
+          # only placeholder, deliberately NOT secrets.SESSION_SECRET: an ARG
+          # persists in the image's layer history (docker history), so the
+          # real signing key must never be baked in. The container's actual
+          # runtime value comes from the "Pull and restart on droplet" step's
+          # .env below, injected fresh at `docker compose up`, never at
+          # build time.
+          build-args: |
+            SESSION_SECRET=docker-build-placeholder-not-a-real-secret
 
   deploy:
     needs: build-and-push
@@ -88,6 +98,7 @@ jobs:
             echo "LIS_APP_DB_PASSWORD=${{ secrets.LIS_APP_DB_PASSWORD }}" >> .env &&
             echo "SENTRY_DSN=${{ secrets.SENTRY_DSN }}" >> .env &&
             echo "KEYCLOAK_ADMIN_PASSWORD=${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}" >> .env &&
+            echo "SESSION_SECRET=${{ secrets.SESSION_SECRET }}" >> .env &&
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} &&
             docker compose pull &&
             docker compose up -d

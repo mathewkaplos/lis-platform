@@ -41,3 +41,7 @@ packages/ui (design system) · packages/sdk (generated API client)
   STOP and ask. Do not invent it.
 - Follow existing module patterns; mirror the most similar existing module.
 - Every schema change is a migration in db/migrations. Never edit a past migration.
+- Whenever a real bug, gap, or gotcha is discovered — not a hypothetical —
+  check whether an existing Skill should be extended with it, or whether it
+  warrants a new Skill entirely. Do this the same day, before moving to the
+  next task. Do not wait to be asked.

@@ -1,62 +1,225 @@
-# Status — 2026-07-31 (session 4)
+# Status — 2026-07-31 (session 5)
 
 ## What's actually done (per real evidence)
 
-- **FEAT-009 (Authorization & audit) — both tasks CLOSED (#91/#92); FEAT-009 itself (#18) deliberately stays OPEN**, same structural pattern as #17 — confirmed directly by reading #18's own body: its Definition of Done literally requires "Feature demoed on staging," genuinely blocked on the same TLS/`KC_HOSTNAME` gap tracked in #188 (below), not on remaining task work. This closure happened in the prior session (commits `7fc487c` TASK-032, `829f0bf` TASK-033, `971460d` docs/closure) but was never folded into this breadcrumb until now.
-  - **TASK-032 (#91, PR #185)** — Role model + capability checks. `CapabilityGuard` + `@RequireCapability()`, roles resolved from Keycloak realm roles (ADR-0011: roles live in Keycloak, not a new Postgres table), fail-closed for empty/no-matching-role tokens. Opt-in per route, same shape as `JwtAuthGuard`/`TenantContextInterceptor`.
-  - **TASK-033 (#92, PR #186)** — Audit interceptor. `AuditInterceptor` + `@Audit()` writes `audit_event` through the *same* transaction the mutation ran in (never a follow-up write, Constitution Law #5); `actorRole` read directly from `CapabilityGuard`'s resolved `grantingRole`, never re-derived. Proven via a deliberately-forced Postgres constraint violation inside the audit insert, confirming the wrapped mutation rolls back too — not just reasoned about.
-  - Both are **opt-in per route, not global** — no `APP_GUARD`/`APP_INTERCEPTOR` provider, no `useGlobalGuards()`/`useGlobalInterceptors()` call, anywhere in `apps/api`. Re-confirmed this session (see below) while ruling out a hypothesis for the Deploy to Staging regression.
+Session 4 carried forward three open Deploy-to-Staging findings (#189, #193,
+#194) and left them explicitly unresolved. This session root-caused and
+closed #189, #197 (a fourth finding from this session's own orientation),
+and #198 (a fifth, more serious finding discovered while fixing #189).
+**#193 and #194 remain open and genuinely unresolved** — see their own
+section below; they are not silently folded into today's fixes.
 
-## Deploy to Staging regression — session 4 investigation (2026-07-31, this session)
+- **#189 (Keycloak crash-looping on staging) — CLOSED, confirmed via direct
+  console access, not just CI green.** Root cause: `KEYCLOAK_ADMIN_PASSWORD`
+  GitHub secret was entirely missing (`gh secret list` showed no such
+  secret, not a placeholder) — Keycloak's bootstrap admin password resolved
+  to empty string end-to-end, refusing to boot. Fixed: generated a new
+  value, `gh secret set KEYCLOAK_ADMIN_PASSWORD`, redeployed. Confirmed live
+  via `docker compose ps`/`curl /health` run directly on the droplet, not
+  just the pipeline's own smoke test.
+- **PR #199 — smoke-test retry hardening.** The post-#189 redeploy's own
+  smoke test still failed (exit 56) even though the fix worked — root cause
+  was a *different*, timing-related bug: a flat `sleep 8` before the
+  `curl /health` check wasn't enough once Keycloak started doing a real JVM
+  boot + realm import (post-#189) instead of crash-looping instantly, on a
+  1 vCPU/1GB droplet. Replaced with a 10-attempt/5s retry loop. This is
+  general hardening against transient boot-timing — it does **not** explain
+  or resolve #193/#194's original exit-56/exit-52 mysteries from session 4
+  (see below).
 
-**Trigger:** orientation's routine CI-status check found the latest Deploy to Staging run on `main` (`30612203676`, 2026-07-31T07:15Z — the push that closed TASK-032/033) was **red**: `build-and-push` passed, containers pulled/restarted/reported `Started`, but the `Smoke test` step's `curl -sf http://localhost:4000/health` failed with **exit 56** (connection reset / failure receiving network data). No open PR addressed it, so per the session-start decision tree this was stop-the-line.
+## #198 — staging DB had never been migrated, ever (CLOSED, 4 PRs)
 
-**State this investigation actually reached — read the qualifiers, they're load-bearing:**
+Discovered as a side effect while auditing secrets for #189:
+`LIS_APP_DB_PASSWORD` was also entirely missing from GitHub secrets, and
+`deploy-staging.yml` had no `ALTER ROLE lis_app` step at all (unlike
+`db-reset.sh`/`pr.yml`, which both do this explicitly). Investigation via
+direct console access (`\dt`/`\du`) confirmed it was worse than that:
+**staging's Postgres had zero tables and no `lis_app` role — never
+migrated, at all, since the environment was created.** Wrote an
+Implementation Proposal (`docs/plans/task-198-staging-db-migration-bootstrap.md`,
+approved) before touching anything, per Rule #0 — this was a new class of
+pipeline behavior (first-ever remote schema creation), not a one-line fix.
 
-- **TASK-032/033 code is cleared, with real evidence, not just "investigated":**
-  - Static inspection: `grep -rn "APP_GUARD\|APP_INTERCEPTOR"` across `apps/api/src` — zero matches. `main.ts` calls neither `useGlobalGuards()` nor `useGlobalInterceptors()`. `apps/api/src/app.controller.ts`'s `/health` route has **no decorators at all** beyond `@Get('health')`. `CapabilityGuard`/`AuditInterceptor` do no I/O or env reads at construction time. None of TASK-032/033's changed files (`capability.guard.ts`, `capabilities.ts`, `audit.interceptor.ts`, `audit.decorator.ts`, `request-context.ts`, `auth.module.ts`, `capability-check.controller.ts`) introduce any new `requiredEnv()`/`process.env.*` read.
-  - Real runtime evidence, twice: two debug workflow_dispatch runs against the actual staging droplet (`30613930421`, `30614468156`, branch `debug/deploy-staging-health-check-diagnosis`, both later cleaned up and merged-away — see below) both show `api`'s real container logs: `Nest application successfully started` and `Server listening at http://127.0.0.1:4000` **under one second** after container start, both times. Both smoke tests **passed**.
-  - This rules out "a guard/interceptor became global and now runs against `/health`" and "the app takes too long to boot" as explanations. It does not, by itself, prove what the *original* exit-56 was — see below.
-- **Issue #189 (Keycloak crash-looping on staging, bootstrap admin password not reaching the container) is a real, separate, pre-existing bug — found as a side effect, not the confirmed cause of the exit-56 regression.** `docker compose ps` on the real droplet showed `lis-keycloak-1` in `Restarting (2)` (Keycloak's own exit code, not a restart counter) in **both** debug runs, 10 minutes apart; `docker compose logs keycloak --tail 150` showed nothing but 150 repeated copies of `bootstrap-admin-username available only when bootstrap admin password is set` — a config-validation failure, **confirmed not OOM/memory-related** (no `exit 137`, no SIGKILL, no memory-pressure signature anywhere in either run). `lis-keycloak-1` shows `created 12 hours ago` in both runs — this predates TASK-032/033 entirely, not caused by this session's or the prior session's work. Likely same failure class as the `SENTRY_DSN` placeholder postmortem (issue #138: unaudited GitHub Actions secrets) — not confirmed, since secret values aren't readable via `gh secret list`.
-- **The original exit-56 regression (run `30612203676`) remains UNRESOLVED.** It was not reproduced. Both debug-branch smoke tests passed, even though Keycloak was crash-looping identically in both — which *weakens* rather than confirms a resource-contention theory (Keycloak's crash-loop causing enough load on the 1-vCPU/1GB droplet to intermittently disrupt `api`'s TCP responses). That theory is still plausible but has exactly zero confirmed instances supporting it (n=2 clean runs against a stable, unrelated Keycloak failure is not evidence either way). **Do not read `#189` as "the exit-56 mystery is solved."** It isn't. If Deploy to Staging goes red on `main` again with the same exit-56/Smoke-test signature, treat it as a fresh, unexplained regression and re-investigate — don't assume it's `#189` recurring.
-- **Debug branch (`debug/deploy-staging-health-check-diagnosis`) is fully cleaned up** — the temporary `docker compose ps`/`logs api`/`logs keycloak` debug step was removed before this write-up; the workflow file on that branch is byte-identical to `main`'s. Two real `workflow_dispatch` runs were executed against the live staging droplet during this investigation, both with explicit human approval before each dispatch (same gate as the earlier dist/main.js incident). The branch itself has not been merged or deleted — that decision was left to the human.
-- **Retroactively filed as issue #193** (was never given its own tracked issue at the time — only documented here). #193's body mirrors this section.
+Took **4 PRs** to actually land, each uncovered by the previous one running
+far enough to hit the next real problem — worth remembering next time a
+green CI run on this pipeline is trusted at face value:
 
-## Second Deploy to Staging failure — found during `/close`, not a dedicated investigation (2026-07-31, same session)
+- **PR #200** — core fix. Migrator image (reusing the API Dockerfile's
+  `base` build stage, which already has `tsx`/`drizzle-kit`/`@lis/db`
+  built), deploy-job reordering (stop api/web → migrate only against
+  postgres → `ALTER ROLE` → seed → bring up the rest), `LIS_APP_DB_PASSWORD`
+  secret set, compose network pinned (`lis_staging_net`). **First run OOM'd
+  the droplet** (confirmed via console: `free -h` 951Mi/961Mi used, 0B
+  swap, `docker compose ps` hung) — old api/web from the previous deploy
+  were left running the whole time alongside postgres/valkey/keycloak/the
+  new migrator container, on a 1 vCPU/1GB box with zero memory limits
+  anywhere.
+- **PR #201** — OOM hardening. Explicit `mem_limit` on every compose
+  service (192+48+320+128+160 = 848m of ~961Mi total), capped
+  `JAVA_OPTS_APPEND` on Keycloak (previously-unbounded JVM heap sizing was
+  the single biggest consumer), `--memory=192m` on the migrator's
+  `docker run`. Swap (0B on the droplet) added as a **manual one-time OS
+  command directly on the droplet** — not via Terraform, since
+  `infra/main.tf` `import`ed this droplet from an already-existing one
+  rather than creating it, so adding `user_data`/cloud-init now risks
+  Terraform wanting to force-replace it on a future `apply`.
+- **PR #202** — a second, independent bug, found only after the OOM fix let
+  the script run further: both prior runs had silently reported **success**
+  while actually stopping right after `docker compose up -d postgres`.
+  Root cause: the script is fed to `bash -s` via a heredoc over SSH, and
+  `docker compose exec -T postgres pg_isready ...` — the first thing in the
+  retry loop, exactly where both runs died — still forwards the parent
+  shell's stdin into the container by default (`-T` only disables the
+  pseudo-TTY, not stdin attachment), silently consuming the rest of the
+  script meant for bash to read next. Bash then hit EOF on its own
+  remaining input and exited 0, having done nothing wrong it could see.
+  **Fix: `< /dev/null` on every inner command in that heredoc script that
+  doesn't deliberately need real stdin.** Genuinely reusable knowledge if
+  this pipeline (or any other `bash -s <<HEREDOC` over SSH) is touched
+  again — a green step here is not proof of execution.
+- **PR #203** — a third bug, surfaced once the above got far enough to
+  reach it: `ALTER ROLE lis_app WITH PASSWORD :'pw'` (psql's `-v pw=.../-c`
+  colon-interpolation) did not fire in practice — the literal text `:'pw'`
+  reached the SQL parser, syntax error. Fixed by having bash substitute the
+  password directly into the SQL text via a dedicated unquoted heredoc,
+  sidestepping psql's own interpolation mechanism entirely rather than
+  continuing to debug it.
+- Verified directly on the droplet after PR #203 merged (not just CI green):
+  `\du`/`\dt` showed `lis_app` role present and all 21 tables from
+  migrations 0000–0011. `/health` returned `ok` from a freshly-started
+  `api`.
+- **PR #205** (found one deploy later) — the seed step
+  (`db/seed/chemistry-catalog.sql`) is plain `INSERT`s with no idempotency
+  guard, fine for CI/local (always wipe the DB first) but staging now runs
+  it on every deploy per the approved design. Second deploy hit
+  `duplicate key value violates unique constraint`. Fixed by checking the
+  `analyte` row count first and skipping the seed if already populated,
+  rather than editing the shared seed file's behavior for every
+  environment.
 
-**This is a distinct, later finding — not part of the investigation above.** `/close`'s own "in-progress/recent workflow runs" check (its first real run in this repo) surfaced a **second** Deploy to Staging failure: run `30615704260` (2026-07-31T08:16Z), triggered by `7ec36f1` — the commit that merged the breadcrumb refresh above (PR #190). Same `Smoke test`/`curl /health` shape, but **exit 52** ("empty reply from server"), not exit 56. Because `7ec36f1` touched only `docs/scope/current.md`, this instance cannot be an application-code regression — whatever it is, it isn't in that commit's diff.
+## #197 — Tailscale connectivity blip (CLOSED)
 
-**No investigation was performed on this one.** No debug branch, no droplet logs pulled, no root-cause work — this was caught by a routine checklist item, not chased down. Filed as **issue #194**, explicitly cross-referenced with #193 and explicitly *not* assumed to share #193's cause (different curl exit code, different triggering commit shape — a docs-only commit this time, versus TASK-032/033's real code change for #193). **Root-cause investigation for #194 is deferred to a fresh session** — same debug-branch-with-explicit-approval playbook #193 used is the known-working approach, just not run yet for this instance.
+Found during this session's own orientation: `Wait for Tailscale
+connectivity to droplet` failed once (run 30617856139) with a plain
+`tailscale ping -c 3` timeout, while direct console access confirmed the
+droplet itself was fully healthy — narrowed to a transient blip or
+GH-Actions-side tailnet-join flake, not a droplet-side fault. Confirmed via
+8 subsequent deploy runs today, all successful at this step. **PR #204**
+added a 5-attempt/10s retry loop (same pattern as #199) and closed the
+issue citing the track record plus the added resilience.
 
-**Read #193 and #194 together, not in isolation** — two real, differently-signatured Deploy to Staging smoke-test failures now exist, neither one explaining the other, and neither one explained by #189 (Keycloak). Don't let a future session collapse these into "the deploy is just flaky" without checking whether a third occurrence matches either existing signature or is a genuine third thing.
+## #193, #194 — still open, still genuinely unresolved
+
+**Do not assume these are fixed by anything done this session.** Both are
+from session 4: #193 (exit 56, run 30612203676) and #194 (exit 52, run
+30615704260), both unreproduced at the time, neither explained by #189
+(Keycloak) or by each other. Today's #199 smoke-test retry hardening may
+mean a *future* transient blip with this exact signature self-heals instead
+of failing the run — but that's a mitigation, not a root cause. If either
+signature recurs and fails outright despite the retry loop, treat it as a
+fresh, unexplained regression, not a re-occurrence of something already
+understood. Worth a decision next session on whether to close #193/#194 as
+superseded-by-mitigation or keep them open pending an actual explanation —
+not decided here.
+
+## Staging disk-full incident (resolved) + prevention
+
+Found independently, mid-session: droplet's 25GB root disk hit 100% full
+(`df -h`: 62M avail). **Root cause was NOT what it looked like at first** —
+`/var/lib/docker` itself only held 1.1G; the real ~20GB was under
+`/var/lib/containerd` (`io.containerd.snapshotter.v1.overlayfs` 16G +
+`io.containerd.content.v1.content` 3.4G), since this Docker install uses
+the **containerd image store**, a separate storage backend with its own
+config (`/etc/containerd/config.toml`'s `root`, not Docker's `data-root`).
+A first attempt at guidance (move Docker's `data-root` to a newly-attached
+20GB Block Storage Volume) would **not** have fixed this — flagged and
+corrected before any command touched the live droplet.
+
+Actual fix was much simpler: `docker system df` showed 131 images, only 5
+active, 18.44GB (89%) reclaimable — pure accumulated cruft from ~10
+rebuild-and-redeploy cycles in a single day, which Docker/containerd never
+auto-clean. `docker image prune -a -f` alone took root disk from 100% full
+to 25% used (18G free). **The 20GB volume was not actually needed for this
+problem** — confirmed directly with the user, who agreed not to migrate
+Docker/containerd's storage onto it (real risk, for a problem pruning
+already solved).
+
+Prevention: **PR #207** added `docker image prune -a -f` as the last step
+of every future deploy (confirmed working: reclaimed 1.594GB on its first
+real run). **infra/main.tf** now documents the volume via a `data` source
+(read-only reference, Terraform never manages its lifecycle) plus a
+`digitalocean_volume_attachment` resource — flagged inline that it needs
+`terraform import` before any `apply`, not run here (no local `terraform`
+binary available to validate). **PR #206** also added a top-of-file comment
+in `docker-compose.staging.yml` explaining the topology.
+
+## Staging DB backups (new, automated)
+
+**PR #208** — the previously-unused 20GB volume now hosts automated daily
+`pg_dump` backups (`infra/scripts/backup-staging-db.sh`, custom format,
+7-day retention, deployed to `/opt/lis/scripts` on every deploy). Cron
+installation is a **one-time manual step**, not wired into the deploy
+workflow (documented in `infra/scripts/README.md`) — confirmed installed
+and working end-to-end: manual run produced a 104K `.dump` file, cron job
+verified via `crontab -l`.
 
 ## Currently active milestone
 
-**M2 — Identity, Tenancy, AuthZ + Design System** — confirmed via GitHub Milestones API this session: **6 closed / 9 open** (was 4/10 before TASK-032/033's closure). M1 unchanged at 3 open/16 closed, all three individually blocked — see below.
+**M2 — Identity, Tenancy, AuthZ + Design System**: unchanged at 6 closed / 9
+open (none of today's fixes were M2-tagged roadmap tasks — all were
+infra/deploy bugs found ad hoc). M1 unchanged at 3 open/16 closed, all
+three still individually blocked (see session 4 detail via git history,
+`e44ce3e` and earlier, if needed — not repeated here).
 
-M1's 3 open issues, all unchanged, all still blocked, carried forward:
-- **#86 (TASK-027) / #16 (FEAT-007)** — externally blocked on design-partner sign-off, tracked in **#171**. No action possible until that external review happens.
-- **#145** — Design an ADR-based RLS-exemption mechanism. Still not urgent — no *global* (exempt) tenant table has been introduced.
+M2's open items, current state:
+- **#188** — Staging TLS + `KC_HOSTNAME` hardening. Still blocks "demoed on
+  staging" DoD for #17/#18. Not touched this session.
+- **#189** — CLOSED this session (see above).
+- **PR #191 (draft)** — FEAT-010 Implementation Proposal, TASK-034 scope.
+  Still open, still blocked on its own §10, not touched this session.
+- **#192** — GCP billing/Stitch MCP decision. Still open, not touched.
+- **#193, #194** — still open, genuinely unresolved (see dedicated section
+  above — do not assume closed or explained).
+- **#197, #198** — CLOSED this session (see above).
+- **#93–96 (TASK-034–037)** — design-system build-out, unchanged, not
+  touched this session.
 
-M2's highest-priority open items:
-- **#188** — Staging TLS + `KC_HOSTNAME` hardening. Structurally blocks the "demoed on staging" DoD line for both #17 (FEAT-008) and #18 (FEAT-009). Not touched this session — flagged, not fixed.
-- **#189** — Keycloak bootstrap-admin-password crash-loop. See earlier investigation section above. Real, unfixed, not yet scoped into a task.
-- **PR #191 (draft) — FEAT-010 Implementation Proposal, scoped to TASK-034 (#93) only**, not all four FEAT-010 tasks (TASK-035/036/037 depend on TASK-034's real output, deliberately not specified yet — see the proposal's own §1). **Blocked on §10**, specifically item 1: how TASK-034's "Stitch reference screens" get generated is genuinely undecided, three options laid out with no default chosen, pending your review. Do not treat this as startable until the PR leaves draft status.
-- **#192** (new, this session) — the standing decision behind §10 item 1: who owns GCP billing/cost for Stitch MCP usage, and whether programmatic (MCP tool-call) usage is acceptable going forward. Explicitly scoped as a decision separate from any single task's proposal — TASK-034 itself doesn't strictly need this resolved (§0's token values are already fully specified as text).
-- **#193, #194** (new, this session) — the two Deploy to Staging smoke-test failures, see the dedicated sections above. Both open, both unresolved, explicitly not assumed to share a cause.
-- **#93–96 (TASK-034–037)** — design-system build-out (Stitch reference screens, primitives, app shell, Storybook/a11y). TASK-034 has a draft proposal (PR #191, above); 035/036/037 not started, not yet specified.
-
-**Unresolved finding, carried forward unchanged:** **#74 (TASK-015)'s out-of-band closure** (no linked PR/commit) remains unverified from a prior session — not re-investigated this session; still flagged, not silently absorbed.
+**Unresolved finding, carried forward unchanged:** #74 (TASK-015)'s
+out-of-band closure remains unverified from a prior session.
 
 ## Notes / gotchas for the next session
 
-- **A Deploy to Staging failure with the same exit-56/curl-on-`/health` signature is NOT automatically explained by #189.** See the investigation section above in full before assuming otherwise — this is the single most important thing to get right next time this recurs.
-- **#194 is NOT automatically explained by #193 either, and neither is explained by #189** — three separate open findings on the same pipeline, none confirmed to share a cause. Read all three before touching Deploy to Staging again.
-- **`/close`'s first real run in this repo caught a genuine, previously-unknown regression (#194) on a routine checklist item, not a dedicated investigation** — validates the Skill's premise (catch what would otherwise silently carry over) on its very first use. Worth remembering when deciding whether running `/close` is "worth it" at the end of a session that feels uneventful.
-- **The `close` Skill's own entrypoint (`.claude/skills/close/SKILL.md`) sat uncommitted at the point this Skill first ran** — the exact failure mode its own check #1 and #7 exist to catch, and the exact pattern `engineering-radar` hit before it (per `CHECKLIST.md`'s own note). Committed this session (branch `docs/register-close-skill-entrypoint`) — confirm it landed if picking this up next session.
-- **The debug-branch pattern (temp `docker compose ps`/`logs` step, dispatched with explicit approval each time, removed before merge) is a real, reusable playbook for diagnosing droplet-only failures that can't be reproduced locally** — worth formalizing into the `docker-pnpm-monorepo-deploy` Skill if it's used again.
-- **This machine cannot reach the staging droplet directly** — no local Tailscale client, no OAuth credentials for the tailnet. A local deploy key exists (`~/.ssh/lis_deploy_key`) and the droplet's public IP allows SSH from this session's egress IP per the DO firewall rule, but a direct connection attempt still timed out at the TCP layer — the real deploy path goes over Tailscale's private overlay, not the public IP. Diagnosing droplet-side state requires either the debug-step-in-workflow pattern used this session, or a human running commands directly.
-- **`docker compose ps`'s `Restarting (N)` shows the container's own exit code in parentheses, not a restart counter** — worth remembering; misreading it as "has restarted N times" undersells how fast/consistent the crash-loop actually is (every single attempt, same exit code, since `bootstrap-admin-username`/`bootstrap-admin-password` pairing is validated before the JVM proper even starts).
-- **#17 (FEAT-008) and #18 (FEAT-009) both correctly stay open** — confirmed directly from both issues' own bodies, both literally require "Feature demoed on staging" in their Definition of Done, both genuinely blocked on #188. Not an issue-closure oversight; don't re-litigate this unless #188 is fixed.
-- Everything in the previous (session 3) breadcrumb about FEAT-008's four tasks, the three-bug Deploy to Staging incident fixed via PRs #178/#179/#180, and TASK-031's auth-bypass catch is unchanged and not re-verified this session — see git history (`e44ce3e` and earlier) if full detail is needed; not repeated here to keep this file from growing unbounded.
-- All figures above are current as of 2026-07-31 (session 4), gathered directly from `gh api`/`gh issue view`/`gh run view --log`/live `workflow_dispatch` runs against the real staging droplet this session. Re-verify against GitHub/the live deploy directly if much time has passed rather than trusting this file blindly — especially the exit-56 non-conclusion above, which is exactly the kind of finding that's easy to misremember as more settled than it is.
+- **A green "Pull and restart on droplet" step on this pipeline is not
+  proof of execution** — both #202 and (implicitly) the original OOM run
+  reported success while the script had actually stopped partway through.
+  If touching `deploy-staging.yml`'s SSH-heredoc script again, remember:
+  any `docker exec`/`docker compose exec` inside a `bash -s <<HEREDOC`
+  script fed over SSH needs `< /dev/null` unless it deliberately wants
+  stdin, or it can silently eat the rest of the script.
+- **psql's `-v var=value` + `-c "... :'var' ..."` colon-interpolation did
+  not fire reliably here** — if setting a value via psql variables again,
+  prefer bash-substituting the value directly into a dedicated heredoc
+  passed to `psql`'s own stdin, rather than relying on `-c`.
+- **This Docker install uses the containerd image store** — the real bulk
+  of image/layer data lives under `/var/lib/containerd`, not
+  `/var/lib/docker`. `data-root` in `/etc/docker/daemon.json` does **not**
+  move it; containerd has its own `root` setting in
+  `/etc/containerd/config.toml`. Neither has actually been changed — both
+  are still at their defaults on root disk. Revisit only if disk pressure
+  returns despite the new auto-prune step.
+- **Image cruft accumulates fast on this pipeline** — every push to `main`
+  builds fresh `:latest` images with no automatic cleanup. Now mitigated by
+  PR #207's prune step; if disk fills again despite that, check
+  `docker system df` first before assuming a capacity problem.
+- **This machine still cannot reach the staging droplet directly** — no
+  local Tailscale client, no OAuth credentials for the tailnet (unchanged
+  from session 4). All droplet-side verification this session (`\dt`/`\du`,
+  `free -h`, `docker compose ps`, backup script test run) was done by the
+  human directly via the DigitalOcean console, not by this session.
+- **PR #191 remains open, draft, blocked on §10** — not touched, not
+  re-litigated this session.
+- All figures above are current as of 2026-07-31 (session 5), gathered
+  directly from `gh issue view`/`gh pr view`/`gh run view --log`/live
+  console output pasted by the human this session. Re-verify against
+  GitHub/the live droplet directly if much time has passed — especially
+  the #193/#194 non-resolution and the containerd-storage note above.

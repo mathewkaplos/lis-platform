@@ -1,8 +1,9 @@
 # Implementation Proposal: FEAT-009 Authorization & audit
-Status: APPROVED
+Status: IMPLEMENTED
 ADR: adr-0011 (roles as Keycloak realm roles, not a new Postgres table — accepted)
 Date: 2026-07-31
-Backlog ID: FEAT-009 (#18) / TASK-032 (#91), TASK-033 (#92)
+Backlog ID: FEAT-009 (#18) / TASK-032 (#91, closed), TASK-033 (#92, closed)
+Merge commits: TASK-032 PR #185 (`7fc487c`), TASK-033 PR #186 (`829f0bf`)
 
 ## 1. Goal
 
@@ -298,3 +299,14 @@ at this milestone.
 questions resolved with the recommended option in each case, ADR-0011 accepted with
 the added empty-roles fail-closed AC. TASK-032 may proceed; TASK-033 follows under
 this same approval once TASK-032 merges, per §1's stated sequencing.
+
+**Implemented 2026-07-31** — both tasks merged and both feature-level AC items (§7)
+verified for real against a live Keycloak + Postgres stack, not assumed from passing
+unit tests alone. TASK-032: PR #185, merge commit `7fc487c` — a real, previously-latent
+`Reflector`/DI-under-esbuild bug was found and fixed along the way (documented as a new
+`authentication` Skill entry). TASK-033: PR #186, merge commit `829f0bf` — the
+forced-audit-failure rollback guarantee (§6/§8 item 6) was proven with a real Postgres
+constraint violation and an order-row-count assertion, not reasoned about from the
+transaction boundary alone. Issues #91 and #92 both closed with evidence-citing
+comments, matching the TASK-023–026/#82-85 precedent (AC checkboxes in the issue bodies
+themselves left unedited).

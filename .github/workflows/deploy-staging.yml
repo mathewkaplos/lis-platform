@@ -110,21 +110,23 @@ jobs:
 
       - name: Pull and restart on droplet
         run: |
-          # TASK-198 follow-up: the first run of this migration step OOM'd
-          # the droplet (1 vCPU/1GB, confirmed via console: free -h showed
-          # 951Mi/961Mi used, 0B swap, docker itself became unresponsive).
-          # Root cause: old api/web from the *previous* deploy were left
-          # running the whole time, so old-api + old-web + postgres + valkey
-          # + keycloak + the new migrator container were all alive at once.
-          # Fix: stop api/web first (frees their memory immediately), and
-          # only bring up postgres (not also valkey/keycloak) for the
-          # migration window itself -- the smallest footprint that can
-          # actually run migrate/ALTER ROLE/seed. valkey/keycloak/api/web all
-          # start together afterward, same as before; the #199 smoke-test
-          # retry loop already tolerates that overlap. Piped via stdin
-          # (bash -s) rather than a single-quoted ssh argument so the ALTER
-          # ROLE step below can use psql's `:'var'` literal-quoting syntax
-          # without fighting local shell quote-escaping.
+          # TASK-198 follow-up #2: both prior runs of this step silently
+          # truncated right after `docker compose up -d postgres` -- the
+          # step still reported success, but migrate/ALTER ROLE/seed/the
+          # final `up -d` never ran. Root cause: `bash -s <<'REMOTE'` reads
+          # this whole script from its own stdin, and `docker compose exec -T`
+          # (used by the pg_isready loop right where both runs died) still
+          # forwards the parent shell's stdin into the container by default
+          # -- `-T` only disables the pseudo-TTY, not stdin attachment. That
+          # silently consumed the *rest of this script* (everything after
+          # the loop), so bash hit EOF on its own remaining input and exited
+          # 0, having done nothing wrong that it could see. Fix: `< /dev/null`
+          # on every inner command that doesn't deliberately need real stdin
+          # (the seed step keeps its own explicit `< seed/....sql` redirect,
+          # which already safely overrides the inherited stdin for that one
+          # command). This is a plain shell-scripting bug, not droplet OOM or
+          # Tailscale flakiness -- both prior runs died at the exact same
+          # line for the exact same reason, independent of the OOM fix.
           ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} bash -s <<'REMOTE'
           set -euo pipefail
           cd /opt/lis
@@ -137,17 +139,17 @@ jobs:
           SESSION_SECRET=${{ secrets.SESSION_SECRET }}
           ENVEOF
 
-          docker compose stop api web || true
+          docker compose stop api web < /dev/null || true
 
-          docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
-          docker compose pull
-          docker pull ghcr.io/${{ github.repository_owner }}/lis-platform-migrator:latest
+          docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} < /dev/null
+          docker compose pull < /dev/null
+          docker pull ghcr.io/${{ github.repository_owner }}/lis-platform-migrator:latest < /dev/null
 
-          docker compose up -d postgres
+          docker compose up -d postgres < /dev/null
 
           ready=false
           for i in $(seq 1 24); do
-            if docker compose exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then
+            if docker compose exec -T postgres pg_isready -U postgres < /dev/null >/dev/null 2>&1; then
               ready=true
               break
             fi
@@ -165,15 +167,15 @@ jobs:
           docker run --rm --memory=192m --network lis_staging_net \
             -e DATABASE_URL="postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/lis" \
             "ghcr.io/${{ github.repository_owner }}/lis-platform-migrator:latest" \
-            pnpm --filter @lis/db migrate
+            pnpm --filter @lis/db migrate < /dev/null
 
           docker compose exec -T postgres psql -U postgres -d lis \
-            -v pw="$LIS_APP_DB_PASSWORD" -c "ALTER ROLE lis_app WITH PASSWORD :'pw';"
+            -v pw="$LIS_APP_DB_PASSWORD" -c "ALTER ROLE lis_app WITH PASSWORD :'pw';" < /dev/null
 
           docker compose exec -T postgres psql -U postgres -d lis \
             -v ON_ERROR_STOP=1 -f - < seed/chemistry-catalog.sql
 
-          docker compose up -d valkey keycloak api web
+          docker compose up -d valkey keycloak api web < /dev/null
           REMOTE
 
       - name: Smoke test

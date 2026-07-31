@@ -199,8 +199,20 @@ jobs:
           ALTER ROLE lis_app WITH PASSWORD '$LIS_APP_DB_PASSWORD';
           PSQLEOF
 
-          docker compose exec -T postgres psql -U postgres -d lis \
-            -v ON_ERROR_STOP=1 -f - < seed/chemistry-catalog.sql
+          # chemistry-catalog.sql is plain INSERTs with no idempotency guard
+          # -- fine for CI/local, which always wipe the DB first
+          # (docker compose down -v / a fresh container), but staging never
+          # does that and now runs this step on every deploy. Re-running it
+          # against already-seeded data hit a duplicate-key error (run
+          # 30637495583). Check first rather than editing the shared seed
+          # file's behavior for every environment.
+          seed_count=$(docker compose exec -T postgres psql -U postgres -d lis -tAc "SELECT count(*) FROM analyte;" < /dev/null)
+          if [ "$seed_count" = "0" ]; then
+            docker compose exec -T postgres psql -U postgres -d lis \
+              -v ON_ERROR_STOP=1 -f - < seed/chemistry-catalog.sql
+          else
+            echo "Seed data already present ($seed_count analyte rows), skipping seed."
+          fi
 
           docker compose up -d valkey keycloak api web < /dev/null
           REMOTE

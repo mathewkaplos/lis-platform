@@ -26,6 +26,21 @@ jobs:
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/lis-platform-api:latest
 
+      - name: Build and push migrator
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          target: base
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/lis-platform-migrator:latest
+          # TASK-198: the Dockerfile's `base` stage already runs a full
+          # `pnpm install` (all devDependencies, including tsx/drizzle-kit)
+          # and builds @lis/db, before the prod-only `deploy --prod` step
+          # that produces the slim api runtime image. That stage, pushed on
+          # its own, is a ready-made image for running `pnpm --filter @lis/db
+          # migrate` against staging Postgres -- no separate Dockerfile needed.
+
       - name: Build and push web
         uses: docker/build-push-action@v6
         with:
@@ -82,27 +97,76 @@ jobs:
       - name: Copy compose file and realm config to droplet
         run: |
           ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} \
-            'mkdir -p /opt/lis/keycloak'
+            'mkdir -p /opt/lis/keycloak /opt/lis/seed'
           scp -i deploy_key -o StrictHostKeyChecking=no \
             infra/docker-compose.staging.yml \
             root@${{ secrets.DEPLOY_HOST }}:/opt/lis/docker-compose.yml
           scp -i deploy_key -o StrictHostKeyChecking=no \
             /tmp/lis-realm.staging.json \
             root@${{ secrets.DEPLOY_HOST }}:/opt/lis/keycloak/lis-realm.json
+          scp -i deploy_key -o StrictHostKeyChecking=no \
+            db/seed/chemistry-catalog.sql \
+            root@${{ secrets.DEPLOY_HOST }}:/opt/lis/seed/chemistry-catalog.sql
 
       - name: Pull and restart on droplet
         run: |
-          ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} '
-            cd /opt/lis &&
-            echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" > .env &&
-            echo "LIS_APP_DB_PASSWORD=${{ secrets.LIS_APP_DB_PASSWORD }}" >> .env &&
-            echo "SENTRY_DSN=${{ secrets.SENTRY_DSN }}" >> .env &&
-            echo "KEYCLOAK_ADMIN_PASSWORD=${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}" >> .env &&
-            echo "SESSION_SECRET=${{ secrets.SESSION_SECRET }}" >> .env &&
-            docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} &&
-            docker compose pull &&
-            docker compose up -d
-          '
+          # TASK-198: api/web must not start until the schema exists and
+          # lis_app has a real password -- staging Postgres had never been
+          # migrated (confirmed via \dt/\du on the droplet: zero relations,
+          # no lis_app role). Bring up postgres/valkey/keycloak first, wait
+          # for Postgres readiness, migrate + set lis_app's password + seed,
+          # only then bring up api/web. Piped via stdin (bash -s) rather than
+          # a single-quoted ssh argument so the ALTER ROLE step below can use
+          # psql's `:'var'` literal-quoting syntax without fighting local
+          # shell quote-escaping.
+          ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} bash -s <<'REMOTE'
+          set -euo pipefail
+          cd /opt/lis
+
+          cat > .env <<'ENVEOF'
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          LIS_APP_DB_PASSWORD=${{ secrets.LIS_APP_DB_PASSWORD }}
+          SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+          KEYCLOAK_ADMIN_PASSWORD=${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}
+          SESSION_SECRET=${{ secrets.SESSION_SECRET }}
+          ENVEOF
+
+          docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
+          docker compose pull
+          docker pull ghcr.io/${{ github.repository_owner }}/lis-platform-migrator:latest
+
+          docker compose up -d postgres valkey keycloak
+
+          ready=false
+          for i in $(seq 1 24); do
+            if docker compose exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then
+              ready=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" != "true" ]; then
+            echo "Postgres did not become ready in time" >&2
+            exit 1
+          fi
+
+          set -a
+          . ./.env
+          set +a
+
+          docker run --rm --network lis_staging_net \
+            -e DATABASE_URL="postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/lis" \
+            "ghcr.io/${{ github.repository_owner }}/lis-platform-migrator:latest" \
+            pnpm --filter @lis/db migrate
+
+          docker compose exec -T postgres psql -U postgres -d lis \
+            -v pw="$LIS_APP_DB_PASSWORD" -c "ALTER ROLE lis_app WITH PASSWORD :'pw';"
+
+          docker compose exec -T postgres psql -U postgres -d lis \
+            -v ON_ERROR_STOP=1 -f - < seed/chemistry-catalog.sql
+
+          docker compose up -d api web
+          REMOTE
 
       - name: Smoke test
         run: |

@@ -195,9 +195,9 @@ yet.
    Skill §1–3) — this is a real, metered Google Cloud API behind a real API key, not a free
    local tool. Real options, presented without a recommended default per your instruction:
    - **(a) Invoke the Stitch MCP tools programmatically** as part of this task's
-     implementation — fastest, most reproducible, but commits to whatever the undecided
-     billing/cost situation actually is on every future design-system task, not just this
-     one.
+     implementation — fastest, most reproducible, but incurs a real API call against the
+     still-undecided billing situation now, for this task specifically, ahead of #192's
+     resolution.
    - **(b) Generate reference screens manually**, a human pasting §0 + a Master Pattern
      prompt into the Stitch web app UI directly, then handing the exported
      screenshots/artifacts back for token extraction — avoids any automated/repeated API
@@ -208,8 +208,20 @@ yet.
      directly from that spec with no Stitch call at all, deferring actual reference-screen
      generation (in whichever form) to whenever the billing question resolves, treating it as
      a follow-up rather than blocking TASK-034's core deliverable.
-   I am not defaulting to any of these — flagging per your explicit instruction. This is the
-   one genuinely blocking item in this proposal; everything else can proceed once this is
+
+   **Scope of this decision, stated explicitly so it isn't over-read:** whichever option is
+   chosen here — including "skip MCP" (c) — applies to **TASK-034's own token/reference-screen
+   bootstrapping specifically**, using §0's already-specified values. It does **not** decide
+   Stitch MCP's fate for future, genuinely novel screen-generation needs (per the
+   `google-stitch-integration` Skill's §4 rule — a new screen type with no existing
+   `packages/ui` pattern to compose from). That is a separate, standing question, tracked in
+   **issue #192** ("Decide GCP billing / cost ownership for Stitch MCP usage"), filed this
+   session specifically so it isn't silently re-decided inside this or any other single task's
+   proposal. This proposal does not resolve #192 — it only chooses how to get TASK-034 itself
+   unblocked in the meantime.
+
+   I am not defaulting to any of (a)/(b)/(c) — flagging per your explicit instruction. This is
+   the one genuinely blocking item in this proposal; everything else can proceed once this is
    answered.
 2. Does `engineering/frontend-design`'s absence (§3/§6) need to be resolved (a new Skill
    authored) before TASK-034 proceeds, or is it acceptable to proceed without it since §0's

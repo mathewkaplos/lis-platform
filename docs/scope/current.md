@@ -163,6 +163,34 @@ workflow (documented in `infra/scripts/README.md`) — confirmed installed
 and working end-to-end: manual run produced a 104K `.dump` file, cron job
 verified via `crontab -l`.
 
+## Stale `lis_default` network incident (resolved, manual remediation, no code change)
+
+Found at the very end of the session, after PR #209's breadcrumb-refresh
+merge triggered yet another deploy (this pipeline redeploys on every push
+to `main`, no path filter): `Pull and restart on droplet` failed with
+`container ... is not connected to the network lis_default`. Direct
+console check confirmed a real, live outage — `docker compose ps` showed
+only `keycloak`/`valkey` up (leftover from the prior successful deploy),
+`postgres`/`api`/`web` all down, `curl /health` returned nothing. Root
+cause: **two networks existed simultaneously** — the currently-correct
+`lis_staging_net` (pinned since PR #200) and a stale, leftover
+`lis_default` (the pre-pinning auto-generated default), most likely a
+residual artifact from one of this session's earlier full droplet reboots
+during the OOM incident. `postgres` specifically hit a state conflict
+trying to reconcile against the stale network entry.
+
+**Fixed via manual remediation on the droplet, not a code change** — no PR,
+since nothing in the repo caused this: `docker compose down` (removes
+containers, does **not** touch the named `pgdata` volume) → `docker network
+rm lis_default` → `docker compose up -d`. Confirmed recovered: all 5
+containers `Started`, `curl /health` returned `{"status":"ok",...}`.
+
+If a similar `network ... not found` / `not connected to the network`
+error recurs on a future deploy, check `docker network ls` for a stale
+duplicate network first before assuming a fresh pipeline bug — this exact
+remediation (`down` → `network rm <stale-name>` → `up -d`) is safe and
+reusable, since `down` without `-v` never touches named volumes.
+
 ## Currently active milestone
 
 **M2 — Identity, Tenancy, AuthZ + Design System**: unchanged at 6 closed / 9

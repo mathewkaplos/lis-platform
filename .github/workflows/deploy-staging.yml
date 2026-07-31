@@ -113,7 +113,7 @@ jobs:
       - name: Copy compose file and realm config to droplet
         run: |
           ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} \
-            'mkdir -p /opt/lis/keycloak /opt/lis/seed'
+            'mkdir -p /opt/lis/keycloak /opt/lis/seed /opt/lis/scripts'
           scp -i deploy_key -o StrictHostKeyChecking=no \
             infra/docker-compose.staging.yml \
             root@${{ secrets.DEPLOY_HOST }}:/opt/lis/docker-compose.yml
@@ -123,6 +123,9 @@ jobs:
           scp -i deploy_key -o StrictHostKeyChecking=no \
             db/seed/chemistry-catalog.sql \
             root@${{ secrets.DEPLOY_HOST }}:/opt/lis/seed/chemistry-catalog.sql
+          scp -i deploy_key -o StrictHostKeyChecking=no \
+            infra/scripts/backup-staging-db.sh \
+            root@${{ secrets.DEPLOY_HOST }}:/opt/lis/scripts/backup-staging-db.sh
 
       - name: Pull and restart on droplet
         run: |

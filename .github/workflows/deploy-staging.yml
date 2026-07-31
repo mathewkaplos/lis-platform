@@ -236,6 +236,21 @@ jobs:
             exit 1
           '
 
+      - name: Prune unused Docker images on droplet
+        run: |
+          # Repeated deploys in a single day (this pipeline pushes fresh
+          # :latest images on every push to main) leave superseded,
+          # unreferenced images behind -- Docker/containerd never clean
+          # these up automatically. Confirmed directly: 131 images, only 5
+          # active, 18.44GB (89%) reclaimable, which alone took the
+          # droplet's root disk from 100% full to 25% used.
+          # -a removes ALL images with zero containers referencing them
+          # (not just dangling/untagged ones), not just the images built by
+          # this workflow; -f skips the confirmation prompt. Never touches
+          # images used by running or stopped containers, or any volume.
+          ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} \
+            'docker image prune -a -f'
+
       - name: Clean up deploy key
         if: always()
         run: rm -f deploy_key

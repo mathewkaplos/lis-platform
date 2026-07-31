@@ -5,7 +5,15 @@ ENV CI=true
 COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @lis/domain build
-RUN pnpm --filter ./apps/web build
+# TASK-031: apps/web/auth/secret.ts requiredEnv()s SESSION_SECRET at module
+# load, and `next build` imports every route module to collect page data --
+# same "next build actually executes top-level code" reasoning as pr.yml's
+# equivalent env block. Scoped to this one RUN (not `ENV`) so the value
+# never persists as an image-layer environment variable, even transiently --
+# the real value is set again at container start via docker-compose's own
+# SESSION_SECRET (infra/docker-compose.staging.yml).
+ARG SESSION_SECRET
+RUN SESSION_SECRET="${SESSION_SECRET}" pnpm --filter ./apps/web build
 
 FROM node:22-slim AS runtime
 WORKDIR /app

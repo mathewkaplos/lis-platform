@@ -27,6 +27,12 @@ jobs:
       # localhost:8080) — same realm-import file, no CI-specific override
       # needed. See infra/keycloak/README.md.
       KEYCLOAK_ISSUER_URL: http://localhost:8080/realms/lis
+      # TASK-031: apps/web/auth/secret.ts requiredEnv()s this at module load,
+      # and `next build` imports every route module to collect routes — so
+      # `pnpm build` fails without this set, same reasoning as
+      # APP_DATABASE_URL above. CI-only value, never a real secret — must be
+      # >=32 bytes (secret.ts enforces this for real HS256 key material).
+      SESSION_SECRET: lis_web_ci_session_secret_at_least_32_bytes_long
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

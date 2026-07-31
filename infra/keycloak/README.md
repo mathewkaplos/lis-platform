@@ -42,10 +42,23 @@ the fact"; here, "never configured out-of-band").
     the `web-origins`/`profile`/`roles` finding above — so both are now defined here
     in full (matching the Admin-API-created realm's real `basic`/`openid` scope
     definitions exactly, not approximated) and granted as default scopes.
-  - `web-origins`/`profile`/`roles` remain deliberately omitted: realm roles aren't
-    modeled yet (see above), and CORS/`web-origins` enforcement isn't exercised by any
-    AC until TASK-031 (web login) — add them properly (real protocol-mapper
-    definitions, not a name reference) when that task actually needs them.
+  - `web-origins`/`profile`/`roles` remain deliberately omitted, confirmed still correct
+    as of TASK-031: `apps/web`'s login/callback/logout routes only ever talk to
+    Keycloak server-side (Next.js Route Handlers doing discovery/token-exchange/
+    end-session over plain server-to-server HTTP), never via browser JS `fetch`/XHR —
+    the standard OIDC BFF pattern this feature uses specifically to keep the raw
+    Keycloak token out of browser JS. `web-origins` only matters for a client-side
+    Keycloak adapter making cross-origin browser requests, which does not exist here.
+    If a future task adds one (e.g. silent SSO via an iframe), define `web-origins` in
+    full then, following the same discipline as `openid`/`basic` below — not a name
+    reference.
+  - **`post.logout.redirect.uris: "+"` added on `lis-web` (TASK-031).** Keycloak 19+
+    requires a client's post-logout redirect URIs to be explicitly configured — it does
+    not fall back to `redirectUris` the way login redirects do. `"+"` is Keycloak's own
+    documented shorthand for "same set as Valid Redirect URIs," confirmed against
+    Keycloak's own release notes rather than guessed. Without this, RP-Initiated
+    Logout (`/api/auth/logout`) would fail with an `invalid redirect_uri` error page
+    instead of completing.
 - **The seeded `test-user`'s `tenant_id` attribute is the existing fixed seed tenant**
   (`00000000-0000-0000-0000-000000000001`) already used throughout
   `db/seed/chemistry-catalog.sql`, `rls-isolation-check.ts`, and

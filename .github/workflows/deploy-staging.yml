@@ -81,7 +81,23 @@ jobs:
 
       # --- NEW: confirms the droplet is actually reachable before we depend on it ---
       - name: Wait for Tailscale connectivity to droplet
-        run: tailscale ping -c 3 ${{ secrets.DEPLOY_HOST }}
+        run: |
+          # #197: a single `tailscale ping -c 3` failed once (run 30617856139)
+          # while the droplet itself was confirmed fully healthy via direct
+          # console access -- narrowed to a transient blip or a GH-Actions-
+          # side tailnet-join flake, not a droplet-side fault, and it has not
+          # recurred in 6 subsequent deploy runs. Retry with backoff instead
+          # of failing the whole run on a single transient miss, same pattern
+          # as the smoke-test hardening in #199.
+          for i in $(seq 1 5); do
+            if tailscale ping -c 3 ${{ secrets.DEPLOY_HOST }}; then
+              exit 0
+            fi
+            echo "Tailscale ping attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "Tailscale ping did not succeed after 5 attempts"
+          exit 1
       # --- end new steps ---
 
       - name: Strip local/CI-only test user from the realm export for staging

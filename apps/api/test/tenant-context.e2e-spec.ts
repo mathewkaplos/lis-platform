@@ -3,7 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
-import { KEYCLOAK_ISSUER_URL } from './../src/auth/keycloak-config';
+import { getKeycloakToken } from './get-keycloak-token';
 
 /**
  * TASK-030/ADR-0010: proves the RLS tenant-binding mechanism through the
@@ -16,29 +16,6 @@ import { KEYCLOAK_ISSUER_URL } from './../src/auth/keycloak-config';
  * required for the pooling-leak test below to actually exercise connection
  * reuse across tenants, not just pass by accident with a large default pool.
  */
-async function getToken(username: string, password: string): Promise<string> {
-  const response = await fetch(
-    `${KEYCLOAK_ISSUER_URL}/protocol/openid-connect/token`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'password',
-        client_id: 'lis-web',
-        username,
-        password,
-      }),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(
-      `failed to obtain a token for ${username}: ${response.status} ${await response.text()}`,
-    );
-  }
-  const body = (await response.json()) as { access_token: string };
-  return body.access_token;
-}
-
 describe('Tenant context binding (e2e)', () => {
   let app: INestApplication<App>;
   let tokenA: string;
@@ -53,8 +30,8 @@ describe('Tenant context binding (e2e)', () => {
     await app.init();
 
     [tokenA, tokenB] = await Promise.all([
-      getToken('test-user', 'test-password'),
-      getToken('test-user-2', 'test-password-2'),
+      getKeycloakToken('test-user', 'test-password'),
+      getKeycloakToken('test-user-2', 'test-password-2'),
     ]);
   });
 

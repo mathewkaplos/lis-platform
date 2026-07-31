@@ -45,3 +45,8 @@ packages/ui (design system) · packages/sdk (generated API client)
   check whether an existing Skill should be extended with it, or whether it
   warrants a new Skill entirely. Do this the same day, before moving to the
   next task. Do not wait to be asked.
+- Before stating a justification like "consistent with" or "same pattern as"
+  a prior decision, verify it against the actual precedent (the real issue
+  history, closed PRs, or prior comments) rather than trusting that it sounds
+  plausible. A confident-sounding justification is not evidence; check it the
+  same way you'd check any other claim before acting on it.

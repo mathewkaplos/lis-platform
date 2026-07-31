@@ -3,36 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
-import { KEYCLOAK_ISSUER_URL } from './../src/auth/keycloak-config';
-
-/**
- * Real Keycloak, not a mocked JWKS — same "verify for real" standard as
- * rls-isolation-check.ts (real Postgres) and TASK-028's own manual
- * verification. Requires the local/CI Keycloak service (TASK-028) to be up
- * and the lis-realm.json test-user to exist.
- */
-async function getTestUserToken(): Promise<string> {
-  const response = await fetch(
-    `${KEYCLOAK_ISSUER_URL}/protocol/openid-connect/token`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'password',
-        client_id: 'lis-web',
-        username: 'test-user',
-        password: 'test-password',
-      }),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(
-      `failed to obtain a test token from Keycloak: ${response.status} ${await response.text()}`,
-    );
-  }
-  const body = (await response.json()) as { access_token: string };
-  return body.access_token;
-}
+import { getKeycloakToken } from './get-keycloak-token';
 
 describe('Auth (e2e)', () => {
   let app: INestApplication<App>;
@@ -62,7 +33,7 @@ describe('Auth (e2e)', () => {
   });
 
   it('resolves the correct tenant and user for a valid token (TASK-029 AC)', async () => {
-    const token = await getTestUserToken();
+    const token = await getKeycloakToken('test-user', 'test-password');
 
     const res = await request(app.getHttpServer())
       .get('/auth/me')

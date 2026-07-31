@@ -7,6 +7,18 @@
   "accessTokenLifespan": 300,
   "ssoSessionIdleTimeout": 1800,
   "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      {
+        "name": "technologist",
+        "description": "Bench role: may enter results, may not verify them (TASK-032)"
+      },
+      {
+        "name": "verifier",
+        "description": "May verify results entered by a technologist (TASK-032)"
+      }
+    ]
+  },
   "clientScopes": [
     {
       "name": "openid",
@@ -74,6 +86,31 @@
           }
         }
       ]
+    },
+    {
+      "name": "roles",
+      "description": "OpenID Connect scope for add user roles to the access token",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "realm roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "foo",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
+        }
+      ]
     }
   ],
   "clients": [
@@ -100,7 +137,8 @@
       "defaultClientScopes": [
         "tenant",
         "openid",
-        "basic"
+        "basic",
+        "roles"
       ]
     }
   ],
@@ -115,6 +153,7 @@
       "attributes": {
         "tenant_id": ["00000000-0000-0000-0000-000000000001"]
       },
+      "realmRoles": ["technologist"],
       "credentials": [
         {
           "type": "password",
@@ -133,10 +172,29 @@
       "attributes": {
         "tenant_id": ["00000000-0000-0000-0000-000000000002"]
       },
+      "realmRoles": ["verifier"],
       "credentials": [
         {
           "type": "password",
           "value": "test-password-2",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "test-user-3",
+      "email": "test-user-3@example.invalid",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Test",
+      "lastName": "User Three",
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "test-password-3",
           "temporary": false
         }
       ]

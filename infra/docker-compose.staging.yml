@@ -1,3 +1,13 @@
+# The 25GB root disk (/dev/vda1) filled to 100% -- almost entirely
+# Docker images/containers/volumes under /var/lib/docker. A 20GB DigitalOcean
+# Block Storage Volume was attached (infra/main.tf's
+# digitalocean_volume_attachment.staging_docker_data) and mounted at
+# /mnt/volume_nyc1_1785507357628, then Docker's data-root was moved there via
+# /etc/docker/daemon.json's `data-root` setting on the droplet itself (not
+# expressible in this compose file -- data-root is a dockerd-level setting,
+# not a per-project one). Every named volume below (pgdata, etc.) now
+# physically lives under that mount transparently -- no path changes needed
+# here. See infra/main.tf for the Terraform side of the volume/attachment.
 services:
   # TASK-198 follow-up: this droplet is a 1 vCPU/1GB box (infra/main.tf,
   # s-1vcpu-1gb) with zero memory limits set anywhere -- confirmed directly

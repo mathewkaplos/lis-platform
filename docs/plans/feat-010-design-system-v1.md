@@ -1,6 +1,6 @@
 # Implementation Proposal: FEAT-010 Design system v1
-Status: DRAFT
-ADR: none yet — see §5/§10 (whether one is warranted depends on how §10's open question resolves)
+Status: APPROVED
+ADR: none — §10 Q1 resolved as (c) (no live Stitch invocation for this task); not warranted for this scope
 Date: 2026-07-31    Backlog ID: FEAT-010 (#19) / TASK-034 (#93)
 
 ## 1. Goal
@@ -124,12 +124,10 @@ own listed dependency, TASK-031 (web auth), is closed — no blocker there.
 
 ## 6. Risks
 
-- **§10's open question is genuinely blocking, not a formality.** TASK-034's own title
-  literally names "Stitch reference screens" as required output; how those screens actually
-  get generated is undecided (see §10). Nothing else in this proposal depends on which option
-  is chosen — §2's `docs/design.md`/`tokens.ts` deliverables can be written directly from §0's
-  already-specified values regardless — but the "reference screens" artifact itself cannot
-  proceed until this is resolved.
+- **§10 Q1 resolved 2026-07-31 (option (c))** — TASK-034's own title literally names "Stitch
+  reference screens" as required output, but live generation is now deferred to a follow-up
+  rather than blocking this task; `docs/design.md`/`tokens.ts` are written directly from §0's
+  already-specified values. §10 Q2/Q3 remain open and still block moving Status to APPROVED.
 - **`engineering/frontend-design` Skill gap** — FEAT-010's own issue names it as required
   reading; it doesn't exist. Low risk to this specific task (§0's spec is detailed enough to
   implement from directly), but real risk to TASK-035 (building 6 primitives) if that task
@@ -188,48 +186,39 @@ yet.
 
 ## 10. Questions requiring human approval
 
-1. **BLOCKING — how should TASK-034's "Stitch reference screens" actually be generated,
-   given the Stitch MCP / GCP billing decision is still genuinely undecided (per last
-   night's finding)?** The Stitch MCP server (`https://stitch.googleapis.com/mcp`) is
-   connected and its tools are confirmed genuinely callable (`google-stitch-integration`
-   Skill §1–3) — this is a real, metered Google Cloud API behind a real API key, not a free
-   local tool. Real options, presented without a recommended default per your instruction:
-   - **(a) Invoke the Stitch MCP tools programmatically** as part of this task's
-     implementation — fastest, most reproducible, but incurs a real API call against the
-     still-undecided billing situation now, for this task specifically, ahead of #192's
-     resolution.
-   - **(b) Generate reference screens manually**, a human pasting §0 + a Master Pattern
-     prompt into the Stitch web app UI directly, then handing the exported
-     screenshots/artifacts back for token extraction — avoids any automated/repeated API
-     usage until billing is resolved, at the cost of a manual step outside this session's
-     automation.
-   - **(c) Skip live Stitch generation for this task entirely.** §0's token values are
-     already fully specified as text (§3) — `docs/design.md`/`tokens.ts` could be written
-     directly from that spec with no Stitch call at all, deferring actual reference-screen
-     generation (in whichever form) to whenever the billing question resolves, treating it as
-     a follow-up rather than blocking TASK-034's core deliverable.
+1. **RESOLVED 2026-07-31 — option (c): skip live Stitch generation for this task entirely.**
+   §0's token values are already fully specified as text (§3) — `docs/design.md`/`tokens.ts`
+   are written directly from that spec, with no Stitch MCP call in TASK-034's scope. Actual
+   reference-screen generation (in whichever form — (a) or (b) from the original options below)
+   is deferred to a follow-up, once the billing question (#192) resolves, rather than blocking
+   TASK-034's core deliverable.
 
-   **Scope of this decision, stated explicitly so it isn't over-read:** whichever option is
-   chosen here — including "skip MCP" (c) — applies to **TASK-034's own token/reference-screen
-   bootstrapping specifically**, using §0's already-specified values. It does **not** decide
-   Stitch MCP's fate for future, genuinely novel screen-generation needs (per the
-   `google-stitch-integration` Skill's §4 rule — a new screen type with no existing
-   `packages/ui` pattern to compose from). That is a separate, standing question, tracked in
-   **issue #192** ("Decide GCP billing / cost ownership for Stitch MCP usage"), filed this
-   session specifically so it isn't silently re-decided inside this or any other single task's
-   proposal. This proposal does not resolve #192 — it only chooses how to get TASK-034 itself
-   unblocked in the meantime.
+   **Scope of this decision, stated explicitly so it isn't over-read:** this decision covers
+   **TASK-034's own token/reference-screen bootstrapping specifically**, using §0's
+   already-specified values. It does **not** decide Stitch MCP's fate for future, genuinely
+   novel screen-generation needs (per the `google-stitch-integration` Skill's §4 rule — a new
+   screen type with no existing `packages/ui` pattern to compose from). That remains a separate,
+   standing question, tracked in **issue #192** ("Decide GCP billing / cost ownership for Stitch
+   MCP usage") — this proposal does not resolve #192.
 
-   I am not defaulting to any of (a)/(b)/(c) — flagging per your explicit instruction. This is
-   the one genuinely blocking item in this proposal; everything else can proceed once this is
-   answered.
-2. Does `engineering/frontend-design`'s absence (§3/§6) need to be resolved (a new Skill
-   authored) before TASK-034 proceeds, or is it acceptable to proceed without it since §0's
-   spec is self-contained, and let real implementation findings become that Skill's first
-   content afterward?
-3. Confirm the scope-narrowing in §1 — this proposal covering TASK-034 only, with
-   TASK-035/036/037 specified in a later revision — is the right call, versus wanting all four
-   tasks scoped now even at the cost of guessing at details that depend on TASK-034's actual
-   output.
+   <details><summary>Original options considered (for record)</summary>
 
-**No implementation begins until this proposal's status changes to APPROVED.**
+   - (a) Invoke the Stitch MCP tools programmatically as part of this task's implementation —
+     fastest, most reproducible, but incurs a real API call against the still-undecided billing
+     situation now, ahead of #192's resolution.
+   - (b) Generate reference screens manually, a human pasting §0 + a Master Pattern prompt into
+     the Stitch web app UI directly, then handing the exported screenshots/artifacts back for
+     token extraction — avoids automated/repeated API usage until billing is resolved, at the
+     cost of a manual step outside this session's automation.
+   - (c) Skip live Stitch generation for this task entirely — chosen, see above.
+
+   </details>
+
+2. **RESOLVED 2026-07-31 — proceed without `engineering/frontend-design`.** Not authored now;
+   §0's spec is self-contained enough for TASK-034. Any real frontend-design lessons that
+   surface during implementation become that Skill's first content afterward, per AGENTS.md's
+   same-day Skill-writing rule — not invented speculatively here.
+3. **RESOLVED 2026-07-31 — confirmed.** This proposal's scope remains TASK-034 only.
+   TASK-035/036/037 will be specified in a later revision once TASK-034's actual output exists.
+
+**All three questions resolved — see Status header.**

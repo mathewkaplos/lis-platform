@@ -1,26 +1,82 @@
 @import "tailwindcss";
 
+/* Design tokens — see docs/design.md and packages/ui/src/tokens.ts (single source of truth,
+   transcribed from Google Stitch Prompt Library §0). Keep these three in sync by hand until
+   a build-time generator exists. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f7f8fa;
+  --surface: #ffffff;
+  --border: #e7e9ee;
+  --text-primary: #0f1729;
+  --text-secondary: #5b6472;
+  --text-muted: #8a93a2;
+
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --info: #2563eb;
+  --ai: #7c3aed;
+
+  --radius-card: 8px;
+  --radius-button: 8px;
+  --radius-input: 6px;
+  --radius-chip: 6px;
+  --radius-modal: 12px;
+  --radius-full: 9999px;
+
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, .06);
+  --shadow-overlay: 0 4px 12px rgba(16, 24, 40, .12);
+
+  /* Kept for compatibility with existing @theme mapping below. */
+  --foreground: var(--text-primary);
+}
+
+/* Dark tokens apply via either mechanism: OS preference today, and a `[data-theme="dark"]`
+   attribute on :root once TASK-036 builds the manual Light/Dark/System toggle. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0b0e14;
+    --surface: #131721;
+    --surface-raised: #1a202c;
+    --border: #232a36;
+    --text-primary: #e6e9ef;
+    --text-secondary: #9aa4b2;
+  }
+}
+
+:root[data-theme="dark"] {
+  --background: #0b0e14;
+  --surface: #131721;
+  --surface-raised: #1a202c;
+  --border: #232a36;
+  --text-primary: #e6e9ef;
+  --text-secondary: #9aa4b2;
 }
 
 @theme inline {
   --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-foreground: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-ai: var(--ai);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--text-primary);
+  font-family: var(--font-sans), Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
 }

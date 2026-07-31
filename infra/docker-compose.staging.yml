@@ -80,3 +80,11 @@ services:
 
 volumes:
   pgdata:
+
+networks:
+  # TASK-198: pinned so the deploy workflow's `docker run --network
+  # lis_staging_net ... lis-platform-migrator` (used to run migrations
+  # against this same stack) can target it deterministically, instead of
+  # depending on Compose's project-name-derived default network name.
+  default:
+    name: lis_staging_net

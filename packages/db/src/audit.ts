@@ -4,6 +4,13 @@ import type { createDb } from "./client";
 import { auditEvent } from "./schema/audit";
 
 type Db = ReturnType<typeof createDb>;
+// The transaction-scoped query builder db.transaction(async (tx) => ...)
+// hands its callback — same select/insert builder API as Db itself, so it
+// is accepted here too. Required so a caller can pass its own open
+// transaction (Constitution Law #5: "written in the same transaction as
+// the change") instead of always opening a second, unrelated one.
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbOrTx = Db | Tx;
 
 export interface AuditEventInput {
   tenantId: string;
@@ -83,7 +90,7 @@ function computeHash(canonical: string, prevHash: Buffer | null): Buffer {
  * Not hit by any value shape this function or its tests currently produce;
  * flagged here rather than silently assumed away.
  */
-export async function writeAuditEvent(db: Db, input: AuditEventInput) {
+export async function writeAuditEvent(db: DbOrTx, input: AuditEventInput) {
   const [prev] = await db
     .select({ hash: auditEvent.hash })
     .from(auditEvent)
@@ -141,7 +148,7 @@ export async function writeAuditEvent(db: Db, input: AuditEventInput) {
  * historical event breaks the chain and is detectable" (TASK-025's literal
  * AC: "tampering with an audit row is detected by chain verification").
  */
-export async function verifyAuditChain(db: Db, tenantId: string): Promise<{ valid: boolean; brokenAtId?: string }> {
+export async function verifyAuditChain(db: DbOrTx, tenantId: string): Promise<{ valid: boolean; brokenAtId?: string }> {
   const rows = await db.select().from(auditEvent).where(eq(auditEvent.tenantId, tenantId)).orderBy(auditEvent.sequence);
 
   let expectedPrevHash: Buffer | null = null;

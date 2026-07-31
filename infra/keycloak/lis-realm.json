@@ -198,6 +198,25 @@
           "temporary": false
         }
       ]
+    },
+    {
+      "username": "test-user-4",
+      "email": "test-user-4@example.invalid",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Test",
+      "lastName": "User Four",
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+      },
+      "realmRoles": ["technologist", "verifier"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "test-password-4",
+          "temporary": false
+        }
+      ]
     }
   ]
 }

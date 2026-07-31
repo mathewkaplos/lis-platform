@@ -83,6 +83,11 @@ the fact"; here, "never configured out-of-band").
   fail-closed acceptance criterion: a token with no realm role is denied every
   capability check, not silently granted one. `test-user`/`test-user-2` can no longer
   serve this purpose once TASK-032 gave them real roles.
+- **A fourth user, `test-user-4`, carries both `technologist` and `verifier`** —
+  TASK-033's addition, exercising `resolveGrantingRole`'s deterministic-resolution
+  guarantee (ADR-0011 §6/`capabilities.ts`) against a real token, not just the unit
+  test: two audit rows for the same logical action must never disagree on which role
+  authorized it.
 
 ## Local dev
 

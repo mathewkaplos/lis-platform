@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuditInterceptor } from './audit.interceptor';
 import { AuthController } from './auth.controller';
 import { CapabilityCheckController } from './capability-check.controller';
 import { CapabilityGuard } from './capability.guard';
@@ -12,7 +13,17 @@ import { TenantContextInterceptor } from './tenant-context.interceptor';
     TenantCheckController,
     CapabilityCheckController,
   ],
-  providers: [JwtAuthGuard, TenantContextInterceptor, CapabilityGuard],
-  exports: [JwtAuthGuard, TenantContextInterceptor, CapabilityGuard],
+  providers: [
+    JwtAuthGuard,
+    TenantContextInterceptor,
+    CapabilityGuard,
+    AuditInterceptor,
+  ],
+  exports: [
+    JwtAuthGuard,
+    TenantContextInterceptor,
+    CapabilityGuard,
+    AuditInterceptor,
+  ],
 })
 export class AuthModule {}

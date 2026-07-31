@@ -222,3 +222,192 @@ yet.
    TASK-035/036/037 will be specified in a later revision once TASK-034's actual output exists.
 
 **All three questions resolved — see Status header.**
+
+---
+
+# Revision: TASK-035 — Build 6 primitives (DataTable, StatusPill, FilterBar, SlideOver, StatCard, FormField)
+Status: APPROVED
+ADR: none — §10 Q3 confirmed the dependency set as-is; a library-adoption choice, not architectural
+Date: 2026-07-31    Backlog ID: TASK-035 (#94)
+
+## 1. Goal
+
+TASK-034 (tokens) is merged (PR #212, `cf65386`) and its issue (#93) closed. Per this proposal's
+own §1 promise, TASK-035 is specified now that TASK-034's real output — `packages/ui/tokens.ts`
+and `docs/design.md` — exists. TASK-035's dependency (TASK-034) is satisfied. This is M2's
+largest remaining design-system task (size: L) and blocks TASK-036 (app shell, which composes
+these primitives) and TASK-037 (Storybook, which catalogs them).
+
+**This revision's approvable scope is TASK-035 only**, same scope-narrowing rationale as the
+original proposal's §1 — TASK-036/037 still depend on TASK-035's actual component API shape in
+ways not responsibly knowable yet.
+
+## 2. Affected files
+
+- `packages/ui/package.json` — add `react`/`react-dom` as `peerDependencies` (consumed, not
+  bundled, by `apps/web`); add shadcn/ui's own standard dependency set as direct deps: per-
+  primitive `@radix-ui/*` packages (e.g. `react-slot` for polymorphism, `dialog` for SlideOver),
+  `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react` (icons — status pills,
+  slide-over close button, sort indicators). See §10 Q3 — confirm before installing.
+- `packages/config/tsconfig.base.json` or a new `packages/ui/tsconfig.json` override — add
+  `"jsx": "react-jsx"` and `"lib": ["dom", "dom.iterable", "esnext"]`; currently absent (verified
+  — `packages/ui` has never compiled JSX before).
+- `packages/ui/components.json` (new) + `apps/web/components.json` (new) — shadcn/ui's own
+  documented monorepo pattern (confirmed via its official docs: `apps/<app>` +
+  `packages/ui/src/{components,lib,hooks}`, package-import aliases `#components/*`/`#lib/*`,
+  cross-package `exports` map). Adopting this exact structure rather than inventing our own.
+- `packages/ui/src/lib/cn.ts` (new) — shadcn's standard `clsx` + `tailwind-merge` className
+  utility, required by every generated component.
+- `packages/ui/src/components/data-table.tsx`, `status-pill.tsx`, `filter-bar.tsx`,
+  `slide-over.tsx`, `stat-card.tsx`, `form-field.tsx` (new) — the six primitives.
+- `packages/ui/src/index.ts` — export the six, alongside the existing `tokens.ts` exports.
+- `apps/web/app/globals.css` — add a Tailwind v4 `@source` directive pointing at
+  `packages/ui/src` (confirmed via Tailwind's own docs: cross-package source files are **not**
+  auto-detected and must be explicitly registered — `@source "../../../packages/ui/src";` or
+  equivalent relative path).
+- `packages/ui/.storybook/main.ts` + `preview.ts` (new) — `@storybook/react-vite` framework
+  (plain React library, not Next.js-specific — the primitives themselves have no Next.js
+  dependency, so `react-vite` is the correct framework here rather than `@storybook/nextjs`,
+  confirmed via Storybook's own docs). `stories: ["../src/components/**/*.stories.tsx"]`.
+- `packages/ui/package.json` — add `storybook`, `@storybook/react-vite`, `@storybook/addon-a11y`
+  as devDependencies, plus a `"storybook": "storybook dev -p 6006"` script.
+- `packages/ui/src/components/*.stories.tsx` (new, one per primitive) — light/dark story variants
+  per primitive, per TASK-035's own AC.
+- **Explicitly out of this task's scope, left for TASK-037 as originally sized:** the CI-enforcing
+  step (`@storybook/test-runner` + `axe-playwright`, per Storybook's own documented pattern, that
+  actually fails a CI run on a WCAG violation). This task's scaffold makes `@storybook/addon-a11y`
+  available as an *interactive* panel inside Storybook itself — genuinely useful during
+  development — but does not wire anything into CI. TASK-037's own AC ("CI fails when a WCAG AA
+  violation is introduced") and "Expected output" ("Storybook config + CI a11y step") narrows to
+  just the CI a11y step now that config is pulled forward here.
+
+## 3. Architecture consulted
+
+- **`docs/design.md` / `packages/ui/tokens.ts`** (this proposal's own TASK-034 output) — the six
+  primitives consume these tokens directly, not new values.
+- **Stitch Prompt Library §0** (table rules) and **§1 Master Patterns** — Pattern A (List/
+  Data-Table: dense sortable multi-select table, sticky header/first column, bulk-action bar,
+  pagination footer, right slide-over on row-open) and Pattern B (Dashboard: KPI stat cards —
+  label, big tabular number, delta indicator, sparkline) directly specify DataTable, SlideOver,
+  and StatCard's required behavior. §0 also specifies StatusPill's non-negotiable rule (clinical
+  flags never color-only — letter + icon + color) and FormField's (labels above inputs, never
+  placeholder-only, helper/error text, required markers).
+- **AGENTS.md's stack line** — `shadcn/ui` named explicitly as this repo's intended component
+  layer, alongside Tailwind. This is the first task that actually builds on it.
+- **shadcn/ui official monorepo docs** (verified via Context7, `/shadcn-ui/ui`, this session) —
+  confirmed the exact `apps/<app>` + `packages/ui/src/{components,lib,hooks}` layout with
+  package-import aliases matches this repo's existing structure closely; adopting it rather than
+  inventing a bespoke layout.
+- **Tailwind v4 docs** (verified via Context7, `/websites/tailwindcss`, this session) — confirmed
+  cross-package source files need an explicit `@source` directive; not auto-detected by default.
+- **Storybook docs** (verified via Context7, `/storybookjs/storybook`, this session) — confirmed
+  (a) `@storybook/react-vite` is the correct framework for a plain-React component-library package
+  (not `@storybook/nextjs`, since `packages/ui` has no Next.js dependency), (b) Storybook's own
+  documented monorepo pattern for colocated stories explicitly references a sibling
+  `packages/ui/src/**/*.tsx` glob — validating scaffold placement inside `packages/ui` itself
+  rather than a separate `apps/storybook`, and (c) the CI-enforcing a11y pattern is
+  `@storybook/test-runner` + `axe-playwright`, distinct from the interactive
+  `@storybook/addon-a11y` panel — confirming the TASK-035/TASK-037 split stated in §2.
+- **`.mcp.json`** (committed this session, PR #214) — declares the `shadcn` MCP server
+  (`npx shadcn@latest mcp`). First real opportunity to use it; not yet exercised — see §10 Q2.
+- **`google-stitch-integration` Skill** — reused by analogy (its §4 rule: use MCP/generator
+  tooling for a genuinely new component type with no existing `packages/ui` pattern — true for
+  all six primitives, this package has never had a real component before).
+- **`engineering/frontend-design` Skill** — still doesn't exist (FEAT-010 §10 Q2 resolved:
+  proceed without it, let real findings become its first content). This task is that moment —
+  see §6.
+
+## 4. Skills loaded
+
+- `google-stitch-integration` — for MCP-usage patterns generally (Stitch-specific content not
+  directly reused here, but the "use generator tooling for genuinely new component types" rule
+  is).
+- `docker-pnpm-monorepo-deploy` — checked, not directly relevant (no deploy/infra change; no
+  Dockerfile touches `packages/ui`).
+- `engineering/frontend-design` — **could not be loaded; does not exist.** Same gap as TASK-034,
+  now genuinely load-bearing — see §6.
+
+## 5. Assumptions & autonomous decisions
+
+- **Component file naming is kebab-case** (`data-table.tsx`, not `DataTable.tsx`), matching
+  shadcn/ui's own convention shown in its official docs. Reversible, cosmetic.
+- **All six primitives are built as thin, accessible wrappers over Radix UI primitives** (via
+  shadcn's generator/CLI), not hand-rolled from raw HTML — Radix is the standard mechanism for
+  the keyboard-accessibility TASK-035's own AC requires (focus trapping on SlideOver, listbox
+  semantics on sortable/selectable DataTable rows, etc.). Not treated as ambiguous: AGENTS.md
+  already names shadcn/ui as the stack.
+
+## 6. Risks
+
+- **`engineering/frontend-design` Skill gap is now load-bearing, not hypothetical.** FEAT-010
+  §10 Q2 deferred authoring it until real findings existed — this task is where they'll surface
+  (component API conventions, prop-naming patterns, composition rules). Recommend authoring it
+  immediately after this task lands, same-day per AGENTS.md's rule, using whatever real
+  decisions get made below as its first content.
+- **`shadcn` MCP server (`.mcp.json`) is genuinely untested in this repo.** If MCP calls fail or
+  behave unexpectedly, the fallback is the plain `npx shadcn@latest add <component>` CLI directly
+  — same underlying generator, no MCP round-trip required. Not a hard blocker either way.
+- **Tailwind v4's cross-package `@source` detection is the first time this repo's Tailwind config
+  has needed to reach outside `apps/web`.** If misconfigured, primitives will render structurally
+  correct but completely unstyled (classes present in the DOM, not in the generated CSS) — a
+  silent-looking failure mode worth explicitly checking for (inspect the compiled CSS chunk for
+  the primitives' expected classes, same verification method used for TASK-034).
+- **Storybook scope creep, now that §10 Q1 is resolved as (a).** This task now delivers a real,
+  working Storybook instance (not just six components) — larger surface than a pure-component
+  task. Mitigated by keeping the pulled-forward scope genuinely minimal: config + stories +
+  interactive a11y panel only, no CI wiring (that stays TASK-037's, as stated in §2).
+
+## 7. Acceptance criteria
+
+TASK-035's literal AC (the only AC this revision covers):
+- [ ] All six render correctly in Storybook, light and dark, and are keyboard-accessible. Judged
+  by: each primitive has a story exhibiting its light/dark rendering; keyboard navigation
+  (Tab/Shift+Tab, Enter/Space activation, Esc where applicable, arrow-key nav on DataTable rows)
+  manually verified per primitive; `@storybook/addon-a11y`'s panel shows no violations; no
+  `console --errors` on render.
+
+## 8. Testing plan
+
+1. `pnpm --filter @lis/ui typecheck` and `pnpm --filter @lis/ui build` pass with the six new
+   components and their new dependencies.
+2. `pnpm typecheck`/`pnpm lint` at the repo root — confirms no regression in `apps/web` from the
+   `@source` directive change or new `packages/ui` exports.
+3. Compiled CSS chunk inspected directly (same method as TASK-034) to confirm the primitives'
+   Tailwind classes actually made it into the generated stylesheet, not just the DOM.
+4. `packages/ui`'s Storybook instance (`pnpm --filter @lis/ui storybook`) runs locally; each
+   primitive's story checked for light/dark rendering, keyboard operability, and a clean
+   `@storybook/addon-a11y` panel, per the AC above.
+5. A real rendered check in `apps/web` itself (not just Storybook) for at least one primitive in
+   context, given this session's earlier finding that `apps/web` has no public page and limited
+   headless-browser tooling — plan for that constraint explicitly rather than rediscover it.
+
+## 9. Rollback plan
+
+Purely additive — no migration, no tenant-scoped table, no clinical logic. Rollback is reverting
+the PR: new dependencies removed from `packages/ui/package.json`, new component files deleted,
+`packages/ui/src/index.ts` and `apps/web/app/globals.css` revert to their TASK-034 state. No
+production data or deployed feature depends on this yet.
+
+## 10. Questions requiring human approval
+
+1. **RESOLVED 2026-07-31 — option (a): pull forward a minimal Storybook scaffold.** Scope drawn
+   precisely (see §2, §3, §6): `packages/ui/.storybook/` config (`@storybook/react-vite`
+   framework, verified as the correct framework choice for this plain-React package via
+   Storybook's own docs), one story file per primitive, and `@storybook/addon-a11y` for
+   interactive-only accessibility feedback during development. Explicitly **not** pulled
+   forward: the CI-enforcing `@storybook/test-runner` + `axe-playwright` step — TASK-037 keeps
+   that, narrowed from "Storybook config + CI a11y step" to just the CI a11y step, matching its
+   own dependency-on-TASK-035 relationship in the backlog.
+2. **RESOLVED 2026-07-31 — option (a): use the `.mcp.json`-declared `shadcn` MCP server** to
+   scaffold the six primitives — first real use of that server in this repo. If it fails or
+   behaves unexpectedly, fall back to the plain `npx shadcn@latest add <component>` CLI (same
+   underlying generator, no MCP round-trip) rather than debugging the MCP path at length.
+3. **RESOLVED 2026-07-31 — confirmed.** New `packages/ui` runtime dependencies (per-primitive
+   `@radix-ui/*` packages, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`)
+   approved as-is — shadcn/ui's own standard set.
+4. **RESOLVED 2026-07-31 — defer.** `engineering/frontend-design` is not authored as part of this
+   task. Real findings from this task's implementation get noted in the breadcrumb
+   (`docs/scope/current.md`); authoring the Skill itself is left for a later, explicit decision —
+   not silently done same-day by default.
+
+**All four questions resolved — see Status header.**

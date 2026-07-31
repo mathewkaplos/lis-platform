@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* packages/ui isn't auto-detected by Tailwind v4's source scanning since it's outside
+   apps/web's own tree (a separate pnpm workspace package) — confirmed via Tailwind's docs
+   (TASK-035). Without this, primitives would render structurally correct but fully unstyled. */
+@source "../../../packages/ui/src";
+
 /* Design tokens — see docs/design.md and packages/ui/src/tokens.ts (single source of truth,
    transcribed from Google Stitch Prompt Library §0). Keep these three in sync by hand until
    a build-time generator exists. */
@@ -32,6 +37,28 @@
 
   /* Kept for compatibility with existing @theme mapping below. */
   --foreground: var(--text-primary);
+
+  /* shadcn/ui's own semantic contract (TASK-035) — bridges its default component styling onto
+     our tokens above rather than a second, competing palette. "accent" collides in meaning:
+     shadcn's is a subtle hover/highlight surface, ours (above) is the brand indigo — kept
+     distinct as `accent-surface` here, exposed as Tailwind's `accent` utility below, while our
+     brand color is exposed as `brand` instead of `accent`. */
+  --primary: var(--accent);
+  --primary-foreground: #ffffff;
+  --secondary: var(--border);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--border);
+  --muted-foreground: var(--text-secondary);
+  --accent-surface: var(--border);
+  --accent-surface-foreground: var(--text-primary);
+  --destructive: var(--danger);
+  --destructive-foreground: #ffffff;
+  --input: var(--border);
+  --ring: var(--accent);
+  --card: var(--surface);
+  --card-foreground: var(--text-primary);
+  --popover: var(--surface);
+  --popover-foreground: var(--text-primary);
 }
 
 /* Dark tokens apply via either mechanism: OS preference today, and a `[data-theme="dark"]`
@@ -44,6 +71,12 @@
     --border: #232a36;
     --text-primary: #e6e9ef;
     --text-secondary: #9aa4b2;
+
+    --secondary: var(--surface-raised);
+    --muted: var(--surface-raised);
+    --accent-surface: var(--surface-raised);
+    --card: var(--surface);
+    --popover: var(--surface);
   }
 }
 
@@ -54,6 +87,12 @@
   --border: #232a36;
   --text-primary: #e6e9ef;
   --text-secondary: #9aa4b2;
+
+  --secondary: var(--surface-raised);
+  --muted: var(--surface-raised);
+  --accent-surface: var(--surface-raised);
+  --card: var(--surface);
+  --popover: var(--surface);
 }
 
 @theme inline {
@@ -63,8 +102,8 @@
   --color-foreground: var(--text-primary);
   --color-text-secondary: var(--text-secondary);
   --color-text-muted: var(--text-muted);
-  --color-accent: var(--accent);
-  --color-accent-hover: var(--accent-hover);
+  --color-brand: var(--accent);
+  --color-brand-hover: var(--accent-hover);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
@@ -72,6 +111,25 @@
   --color-ai: var(--ai);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* shadcn/ui's default semantic contract — see the :root block above for the bridge to our
+     own tokens. */
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent-surface);
+  --color-accent-foreground: var(--accent-surface-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
 }
 
 body {

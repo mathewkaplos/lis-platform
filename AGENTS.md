@@ -28,6 +28,16 @@ packages/ui (design system) · packages/sdk (generated API client)
 4. Tenant isolation is structural via PostgreSQL RLS, not application checks.
 5. Every clinically significant action writes an audit record.
 
+## PR conventions
+- When a PR closes an issue, always include a bare `Closes #N` on its own
+  line in the PR body — separate from any human-readable task-name
+  reference elsewhere in the description. GitHub's closing-keyword parser
+  does not recognize the reference when it's wrapped in extra text (e.g.
+  `Closes TASK-034 (#93)` does not auto-close; only the bare `Closes #93`
+  form does). Confirmed twice in the same session (#93 and #94 both stayed
+  open after merge, each needing a manual `gh issue close`) — see the close
+  Skill's Engineering Flow Retrospective, Section 8, finding #1.
+
 ## Where knowledge lives
 - Architecture KB: ../lis-engineering/knowledge-base/
 - ADRs: ../lis-engineering/adr/

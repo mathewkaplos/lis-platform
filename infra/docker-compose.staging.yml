@@ -63,12 +63,24 @@ services:
       # win that doesn't matter on a single-box deployment.
       KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL}
       KC_PROXY_HEADERS: xforwarded
-    # No ports: mapping -- #188 removed direct host exposure now that
-    # tailscale serve fronts this on 8443. Still reachable container-to-
-    # container on lis_staging_net (api's JWT-issuer check) without one.
+    # Real bug, found on #188's live deploy attempts: removing this
+    # mapping entirely (the original plan) broke tailscale serve itself --
+    # `tailscale serve --https=8443 http://localhost:8080` runs on the
+    # droplet's *host* OS, not inside the Docker network, so "localhost"
+    # there means the host's own loopback. Without a published port,
+    # nothing listens on the host's localhost:8080 at all (the container's
+    # port only exists inside Docker's private bridge network) -- curl
+    # reached tailscale serve fine (proof the ACL/TLS pieces were correct)
+    # but got a 502, tailscale serve unable to reach its own configured
+    # backend. Bound to 127.0.0.1 specifically, not 0.0.0.0 -- gives
+    # tailscale serve (and only same-host processes) real reachability
+    # without exposing the port to the wider network, keeping the spirit
+    # of "no direct host exposure" the original (wrong) no-mapping attempt
+    # was going for.
     # Deploy step (deploy-staging.yml) strips the local/CI-only test-user block
     # via jq before this file lands here — staging never receives the
     # checked-in test-password user. See infra/keycloak/README.md.
+    ports: ["127.0.0.1:8080:8080"]
     volumes: ["./keycloak/lis-realm.json:/opt/keycloak/data/import/lis-realm.json"]
 
   api:
@@ -116,8 +128,10 @@ services:
       # over plain HTTP) is what this whole change unblocks -- tailscale
       # serve now provides the real HTTPS this needed.
       KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL}
-    # No ports: mapping -- #188 removed direct host exposure now that
-    # tailscale serve fronts this on 443 (root path).
+    # Same fix as keycloak's mapping above, same real bug -- tailscale
+    # serve (host-side) needs a real host-local listener to proxy into.
+    # 127.0.0.1-bound, not 0.0.0.0 -- no exposure beyond the host itself.
+    ports: ["127.0.0.1:3000:3000"]
     depends_on: [api]
 
 volumes:

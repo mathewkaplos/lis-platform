@@ -26,8 +26,16 @@ same droplet. No domain purchase, no new public attack surface.
   to `start --import-realm` (Keycloak's own docs, verified via Context7: `start-dev` is
   explicitly dev-only — production mode requires HTTPS/hostname configured or the server refuses
   to boot, a "secure by default" design, not an oversight to route around) with
-  `--hostname`/`--proxy-headers` set for the new MagicDNS hostname; direct port mappings
-  (`3000`/`4000`/`8080`) removed now that `tailscale serve` fronts everything (see §5, §10 Q2).
+  `--hostname`/`--proxy-headers` set for the new MagicDNS hostname. `api`'s port mapping (`4000`)
+  removed per §10 Q2 (never browser-facing, never targeted by `tailscale serve`). **`web`
+  (`3000`) and `keycloak` (`8080`) corrected post-implementation to `127.0.0.1:<port>:<port>`,
+  not removed entirely as originally planned** — real bug found on this task's live deploy
+  attempts: `tailscale serve` runs on the droplet's *host* OS, so `http://localhost:<port>` in
+  its config means the host's own loopback, which has nothing listening on it without a
+  published port at all (the container's port only exists inside Docker's private bridge
+  network otherwise). Bound to `127.0.0.1` specifically, not `0.0.0.0` — real reachability for
+  `tailscale serve` (and only same-host processes) without exposing the port to the wider
+  network, keeping the spirit of the original no-exposure intent.
 - **No new container.** `tailscale serve` (see §5) runs as tailscaled config on the droplet
   itself, not a new compose service — a real memory-budget win over the originally-considered
   Caddy reverse proxy, relevant given this box's existing 848m/961Mi allocation (§6).

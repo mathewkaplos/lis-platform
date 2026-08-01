@@ -60,3 +60,15 @@ packages/ui (design system) · packages/sdk (generated API client)
   history, closed PRs, or prior comments) rather than trusting that it sounds
   plausible. A confident-sounding justification is not evidence; check it the
   same way you'd check any other claim before acting on it.
+- Whenever presenting a decision — proposal §10 questions, ADR alternatives,
+  /close pending items, or any other genuine choice point — use Claude
+  Code's native options-prompt mechanism (the one already used elsewhere in
+  this project, e.g. "Scope the hook to lis-platform only (recommended)"),
+  not a plain prose question. Every option must be concrete and tappable —
+  no open-ended fill-in-the-blank asks when a bounded, real set of choices
+  exists — and the recommended option must be explicitly marked
+  "(Recommended)", not just implied by how it's worded. This is specifically
+  so decisions can be made quickly via tap, including from Claude Code's
+  mobile/remote-control interface, not just by typing a full sentence back.
+  Applies consistently, every time a genuine decision point comes up — not
+  selectively, only when it happens to be convenient.

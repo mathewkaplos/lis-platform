@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import subprocess
 import sys
@@ -6,6 +7,7 @@ import sys
 HEREDOC_RE = re.compile(r"<<-?\s*(['\"]?)(\w+)\1?")
 SEGMENT_SPLIT_RE = re.compile(r"&&|\|\||[;\n|]")
 LEADING_GIT_GH_RE = re.compile(r"^(git|gh)\b")
+CD_RE = re.compile(r"^cd(\s+(.*))?$")
 
 
 def strip_heredocs(text):
@@ -53,16 +55,28 @@ def strip_quotes(text):
     return "".join(result)
 
 
-def git_gh_segments(command_text):
+def ordered_segments(command_text):
     structural = strip_quotes(strip_heredocs(command_text))
-    segments = [s.strip() for s in SEGMENT_SPLIT_RE.split(structural) if s.strip()]
-    return [s for s in segments if LEADING_GIT_GH_RE.match(s)]
+    return [s.strip() for s in SEGMENT_SPLIT_RE.split(structural) if s.strip()]
 
 
-def current_remote():
+def resolve_cd_target(cwd, segment):
+    m = CD_RE.match(segment)
+    target = (m.group(2) or "").strip() if m else ""
+    if not target or target == "~":
+        return os.path.expanduser("~")
+    if target == "-":
+        return cwd  # OLDPWD unknown to us; best effort, leave unchanged
+    target = os.path.expanduser(target)
+    if not os.path.isabs(target):
+        target = os.path.normpath(os.path.join(cwd, target))
+    return target
+
+
+def remote_for_dir(directory):
     try:
         result = subprocess.run(
-            ["git", "remote", "get-url", "origin"],
+            ["git", "-C", directory, "remote", "get-url", "origin"],
             capture_output=True,
             text=True,
             timeout=5,
@@ -94,7 +108,25 @@ def main():
     except Exception:
         command = ""
 
-    for segment in git_gh_segments(command):
+    # PreToolUse fires before the command runs, including before any
+    # leading `cd` in it -- the hook's own cwd is always wherever the
+    # shell already was, not wherever a `cd repo && ...` in THIS command
+    # is about to go. Walk segments in order, tracking a simulated cwd
+    # through any `cd` segments, so the remote check below reflects where
+    # the git/gh segment would actually execute, not the hook's ambient
+    # cwd. (A real regression, not hypothetical: the ambient-cwd version
+    # of this check blocked a real `cd ~/work/lis-engineering && git push
+    # origin main` because the hook process itself was still rooted in
+    # lis-platform when it ran.)
+    cwd = os.getcwd()
+    for segment in ordered_segments(command):
+        if CD_RE.match(segment):
+            cwd = resolve_cd_target(cwd, segment)
+            continue
+
+        if not LEADING_GIT_GH_RE.match(segment):
+            continue
+
         if re.search(r"git\s+reset\s+--hard", segment):
             deny(
                 "Blocked: git reset --hard wipes the ENTIRE working tree, not "
@@ -115,7 +147,7 @@ def main():
             )
 
         if re.match(r"^git\s+push\s+(origin\s+)?main\s*$", segment):
-            remote = current_remote()
+            remote = remote_for_dir(cwd)
             if "lis-platform" in remote.lower():
                 deny(
                     "Blocked: direct push to main bypasses the required PR "

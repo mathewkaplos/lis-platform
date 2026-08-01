@@ -72,3 +72,21 @@ packages/ui (design system) · packages/sdk (generated API client)
   mobile/remote-control interface, not just by typing a full sentence back.
   Applies consistently, every time a genuine decision point comes up — not
   selectively, only when it happens to be convenient.
+- **A pass in one test/build harness does not prove a pass in another —
+  verify against the actual harness the real thing will run in, not
+  whichever one is most convenient to run.** Three real instances, not
+  hypothetical: (1) TASK-032/PR #185 — `CapabilityGuard`'s `Reflector`
+  dependency resolved to `undefined` at runtime because vitest's esbuild
+  transform doesn't emit the `design:paramtypes` metadata Nest's implicit
+  constructor DI relies on; unit tests passed, only a real e2e run against
+  a live Nest app caught it. (2) TASK-030/PR #177 — a default connection-
+  pool test would have passed even if `set_config('app.tenant_id', $1,
+  true)`'s transaction-scoped binding accidentally leaked across pooled
+  connections; only forcing `DB_POOL_MAX=1` and interleaving two tenants'
+  requests actually proved the binding survives physical-connection
+  reuse. (3) TASK-036/PR #237 — `@lis/ui`'s primitives shipped clean
+  through TASK-035/037 because Storybook/Vite consumes the package's
+  source directly and never exercises Next.js's own bundler; the first
+  real Next.js page to render one hit a client-boundary bug
+  (`transpilePackages` fix) that no amount of Storybook or `tsc
+  --noEmit` passing would ever have caught.

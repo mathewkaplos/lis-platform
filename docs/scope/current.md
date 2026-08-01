@@ -1,8 +1,30 @@
 # Status — 2026-08-01 (session 9)
 
-Last commit on main: 3a8c4a7 — "docs: add web-verify Skill for apps/web interactive verification (#242)".
+Last commit on main: 4e7ed4d — "docs: add standing rule -- no status signal is self-verifying (#244)".
 
 ## What's actually done (per real evidence)
+
+Continuing this same session: the bookkeeping close-out below (breadcrumb fix, FEAT-008 proposal
+archival, #17/#18/#2 evidence comments, #232 Storybook screenshots) landed as **PR #243**
+(`428195b`), merged with all checks green. A new standing rule was then added to AGENTS.md's
+Rules of engagement — "no single status signal ... is self-verifying," citing session 7's
+TASK-036 overclaim, FEAT-009/#18's neglected Project-status field, and this session's own
+initial (corrected) belief that FEAT-008/#17 was unstarted as the three real instances — as
+**PR #244** (`4e7ed4d`), also merged clean.
+
+Immediately after, `#232`'s thread was checked directly (`gh issue view 232 --json ...`) rather
+than assumed: **neither item is actually confirmed there.** The only comment is this session's
+own Storybook-screenshot evidence, which explicitly disclaims itself as not a human confirmation.
+No comment records a real Keycloak login over the tailnet (item 1) or a human looking at the
+screenshots (item 2). #232 was correctly left open rather than closed on an unverified premise —
+matching the standing rule just added two paragraphs above, applied to its own output this same
+session, not just cited as a past lesson.
+
+Re-ran the full session-start checklist a second time this session (items 1-15) to confirm
+nothing had drifted since the first pass: M2's board state (#2/#17/#18/#19, 4 open/11 closed)
+and Engineering Radar findings (no technical debt, no SSH IP drift, no Skill staleness) were
+unchanged. The only new drift found was self-inflicted — the breadcrumb itself lagging 2 commits
+behind PR #243/#244 — fixed by this rewrite.
 
 Session 9 opened by cross-checking session 8's breadcrumb against GitHub reality (per this
 project's own recurring lesson: a breadcrumb's claims are not self-verifying). Found two real
@@ -66,6 +88,9 @@ M2's remaining open items (corrected):
 - **#18** (FEAT-009) — blocked on its own staging demo (not yet attempted).
 - **#19** (FEAT-010) — blocked on its own staging demo (not yet attempted).
 - **#232** — the two manual-verification items above; needs a human with tailnet access.
+  Re-checked directly this session (`gh issue view 232 --json body,comments`): neither item
+  has a real human confirmation recorded — only this session's own Storybook-screenshot
+  evidence for item 2, which explicitly is not a confirmation. Both items still genuinely open.
 
 **Unrelated open issues, not M2-milestoned (carried forward, still genuinely unresolved):**
 - **#192** — GCP billing/Stitch MCP decision. Still open, still not resolved.
@@ -91,6 +116,16 @@ M2's remaining open items (corrected):
   Combined with session 8's own finding (breadcrumb prose can overclaim), the fuller rule is:
   **no single signal — breadcrumb, issue body, Project field, or comment thread — is
   self-verifying; check the actual child tasks/code/PRs when a feature's status matters.**
+  Now a standing rule in `AGENTS.md`'s Rules of engagement (PR #244), citing this instance plus
+  session 7's TASK-036 overclaim and FEAT-009/#18's neglected Project field as the three real
+  precedents — not phrased as a one-off session finding anymore.
+- **Don't trust that a "gather evidence" note means confirmation happened — check the actual
+  thread.** Immediately after posting Storybook screenshots as evidence on #232, this session
+  was asked to confirm both its items were "genuinely documented" as human-confirmed. They
+  weren't — re-reading the thread directly (rather than trusting the earlier turn's own
+  framing) showed only the evidence comment, explicitly self-disclaiming as non-confirmation.
+  Applying the standing rule above to this session's *own* prior output, not just past
+  sessions', is what caught it.
 - **This project's convention for closing out task-level work is a comment, not a body edit.**
   AC checkboxes and Project-status fields inside issue bodies are deliberately left unedited;
   the evidence (PRs, merge SHAs, what was actually verified and how) goes in a closing comment

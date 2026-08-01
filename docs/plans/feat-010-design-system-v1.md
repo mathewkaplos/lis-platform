@@ -411,3 +411,103 @@ production data or deployed feature depends on this yet.
    not silently done same-day by default.
 
 **All four questions resolved — see Status header.**
+
+---
+
+# Revision: TASK-037 — Storybook CI a11y step
+Status: APPROVED
+ADR: none — CI-only addition, no architectural decision
+Date: 2026-08-01    Backlog ID: TASK-037 (#96)
+
+## 1. Goal
+
+TASK-035 (PR #216, `cf59d28`) pulled forward a working Storybook scaffold and one story per
+primitive, explicitly narrowing TASK-037's own remaining scope to just the CI-enforcing step —
+stated at the time in that revision's §2 and §6. This revision specifies that narrower scope.
+Dependency (TASK-035) is satisfied.
+
+## 2. Affected files
+
+- `packages/ui/.storybook/test-runner.ts` (new) — `@storybook/test-runner` config with
+  `axe-playwright`'s `injectAxe`/`checkA11y` in `preVisit`/`postVisit` hooks, per Storybook's own
+  documented pattern (verified via Context7 during TASK-035's research, not re-verified here
+  since the pattern is unchanged).
+- `packages/ui/package.json` — add `@storybook/test-runner`, `axe-playwright`, `http-server`,
+  `concurrently`, `wait-on` as devDependencies; add a `"test-storybook": "test-storybook"` script.
+- `.github/workflows/pr.yml` — new job `storybook-a11y`, independent of the existing
+  `build-and-test` job (no Postgres/Keycloak needed — this is packages/ui-only). Runs inside the
+  official Playwright Docker image (`mcr.microsoft.com/playwright:v1.58-noble` or latest matching
+  tag) specifically to avoid the missing-system-library problem hit locally during TASK-034/035
+  (no `sudo`/`--with-deps` available in this sandbox; a GitHub-hosted runner's container has full
+  root, but using the pre-built Playwright image sidesteps needing to run `playwright install
+  --with-deps` at all). Steps: install → `pnpm --filter @lis/ui build-storybook` → serve the
+  static output (`http-server`) + `wait-on` + `test-storybook`, per Storybook's own documented CI
+  recipe.
+
+## 3. Architecture consulted
+
+- TASK-035's own revision (§2, §3, §6) — already established the test-runner + axe-playwright
+  split from the interactive `@storybook/addon-a11y` panel; this revision implements exactly
+  that, not a new design.
+- Storybook's own CI docs (Context7, fetched during TASK-035) — the build → serve → `wait-on` →
+  `test-storybook` recipe, and the official Playwright Docker image as the recommended way to get
+  browser dependencies in CI without a manual `--with-deps` install step.
+
+## 4. Skills loaded
+
+- `docker-pnpm-monorepo-deploy` — checked; not directly relevant (this workflow doesn't touch
+  Dockerfiles or the deploy pipeline, just `pr.yml`), but its entry on validating a CI/Docker
+  change with a real local run before pushing (§9 of that Skill) is the practice being followed
+  here regardless.
+
+## 5. Assumptions & autonomous decisions
+
+- **A new, independent `storybook-a11y` job, not additional steps in the existing
+  `build-and-test` job.** The existing job already carries Postgres/Keycloak service containers
+  entirely unrelated to a frontend-only a11y check; bolting on more unrelated steps there would
+  make an already-long job slower and harder to read. Reversible, low-risk.
+- **Playwright's official Docker image, not a manual `playwright install --with-deps` step on
+  `ubuntu-latest`.** Both work on GitHub-hosted runners (which have real root, unlike this
+  sandbox); the image is simpler and is Storybook's own first-listed recommendation.
+
+## 6. Risks
+
+- **Not locally verified end-to-end in this sandbox** — the same missing-`libnss3.so`/no-sudo
+  limitation that blocked a live screenshot in TASK-034/TASK-035 also blocks running
+  `test-storybook` against a real browser locally here. Verification for this task happens by
+  reading the CI run's real output after pushing (build the workflow correctly the first time by
+  following the documented recipe closely, then confirm via the actual GitHub Actions run log —
+  same "a green step is not proof" discipline as the deploy-pipeline gotchas already documented).
+- **First CI job in this repo using a non-default container image** — worth double-checking the
+  job actually starts and pulls the image correctly on the first real run, not just that the YAML
+  is syntactically valid.
+
+## 7. Acceptance criteria
+
+TASK-037's literal AC:
+- [ ] CI fails when a WCAG AA violation is introduced into a primitive. Judged by: a deliberate,
+  temporary violation (e.g. removing an `aria-label`) introduced locally, confirming the new job
+  fails, then reverted before merge — not just trusting the config looks right.
+
+## 8. Testing plan
+
+1. `pnpm --filter @lis/ui typecheck`/`build` unaffected (new devDeps/config only).
+2. Push the branch and read the real `storybook-a11y` job output on GitHub Actions — confirms the
+   Playwright image pulls, Storybook serves, and `test-storybook` actually runs against real
+   browsers (not verifiable locally, per §6).
+3. A deliberate, temporary a11y violation confirms the job actually fails on a real violation,
+   not just that it runs green by coincidence (e.g. never actually executing the axe check).
+
+## 9. Rollback plan
+
+Purely additive — a new CI job and Storybook test-runner config, no application code path
+affected. Rollback is reverting the PR.
+
+## 10. Questions requiring human approval
+
+No genuinely open questions — TASK-035's own revision already made the two real decisions this
+task depends on (test-runner + axe-playwright split from the interactive panel; CI wiring
+explicitly deferred here). Noting this explicitly rather than fabricating a question for the sake
+of the template.
+
+**No implementation begins until this revision's status changes to APPROVED.**

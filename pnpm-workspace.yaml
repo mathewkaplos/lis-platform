@@ -3,6 +3,7 @@ packages:
   - "packages/*"
 allowBuilds:
   '@sentry/node-cpu-profiler': false
+  '@swc/core': true
   esbuild: true
   sharp: true
   unrs-resolver: true

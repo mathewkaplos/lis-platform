@@ -125,10 +125,12 @@
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
-        "http://localhost:3000/*"
+        "http://localhost:3000/*",
+        "https://lis-staging.taila0fbf9.ts.net/*"
       ],
       "webOrigins": [
-        "http://localhost:3000"
+        "http://localhost:3000",
+        "https://lis-staging.taila0fbf9.ts.net"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",

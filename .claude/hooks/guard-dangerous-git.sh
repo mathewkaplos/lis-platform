@@ -16,7 +16,10 @@ if echo "$cmd" | grep -qE 'gh pr merge.*--delete-branch'; then
 fi
 
 if echo "$cmd" | grep -qE '^\s*git push\s+(origin\s+)?main\s*$'; then
-  deny "Blocked: direct push to main bypasses the required PR + review gate (Rule #0). Branch protection should already reject this server-side, but this stops it locally first. Open a PR instead."
+  remote=$(git remote get-url origin 2>/dev/null)
+  if echo "$remote" | grep -qi 'lis-platform'; then
+    deny "Blocked: direct push to main bypasses the required PR + review gate (Rule #0). Branch protection should already reject this server-side, but this stops it locally first. Open a PR instead. (This check is lis-platform-specific — the Rule #0 PR gate — confirmed 2026-08-01 there is no matching server-side restriction on lis-engineering, which documents direct-to-main as its own convention.)"
+  fi
 fi
 
 exit 0

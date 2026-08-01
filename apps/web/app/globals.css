@@ -61,10 +61,12 @@
   --popover-foreground: var(--text-primary);
 }
 
-/* Dark tokens apply via either mechanism: OS preference today, and a `[data-theme="dark"]`
-   attribute on :root once TASK-036 builds the manual Light/Dark/System toggle. */
+/* Dark tokens apply via either mechanism: OS preference (unless the user has explicitly picked
+   "light", the `:not(...)` guard TASK-036 added below), or the `[data-theme="dark"]` attribute
+   set by TASK-036's manual toggle -- which must be able to override the OS preference in either
+   direction, not just add dark on top of it. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --background: #0b0e14;
     --surface: #131721;
     --surface-raised: #1a202c;

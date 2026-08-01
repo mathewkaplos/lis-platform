@@ -73,6 +73,20 @@ CLIENT_ID="lis-web"                          # public client, directAccessGrants
 echo "== Step 1: provision a throwaway 'verifier'-role user in Keycloak =="
 echo "First, on the droplet, pick a throwaway password and export it:"
 echo '  export NEW_PASS="$(openssl rand -base64 24)"'
+echo
+echo "KEYCLOAK_ADMIN_PASSWORD is NOT a shell variable that exists anywhere on"
+echo "the droplet -- it only lives inside the running keycloak container's own"
+echo "environment (docker-compose.staging.yml's environment: block, itself"
+echo "sourced from the GitHub secret of the same name, which is write-only --"
+echo "gh secret list can't print it back, by design, not a lost value)."
+echo "Fetch it from that container's own env before using it below:"
+echo '  export KEYCLOAK_ADMIN_PASSWORD=$(docker exec $(docker ps -qf name=keycloak) printenv KC_BOOTSTRAP_ADMIN_PASSWORD)'
+echo "(Valid as long as this exact container has been running continuously"
+echo "since its last boot -- KC_BOOTSTRAP_ADMIN_PASSWORD only applies to a"
+echo "fresh master realm, so if the container were ever restarted after a"
+echo "*different* secret value had been set, this would need Keycloak's own"
+echo "bootstrap-admin recovery command instead: https://github.com/keycloak/keycloak/blob/main/docs/guides/server/bootstrap-admin-recovery.adoc)"
+echo
 echo "Then run via kcadm inside the keycloak container (has admin CLI bundled):"
 cat <<'EOF'
 docker exec -i $(docker ps -qf name=keycloak) /opt/keycloak/bin/kcadm.sh config credentials \
@@ -95,10 +109,6 @@ docker exec -i $(docker ps -qf name=keycloak) /opt/keycloak/bin/kcadm.sh set-pas
 docker exec -i $(docker ps -qf name=keycloak) /opt/keycloak/bin/kcadm.sh add-roles \
   -r lis --uusername technologist-only-demo-user --rolename technologist
 EOF
-echo "KEYCLOAK_ADMIN_PASSWORD is the same value deploy-staging.yml sets as the"
-echo "container's KC_BOOTSTRAP_ADMIN_PASSWORD env var (GH secret) -- check"
-echo "the running container's own env if not otherwise on hand: "
-echo "  docker exec keycloak env | grep KC_BOOTSTRAP_ADMIN_PASSWORD"
 echo
 
 echo "== Step 2: get tokens (password grant, external -- tailnet reachable) =="

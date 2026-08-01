@@ -150,6 +150,21 @@ jobs:
           set -euo pipefail
           cd /opt/lis
 
+          # #188: the droplet's real MagicDNS hostname isn't knowable in
+          # advance (not a secret, not hardcodable -- it's assigned by
+          # Tailscale). Discovered fresh every deploy from tailscaled's own
+          # view of itself, same tool this droplet already runs for deploy
+          # access. grep/sed, not jq -- jq's presence on this droplet was
+          # never confirmed and this is simple enough to avoid the question.
+          MAGIC_DNS_NAME=$(tailscale status --self --json | grep -oP '"DNSName":\s*"\K[^"]+' | sed 's/\.$//')
+          if [ -z "$MAGIC_DNS_NAME" ]; then
+            echo "Could not discover this droplet's MagicDNS hostname from 'tailscale status --self --json'" >&2
+            exit 1
+          fi
+          echo "Discovered MagicDNS hostname: $MAGIC_DNS_NAME"
+          KEYCLOAK_PUBLIC_URL="https://${MAGIC_DNS_NAME}:8443"
+          KEYCLOAK_ISSUER_URL="${KEYCLOAK_PUBLIC_URL}/realms/lis"
+
           cat > .env <<'ENVEOF'
           POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
           LIS_APP_DB_PASSWORD=${{ secrets.LIS_APP_DB_PASSWORD }}
@@ -157,6 +172,12 @@ jobs:
           KEYCLOAK_ADMIN_PASSWORD=${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}
           SESSION_SECRET=${{ secrets.SESSION_SECRET }}
           ENVEOF
+          # Appended separately, not inside the quoted heredoc above -- these
+          # need real bash variable expansion (computed this run, not a GH
+          # secret), while the heredoc stays single-quoted so none of the
+          # actual secrets above are ever subject to bash expansion.
+          echo "KEYCLOAK_PUBLIC_URL=${KEYCLOAK_PUBLIC_URL}" >> .env
+          echo "KEYCLOAK_ISSUER_URL=${KEYCLOAK_ISSUER_URL}" >> .env
 
           docker compose stop api web < /dev/null || true
 
@@ -218,26 +239,84 @@ jobs:
           fi
 
           docker compose up -d valkey keycloak api web < /dev/null
+
+          # #188: TLS termination + hostname, via tailscale serve rather than
+          # a separate reverse-proxy container -- tailscaled is already
+          # running on this droplet (deploy access), so this adds zero new
+          # memory footprint on an already-tight box (§6 of the proposal),
+          # and cert issuance/renewal is automatic (unlike the lower-level
+          # `tailscale cert` command, which needs manual renewal every 90
+          # days). --bg persists the config across reboots/tailscaled
+          # restarts. Idempotent -- safe to re-run every deploy; re-running
+          # with the same args updates the existing config rather than
+          # erroring or duplicating it.
+          #
+          # This is genuinely the least-verified part of this change (flagged
+          # in the proposal's own risk section) -- if this exact invocation
+          # turns out wrong against the real tailnet, it's the first place to
+          # look, not the compose/env changes above.
+          tailscale serve --bg --https=443 http://localhost:3000 < /dev/null
+          tailscale serve --bg --https=8443 http://localhost:8080 < /dev/null
           REMOTE
 
-      - name: Smoke test
+      - name: Smoke test (api, internal)
         run: |
-          # A flat `sleep 8` false-alarmed once Keycloak started doing a real
-          # JVM boot + realm import (post-#189 fix) instead of crash-looping
-          # instantly: on the resource-constrained (1 vCPU/1GB) droplet, the
-          # stack can take longer than 8s to settle. Retry with backoff
-          # instead of guessing a fixed wait.
+          # api has no host port mapping since #188 (never browser-facing,
+          # no reason to expose it) -- check via docker exec against the
+          # container's own loopback instead of the droplet's. Node's own
+          # http module, not curl -- never confirmed curl exists in this
+          # slim runtime image, and Node always does.
           ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} '
+            cd /opt/lis
             for i in $(seq 1 10); do
-              if curl -sf http://localhost:4000/health; then
+              if docker compose exec -T api node -e "require(\"http\").get(\"http://localhost:4000/health\", r => process.exit(r.statusCode === 200 ? 0 : 1)).on(\"error\", () => process.exit(1))" < /dev/null; then
                 exit 0
               fi
-              echo "health check attempt $i failed, retrying in 5s..."
+              echo "api health check attempt $i failed, retrying in 5s..."
               sleep 5
             done
-            echo "health check did not succeed after 10 attempts"
+            echo "api health check did not succeed after 10 attempts"
             exit 1
           '
+
+      - name: Smoke test (web + Keycloak, real HTTPS over the tailnet)
+        run: |
+          # #188's actual point: check the same public HTTPS paths a real
+          # browser would use, from this runner (already tailnet-joined via
+          # the "Connect to Tailscale" step above) -- not just "is the
+          # container running" the way the old localhost check was. A green
+          # step here is real evidence tailscale serve + KC_HOSTNAME +
+          # KEYCLOAK_ISSUER_URL all actually agree with each other, not just
+          # that the config looks right.
+          MAGIC_DNS_NAME=$(ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} \
+            "tailscale status --self --json | grep -oP '\"DNSName\":\s*\"\K[^\"]+' | sed 's/\.\$//'" < /dev/null)
+          if [ -z "$MAGIC_DNS_NAME" ]; then
+            echo "Could not discover the droplet's MagicDNS hostname" >&2
+            exit 1
+          fi
+          echo "Checking against https://${MAGIC_DNS_NAME}"
+
+          for i in $(seq 1 10); do
+            if curl -sf "https://${MAGIC_DNS_NAME}/" > /dev/null; then
+              break
+            fi
+            echo "web check attempt $i failed, retrying in 5s..."
+            sleep 5
+            if [ "$i" = "10" ]; then
+              echo "web did not become reachable over HTTPS after 10 attempts" >&2
+              exit 1
+            fi
+          done
+
+          for i in $(seq 1 10); do
+            if curl -sf "https://${MAGIC_DNS_NAME}:8443/realms/lis/.well-known/openid-configuration" > /dev/null; then
+              exit 0
+            fi
+            echo "Keycloak check attempt $i failed, retrying in 5s..."
+            sleep 5
+          done
+          echo "Keycloak did not become reachable over HTTPS after 10 attempts" >&2
+          exit 1
 
       - name: Prune unused Docker images on droplet
         run: |

@@ -85,3 +85,34 @@ jobs:
           exit 1
       - run: pnpm --filter api test:e2e
       - run: pnpm build
+
+  # TASK-037: CI-enforcing a11y check on the 6 design-system primitives (packages/ui).
+  # Independent of build-and-test above -- no Postgres/Keycloak needed, this is
+  # packages/ui-only. Runs inside the official Playwright image specifically to avoid
+  # needing a manual `playwright install --with-deps` step (this repo's own local dev
+  # sandbox hit a missing-system-library wall trying that during TASK-034/035 -- the
+  # prebuilt image sidesteps it entirely on a GitHub-hosted runner too).
+  storybook-a11y:
+    runs-on: ubuntu-latest
+    container:
+      # Must match the playwright-core version this package's own devDependencies resolve
+      # to (`pnpm why playwright-core`) -- a mismatched image/client version is a real,
+      # documented Playwright footgun (browser protocol version drift).
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lis/ui build-storybook --quiet
+      # concurrently/http-server/wait-on/test-storybook are packages/ui-local
+      # devDependencies, not hoisted to the workspace root (pnpm's default strict
+      # node_modules) -- `pnpm --filter @lis/ui exec` resolves them correctly, a bare
+      # `npx <pkg>` from the repo root would not find them locally.
+      - working-directory: packages/ui
+        run: |
+          pnpm exec concurrently -k -s first -n "SB,TEST" \
+            "pnpm exec http-server storybook-static --port 6006 --silent" \
+            "pnpm exec wait-on tcp:127.0.0.1:6006 && pnpm exec test-storybook --url http://127.0.0.1:6006"

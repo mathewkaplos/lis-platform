@@ -42,8 +42,7 @@ services:
     # KC_HOSTNAME + a way to know it's behind TLS -- both set below.
     # tailscale serve (configured on the droplet itself, not in this file --
     # see deploy-staging.yml) terminates TLS and forwards X-Forwarded-*
-    # headers, so KC_PROXY_HEADERS=xforwarded (not KC_HTTP_ENABLED tricks or
-    # a cert mounted into this container) is the correct match.
+    # headers.
     command: ["start", "--import-realm"]
     mem_limit: 320m
     environment:
@@ -62,7 +61,26 @@ services:
       # also needing KC_HTTP_RELATIVE_PATH reconfiguration for a one-service
       # win that doesn't matter on a single-box deployment.
       KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL}
-      KC_PROXY_HEADERS: xforwarded
+      # Real bug, found via direct droplet console access (docker compose
+      # logs) after this task's 7th live deploy attempt: Keycloak was
+      # crash-looping on every boot with "Key material not provided to
+      # setup HTTPS. Please configure your keys/certificates or start the
+      # server in development mode." -- production mode's --http-enabled
+      # defaults to false (per Keycloak's own docs: "Typically not enabled
+      # in production unless the server is fronted by a TLS termination
+      # proxy"), so without this, Keycloak assumed IT had to terminate
+      # HTTPS itself and looked for cert files that don't exist in this
+      # container. tailscale serve is exactly that TLS-termination proxy --
+      # KC_HTTP_ENABLED=true tells Keycloak not to bother with its own TLS.
+      KC_HTTP_ENABLED: "true"
+      # Second bug found in the same pass, verified against Keycloak's own
+      # docs before fixing (not guessed twice in a row): valid
+      # --proxy-headers values are exactly "forwarded" or "x-forwarded" --
+      # the previous "xforwarded" (no hyphen) was never a recognized value.
+      # Doesn't explain the crash-loop above on its own (that's
+      # KC_HTTP_ENABLED), but needed correcting regardless before trusting
+      # X-Forwarded-* header parsing actually works.
+      KC_PROXY_HEADERS: x-forwarded
     # Real bug, found on #188's live deploy attempts: removing this
     # mapping entirely (the original plan) broke tailscale serve itself --
     # `tailscale serve --https=8443 http://localhost:8080` runs on the

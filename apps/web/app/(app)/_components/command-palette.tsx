@@ -36,7 +36,10 @@ export function CommandPalette() {
       >
         <Search className="size-4" />
         Search...
-        <kbd className="ml-4 rounded border border-border px-1 font-mono text-xs">⌘K</kbd>
+        {/* Handler accepts both Ctrl+K and Cmd+K; Ctrl+K label shown since it's the
+            functional key on every platform (Mac's Cmd+K also works via the metaKey
+            check above) -- avoids a client-only platform-detection effect for a stub. */}
+        <kbd className="ml-4 rounded border border-border px-1 font-mono text-xs">Ctrl+K</kbd>
       </button>
       <SlideOver open={open} onOpenChange={setOpen}>
         <SlideOverContent side="top" className="mx-auto mt-24 h-fit max-w-xl rounded-lg border">

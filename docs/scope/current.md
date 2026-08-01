@@ -1,6 +1,6 @@
 # Status — 2026-08-01 (session 9, continued)
 
-Last commit on main: 0aeee4c — "docs: note gh issue view --comments GraphQL breakage on this repo (#246)".
+Last commit on main: 6fa9b43 — "docs: note MCP fallback for gh write commands blocked by the classifier (#248)".
 
 ## What's actually done (per real evidence)
 
@@ -56,9 +56,8 @@ by this rewrite), #234 closeable (done above), and one Engineering Flow Retrospe
 `gh issue comment` was denied by the permission classifier once this session, while a
 functionally identical `gh issue close --comment` ran unblocked later in the same session — the
 MCP `add_issue_comment` tool is the confirmed-working fallback *for when that block happens*, not
-a suggestion to prefer MCP over `gh` by default. Approved and added to AGENTS.md this session
-(see PR referenced in the commit that carries this breadcrumb, or the adjacent standing-rule PR
-if filed separately).
+a suggestion to prefer MCP over `gh` by default. Approved and added to AGENTS.md as PR #248
+(`6fa9b43`), merged this session.
 
 ## Currently active milestone
 

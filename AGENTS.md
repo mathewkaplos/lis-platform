@@ -90,3 +90,21 @@ packages/ui (design system) · packages/sdk (generated API client)
   real Next.js page to render one hit a client-boundary bug
   (`transpilePackages` fix) that no amount of Storybook or `tsc
   --noEmit` passing would ever have caught.
+- **No single status signal — a breadcrumb's prose, a GitHub Project field,
+  or an issue's own body text — is self-verifying. Check the actual child
+  tasks, merged PRs, or code when a feature's real status matters, not just
+  its headline field.** Three real instances, not hypothetical: (1) session
+  7's breadcrumb reported TASK-036 (#95, app shell) as "completed and
+  closed" when #95 was still open, untouched since creation, with no
+  implementing commit or PR anywhere — caught only by cross-referencing
+  the breadcrumb against `gh issue list`/`git log` at the start of session
+  8. (2) FEAT-009/#18 — both its tasks (#91/#92) were closed and its
+  Implementation Proposal had already been archived `IMPLEMENTED`, but
+  #18 itself carried a stale `Status: Not Started` Project field and zero
+  comments reflecting the real state, invisible unless the child tasks
+  were checked directly. (3) This same session's own initial, corrected
+  belief that FEAT-008/#17 was unstarted — its Project field and body
+  text still read "Not Started," but all four of its tasks (#87-90) were
+  closed and the code was already in the repo; only checking the child
+  tasks and #17's own (already-accurate) comment thread caught the error
+  before it drove a wrong recommendation any further.

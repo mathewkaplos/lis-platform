@@ -151,3 +151,25 @@ unexpected problem — not a one-way door.
    via SSH + `curl localhost:<port>` on the droplet itself.
 
 **Both questions resolved — see Status header.**
+
+## 11. Verified — real deploy outcome (2026-08-01)
+
+Deployed and confirmed working end-to-end via 11 real live deploy attempts (10 failures, each
+a distinct real bug found via direct evidence — `docker compose logs`/`ps` on the droplet, not
+guessed twice in a row — see the `docker-pnpm-monorepo-deploy` Skill entries 15–22 for full
+detail on each). Run [30691557172](https://github.com/mathewkaplos/lis-platform/actions/runs/30691557172)
+is the first fully green run: `Smoke test (api, internal)` and
+`Smoke test (web + Keycloak, real HTTPS over the tailnet)` both passed — the latter making a
+real HTTPS request from the CI runner (itself tailnet-joined) against
+`https://lis-staging.taila0fbf9.ts.net/` and
+`https://lis-staging.taila0fbf9.ts.net:8443/realms/lis/.well-known/openid-configuration`, the
+same paths a real browser would use. This is the actual proof this proposal's §7 acceptance
+criteria required — not just "the deploy step exited 0."
+
+Fixes required beyond this proposal's original plan (merged as separate PRs, all on
+lis-platform main): #219 (MagicDNS discovery matched every tailnet peer), #220 (curl timeout
+missing), #221 (curl `-s` hid real errors), #222 (`tailscale serve` needs a real host-local
+listener, not a removed port mapping), a tailnet ACL port-scope widening (human action, no PR —
+Tailscale admin console), #224 (`KC_HTTP_ENABLED` required in Keycloak production mode), #225
+(prune step needed `if: always()`), #226 (`KC_PROXY_HEADERS` value reverted — image-version-
+specific), #227 (Keycloak's genuine first-boot time needed a wider retry window).

@@ -511,3 +511,121 @@ explicitly deferred here). Noting this explicitly rather than fabricating a ques
 of the template.
 
 **No implementation begins until this revision's status changes to APPROVED.**
+
+---
+
+# Revision: TASK-036 — App shell: sidebar, top bar, org/branch switcher, theme, palette
+Status: APPROVED
+ADR: none — §10's question resolved as a UI-scope decision, not architectural
+Date: 2026-08-01    Backlog ID: TASK-036 (#95)
+
+## 1. Goal
+
+TASK-035 (primitives, PR #216) and TASK-037 (a11y CI, PR #217) are both merged. TASK-036's
+dependency (TASK-035) is satisfied. Per FEAT-010's own AC: shell renders on every authenticated
+route, theme choice persists across reload. Found during 2026-08-01 orientation: session 7's
+breadcrumb wrongly claimed this task was already done — it was not (see `docs/scope/current.md`
+correction, PR #235). This is genuinely the first time `apps/web` gets more than a single page.
+
+## 2. Affected files
+
+- `apps/web/app/(app)/layout.tsx` (new) — route-group layout wrapping every authenticated route
+  in the shell (sidebar + top bar). `apps/web/app/page.tsx`'s existing content moves under this
+  group as `apps/web/app/(app)/page.tsx`, unchanged in behavior.
+- `apps/web/app/(app)/_components/sidebar.tsx`, `top-bar.tsx`, `theme-toggle.tsx`,
+  `command-palette.tsx` (new) — composed from `packages/ui`'s existing primitives/shadcn base
+  components (`Button`, `DropdownMenu`, `SlideOver` reused for the mobile sidebar drawer) per
+  AGENTS.md's "compose from packages/ui" convention. No new `packages/ui` primitives — this is
+  app-shell composition, not new design-system surface area.
+- `apps/web/app/(app)/_components/tenant-switcher.tsx` (new) — **scope depends on §10.**
+- `apps/web/middleware.ts` or a small server action (new/modified) — theme persistence via a
+  `theme` cookie (not `localStorage`), read server-side so the initial SSR render already has the
+  right `[data-theme]` attribute (the mechanism TASK-034 already reserved in `globals.css`) —
+  avoids the flash-of-wrong-theme a client-only toggle would cause.
+- `apps/web/app/globals.css` — no new tokens; only wiring the `[data-theme="dark"]` selector
+  TASK-034 already defined to whatever the theme cookie resolves to.
+
+## 3. Architecture consulted
+
+- **FEAT-010 issue (#19) AC**: "App shell (sidebar, top bar, org/branch switcher, theme toggle,
+  command palette stub) renders on every route and persists theme choice."
+- **Session model** (`apps/web/auth/session.ts`) — confirmed directly: the verified session
+  payload carries exactly `{ sub, tenantId }`. No org/branch concept anywhere.
+- **Database schema** (`db/migrations/*.sql`) — confirmed directly, no `organizations` or
+  `branches` table exists; `tenant_id` is a plain forward-referencing column per ADR-0005/ADR-0009
+  (single Keycloak realm, `tenant_id` attribute) with no FK target table of its own yet.
+- **Domain package** (`packages/domain/src`) — confirmed directly, no org/branch/facility/site
+  type exists.
+- **Conclusion: the "org/branch switcher" named in FEAT-010's AC has no backing data model
+  anywhere in this repo today.** This is the one load-bearing gap this revision can't responsibly
+  paint over — see §10.
+- **Stitch Prompt Library §1 Master Pattern** (app shell/nav pattern) — sidebar + top bar
+  structure, no specific guidance on tenant-switcher data source (that's application data, not a
+  design-system concern).
+
+## 4. Skills loaded
+
+- `engineering/frontend-design` — still doesn't exist (tracked as #234, not blocking, per
+  TASK-034/035's same precedent).
+- `authentication` — checked for org/branch/multi-tenant-session precedent; confirms current
+  session model is single-tenant-per-login only, consistent with §3's finding.
+- `rls-multi-tenancy` — checked; covers RLS enforcement mechanics, not UI-level org/branch
+  switching; no relevant precedent for this question either way.
+
+## 5. Assumptions & autonomous decisions
+
+- **Theme persists via a cookie, not `localStorage`.** Reversible implementation detail:
+  cookie-based persistence lets the very first SSR render already carry the right theme
+  (no flash-of-wrong-theme), matching TASK-034's own forward-looking `[data-theme]` selector.
+- **Command palette is a genuine stub**: a keyboard shortcut (`Cmd/Ctrl+K`) opens an empty
+  `SlideOver`/dialog with a disabled search input and a "Coming soon" placeholder — no real
+  command registry or search logic. FEAT-010's own AC says "command palette stub" explicitly;
+  building real command search now would be scope invention, not stub delivery.
+- **Not treated as ambiguous, decided here:** sidebar/top-bar layout and composition — these
+  compose existing `packages/ui` primitives per already-established convention, no new judgment
+  call needed.
+
+## 6. Risks
+
+- **The org/branch switcher's actual scope is undecided — see §10.** Whichever option is chosen,
+  this is the first UI element in the repo built ahead of its real backing data existing;
+  flagging so it isn't later mistaken for a data-model decision made carelessly.
+- **First multi-route `apps/web` layout** — moving `page.tsx` under a route group is a structural
+  change; low risk (Next.js route groups are additive, don't change the URL), but worth a real
+  manual check that `/` still resolves correctly and the login/logout flow (unauthenticated
+  redirect) still works, not just that the build succeeds.
+
+## 7. Acceptance criteria
+
+TASK-036's literal AC:
+- [ ] Shell renders on every authenticated route and the theme choice persists across reload.
+  Judged by: sidebar + top bar visible on the (currently only) authenticated route; theme choice
+  survives a full page reload (cookie-based, verified by inspecting the response's `Set-Cookie`
+  and the next request's initial render); command palette opens via keyboard shortcut; whatever
+  §10 resolves for the tenant switcher renders without a console error.
+
+## 8. Testing plan
+
+1. `pnpm --filter web typecheck`/`build` pass with the new route group and components.
+2. `pnpm dev`, manual check: login flow still redirects correctly, shell renders post-login,
+   theme toggle changes `[data-theme]` and survives a hard reload, command palette opens/closes
+   via keyboard and click-outside/Esc.
+3. `pnpm typecheck`/`pnpm lint` at the repo root.
+4. Storybook/axe CI (TASK-037's job) will not directly cover `apps/web` pages (it's
+   `packages/ui`-scoped) — manual keyboard-nav + a browser a11y check (axe DevTools or equivalent)
+   substitutes for the shell itself, noted here so it isn't silently skipped.
+
+## 9. Rollback plan
+
+Purely additive/structural — no migration, no tenant-scoped table, no clinical logic. Rollback is
+reverting the PR: `apps/web/app/(app)/` route group removed, `page.tsx` returns to
+`apps/web/app/page.tsx` directly.
+
+## 10. Questions requiring human approval
+
+1. **RESOLVED 2026-08-01 — option (a).** The org/branch switcher shows only the current
+   session's single `tenantId` as a non-interactive label (no dropdown, no switching) — matches
+   what real data exists today, avoids fabricating multi-org UI ahead of the schema. Revisit once
+   a real organizations/branches model exists (not yet scoped as any tracked task/feature).
+
+**All questions resolved — see Status header. Implementation begins now.**

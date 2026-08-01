@@ -350,14 +350,22 @@ jobs:
             fi
           done
 
-          for i in $(seq 1 10); do
+          # 20 attempts, not 10 -- on #188's live deploy attempts, `web`
+          # (Next.js, fast start) succeeded on its first try through
+          # tailscale serve, but Keycloak still 502'd through the full
+          # original 10x5s (50s) window: real evidence its boot (JVM +
+          # realm import, now in production `start` mode rather than the
+          # faster `start-dev` path) genuinely outruns that window on this
+          # 1 vCPU/1GB box, not a config bug -- same class of finding as
+          # #189's own smoke-test-timing fix elsewhere in this file.
+          for i in $(seq 1 20); do
             if curl -sSf --connect-timeout 10 --max-time 10 "https://${MAGIC_DNS_NAME}:8443/realms/lis/.well-known/openid-configuration" > /dev/null; then
               exit 0
             fi
             echo "Keycloak check attempt $i failed, retrying in 5s..."
             sleep 5
           done
-          echo "Keycloak did not become reachable over HTTPS after 10 attempts" >&2
+          echo "Keycloak did not become reachable over HTTPS after 20 attempts" >&2
           exit 1
 
       - name: Prune unused Docker images on droplet

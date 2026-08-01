@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "@lis/domain": "workspace:*",
+    "@lis/ui": "workspace:*",
     "jose": "^5.9.6",
+    "lucide-react": "^0.475.0",
     "next": "16.2.12",
     "openid-client": "^6.8.4",
     "react": "19.2.4",

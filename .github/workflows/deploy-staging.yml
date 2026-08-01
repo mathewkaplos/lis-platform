@@ -321,8 +321,16 @@ jobs:
           fi
           echo "Checking against https://${MAGIC_DNS_NAME}"
 
+          # --connect-timeout/--max-time: without these, a curl that can't
+          # get any response (as opposed to a fast rejection) hangs on the
+          # OS's own default TCP connect timeout per attempt -- confirmed
+          # for real on this task's second live deploy attempt (run
+          # 30684628865): each of the 10 web-check attempts took ~2m19s
+          # instead of the intended ~5s, turning a should-be ~100s failure
+          # into a 23-minute one. 10s is generous for a same-tailnet HTTPS
+          # request; a real success should complete in well under 1s.
           for i in $(seq 1 10); do
-            if curl -sf "https://${MAGIC_DNS_NAME}/" > /dev/null; then
+            if curl -sf --connect-timeout 10 --max-time 10 "https://${MAGIC_DNS_NAME}/" > /dev/null; then
               break
             fi
             echo "web check attempt $i failed, retrying in 5s..."
@@ -334,7 +342,7 @@ jobs:
           done
 
           for i in $(seq 1 10); do
-            if curl -sf "https://${MAGIC_DNS_NAME}:8443/realms/lis/.well-known/openid-configuration" > /dev/null; then
+            if curl -sf --connect-timeout 10 --max-time 10 "https://${MAGIC_DNS_NAME}:8443/realms/lis/.well-known/openid-configuration" > /dev/null; then
               exit 0
             fi
             echo "Keycloak check attempt $i failed, retrying in 5s..."

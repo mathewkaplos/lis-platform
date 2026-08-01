@@ -1,99 +1,77 @@
-# Status — 2026-08-01 (session 8)
+# Status — 2026-08-01 (session 9)
 
-Last commit on main: a1fabc3e9f8ddaaec9b04b22dcea899e79344b30 — "docs: FEAT-010 proposal ->
-IMPLEMENTED, #19 comment, harness principle (#239)". (This line was dropped in this same
-session's earlier full rewrite — the close Skill's check #6 greps for it specifically to verify
-breadcrumb freshness; restored here so that check works mechanically again, not just by eyeballing
-the prose below.)
+Last commit on main: 3a8c4a7 — "docs: add web-verify Skill for apps/web interactive verification (#242)".
 
 ## What's actually done (per real evidence)
 
-Session 8 opened by finding session 7's breadcrumb had overclaimed progress: TASK-036 (#95, app
-shell) was reported as "completed and closed" but issue #95 was still open, untouched since
-creation, with no implementing commit or PR anywhere. Corrected the breadcrumb (PR #235), then
-wrote and got approval for TASK-036's own Implementation Proposal revision (PR #236, resolving
-the one real open question — see below), then actually implemented and merged it (PR #237,
-closing #95 for real this time — verified via `gh issue view 95` showing `state: CLOSED` after
-merge, not just assumed from the PR body).
+Session 9 opened by cross-checking session 8's breadcrumb against GitHub reality (per this
+project's own recurring lesson: a breadcrumb's claims are not self-verifying). Found two real
+errors, both corrected this session:
 
-- **TASK-036 (app shell) — implemented and merged as PR #237, #95 genuinely closed.** New
-  `(app)` route group in `apps/web` wraps every authenticated route in a sidebar + top bar,
-  composed from TASK-035's primitives. Theme toggle persists via an httpOnly cookie (SSR reads
-  it before first paint, no flash of wrong theme). Command palette is a real stub (Cmd/Ctrl+K,
-  "Coming soon", no command registry) per FEAT-010's own AC wording. Tenant label renders
-  `session.tenantId` as a static, non-interactive element rather than a switcher — resolved
-  during proposal drafting: no organizations/branches data model exists anywhere in this repo
-  (confirmed directly — no table, no domain type, session carries only `tenantId`), so the task
-  doesn't fabricate UI ahead of that schema. Revisit once org/branch is actually modeled (not
-  yet scoped as any tracked work).
-- **Two real, previously-latent bugs found and fixed while building TASK-036** — both flagged as
-  candidate first-content for the still-missing `engineering/frontend-design` Skill (#234,
-  commented with the details):
-  1. `globals.css`'s dark-mode media query applied unconditionally, so picking "light" while the
-     OS was set to dark had no effect — needed a `:not([data-theme="light"])` guard so the
-     manual toggle actually overrides the system preference in both directions.
-  2. `@lis/ui` was being consumed via its `tsc`-compiled CommonJS `dist`, which prepends
-     `"use strict"` before each client component's own `"use client"` directive — breaking
-     Next.js's client-boundary detection (`Element type is invalid: ... got undefined`) the
-     first time a real Next.js page actually rendered a TASK-035 primitive. TASK-035 itself was
-     only ever exercised via Storybook/Vite, which reads source directly and never hit this
-     path — so this bug shipped invisibly in PR #216 and PR #217 both. Fixed by pointing
-     `@lis/ui`'s `main`/`types` at `src/index.ts` directly and adding
-     `transpilePackages: ["@lis/ui"]` to `apps/web/next.config.ts` — matching shadcn/ui's own
-     documented monorepo pattern (already researched in TASK-035's own proposal §3, just not
-     fully wired up).
-- **Real end-to-end verification, not just typecheck/build.** This sandbox has the same
-  missing-`libnss3.so`/no-root limitation noted in TASK-034/035/037's own risk sections — worked
-  around this time by `apt-get download` (no root needed) + extracting the `.deb`s directly and
-  pointing `LD_LIBRARY_PATH` at them, then driving a real headless Chromium against `pnpm dev`
-  with a session cookie minted locally using the same signing code/secret `apps/web` itself uses
-  (no live Keycloak needed for this UI-only check). Confirmed: shell renders server-side, theme
-  toggle flips `[data-theme]` and survives a hard reload, command palette opens via keyboard and
-  closes via Escape, zero console errors, both light/dark screenshots look correct.
-- **New follow-up issue filed: #234** — `engineering/frontend-design` Skill, required by
-  FEAT-010/035/047/048's own issue text, doesn't exist anywhere in `lis-engineering`. Not
-  blocking (per human decision at session start) — now has two real candidate findings attached
-  (the bugs above) for whoever authors it.
-- **FEAT-010's four tasks (TASK-034/035/036/037) are now genuinely all done, merged, and their
-  own issues closed** — corrected from session 7's premature claim. FEAT-010's own feature-level
-  issue (#19) is deliberately left open, not auto-closed: its own Definition of Done includes
-  "demoed on staging" and "Implementation Proposal archived with status IMPLEMENTED".
-- **`feat-010-design-system-v1.md`'s Implementation Proposal archived for real, PR #239.** All
-  four `Status:` headers (original TASK-034 proposal + the TASK-035/037/036 revisions) moved from
-  `APPROVED` to `IMPLEMENTED`, each citing its actual merge SHA (#212/#216/#217/#237) — the DoD
-  item this specifically requires. Commented on #19 explaining it stays open pending only the
-  staging demo now (same pattern as #17/FEAT-008) — the proposal-archival half of its DoD is done,
-  the staging-demo half genuinely isn't yet.
-- **AGENTS.md's Rules of engagement gained a new standing principle, PR #239**: "a pass in one
-  test/build harness does not prove a pass in another" — cites three real instances this project
-  has actually hit (Reflector DI/#185, `set_config` connection-pooling/#177, and this session's
-  own `transpilePackages` bug/#237), not a hypothetical.
-- **Session-close retrospective surfaced two real findings**, both resolved by human decision, not
-  silently: (1) a project Skill for interactively verifying `apps/web` (dev-server launch,
-  session-cookie minting without live Keycloak, this sandbox's `libnss3.so` workaround) was
-  approved and drafted at `.claude/skills/web-verify/SKILL.md` — **not yet committed**, shown to
-  the human for review first, per Level-2 drafting discipline; (2) `gh pr merge` was blocked
-  inconsistently by the platform's own auto-mode classifier on 2 of this session's 5 merges — human
-  decision: leave as-is, it's an independent safety layer, not a bug to route around; revisit only
-  with clearer evidence across many future sessions, not this one session's five data points.
-- **New backlog item filed, not milestone-scoped yet: #240** — TASK-036's `Sidebar` is fully
-  hidden below Tailwind's `sm` breakpoint with no replacement trigger (hamburger/drawer) to reach
-  it on narrow viewports. Found during TASK-036's own manual-verification pass, not by any
-  automated check. Fast-follow vs. accept-for-now deliberately left as an open decision, not
-  resolved here.
+1. **The breadcrumb was one commit stale** — it cited `a1fabc3` as HEAD when `3a8c4a7` (PR #242,
+   web-verify Skill) had already merged, and it still said the web-verify Skill was "not yet
+   committed" when it now is.
+2. **The breadcrumb's list of "M2's remaining open items" (#192/#193/#194/#234) was wrong.**
+   None of those issues carry the M2 milestone at all (`gh issue view <n> --json milestone`
+   confirms `milestone: none` for each). The actual open M2 issues are #2 (EPIC-002), #17
+   (FEAT-008), #18 (FEAT-009), #19 (FEAT-010).
+
+Digging into those four surfaced a bigger, more consequential error: **FEAT-008 (Authentication)
+was not "not started."** Its issue (#17) still showed a stale `Status: Not Started` Project field
+and an unedited body, but all four of its tasks — TASK-028/029/030/031 (#87-90) — were closed
+long before this session, with real code already in the repo (`apps/api/src/auth/`,
+`infra/keycloak/lis-realm.json` with `technologist`/`verifier` realm roles, `apps/web/auth/` +
+`apps/web/app/api/auth/{login,callback,logout}`). #17 already had a correct closing comment from
+an earlier session explaining it stayed open because staging's TLS/hostname setup blocked a real
+browser login/logout round-trip — and that blocker (#188) was itself closed today, 2026-08-01,
+via PR #218 (`a25ff02`), which is exactly why #232 (real browser verification over tailnet HTTPS)
+now exists as the live follow-up. The lesson generalizes: **a feature issue's own summary
+text/Project-status field can be stale even when its child tasks are closed and the comment
+thread already has the real story — check the children and the comments, not just the parent
+issue's headline fields.**
+
+- **All three of EPIC-002's features (FEAT-008 #17, FEAT-009 #18, FEAT-010 #19) are now
+  confirmed code-complete.** Bookkeeping brought in line with reality this session:
+  - FEAT-008's Implementation Proposal (`docs/plans/feat-008-authentication-keycloak-oidc.md`)
+    moved from `APPROVED` to `IMPLEMENTED`, citing all four merge SHAs (PR #175/#176/#177/#182).
+    Followed up on #17 noting the TLS blocker its own closing comment named is now resolved, and
+    that #232 is the one remaining item before it can close.
+  - FEAT-009's issue (#18) had zero comments and stale Project-status despite both its tasks
+    (#91/#92) being closed and its own proposal already `IMPLEMENTED` since 2026-07-31 — this
+    was pure neglect, not a real gap. Added the same evidence-citing closing comment #17/#19
+    already had.
+  - EPIC-002 (#2) had zero comments despite all three child features being code-complete.
+    Added a summary comment; left the epic open (correctly — none of its three children have
+    closed yet).
+  - None of these issues were closed — each is correctly blocked on its own "demoed on staging"
+    DoD item, not on remaining engineering work. Convention followed throughout: task-level AC
+    checkboxes and Project-status fields in issue bodies are left unedited (matching the
+    #91/#92/#93-96 precedent) — evidence goes in a comment, not a body edit.
+- **#232 — "Manual verification pending: real browser login/logout over tailnet HTTPS; TASK-035
+  Storybook visual/contrast glance" — still open.** Its own "Done when" criteria require
+  confirmation "by a human with tailnet access" for both items; this is explicitly not something
+  an agent can close out. [Next: gather evidence via the web-verify Skill to make the human's
+  review as fast as possible, without claiming either item done.]
 
 ## Currently active milestone
 
-**M2 — Identity, Tenancy, AuthZ + Design System**: 11 closed / 4 open (confirmed via
-`gh api repos/:owner/:repo/milestones/3` after TASK-036's merge — up from the 9/6 session 8
-opened with, once #95's overclaim was corrected). M1 unchanged at 3 open/16 closed, all three
-still individually blocked (see earlier session detail via git history if needed).
+**M2 — Identity, Tenancy, AuthZ + Design System**: 11 closed / 4 open (unchanged count from
+session 8's own confirmation — the count was right, the *named* open items were wrong; see
+above). All four open issues (#2/#17/#18/#19) are individually blocked only on their own
+staging-facing verification — no remaining engineering work in any of them.
 
-M2's remaining open items:
+M2's remaining open items (corrected):
+- **#2** (EPIC-002) — stays open until its three children close.
+- **#17** (FEAT-008) — blocked on #232 item 1 (real browser login/logout over tailnet HTTPS).
+- **#18** (FEAT-009) — blocked on its own staging demo (not yet attempted).
+- **#19** (FEAT-010) — blocked on its own staging demo (not yet attempted).
+- **#232** — the two manual-verification items above; needs a human with tailnet access.
+
+**Unrelated open issues, not M2-milestoned (carried forward, still genuinely unresolved):**
 - **#192** — GCP billing/Stitch MCP decision. Still open, still not resolved.
 - **#193, #194** — still open, still genuinely unresolved, unchanged across multiple sessions now
   (unreproduced exit-56/exit-52 deploy smoke-test failures from session 4).
-- **#234 (new this session)** — missing `engineering/frontend-design` Skill. Not blocking.
+- **#234** — missing `engineering/frontend-design` Skill. Not blocking.
 - Design-system work beyond FEAT-010 v1 (further primitives, app-shell polish, real org/branch
   switcher once that data model exists) not yet scoped as a next feature.
 
@@ -105,23 +83,18 @@ M2's remaining open items:
 
 ## Notes / gotchas for the next session
 
-- **A breadcrumb's own claims are not self-verifying — check them against GitHub/git reality
-  before trusting them, the same way any other claim gets checked.** This session opened by
-  finding session 7's breadcrumb had wrongly marked TASK-036 done; the giveaway was cross-
-  referencing the breadcrumb against `gh issue list`/`git log`, not trusting the prose. Worth
-  doing this same cross-check reflexively at the start of every session, not just when something
-  looks off.
-- **A workspace package consumed only through a bundler-agnostic tool (Storybook/Vite here) can
-  hide a real client-boundary bug that only surfaces the first time an actual Next.js page
-  renders it.** TASK-035/037 both shipped and merged clean because neither ever exercised
-  `@lis/ui` through Next's own bundler — worth remembering for any future workspace package that
-  gets consumed by more than one build tool: passing in one doesn't prove it works in the other.
-- **This sandbox's missing-`libnss3.so` limitation (blocking real Playwright screenshots,
-  documented since TASK-034/035) has a real workaround**: `apt-get download <pkg>` doesn't need
-  root, and the resulting `.deb` can be extracted with `dpkg-deb -x` and pointed at via
-  `LD_LIBRARY_PATH` without ever needing `sudo apt-get install`. Needed `libnss3`, `libnspr4`,
-  `libasound2t64` this session to get a real headless Chromium launching. Worth using this
-  instead of falling back to "can't verify visually" next time this limitation is hit.
-- Session 7's own notes/gotchas (droplet-log verification discipline, tailnet ACL port scoping,
-  Keycloak config-value version drift, `if: always()` cleanup steps) are unchanged and still
-  apply — not repeated here, see git history for the full session-7 breadcrumb if needed.
+- **Checking a feature issue's headline Project-status field and body text is not enough —
+  check its child tasks and its comment thread too.** This session found FEAT-008 (#17) marked
+  "Not Started" in its own Project field while all four of its tasks were closed, real code
+  existed, and its comment thread already had the accurate story. The parent issue's own
+  summary fields can lag the truth even when the truth is one click away in the same issue.
+  Combined with session 8's own finding (breadcrumb prose can overclaim), the fuller rule is:
+  **no single signal — breadcrumb, issue body, Project field, or comment thread — is
+  self-verifying; check the actual child tasks/code/PRs when a feature's status matters.**
+- **This project's convention for closing out task-level work is a comment, not a body edit.**
+  AC checkboxes and Project-status fields inside issue bodies are deliberately left unedited;
+  the evidence (PRs, merge SHAs, what was actually verified and how) goes in a closing comment
+  instead. Followed for #17/#18/#2 this session; matches the #91/#92/#93-96 precedent.
+- Session 8's notes/gotchas (breadcrumb self-verification, `@lis/ui` CJS/client-boundary bug,
+  the `libnss3.so` `apt-get download` workaround) are unchanged and still apply — not repeated
+  here, see git history for the full session-8 breadcrumb if needed.

@@ -1,7 +1,8 @@
 # Implementation Proposal: FEAT-008 Authentication (Keycloak/OIDC)
-Status: APPROVED
-ADR: adr-0009 (realm/tenant model, proposed), adr-0010 (RLS binding under pooling, proposed)    Date: 2026-07-30
+Status: IMPLEMENTED
+ADR: adr-0009 (realm/tenant model, accepted), adr-0010 (RLS binding under pooling, accepted)    Date: 2026-07-30
 Backlog ID: FEAT-008 (#17) / TASK-028 (#87), TASK-029 (#88), TASK-030 (#89), TASK-031 (#90)
+Merge commits: TASK-028 PR #175 (`31e8875`), TASK-029 PR #176 (`1030593`), TASK-030 PR #177 (`ab0ff0d`), TASK-031 PR #182 (`7abc54f`)
 
 ## 1. Goal
 
@@ -262,3 +263,15 @@ this milestone, so there is no data-loss exposure.
 the recommended option in each case. TASK-028 may proceed; TASK-029/030/031 follow
 under this same approval per §1's stated sequencing (028 → 029 → 030, with 031
 parallel-eligible against 029 per its own Dependencies field).
+
+**Implemented 2026-07-30/31** — all four tasks merged and each feature-level AC item
+(§7) verified against a live Keycloak + Postgres stack, not assumed from passing unit
+tests alone: TASK-028 PR #175 (`31e8875`), TASK-029 PR #176 (`1030593`), TASK-030 PR
+#177 (`ab0ff0d` — the pooling-safe `SET LOCAL` fix superseding an earlier same-day
+attempt, `965ac41`, per this project's own "a pass in one harness doesn't prove a pass
+in another" lesson), TASK-031 PR #182 (`7abc54f`). Issue #17 was correctly kept open at
+the time pending real TLS/hostname hardening for staging (`KC_HOSTNAME`/`Secure`-cookie
+gap, see #17's own closing comment) — that blocker is now resolved (#188, closed
+2026-08-01, PR #218, `a25ff02`). The one remaining item before #17 can close is #232's
+real browser login/logout verification over tailnet HTTPS by a human with tailnet
+access — not further engineering work.

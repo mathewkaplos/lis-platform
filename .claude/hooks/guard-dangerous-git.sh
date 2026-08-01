@@ -1,25 +1,15 @@
 #!/usr/bin/env bash
-input=$(cat)
-cmd=$(echo "$input" | python3 -c "import json,sys; print(json.load(sys.stdin).get('tool_input',{}).get('command',''))" 2>/dev/null)
-
-deny() {
-  python3 -c "import json; print(json.dumps({'hookSpecificOutput':{'hookEventName':'PreToolUse','permissionDecision':'deny','additionalContext':'$1'}}))"
-  exit 2
-}
-
-if echo "$cmd" | grep -qE 'git reset --hard'; then
-  deny "Blocked: git reset --hard wipes the ENTIRE working tree, not just the target commit — this caused real data loss on 2026-07-26 (see M0-retrospective.md). Use git restore <specific-file> instead, or confirm explicitly with the human first."
-fi
-
-if echo "$cmd" | grep -qE 'gh pr merge.*--delete-branch'; then
-  deny "Blocked: combining merge with --delete-branch deleted a branch holding a real unpushed commit on 2026-07-26 (the merge was a silent no-op, delete happened anyway). Split into: gh pr merge <n> --squash, then confirm it landed (git log origin/main), then delete the branch as its own separate step."
-fi
-
-if echo "$cmd" | grep -qE '^\s*git push\s+(origin\s+)?main\s*$'; then
-  remote=$(git remote get-url origin 2>/dev/null)
-  if echo "$remote" | grep -qi 'lis-platform'; then
-    deny "Blocked: direct push to main bypasses the required PR + review gate (Rule #0). Branch protection should already reject this server-side, but this stops it locally first. Open a PR instead. (This check is lis-platform-specific — the Rule #0 PR gate — confirmed 2026-08-01 there is no matching server-side restriction on lis-engineering, which documents direct-to-main as its own convention.)"
-  fi
-fi
-
-exit 0
+# Parses tool_input.command structurally (strips heredoc bodies and quoted
+# argument text, then only checks segments whose actual leading executable
+# is git/gh) before applying any dangerous-pattern check. A dangerous phrase
+# inside quoted data (a --body string, a commit message, a heredoc) must
+# never trigger the same guard as the phrase being the command executed —
+# confirmed as a real false positive 2026-08-01 (a PR --body describing
+# "git reset --hard" in a test-plan bullet tripped the old whole-string
+# grep). Logic lives in guard-dangerous-git.py, not inlined here: a
+# `python3 - <<'EOF'` heredoc would feed the heredoc to python as its own
+# program source, leaving sys.stdin already at EOF for the real tool_input
+# JSON — a real bug caught during this fix's own test pass, silently
+# disabling every check (always exit 0) rather than just the one meant to
+# be relaxed.
+exec python3 "$(dirname "$0")/guard-dangerous-git.py"

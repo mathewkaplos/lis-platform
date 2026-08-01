@@ -329,8 +329,17 @@ jobs:
           # instead of the intended ~5s, turning a should-be ~100s failure
           # into a 23-minute one. 10s is generous for a same-tailnet HTTPS
           # request; a real success should complete in well under 1s.
+          #
+          # -sS not -sf: plain -s silences curl's own error text along with
+          # its progress meter, leaving nothing but a generic "attempt N
+          # failed" in the log -- confirmed unhelpful across three real
+          # failed attempts on this task so far (HTTPS Certificates now
+          # enabled, timeout fixed, still failing for an as-yet-unknown
+          # reason). -S keeps the actual error (e.g. "Failed to connect",
+          # "SSL certificate problem") visible on stderr while still
+          # suppressing the progress meter.
           for i in $(seq 1 10); do
-            if curl -sf --connect-timeout 10 --max-time 10 "https://${MAGIC_DNS_NAME}/" > /dev/null; then
+            if curl -sSf --connect-timeout 10 --max-time 10 "https://${MAGIC_DNS_NAME}/" > /dev/null; then
               break
             fi
             echo "web check attempt $i failed, retrying in 5s..."
@@ -342,7 +351,7 @@ jobs:
           done
 
           for i in $(seq 1 10); do
-            if curl -sf --connect-timeout 10 --max-time 10 "https://${MAGIC_DNS_NAME}:8443/realms/lis/.well-known/openid-configuration" > /dev/null; then
+            if curl -sSf --connect-timeout 10 --max-time 10 "https://${MAGIC_DNS_NAME}:8443/realms/lis/.well-known/openid-configuration" > /dev/null; then
               exit 0
             fi
             echo "Keycloak check attempt $i failed, retrying in 5s..."

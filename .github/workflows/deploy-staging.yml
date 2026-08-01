@@ -369,6 +369,16 @@ jobs:
           exit 1
 
       - name: Prune unused Docker images on droplet
+        # Real bug, found on #188's live deploy attempts: this step only
+        # ran after a *successful* deploy, so any run failing before this
+        # point (as several did while iterating on #188 -- ACL/proxy/
+        # KC_HTTP_ENABLED issues, none of them disk-related) left that
+        # attempt's freshly-pulled images uncleaned. 8 failed attempts in a
+        # row exhausted the disk this way ("no space left on device")
+        # despite none of the individual failures being a disk problem --
+        # if: always() so this genuinely always runs, regardless of what
+        # failed earlier in the job.
+        if: always()
         run: |
           # Repeated deploys in a single day (this pipeline pushes fresh
           # :latest images on every push to main) leave superseded,
@@ -381,7 +391,7 @@ jobs:
           # this workflow; -f skips the confirmation prompt. Never touches
           # images used by running or stopped containers, or any volume.
           ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} \
-            'docker image prune -a -f'
+            'docker image prune -a -f' || true
 
       - name: Clean up deploy key
         if: always()

@@ -28,10 +28,16 @@ function StatCard({ label, value, delta, sparkline, className }: StatCardProps) 
         <div className="flex flex-col gap-1">
           <p className="text-2xl font-semibold tabular-nums text-foreground">{value}</p>
           {delta ? (
+            // Tinted chip, not bare text on the card background -- text-success/text-danger
+            // directly on --card fails WCAG AA contrast at this size (caught by TASK-037's CI
+            // a11y check, real finding not a hypothetical). Same treatment StatusPill's H/L
+            // variant already uses successfully.
             <span
               className={cn(
-                "inline-flex items-center gap-0.5 text-xs font-medium tabular-nums",
-                tone === "positive" ? "text-success" : "text-danger",
+                "inline-flex w-fit items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs font-medium tabular-nums",
+                tone === "positive"
+                  ? "border-success/30 bg-success/10 text-success"
+                  : "border-danger/30 bg-danger/10 text-danger",
               )}
             >
               {delta.direction === "up" ? (

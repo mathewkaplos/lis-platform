@@ -154,10 +154,27 @@ jobs:
           # advance (not a secret, not hardcodable -- it's assigned by
           # Tailscale). Discovered fresh every deploy from tailscaled's own
           # view of itself, same tool this droplet already runs for deploy
-          # access. grep/sed, not jq -- jq's presence on this droplet was
-          # never confirmed and this is simple enough to avoid the question.
-          MAGIC_DNS_NAME=$(tailscale status --self --json | grep -oP '"DNSName":\s*"\K[^"]+' | sed 's/\.$//')
-          if [ -z "$MAGIC_DNS_NAME" ]; then
+          # access.
+          #
+          # Real bug, found on this exact task's first live deploy attempt:
+          # `tailscale status --self --json | grep DNSName` (no anchor to
+          # the Self object specifically) matched every connected peer's
+          # DNSName too -- including the ephemeral CI runner, freshly
+          # joined as tag:ci-runner for this same deploy -- producing a
+          # multi-line value that corrupted .env ("`.env: line 7:
+          # github-runnervmvrwv9.taila0fbf9.ts.net:8443: command not
+          # found`" -- the runner's own hostname, not the droplet's, on its
+          # own broken line). jq -- if present -- resolves this
+          # unambiguously via the actual `.Self.DNSName` path; falls back
+          # to the same grep with `head -1` if jq isn't installed (Self
+          # appears before Peer in Tailscale's own JSON field order, but
+          # jq is the real fix here, not a guess about ordering).
+          if command -v jq >/dev/null 2>&1; then
+            MAGIC_DNS_NAME=$(tailscale status --self --json | jq -r '.Self.DNSName' | sed 's/\.$//')
+          else
+            MAGIC_DNS_NAME=$(tailscale status --self --json | grep -oP '"DNSName":\s*"\K[^"]+' | head -1 | sed 's/\.$//')
+          fi
+          if [ -z "$MAGIC_DNS_NAME" ] || [ "$MAGIC_DNS_NAME" = "null" ]; then
             echo "Could not discover this droplet's MagicDNS hostname from 'tailscale status --self --json'" >&2
             exit 1
           fi
@@ -288,9 +305,17 @@ jobs:
           # step here is real evidence tailscale serve + KC_HOSTNAME +
           # KEYCLOAK_ISSUER_URL all actually agree with each other, not just
           # that the config looks right.
+          # Same jq-with-grep-fallback fix as the "Pull and restart" step
+          # above -- the earlier plain-grep version matched every connected
+          # peer's DNSName, not just the droplet's own, and picked up the
+          # CI runner's ephemeral hostname on this task's first real deploy
+          # attempt. Single-quoted remote command this time (simpler than
+          # escaping through a double-quoted wrapper for no added benefit
+          # here -- no local variable needs interpolating into it).
           MAGIC_DNS_NAME=$(ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} \
-            "tailscale status --self --json | grep -oP '\"DNSName\":\s*\"\K[^\"]+' | sed 's/\.\$//'" < /dev/null)
-          if [ -z "$MAGIC_DNS_NAME" ]; then
+            'if command -v jq >/dev/null 2>&1; then tailscale status --self --json | jq -r ".Self.DNSName"; else tailscale status --self --json | grep -oP "\"DNSName\":\s*\"\K[^\"]+" | head -1; fi' < /dev/null)
+          MAGIC_DNS_NAME=$(echo "$MAGIC_DNS_NAME" | sed 's/\.$//')
+          if [ -z "$MAGIC_DNS_NAME" ] || [ "$MAGIC_DNS_NAME" = "null" ]; then
             echo "Could not discover the droplet's MagicDNS hostname" >&2
             exit 1
           fi

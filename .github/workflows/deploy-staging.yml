@@ -181,6 +181,15 @@ jobs:
           echo "Discovered MagicDNS hostname: $MAGIC_DNS_NAME"
           KEYCLOAK_PUBLIC_URL="https://${MAGIC_DNS_NAME}:8443"
           KEYCLOAK_ISSUER_URL="${KEYCLOAK_PUBLIC_URL}/realms/lis"
+          # apps/web's OIDC login/logout routes need this too -- self-hosted
+          # Next.js standalone mode has no working way to trust the incoming
+          # Host header in this Next version (confirmed by inspecting the
+          # built required-server-files.json directly: experimental.
+          # trustHostHeader is silently dropped by config validation), so
+          # request.nextUrl.origin resolves to the web container's own
+          # Docker-assigned hostname instead of this real one -- broke the
+          # OIDC redirect_uri, which Keycloak then rejected outright.
+          PUBLIC_APP_URL="https://${MAGIC_DNS_NAME}"
 
           cat > .env <<'ENVEOF'
           POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
@@ -195,8 +204,26 @@ jobs:
           # actual secrets above are ever subject to bash expansion.
           echo "KEYCLOAK_PUBLIC_URL=${KEYCLOAK_PUBLIC_URL}" >> .env
           echo "KEYCLOAK_ISSUER_URL=${KEYCLOAK_ISSUER_URL}" >> .env
+          echo "PUBLIC_APP_URL=${PUBLIC_APP_URL}" >> .env
 
           docker compose stop api web < /dev/null || true
+
+          # Keycloak has no persisted data volume here (only the realm
+          # import *file* is bind-mounted, not a data directory) -- it
+          # falls back to an embedded, ephemeral store living in the
+          # container's own writable layer. A plain stop+up leaves that
+          # same container (and its already-imported "lis" realm) intact,
+          # so --import-realm silently skips re-importing on every restart
+          # -- any change to lis-realm.json (roles, client redirect URIs,
+          # anything) would deploy successfully but never actually take
+          # effect. Confirmed live this session: a redirectUris fix sat
+          # correctly in the file through a full green deploy and still
+          # didn't work until the container was explicitly removed (not
+          # just stopped) on the droplet by hand. rm -f -s here makes every
+          # deploy do that automatically -- keycloak state is meant to be
+          # fully rebuilt from lis-realm.json each time, same as api/web
+          # already get fresh containers from freshly-pulled images.
+          docker compose rm -f -s keycloak < /dev/null || true
 
           # Prune before pulling, not just after a successful deploy (see
           # the end-of-job prune step's own comment) -- belt and suspenders:

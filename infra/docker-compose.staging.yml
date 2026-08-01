@@ -140,16 +140,24 @@ services:
       SESSION_SECRET: ${SESSION_SECRET}
       # #188 (was the TASK-028 gap this comment used to describe): now the
       # real public URL (KEYCLOAK_PUBLIC_URL/realms/lis, discovered at
-      # deploy time -- see deploy-staging.yml), correct for both apps/web's
-      # server-side calls (discovery/token-exchange) AND the browser-facing
-      # authorization/end-session redirect URLs it builds from this same
-      # value -- both now resolve to something a real browser can reach.
+      # deploy time -- see deploy-staging.yml), correct for apps/web's own
+      # server-side calls to Keycloak (discovery/token-exchange).
+      #
+      # Correction to this comment's own prior claim: this value does NOT
+      # also fix the browser-facing authorization/end-session redirect
+      # URLs -- those are built from THIS app's own public origin, not
+      # Keycloak's, and request.nextUrl.origin turned out wrong for that
+      # in this Next.js version's standalone output (resolves to the
+      # container's own Docker-assigned hostname behind a reverse proxy,
+      # not the real one). PUBLIC_APP_URL below is the actual fix for that,
+      # separate from and not fixed by this KEYCLOAK_ISSUER_URL value.
       #
       # The related NODE_ENV=production Secure-cookie requirement (confirmed
       # directly last session: a browser silently drops a Secure cookie sent
       # over plain HTTP) is what this whole change unblocks -- tailscale
       # serve now provides the real HTTPS this needed.
       KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL}
     # Same fix as keycloak's mapping above, same real bug -- tailscale
     # serve (host-side) needs a real host-local listener to proxy into.
     # 127.0.0.1-bound, not 0.0.0.0 -- no exposure beyond the host itself.

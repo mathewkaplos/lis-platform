@@ -1,5 +1,5 @@
 # Implementation Proposal: FEAT-010 Design system v1
-Status: APPROVED
+Status: IMPLEMENTED — merged as PR #212 (cf6538620e3aca6848870677b71df336ce6caf9b), 2026-07-31
 ADR: none — §10 Q1 resolved as (c) (no live Stitch invocation for this task); not warranted for this scope
 Date: 2026-07-31    Backlog ID: FEAT-010 (#19) / TASK-034 (#93)
 
@@ -226,7 +226,7 @@ yet.
 ---
 
 # Revision: TASK-035 — Build 6 primitives (DataTable, StatusPill, FilterBar, SlideOver, StatCard, FormField)
-Status: APPROVED
+Status: IMPLEMENTED — merged as PR #216 (cf59d28e5a5b404fc786693f041d96b9216797b4), 2026-08-01
 ADR: none — §10 Q3 confirmed the dependency set as-is; a library-adoption choice, not architectural
 Date: 2026-07-31    Backlog ID: TASK-035 (#94)
 
@@ -415,7 +415,7 @@ production data or deployed feature depends on this yet.
 ---
 
 # Revision: TASK-037 — Storybook CI a11y step
-Status: APPROVED
+Status: IMPLEMENTED — merged as PR #217 (db2982f9d1d0e3acca118320dbf706d056bf226d), 2026-08-01
 ADR: none — CI-only addition, no architectural decision
 Date: 2026-08-01    Backlog ID: TASK-037 (#96)
 
@@ -515,7 +515,7 @@ of the template.
 ---
 
 # Revision: TASK-036 — App shell: sidebar, top bar, org/branch switcher, theme, palette
-Status: APPROVED
+Status: IMPLEMENTED — merged as PR #237 (60d5212b5b0bdb7cf47789f7b5a5143f6e48a8ba), 2026-08-01
 ADR: none — §10's question resolved as a UI-scope decision, not architectural
 Date: 2026-08-01    Backlog ID: TASK-036 (#95)
 

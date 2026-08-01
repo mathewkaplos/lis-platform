@@ -96,3 +96,18 @@ convention `docker-compose.yml` already uses for its plain-text local `POSTGRES_
 (dev-only, ephemeral container, never exposed). Do not reuse this realm file as-is for
 staging/production; a real deployment needs its own user provisioning, not a
 checked-in test password.
+
+## Staging TLS + hostname (#188)
+
+Staging previously ran Keycloak as `start-dev` with no TLS and no `KC_HOSTNAME` — the full
+browser login/logout flow could not complete against it (session/PKCE cookies are correctly
+marked `Secure` under `NODE_ENV=production`, which a browser silently refuses to send over
+plain HTTP). Fixed by switching to Keycloak's production `start` mode, fronted by
+`tailscale serve` (configured directly on the droplet by `deploy-staging.yml`, not in
+`docker-compose.staging.yml`) rather than a separate reverse-proxy container — no new memory
+footprint on this already memory-constrained box, and cert issuance/renewal is automatic.
+**Deliberately Tailscale-only, not a public domain** — consistent with ADR-0003's existing
+precedent for this droplet; staging is reachable only to people on (or invited to) the
+tailnet. `KEYCLOAK_PUBLIC_URL`/`KEYCLOAK_ISSUER_URL` are derived at deploy time from the
+droplet's real MagicDNS hostname (discovered via `tailscale status --self --json`, never
+hardcoded — it isn't knowable in advance).

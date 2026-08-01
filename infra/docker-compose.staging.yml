@@ -37,7 +37,14 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     restart: unless-stopped
-    command: ["start-dev", "--import-realm"]
+    # #188: start-dev is explicitly dev-only per Keycloak's own docs (no TLS,
+    # no real hostname enforcement). Production mode (`start`) requires
+    # KC_HOSTNAME + a way to know it's behind TLS -- both set below.
+    # tailscale serve (configured on the droplet itself, not in this file --
+    # see deploy-staging.yml) terminates TLS and forwards X-Forwarded-*
+    # headers, so KC_PROXY_HEADERS=xforwarded (not KC_HTTP_ENABLED tricks or
+    # a cert mounted into this container) is the correct match.
+    command: ["start", "--import-realm"]
     mem_limit: 320m
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
@@ -48,7 +55,17 @@ services:
       # consumer of the 5 services on this droplet. Capped well under
       # mem_limit to leave room for metaspace/thread stacks/native memory.
       JAVA_OPTS_APPEND: "-Xms64m -Xmx224m"
-    ports: ["8080:8080"]
+      # #188: the real MagicDNS hostname, discovered fresh at deploy time
+      # (deploy-staging.yml) since it isn't knowable in advance -- written
+      # into .env alongside the other deploy-time values, same mechanism as
+      # LIS_APP_DB_PASSWORD etc. Own port (8443), not a sub-path -- avoids
+      # also needing KC_HTTP_RELATIVE_PATH reconfiguration for a one-service
+      # win that doesn't matter on a single-box deployment.
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL}
+      KC_PROXY_HEADERS: xforwarded
+    # No ports: mapping -- #188 removed direct host exposure now that
+    # tailscale serve fronts this on 8443. Still reachable container-to-
+    # container on lis_staging_net (api's JWT-issuer check) without one.
     # Deploy step (deploy-staging.yml) strips the local/CI-only test-user block
     # via jq before this file lands here — staging never receives the
     # checked-in test-password user. See infra/keycloak/README.md.
@@ -68,14 +85,16 @@ services:
       APP_DATABASE_URL: postgresql://lis_app:${LIS_APP_DB_PASSWORD}@postgres:5432/lis
       NODE_ENV: staging
       SENTRY_DSN: ${SENTRY_DSN}
-      # Internal Docker-network hostname, matching every other inter-service
-      # reference in this file (postgres:5432, etc.). Assumes Keycloak's own
-      # inferred `iss` claim matches this hostname — true only because
-      # staging is Tailscale-only today, not exposed on a public domain
-      # behind a reverse proxy yet. Revisit alongside the already-flagged
-      # start-dev/TLS hardening gap (TASK-028) before any public exposure.
-      KEYCLOAK_ISSUER_URL: http://keycloak:8080/realms/lis
-    ports: ["4000:4000"]
+      # #188: must be the same real public URL Keycloak now issues tokens
+      # under (KC_HOSTNAME above) -- apps/api/src/auth/jwt-auth.guard.ts
+      # checks this as a literal string match against each token's `iss`
+      # claim. The old container-internal hostname is no longer correct
+      # even though api itself is never browser-facing -- it's a JWT
+      # issuer-validation value, not a reachability one.
+      KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL}
+    # No ports: mapping -- #188. apps/web never calls api from the browser
+    # (confirmed: no client-side reference to it anywhere in apps/web),
+    # only server-to-server on lis_staging_net, which doesn't need one.
     depends_on: [postgres, valkey, keycloak]
 
   web:
@@ -85,28 +104,20 @@ services:
     environment:
       NODE_ENV: production
       SESSION_SECRET: ${SESSION_SECRET}
-      # Same internal-hostname caveat as api's KEYCLOAK_ISSUER_URL above,
-      # but with a real consequence here: apps/web builds both server-side
-      # (discovery/token-exchange) AND browser-facing (authorization/
-      # end-session redirect) URLs from this one value. A container-internal
-      # hostname is correct for the former and unreachable for the latter —
-      # RP-initiated login/logout will not actually complete against a real
-      # external browser until the start-dev/KC_HOSTNAME hardening TASK-028
-      # already flagged is done (infra/keycloak/README.md). Not solved here;
-      # local dev (single shared localhost:8080) is unaffected and is what
-      # this task's AC was verified against.
+      # #188 (was the TASK-028 gap this comment used to describe): now the
+      # real public URL (KEYCLOAK_PUBLIC_URL/realms/lis, discovered at
+      # deploy time -- see deploy-staging.yml), correct for both apps/web's
+      # server-side calls (discovery/token-exchange) AND the browser-facing
+      # authorization/end-session redirect URLs it builds from this same
+      # value -- both now resolve to something a real browser can reach.
       #
-      # A second, related consequence of the same "no TLS yet" gap: with
-      # NODE_ENV=production (set above), apps/web's session/pkce cookies are
-      # correctly marked Secure -- which a browser will silently refuse to
-      # store/send back over plain HTTP. Confirmed directly (docker run
-      # against this image with NODE_ENV=production, real Set-Cookie header
-      # inspected). Not a bug in the cookie logic -- Secure-over-HTTPS-only
-      # is the correct behavior for any real deployment; it just means login
-      # cannot work end-to-end on staging until real TLS termination exists,
-      # same gap, not a second one to separately track.
-      KEYCLOAK_ISSUER_URL: http://keycloak:8080/realms/lis
-    ports: ["3000:3000"]
+      # The related NODE_ENV=production Secure-cookie requirement (confirmed
+      # directly last session: a browser silently drops a Secure cookie sent
+      # over plain HTTP) is what this whole change unblocks -- tailscale
+      # serve now provides the real HTTPS this needed.
+      KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL}
+    # No ports: mapping -- #188 removed direct host exposure now that
+    # tailscale serve fronts this on 443 (root path).
     depends_on: [api]
 
 volumes:

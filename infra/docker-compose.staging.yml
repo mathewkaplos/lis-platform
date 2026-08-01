@@ -73,14 +73,18 @@ services:
       # container. tailscale serve is exactly that TLS-termination proxy --
       # KC_HTTP_ENABLED=true tells Keycloak not to bother with its own TLS.
       KC_HTTP_ENABLED: "true"
-      # Second bug found in the same pass, verified against Keycloak's own
-      # docs before fixing (not guessed twice in a row): valid
-      # --proxy-headers values are exactly "forwarded" or "x-forwarded" --
-      # the previous "xforwarded" (no hyphen) was never a recognized value.
-      # Doesn't explain the crash-loop above on its own (that's
-      # KC_HTTP_ENABLED), but needed correcting regardless before trusting
-      # X-Forwarded-* header parsing actually works.
-      KC_PROXY_HEADERS: x-forwarded
+      # Reverted, confirmed WRONG via this image's own error message
+      # (docker compose logs, direct droplet check) after the
+      # KC_HTTP_ENABLED fix (#224) let Keycloak get far enough to actually
+      # validate its config and crash-loop on THIS instead: "Invalid value
+      # for option 'KC_PROXY_HEADERS': x-forwarded. Expected values are:
+      # forwarded, xforwarded". Keycloak's own docs (fetched via Context7,
+      # #224) say "forwarded"/"x-forwarded" are the valid values -- true
+      # for a newer Keycloak version, not this image's pinned 26.0, which
+      # still wants "xforwarded" (no hyphen). Real lesson: verify against
+      # what's actually running, not documentation for a version that
+      # isn't necessarily the one pinned here.
+      KC_PROXY_HEADERS: xforwarded
     # Real bug, found on #188's live deploy attempts: removing this
     # mapping entirely (the original plan) broke tailscale serve itself --
     # `tailscale serve --https=8443 http://localhost:8080` runs on the

@@ -198,6 +198,18 @@ jobs:
 
           docker compose stop api web < /dev/null || true
 
+          # Prune before pulling, not just after a successful deploy (see
+          # the end-of-job prune step's own comment) -- belt and suspenders:
+          # if: always() on that step only helps when the job actually
+          # reaches it; a prune here too means even a run that fails before
+          # that point, or gets cancelled entirely, doesn't leave the *next*
+          # attempt starting from a fuller disk than it needs to. Confirmed
+          # directly this was worth doing: 8 failed attempts during #188's
+          # iteration exhausted the disk (16.65GB reclaimed on manual
+          # cleanup) despite none of those individual failures being a disk
+          # problem themselves.
+          docker image prune -a -f < /dev/null || true
+
           docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} < /dev/null
           docker compose pull < /dev/null
           docker pull ghcr.io/${{ github.repository_owner }}/lis-platform-migrator:latest < /dev/null

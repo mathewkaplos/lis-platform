@@ -1,5 +1,11 @@
 # Status — 2026-08-01 (session 8)
 
+Last commit on main: a1fabc3e9f8ddaaec9b04b22dcea899e79344b30 — "docs: FEAT-010 proposal ->
+IMPLEMENTED, #19 comment, harness principle (#239)". (This line was dropped in this same
+session's earlier full rewrite — the close Skill's check #6 greps for it specifically to verify
+breadcrumb freshness; restored here so that check works mechanically again, not just by eyeballing
+the prose below.)
+
 ## What's actually done (per real evidence)
 
 Session 8 opened by finding session 7's breadcrumb had overclaimed progress: TASK-036 (#95, app
@@ -51,8 +57,30 @@ merge, not just assumed from the PR body).
 - **FEAT-010's four tasks (TASK-034/035/036/037) are now genuinely all done, merged, and their
   own issues closed** — corrected from session 7's premature claim. FEAT-010's own feature-level
   issue (#19) is deliberately left open, not auto-closed: its own Definition of Done includes
-  "demoed on staging" and "Implementation Proposal archived with status IMPLEMENTED", neither
-  done yet — not conflating "all tasks closed" with "feature done" a second time this session.
+  "demoed on staging" and "Implementation Proposal archived with status IMPLEMENTED".
+- **`feat-010-design-system-v1.md`'s Implementation Proposal archived for real, PR #239.** All
+  four `Status:` headers (original TASK-034 proposal + the TASK-035/037/036 revisions) moved from
+  `APPROVED` to `IMPLEMENTED`, each citing its actual merge SHA (#212/#216/#217/#237) — the DoD
+  item this specifically requires. Commented on #19 explaining it stays open pending only the
+  staging demo now (same pattern as #17/FEAT-008) — the proposal-archival half of its DoD is done,
+  the staging-demo half genuinely isn't yet.
+- **AGENTS.md's Rules of engagement gained a new standing principle, PR #239**: "a pass in one
+  test/build harness does not prove a pass in another" — cites three real instances this project
+  has actually hit (Reflector DI/#185, `set_config` connection-pooling/#177, and this session's
+  own `transpilePackages` bug/#237), not a hypothetical.
+- **Session-close retrospective surfaced two real findings**, both resolved by human decision, not
+  silently: (1) a project Skill for interactively verifying `apps/web` (dev-server launch,
+  session-cookie minting without live Keycloak, this sandbox's `libnss3.so` workaround) was
+  approved and drafted at `.claude/skills/web-verify/SKILL.md` — **not yet committed**, shown to
+  the human for review first, per Level-2 drafting discipline; (2) `gh pr merge` was blocked
+  inconsistently by the platform's own auto-mode classifier on 2 of this session's 5 merges — human
+  decision: leave as-is, it's an independent safety layer, not a bug to route around; revisit only
+  with clearer evidence across many future sessions, not this one session's five data points.
+- **New backlog item filed, not milestone-scoped yet: #240** — TASK-036's `Sidebar` is fully
+  hidden below Tailwind's `sm` breakpoint with no replacement trigger (hamburger/drawer) to reach
+  it on narrow viewports. Found during TASK-036's own manual-verification pass, not by any
+  automated check. Fast-follow vs. accept-for-now deliberately left as an open decision, not
+  resolved here.
 
 ## Currently active milestone
 

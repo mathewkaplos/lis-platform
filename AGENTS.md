@@ -108,3 +108,9 @@ packages/ui (design system) · packages/sdk (generated API client)
   closed and the code was already in the repo; only checking the child
   tasks and #17's own (already-accurate) comment thread caught the error
   before it drove a wrong recommendation any further.
+
+  When actually checking a thread, use `gh issue view <n> --json
+  body,comments -q '...'` — plain `gh issue view <n> --comments` fails on
+  this repo with `GraphQL: Projects (classic) is being deprecated ...
+  (repository.issue.projectCards)`, breaking at exactly the moment this
+  rule is telling you to go verify.

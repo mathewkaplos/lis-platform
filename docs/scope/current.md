@@ -1,103 +1,99 @@
-# Status — 2026-08-01 (session 7, corrected during session 8 orientation)
+# Status — 2026-08-01 (session 8)
 
 ## What's actually done (per real evidence)
 
-Session 6 approved FEAT-010's proposal (§10 Q1/Q2/Q3 resolved) and implemented TASK-034
-(tokens). This session finished the rest of FEAT-010's design-system tasks, ran a full audit on
-#138, and closed out #188 — a real, hard 11-attempt infra saga, not a quick fix.
+Session 8 opened by finding session 7's breadcrumb had overclaimed progress: TASK-036 (#95, app
+shell) was reported as "completed and closed" but issue #95 was still open, untouched since
+creation, with no implementing commit or PR anywhere. Corrected the breadcrumb (PR #235), then
+wrote and got approval for TASK-036's own Implementation Proposal revision (PR #236, resolving
+the one real open question — see below), then actually implemented and merged it (PR #237,
+closing #95 for real this time — verified via `gh issue view 95` showing `state: CLOSED` after
+merge, not just assumed from the PR body).
 
-- **TASK-035 (6 primitives) — implemented and merged as PR #216.** DataTable, StatusPill,
-  FilterBar, SlideOver, StatCard, FormField, built on 9 shadcn/ui base components. First real
-  packages/ui component work in this repo.
-- **TASK-037 — completed and closed this session** (PR #217, Storybook + axe a11y CI check).
-  Once wired up for real, it caught a genuine WCAG AA contrast failure in StatCard's delta
-  indicator on its very first real run — fixed in the same PR before merge, not a hypothetical
-  the check never actually exercised.
-- **CORRECTION (found during 2026-08-01 session 8 orientation): TASK-036 was NOT actually
-  completed this session, despite what this breadcrumb previously claimed.** Issue #95 is still
-  OPEN on GitHub, untouched since creation (2026-07-26) — no commit or PR anywhere implements an
-  app shell in `apps/web`. The original claim below ("TASK-036 and TASK-037 — completed and
-  closed this session... FEAT-010... fully closed out... all four tasks done") was wrong for
-  TASK-036 specifically. Root cause not established (likely a session-7 reporting error, not a
-  reverted merge — no trace of the work ever existing). **FEAT-010 is therefore NOT fully closed
-  out** — TASK-036 remains to be implemented, under the already-APPROVED
-  `docs/plans/feat-010-design-system-v1.md` proposal (no new proposal needed).
-- **#138 (audit all GitHub Actions secrets for placeholder values) — closed.** Systematic audit
-  this issue always asked for, never actually done until now. All 8 secrets referenced across
-  workflows are set and independently confirmed functionally live (not just present) — most via
-  a real Deploy to Staging success, `SENTRY_DSN` specifically via the Sentry API directly (a
-  bad DSN fails silently, deploy success alone wouldn't have caught it). No new placeholder/
-  missing secrets found — the two real gaps from session 5 (`KEYCLOAK_ADMIN_PASSWORD`,
-  `LIS_APP_DB_PASSWORD`) were already fixed by then.
-- **#188 (staging TLS + KC_HOSTNAME hardening) — closed. The largest single piece of work this
-  session, and the one worth reading the source-of-record for, not this summary.** Staging's
-  Keycloak moved off `start-dev` (no TLS, no real hostname) onto production `start` mode, fronted
-  by `tailscale serve` — Tailscale-only per ADR-0003's existing precedent, no public domain, no
-  new reverse-proxy container (tailscaled already ran on the droplet for deploy access). Took 11
-  real live deploy attempts and 9 total fixes (7 code PRs, 1 human Tailscale-ACL action, 1 config
-  revert) to get to a genuinely green run — each failure was a distinct real bug, found via
-  direct evidence (`docker compose logs`/`ps` on the droplet, not guessed twice in a row).
-  **Full detail lives in `docker-pnpm-monorepo-deploy` Skill entries 15–22 (lis-engineering) and
-  `docs/plans/task-188-staging-tls-hostname-hardening.md`'s own §11 — read there, not narrated
-  again here.** Headline lesson for next time this pipeline gets touched: a `tailscale serve`/
-  Keycloak-production-mode change needs real droplet-log verification at multiple points, CI logs
-  alone were not enough on their own for at least 4 of the 10 failures.
-- **Two Skill files updated to match reality:** `docker-pnpm-monorepo-deploy` (entries 15–22, the
-  #188 saga) and `authentication` (its own long-standing "still not addressed" TLS/hostname note,
-  now correctly says fixed).
+- **TASK-036 (app shell) — implemented and merged as PR #237, #95 genuinely closed.** New
+  `(app)` route group in `apps/web` wraps every authenticated route in a sidebar + top bar,
+  composed from TASK-035's primitives. Theme toggle persists via an httpOnly cookie (SSR reads
+  it before first paint, no flash of wrong theme). Command palette is a real stub (Cmd/Ctrl+K,
+  "Coming soon", no command registry) per FEAT-010's own AC wording. Tenant label renders
+  `session.tenantId` as a static, non-interactive element rather than a switcher — resolved
+  during proposal drafting: no organizations/branches data model exists anywhere in this repo
+  (confirmed directly — no table, no domain type, session carries only `tenantId`), so the task
+  doesn't fabricate UI ahead of that schema. Revisit once org/branch is actually modeled (not
+  yet scoped as any tracked work).
+- **Two real, previously-latent bugs found and fixed while building TASK-036** — both flagged as
+  candidate first-content for the still-missing `engineering/frontend-design` Skill (#234,
+  commented with the details):
+  1. `globals.css`'s dark-mode media query applied unconditionally, so picking "light" while the
+     OS was set to dark had no effect — needed a `:not([data-theme="light"])` guard so the
+     manual toggle actually overrides the system preference in both directions.
+  2. `@lis/ui` was being consumed via its `tsc`-compiled CommonJS `dist`, which prepends
+     `"use strict"` before each client component's own `"use client"` directive — breaking
+     Next.js's client-boundary detection (`Element type is invalid: ... got undefined`) the
+     first time a real Next.js page actually rendered a TASK-035 primitive. TASK-035 itself was
+     only ever exercised via Storybook/Vite, which reads source directly and never hit this
+     path — so this bug shipped invisibly in PR #216 and PR #217 both. Fixed by pointing
+     `@lis/ui`'s `main`/`types` at `src/index.ts` directly and adding
+     `transpilePackages: ["@lis/ui"]` to `apps/web/next.config.ts` — matching shadcn/ui's own
+     documented monorepo pattern (already researched in TASK-035's own proposal §3, just not
+     fully wired up).
+- **Real end-to-end verification, not just typecheck/build.** This sandbox has the same
+  missing-`libnss3.so`/no-root limitation noted in TASK-034/035/037's own risk sections — worked
+  around this time by `apt-get download` (no root needed) + extracting the `.deb`s directly and
+  pointing `LD_LIBRARY_PATH` at them, then driving a real headless Chromium against `pnpm dev`
+  with a session cookie minted locally using the same signing code/secret `apps/web` itself uses
+  (no live Keycloak needed for this UI-only check). Confirmed: shell renders server-side, theme
+  toggle flips `[data-theme]` and survives a hard reload, command palette opens via keyboard and
+  closes via Escape, zero console errors, both light/dark screenshots look correct.
+- **New follow-up issue filed: #234** — `engineering/frontend-design` Skill, required by
+  FEAT-010/035/047/048's own issue text, doesn't exist anywhere in `lis-engineering`. Not
+  blocking (per human decision at session start) — now has two real candidate findings attached
+  (the bugs above) for whoever authors it.
+- **FEAT-010's four tasks (TASK-034/035/036/037) are now genuinely all done, merged, and their
+  own issues closed** — corrected from session 7's premature claim. FEAT-010's own feature-level
+  issue (#19) is deliberately left open, not auto-closed: its own Definition of Done includes
+  "demoed on staging" and "Implementation Proposal archived with status IMPLEMENTED", neither
+  done yet — not conflating "all tasks closed" with "feature done" a second time this session.
 
 ## Currently active milestone
 
-**M2 — Identity, Tenancy, AuthZ + Design System**: 9 closed / 6 open as of session 8 orientation
-(session 7's "10 closed / 5 open" count wrongly included #95/TASK-036 as closed — see correction
-above; #93/#94/#96 and #188 genuinely closed that session, #95 was not). M1 unchanged at 3
-open/16 closed, all three still individually blocked (see earlier session detail via git history
-if needed — not repeated here).
+**M2 — Identity, Tenancy, AuthZ + Design System**: 11 closed / 4 open (confirmed via
+`gh api repos/:owner/:repo/milestones/3` after TASK-036's merge — up from the 9/6 session 8
+opened with, once #95's overclaim was corrected). M1 unchanged at 3 open/16 closed, all three
+still individually blocked (see earlier session detail via git history if needed).
 
 M2's remaining open items:
-- **#95 (TASK-036)** — App shell: sidebar, top bar, org/branch switcher, theme, palette. Not
-  started. Dependencies (TASK-034 tokens, TASK-035 primitives) both genuinely merged; proposal
-  already APPROVED. Session 8's active task.
-- **#192** — GCP billing/Stitch MCP decision. Still open, still not resolved. TASK-034's own §10
-  Q1 (option c) only unblocked that one task's bootstrapping — it explicitly does not resolve
-  #192 itself. Do not conflate the two.
+- **#192** — GCP billing/Stitch MCP decision. Still open, still not resolved.
 - **#193, #194** — still open, still genuinely unresolved, unchanged across multiple sessions now
-  (unreproduced exit-56/exit-52 deploy smoke-test failures from session 4). Do not assume closed
-  or explained by anything in this session's #188 work, even though it touched the same deploy
-  pipeline — different failure signatures, never reproduced since.
-- Design-system work beyond FEAT-010 v1 (further primitives, app-shell polish) not yet scoped as
-  a next feature — not started, not blocked on anything specific either.
+  (unreproduced exit-56/exit-52 deploy smoke-test failures from session 4).
+- **#234 (new this session)** — missing `engineering/frontend-design` Skill. Not blocking.
+- Design-system work beyond FEAT-010 v1 (further primitives, app-shell polish, real org/branch
+  switcher once that data model exists) not yet scoped as a next feature.
 
 **Unresolved findings, carried forward unchanged from earlier sessions:**
 - #74 (TASK-015)'s out-of-band closure remains unverified.
 - #145 (ADR-based RLS-exemption mechanism for the Constitution gate) — still open, not touched.
 - #171 (TASK-027 follow-up: design-partner lab sign-off of chemistry golden dataset) — still
   open, needs-clinical-review, not touched.
-- `.mcp.json` (lis-platform, repo root) — resolved in session 6 (committed, no secrets found,
-  PR #214). No longer an open item; noted here only so this line can be deleted next refresh.
 
 ## Notes / gotchas for the next session
 
-- **This session's biggest lesson, stated once here and left in full in the Skill:** when
-  iterating live against a real droplet and CI logs stop being informative (e.g. `curl -sf`
-  silencing the actual error, or a smoke test's pass/fail not distinguishing "crash-looping"
-  from "just slow"), stop guessing from the CI log alone and get the human to check
-  `docker compose logs`/`ps` directly. At least 4 of #188's 10 real failures were only
-  correctly diagnosed that way — CI evidence alone would have kept producing plausible-sounding
-  but wrong fixes.
-- **A tailnet ACL scoped for one purpose (SSH-only CI deploy access, per ADR-0003) does not
-  implicitly extend to new services added later on the same nodes** — Tailscale enforces ACLs
-  per destination port, independent of what's actually listening. Check the ACL's port scope
-  first if a new tailnet-facing service times out with zero response despite SSH working fine
-  between the same two nodes.
-- **A Keycloak config option's valid values can differ between the pinned image version and
-  whatever documentation you just fetched** — verify against the running container's own error
-  text (`docker compose logs`), not docs that may describe a newer/older version than what's
-  actually pinned in `docker-compose.staging.yml`.
-- **Cleanup/prune steps must run with `if: always()`, not just on success** — a string of failed
-  attempts while iterating on anything accumulates exactly the cruft the step exists to prevent.
-  Already fixed for the Docker-image-prune step this session; worth checking if any other
-  "only runs on success" step in this pipeline has the same latent gap.
-- Full session-close report for this session: see the close Skill's own `-pre.md`/`-final.md`
-  files in `~/work/lis-engineering/session-close-reports/` for what was actually pending at
-  session end, rather than assuming this breadcrumb alone is a complete account.
+- **A breadcrumb's own claims are not self-verifying — check them against GitHub/git reality
+  before trusting them, the same way any other claim gets checked.** This session opened by
+  finding session 7's breadcrumb had wrongly marked TASK-036 done; the giveaway was cross-
+  referencing the breadcrumb against `gh issue list`/`git log`, not trusting the prose. Worth
+  doing this same cross-check reflexively at the start of every session, not just when something
+  looks off.
+- **A workspace package consumed only through a bundler-agnostic tool (Storybook/Vite here) can
+  hide a real client-boundary bug that only surfaces the first time an actual Next.js page
+  renders it.** TASK-035/037 both shipped and merged clean because neither ever exercised
+  `@lis/ui` through Next's own bundler — worth remembering for any future workspace package that
+  gets consumed by more than one build tool: passing in one doesn't prove it works in the other.
+- **This sandbox's missing-`libnss3.so` limitation (blocking real Playwright screenshots,
+  documented since TASK-034/035) has a real workaround**: `apt-get download <pkg>` doesn't need
+  root, and the resulting `.deb` can be extracted with `dpkg-deb -x` and pointed at via
+  `LD_LIBRARY_PATH` without ever needing `sudo apt-get install`. Needed `libnss3`, `libnspr4`,
+  `libasound2t64` this session to get a real headless Chromium launching. Worth using this
+  instead of falling back to "can't verify visually" next time this limitation is hit.
+- Session 7's own notes/gotchas (droplet-log verification discipline, tailnet ACL port scoping,
+  Keycloak config-value version drift, `if: always()` cleanup steps) are unchanged and still
+  apply — not repeated here, see git history for the full session-7 breadcrumb if needed.

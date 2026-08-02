@@ -5,6 +5,16 @@ ENV CI=true
 COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @lis/domain build
+# TASK-040 (FEAT-011): same gap as @lis/domain above, now hitting @lis/sdk --
+# apps/web's lib/api-client.ts imports it for the first time. Missing this
+# step is what broke the real staging deploy (Deploy to Staging, runs
+# 30756859631/30757028776) -- a local `docker build` here without a
+# .dockerignore (now added) falsely "verified" clean, because host-local
+# packages/sdk/dist/ leaked into the build context via `COPY . .` and
+# papered over the Dockerfile never building it itself. CI's own clean
+# checkout has no such leftover dist/, which is exactly why it caught this
+# and a contaminated local build didn't.
+RUN pnpm --filter @lis/sdk build
 # TASK-031: apps/web/auth/secret.ts requiredEnv()s SESSION_SECRET at module
 # load, and `next build` imports every route module to collect page data --
 # same "next build actually executes top-level code" reasoning as pr.yml's

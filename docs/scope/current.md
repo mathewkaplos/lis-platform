@@ -1,6 +1,22 @@
 # Status — 2026-08-02 (session 11)
 
-Last commit on main: f895249 — "feat: session retains + refreshes access/refresh tokens so apps/web can call apps/api (#266)".
+Last commit on main: 45ca1bb — "fix: pin packageManager so corepack resolves the same pnpm everywhere (#269)".
+
+## Real deploy-blocking bug found and fixed this session, via PR #269 (`45ca1bb`)
+
+The user hit a real `docker buildx` failure directly (`pnpm install --frozen-lockfile` exit code 1)
+— caused by PR #266's own `vite` override fix: both Dockerfiles (`apps/api`, `apps/web`) run bare
+`corepack enable` with no pinned pnpm version, so the Docker build resolved whatever pnpm corepack
+defaults to (newer than the `pnpm@9` GitHub Actions CI is pinned to), which doesn't read
+`package.json`'s `"pnpm"` field (where the override now lives) — the same class of mismatch #266
+fixed for CI, surfacing in a third place. Fixed at the root: `"packageManager": "pnpm@9.15.9"`
+pinned in `package.json`, which corepack respects everywhere (Docker, this sandbox's local shell,
+any corepack-managed invocation). That in turn conflicted with `pr.yml`'s own explicit
+`pnpm/action-setup@v4 with: {version: 9}` (the action hard-errors on "Multiple versions of pnpm
+specified" when both are set) — fixed by removing the now-redundant explicit `version:`, letting
+the action auto-detect from `packageManager` instead (its own documented intended pattern).
+Verified for real: both Dockerfiles build successfully end-to-end (previously reproducible
+failures), CI green, merged.
 
 ## Session token bridge (#265) merged this session, via PR #266 (`f895249`) — a prerequisite for TASK-040, not TASK-040 itself
 

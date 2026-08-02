@@ -29,6 +29,8 @@ import * as schema from "./schema";
 import { order, orderedTest } from "./schema/order";
 import { specimen, specimenFulfillment } from "./schema/specimen";
 import { observation } from "./schema/observation";
+import { patient } from "./schema/patient";
+import { patientAlert } from "./schema/patient-alert";
 import { writeAuditEvent } from "./audit";
 
 type Db = ReturnType<typeof createDb>;
@@ -104,10 +106,24 @@ async function insertFixtures(db: Db) {
     throw new Error("chemistry-catalog seed data not found — run `pnpm db:reset` first");
   }
 
-  const [ord] = await db
-    .insert(order)
-    .values({ tenantId: TENANT_A, patientId: "99999999-9999-9999-9999-999999999999" })
+  // TASK-038: patient is a real row now, not a sentinel UUID — observation.
+  // patient_id and order.patient_id both carry a real FK to patient(id) as
+  // of this migration, so a fake id (pre-TASK-038 this file used
+  // "99999999-...") is rejected at insert time.
+  const [pat] = await db
+    .insert(patient)
+    .values({ tenantId: TENANT_A, mrn: `RLS-CHECK-${Date.now()}`, firstName: "RLS", lastName: "Check", sex: "U" })
     .returning();
+  await db.insert(patientAlert).values({
+    tenantId: TENANT_A,
+    patientId: pat.id,
+    alertType: "medical_alert",
+    severity: "low",
+    description: "RLS isolation check fixture",
+    addedByPrincipalId: "99999999-9999-9999-9999-999999999999",
+  });
+
+  const [ord] = await db.insert(order).values({ tenantId: TENANT_A, patientId: pat.id }).returning();
   const [ot] = await db
     .insert(orderedTest)
     .values({ tenantId: TENANT_A, orderId: ord.id, testDefinitionId: testDef.id })
@@ -125,7 +141,7 @@ async function insertFixtures(db: Db) {
       orderedTestId: ot.id,
       analyteId: analyte.id,
       specimenId: sp.id,
-      patientId: "99999999-9999-9999-9999-999999999999",
+      patientId: pat.id,
       dataType: "quantity",
       valueNum: "5.0",
       source: "manual",
@@ -147,7 +163,7 @@ async function insertFixtures(db: Db) {
     orderedTestId: ot.id,
     analyteId: analyte.id,
     specimenId: sp.id,
-    patientId: "99999999-9999-9999-9999-999999999999",
+    patientId: pat.id,
     dataType: "quantity",
     valueNum: "5.2",
     source: "manual",
@@ -203,7 +219,9 @@ async function main() {
 
   console.log("--- Fixture setup under TENANT_A ---");
   await insertFixtures(db);
-  console.log("Fixtures inserted for order/ordered_test/specimen/specimen_fulfillment/observation/result_history.\n");
+  console.log(
+    "Fixtures inserted for patient/patient_alert/order/ordered_test/specimen/specimen_fulfillment/observation/result_history.\n",
+  );
 
   console.log("--- Live cross-tenant leak check: TENANT_B must see 0 rows of TENANT_A's data ---");
   const leakFailures = await liveLeakCheck(db, tables);

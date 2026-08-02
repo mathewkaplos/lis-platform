@@ -95,7 +95,11 @@ any further engineering work.
   longer an open item.
 
 **Unresolved findings, carried forward unchanged from earlier sessions:**
-- #74 (TASK-015)'s out-of-band closure remains unverified.
+- **#74 (TASK-015)'s out-of-band closure — resolved, no longer open.** Corrected this session
+  (orientation drift check): #74 is CLOSED, with real verification already in its own comment
+  thread — `.github/workflows/constitution-gate.yml` confirmed live on `main`, enforcing Law #1
+  and Law #4 in CI, with five consecutive green runs cited as evidence. The prior breadcrumb wording
+  ("remains unverified") was stale; dropped from the carried-forward list.
 - #145 (ADR-based RLS-exemption mechanism for the Constitution gate) — still open, not touched.
 - #171 (TASK-027 follow-up: design-partner lab sign-off of chemistry golden dataset) — still
   open, needs-clinical-review, not touched.

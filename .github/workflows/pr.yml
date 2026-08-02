@@ -60,6 +60,17 @@ jobs:
       # just installed — pnpm's own dependency-graph ordering doesn't build
       # a package just because a dependent's script runs.
       - run: pnpm --filter @lis/db build
+      # TASK-039 (FEAT-011): same gap as @lis/db above, now hitting
+      # @lis/domain too — it went from a placeholder `export {}` to apps/api's
+      # second real workspace-package dependency (Zod schemas), and this step
+      # was never added when that changed. Without it, apps/api's type-aware
+      # lint resolves every import from @lis/domain to TypeScript's "error"
+      # type (no built dist/ yet), which @typescript-eslint/no-unsafe-* rules
+      # then correctly flag — not a flaky CI issue, a real missing build step
+      # (found because it passed locally, where packages/domain had already
+      # been built earlier in the same session, and only failed in CI's clean
+      # checkout).
+      - run: pnpm --filter @lis/domain build
       - run: pnpm lint
       - run: pnpm typecheck
       # TASK-026 (FEAT-007): CI's first-ever migrate+seed sequence. Mirrors

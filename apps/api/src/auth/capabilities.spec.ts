@@ -17,6 +17,15 @@ describe('resolveGrantingRole', () => {
     expect(resolveGrantingRole(['verifier'], 'verify')).toBe('verifier');
   });
 
+  it('grants manage_patients to both technologist and verifier (TASK-039 AC)', () => {
+    expect(resolveGrantingRole(['technologist'], 'manage_patients')).toBe(
+      'technologist',
+    );
+    expect(resolveGrantingRole(['verifier'], 'manage_patients')).toBe(
+      'verifier',
+    );
+  });
+
   it('denies every capability for an empty roles array (ADR-0011 fail-closed AC)', () => {
     expect(resolveGrantingRole([], 'enter_result')).toBeUndefined();
     expect(resolveGrantingRole([], 'verify')).toBeUndefined();

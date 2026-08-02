@@ -5,7 +5,9 @@
   "author": "",
   "private": true,
   "license": "UNLICENSED",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
@@ -23,16 +25,20 @@
   },
   "dependencies": {
     "@lis/db": "workspace:*",
+    "@lis/domain": "workspace:*",
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/platform-fastify": "^11.1.28",
+    "@nestjs/swagger": "^11.4.6",
     "@sentry/nestjs": "^10.68.0",
     "@sentry/profiling-node": "^10.68.0",
     "drizzle-orm": "^0.45.2",
     "jose": "^5.9.6",
+    "nestjs-zod": "^5.5.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

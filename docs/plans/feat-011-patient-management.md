@@ -264,3 +264,196 @@ actual rollback would be a new down-migration, not a rewrite of 0012.
    `patient_id` only, per TASK-038's own issue.
 
 **All four questions resolved — see Status header. Implementation begins now.**
+
+---
+
+# Revision: TASK-039 — API: create/search/get patient (Zod + OpenAPI)
+Status: APPROVED
+ADR: ADR-0013 (minimal API baseline — accepted 2026-08-02, establishes the Zod/OpenAPI/error/
+versioning conventions this revision implements against)
+Date: 2026-08-02    Backlog ID: TASK-039 (#98)
+
+## 1. Goal
+
+TASK-038 (patient/patient_alert migration) merged via PR #261; TASK-039's own dependency is
+satisfied. This is the first task in the entire repo to build a real domain-resource API endpoint —
+every existing route lives under `apps/api/src/auth/` and is a proof-of-concept for the
+capability/audit mechanism (FEAT-009), not a real business resource. Confirmed directly, not
+assumed: no `zod` dependency exists anywhere in the repo; no `@nestjs/swagger` or other OpenAPI
+tooling exists; `apps/api/src/main.ts` has no global validation pipe or exception filter;
+`packages/domain/src/index.ts` and `packages/sdk/src/index.ts` are both still their original
+placeholder `export {}`.
+
+Because whatever this task does becomes the pattern every later endpoint copies, and KB-08 (API
+Architecture) specifies a full platform contract far beyond what a single M-sized, 1-day task's own
+AC ("Endpoints are RLS-enforced and validated via shared Zod schemas") requires, the scope question
+was raised to the human directly before drafting further (2026-08-02) and resolved as **ADR-0013**:
+adopt a minimal baseline now (Zod-driven validation + OpenAPI from one schema source, RFC 9457
+errors applied globally, `/v1` prefix scoped to new resource routes only) and defer
+`ETag`/`If-Match`, `Idempotency-Key`, and cursor pagination until a task's real requirements need
+them. This revision implements TASK-039 against that ADR.
+
+**This revision's approvable scope is TASK-039 only**, same scope-narrowing precedent as TASK-038's
+own proposal §1 and FEAT-010's proposal §1 — TASK-040 (registration form + duplicate detection) and
+TASK-041 (search + profile screens) depend on TASK-039's actual response/request shape in ways not
+responsibly knowable yet.
+
+## 2. Affected files
+
+- `packages/domain/package.json` — add `zod` as a dependency (first real dependency this package
+  has ever had).
+- `packages/domain/src/patient.ts` (new) — the shared `zod` schemas: `PatientCreateSchema` (request
+  body for create), `PatientSchema` (the full persisted shape, used for responses), a
+  `PatientSearchQuerySchema` (query params for search). Single source of truth per ADR-0013 §1 — no
+  parallel OpenAPI-only schema maintained separately.
+- `packages/domain/src/index.ts` — `export * from "./patient"` (this package's first real export).
+- `apps/api/package.json` — add `zod`, `nestjs-zod`, `@nestjs/swagger` as dependencies.
+- `apps/api/src/main.ts` — wire `ZodValidationPipe` as `APP_PIPE` (or per-controller — see §5),
+  register the new global RFC 9457 exception filter, and mount `SwaggerModule` (via
+  `cleanupOpenApiDoc`) at a docs route.
+- `apps/api/src/common/problem-details.filter.ts` (new) — the global RFC 9457 `problem+json`
+  exception filter (ADR-0013 §2): catches `HttpException` broadly, special-cases `nestjs-zod`'s
+  `ZodValidationException` to enumerate field-level `errors`, formats every other `HttpException`
+  (401/403/404/etc.) into the same `{type, title, detail, instance, code}` shape.
+- `apps/api/src/patient/patient.controller.ts` (new) — `POST /v1/patients`, `GET /v1/patients`
+  (search by `mrn`/`nationalId`, exact match only — TASK-039's own AC covers exactly these two
+  lookups, not free-text/name search, which is TASK-041's own future concern), `GET
+  /v1/patients/:id`.
+- `apps/api/src/patient/patient.module.ts` (new), registered in `AppModule`.
+- `apps/api/test/patient.e2e-spec.ts` (new) — real-Postgres, real-Keycloak-token e2e coverage,
+  matching every existing e2e spec's own standard (`get-keycloak-token.ts`), not a mocked-auth unit
+  test.
+
+## 3. Architecture consulted
+
+- **ADR-0013** (this session) — the baseline this revision implements against; see §1.
+- **TASK-038's own migration/schema** (`packages/db/src/schema/patient.ts`) — the persisted shape
+  this task's Zod schemas must mirror: `mrn` (unique per tenant), `nationalId` (nullable, unique per
+  tenant when present), `firstName`/`lastName` (required), `middleName` (optional), `sex`
+  (`'M'|'F'|'U'`), `birthDate` (nullable).
+- **FEAT-011 issue (#20) AC**: "Patient searchable by national ID and MRN with correct results" —
+  the literal scope of the search endpoint.
+- **Google Stitch Prompt Library §4.1** — "Patient Number [auto, monospace, read-only]" is the only
+  place in the research corpus that speaks to MRN generation at all; treated as a real signal (see
+  §10 Q1), not authoritative on its own given FEAT-011's AC explicitly says the *rest* of §4.1's
+  field set isn't confirmed yet.
+- **`apps/api/src/auth/*`** (capability-check/tenant-check controllers, `TenantContextInterceptor`,
+  `AuditInterceptor`, `CapabilityGuard`, `JwtAuthGuard`) — read in full as the only existing
+  precedent for how a route gets tenant-bound (`ADR-0010`) and audited (`FEAT-009`). Directly
+  informs §5's capability/audit design, including a real constraint found by reading
+  `audit.interceptor.ts` line-by-line: `AuditInterceptor` writes `actorRole: request.grantingRole`,
+  which only exists if `CapabilityGuard` ran first — an audited route with no capability gate would
+  write `undefined` into `audit_event.actor_role` (`NOT NULL`), a real insert-time failure, not a
+  hypothetical. See §5/§10 Q2.
+- **`packages/db/src/schema/audit.ts`** — `actorRole: text("actor_role").notNull()`, confirming the
+  constraint above directly against the schema, not just the interceptor's code.
+- **`database-design` Skill entry #4** (added this session, TASK-038) — re-read given this task also
+  touches `patient`; not directly applicable here (no FK backfill in this task), but its underlying
+  discipline ("grep every caller before considering a schema-adjacent change done") applied to §8's
+  testing plan regardless.
+
+## 4. Skills loaded
+
+- `rls-multi-tenancy` — re-checked; `TenantContextInterceptor` (ADR-0010) already provides the
+  binding this task's endpoints need, no new RLS work required.
+- `engineering/api-design` and `domain/patient-identity` — **still do not exist** (confirmed again;
+  same gap TASK-038's proposal already flagged). Now genuinely load-bearing, not hypothetical — this
+  is the first API task in the repo. Recommend authoring `engineering/api-design` immediately after
+  this task lands (same-day rule), using ADR-0013 plus this task's own real decisions as its first
+  content, rather than inventing it speculatively now ahead of real findings.
+- `testing` — re-checked; its "verify against the real harness" standard (also AGENTS.md's own
+  four-instance rule, extended this session) directly shapes §8's insistence on a real e2e spec, not
+  a mocked-request unit test alone.
+
+## 5. Assumptions & autonomous decisions
+
+- **Search is exact-match only, by `mrn` or `nationalId`** — matches FEAT-011's own AC literally;
+  free-text/name search is TASK-041's own future concern once its real UI requirements exist, not
+  built ahead of that task per this repo's stated aversion to premature scope.
+- **`GET` routes (search, get-by-id) are not audited; `POST /v1/patients` (create) is**, via the
+  existing `@Audit()`/`AuditInterceptor` mechanism. Matches the existing convention exactly (no
+  existing `GET` route in this repo carries `@Audit()`; `order-count` is a plain read) and
+  Constitution Law #5's own scope ("every clinically *significant action*" — a read is not an
+  action). Not treated as ambiguous.
+- **`ZodValidationPipe` is applied globally** (`APP_PIPE` in `AppModule`), not per-route, matching
+  `nestjs-zod`'s own documented recommended pattern and ADR-0013 §1's "one global pipe" framing.
+  Confirmed safe against every existing route: none of `auth/*`'s routes currently use a NestJS DTO
+  class for `@Body()`/`@Query()` (they read `@CurrentUser()`/`@DbTx()` only), so the global pipe has
+  nothing to validate on those routes — a no-op for them, not a behavior change.
+- **The global RFC 9457 filter's `type` URI is a placeholder scheme** (e.g.
+  `https://lis.internal/problems/{code}`) until this platform has a real public docs domain — cosmetic,
+  reversible, not blocking.
+
+## 6. Risks
+
+- **§10 Q1 (MRN generation) and §10 Q2 (capability/audit-actor-role model) are both genuinely open**
+  — see below, not decided unilaterally.
+- **First use of `nestjs-zod` and `@nestjs/swagger` in this repo** — low risk (both are mature,
+  widely-used packages, confirmed via Context7 against current docs, not assumed from training
+  data), but worth a direct, real check that `cleanupOpenApiDoc`'s output is actually valid OpenAPI
+  (§8), not just that the Swagger UI renders without erroring.
+- **Global RFC 9457 filter changes every existing route's error-response *body* shape** (not status
+  codes) — ADR-0013 §Consequences already accepts this as deliberate, but §8 re-verifies the
+  existing e2e suite still passes unmodified as the actual proof, not just the ADR's own reasoning.
+- **`engineering/api-design` Skill gap is now load-bearing, not hypothetical** (§4) — recommend
+  authoring it same-day once this task's real decisions exist to draw from.
+
+## 7. Acceptance criteria
+
+TASK-039's literal AC (the only AC this revision covers):
+- [ ] Endpoints are RLS-enforced and validated via shared Zod schemas. Judged by: `POST
+  /v1/patients`, `GET /v1/patients`, `GET /v1/patients/:id` all require `JwtAuthGuard` +
+  `TenantContextInterceptor` (real tenant isolation, not app-level filtering); request
+  bodies/queries are validated against the `packages/domain` Zod schemas via the global
+  `ZodValidationPipe`, rejecting malformed input with a `400` `problem+json` response enumerating
+  field-level errors; a cross-tenant `GET /v1/patients/:id` for another tenant's patient returns
+  `404` (RLS makes the row structurally invisible, not a leaked "exists but forbidden" signal).
+
+FEAT-011's feature-level AC is explicitly **not** claimed as satisfied by this revision —
+registration-form duplicate detection (TASK-040) and the search/profile UI (TASK-041) are out of
+scope here; see §1.
+
+## 8. Testing plan
+
+1. `pnpm --filter @lis/domain typecheck`/build with the new `patient.ts` Zod schemas.
+2. `pnpm --filter api typecheck`/build with the new controller/module/filter/pipe wiring.
+3. A real e2e spec (`apps/api/test/patient.e2e-spec.ts`), real Postgres + real Keycloak token, per
+   `testing` Skill / AGENTS.md's harness-mismatch rule — not a mocked-request unit test alone:
+   - create succeeds (`201`), response matches the Zod response schema, an `audit_event` row is
+     written attributing the real caller;
+   - create with a malformed body (missing `lastName`, invalid `sex` value) returns `400`
+     `problem+json` with field-level errors, no row written;
+   - create with a duplicate `mrn`/`nationalId` for the same tenant returns a real conflict
+     response (`409`, mapped from the Postgres unique-violation — not a raw `500`);
+   - search by `mrn` and by `nationalId` both return the correct row;
+   - `GET /v1/patients/:id` for a patient created under a *different* tenant's token returns `404`,
+     proving RLS isolation at the API layer, not just the DB layer (`rls-isolation-check.ts` already
+     proved the DB layer in TASK-038).
+4. The full existing `apps/api` e2e suite (`app.e2e-spec.ts`, `auth.e2e-spec.ts`,
+   `tenant-context.e2e-spec.ts`, `capability-check.e2e-spec.ts`) re-run and confirmed still green,
+   proving the global Zod pipe + RFC 9457 filter are non-breaking for every existing route (§5/§6).
+5. `SwaggerModule`'s generated document fetched and validated as real OpenAPI (a schema validator,
+   not just "the UI renders") — confirms `cleanupOpenApiDoc`'s output is actually spec-compliant,
+   not just visually plausible.
+6. `pnpm typecheck`/`pnpm lint` at the repo root.
+
+## 9. Rollback plan
+
+Additive for `packages/domain`/`packages/sdk`-adjacent files and the new `patient` module — no
+existing route or table is modified except `main.ts`'s global pipe/filter registration, which §5/§8
+confirm is a no-op for existing routes. Rollback is reverting the PR: new dependencies removed,
+`patient.controller.ts`/`patient.module.ts`/`problem-details.filter.ts` deleted,
+`packages/domain/src/patient.ts` deleted, `main.ts` reverts to no global pipe/filter/Swagger mount.
+No production data or deployed feature depends on this yet.
+
+## 10. Questions requiring human approval
+
+1. **RESOLVED 2026-08-02 — server-generated.** MRN is generated by the API at creation time via a
+   retry-on-unique-violation scheme, not accepted as caller input. Exact format decided at
+   implementation time (a reversible, cosmetic detail).
+2. **RESOLVED 2026-08-02 — new `manage_patients` capability.** Added to `capabilities.ts`, granted
+   to both existing roles (`technologist`, `verifier`) for now. `POST /v1/patients` gated with
+   `@RequireCapability('manage_patients')` + `CapabilityGuard`, reusing the existing
+   `AuditInterceptor` mechanism unchanged.
+
+**Both questions resolved — see Status header. Implementation begins now.**

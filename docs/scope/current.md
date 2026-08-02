@@ -1,6 +1,56 @@
 # Status — 2026-08-02 (session 11)
 
-Last commit on main: 5ff9b14 — "feat: patient API — create/search/get, Zod-validated, OpenAPI-documented (TASK-039) (#263)".
+Last commit on main: f895249 — "feat: session retains + refreshes access/refresh tokens so apps/web can call apps/api (#266)".
+
+## Session token bridge (#265) merged this session, via PR #266 (`f895249`) — a prerequisite for TASK-040, not TASK-040 itself
+
+Planning TASK-040 (#99, FEAT-011, registration form + duplicate detection) surfaced a bigger,
+real gap before any form code could be written: **`apps/web` had no way to call `apps/api` at
+all.** The real Keycloak `access_token`/`refresh_token` were fetched at login and immediately
+discarded — `SessionPayload` only ever carried `sub`/`tenantId`/`roles`/`idToken`. Compounding
+this, the realm's `accessTokenLifespan` (300s) is far shorter than the 30-minute session cookie, so
+even naively storing the access token alone would have made the registration form (and every
+future authenticated frontend feature) start failing with `401`s after 5 minutes into an
+otherwise-valid session. Raised to the human directly, resolved as **ADR-0014** (accepted, pushed
+to `lis-engineering`): retain both tokens, refresh server-side via a single `getValidAccessToken()`
+helper before any `apps/api` call. Landed as its own prerequisite PR, not folded into TASK-040's own
+UI work, since every future frontend feature calling `apps/api` needs this same bridge.
+
+**TASK-040 itself has not started** — this was groundwork found and cleared first, per Rule #0
+(stop for a missing load-bearing decision before building on top of it).
+
+**Two more real, unrelated things found and fixed via this work's own testing, not assumed
+correct:**
+1. Adding `vitest`/`vite-tsconfig-paths` to `apps/web` (its first-ever test tooling) shifted pnpm's
+   peer-dependency resolution enough to break `apps/api`'s own `vitest.config.ts` typecheck (two
+   internally-inconsistent `vite` versions resolved within the same package) — a real regression,
+   confirmed via `git stash` against a clean checkout, not a pre-existing issue. Fixed by pinning
+   `vite` to a single version workspace-wide.
+2. **That fix itself then broke CI** the first time, because CI's `pr.yml` pins `pnpm` to `v9`
+   (`pnpm/action-setup@v4`), and pnpm v9 silently does not read `pnpm-workspace.yaml`'s `overrides`
+   field at all (confirmed directly by running the real `pnpm@9` locally) — a newer-pnpm-only
+   location. Fixed by moving the override to `package.json`'s `"pnpm"` field instead, and
+   regenerating `pnpm-lock.yaml` with the actual `pnpm@9` binary (via `npx`) rather than this
+   sandbox's mismatched local `pnpm` (v11), so the committed lockfile matches exactly what CI
+   independently computes.
+
+**Bigger finding surfaced by the above, filed separately as #267, not fixed this session:**
+`pnpm-workspace.yaml`'s `allowBuilds`/`minimumReleaseAgeExclude`/`injectWorkspacePackages` fields
+are *also* silently ignored by pnpm v9 — confirmed directly: a real `pnpm@9 install` ran
+`@scarf/scarf`'s and `@sentry/node-cpu-profiler`'s postinstall/install scripts to completion despite
+both being set to `false` in `allowBuilds`. This means the supply-chain-security build-gating this
+repo's config appears to establish has likely **never actually been enforced in CI**, silently,
+probably since whoever authored those fields was using a newer local pnpm than CI's pinned v9. Not
+fixed here — the real options (upgrade CI's pnpm, or rewrite the config for v9) are a real decision
+for whoever picks up #267, not a mechanical fix.
+
+**Also confirmed, not a regression**: `pnpm --filter web build` (production build, Turbopack) fails
+locally in this sandbox specifically on `/_global-error`'s prerender step
+(`TypeError: Cannot read properties of null (reading 'useContext')`) — reproduces identically on a
+clean `main` checkout, survives a full `.next` cache clear, and CI's own `pnpm build` step has
+passed reliably across every recent PR. Written up as a known sandbox-only gotcha in the
+`web-verify` Skill; use `pnpm --filter web dev` for local verification instead, trust CI for the
+real production-build proof.
 
 ## TASK-039 (FEAT-011) merged this session, via PR #263 (`5ff9b14`)
 
@@ -167,14 +217,15 @@ is checked; the design-partner demo is the one remaining, non-engineering blocke
 any further engineering work.
 
 **M3 — Pre-Analytical Workflow: started this session.** TASK-038 (#97, patient/patient_alert
-migration) and TASK-039 (#98, patient API) both closed, via PR #261 and PR #263. FEAT-011's
-remaining tasks — TASK-040 (#99, registration form + duplicate detection), TASK-041 (#100, search +
-profile screens) — are still open; each will need its own revision to
-`docs/plans/feat-011-patient-management.md` once the prior task's real output exists (same
-scope-narrowing precedent FEAT-010's proposal used). `engineering/api-design` and
-`domain/patient-identity` Skills, named as "Required Skills" by FEAT-011's own issue (#20), still
-don't exist — flagged twice now (TASK-038 and TASK-039's proposals), genuinely load-bearing for
-TASK-040/041's own frontend work.
+migration) and TASK-039 (#98, patient API) both closed, via PR #261 and PR #263. The session-token
+bridge (#265, prerequisite for TASK-040) also closed, via PR #266 — see its own section above.
+**TASK-040 (#99, registration form + duplicate detection) itself has not started yet.** FEAT-011's
+remaining tasks — TASK-040, TASK-041 (#100, search + profile screens) — are still open; each will
+need its own revision to `docs/plans/feat-011-patient-management.md` once the prior task's real
+output exists (same scope-narrowing precedent FEAT-010's proposal used). `engineering/api-design`
+and `domain/patient-identity` Skills, named as "Required Skills" by FEAT-011's own issue (#20), still
+don't exist — flagged three times now (TASK-038, TASK-039, and the token-bridge proposals),
+genuinely load-bearing for TASK-040/041's own frontend work.
 
 **Unrelated open issues, not M2/M3-milestoned (carried forward, still genuinely unresolved):**
 - **#192** — GCP billing/Stitch MCP decision. Still open, still not resolved.
@@ -182,9 +233,14 @@ TASK-040/041's own frontend work.
   across multiple sessions now, from session 4).
 - **#240** — sidebar nav fully hidden below `sm` breakpoint, no replacement trigger. Still needs a
   triage decision (fast-follow vs. a later dedicated mobile pass), not decided yet.
-- **#260 (new this session)** — `observation.ordered_test_id`/`specimen_id` were never actually
-  FK-backfilled by TASK-023, despite ADR-0005 requiring it. Found during TASK-038's proposal
-  research, deliberately kept out of PR #261, filed as its own follow-up. Not yet worked.
+- **#260** — `observation.ordered_test_id`/`specimen_id` were never actually FK-backfilled by
+  TASK-023, despite ADR-0005 requiring it. Found during TASK-038's proposal research, deliberately
+  kept out of PR #261, filed as its own follow-up. Not yet worked.
+- **#267 (new this session)** — CI's pinned `pnpm@9` silently ignores `pnpm-workspace.yaml`'s
+  `overrides`/`allowBuilds`/`injectWorkspacePackages` fields entirely (confirmed directly). The
+  supply-chain-security build-gating those fields appear to establish has likely never actually been
+  enforced in CI. Found while fixing the token-bridge PR's own CI failure; not fixed itself — needs
+  a real decision (upgrade CI's pnpm, or rewrite the config for v9). Not yet worked.
 - Design-system work beyond FEAT-010 v1 (further primitives, app-shell polish, real org/branch
   switcher once that data model exists) not yet scoped as a next feature.
 - ADR-0012's own acceptance criterion that port 22 remains SSH-restricted to `tag:ci-runner` —

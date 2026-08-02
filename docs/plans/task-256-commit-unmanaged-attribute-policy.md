@@ -1,6 +1,6 @@
 # Implementation Proposal: Commit unmanagedAttributePolicy into lis-realm.json
-Status: APPROVED (revised during implementation, see §11)
-ADR: none (config-drift fix, not a new architectural decision)    Date: 2026-08-02    Backlog ID: #256
+Status: IMPLEMENTED (revised during implementation, see §11) — PR #257 merged 2026-08-02
+ADR: none (config-drift fix, not a new architectural decision)    Date: 2026-08-02    Backlog ID: #256 (closed)
 
 ## 1. Goal
 Close the gap in #256: `unmanagedAttributePolicy: "ENABLED"` is required on the
@@ -132,3 +132,23 @@ Net effect is identical to the original goal: the policy is set on every
 deploy, not lost on the next Keycloak force-recreate — just enforced via a
 deploy-time API call instead of a static import-time JSON block.
 `infra/keycloak/lis-realm.json` itself is not changed by this revision.
+
+## 12. Outcome (2026-08-02)
+Merged as PR #257 (two commits: the initial deploy-staging.yml step, then a
+follow-up addressing CodeRabbit review — added `--connect-timeout`/
+`--max-time` and `-f`/empty-token checks to all three Admin REST calls, and
+split `docker compose up -d valkey keycloak api web` so `api`/`web` only
+start after the policy PUT succeeds). Verified locally end to end (fresh
+realm import starts `unmanagedAttributePolicy: null`, sequence flips it to
+`ENABLED`, a live-created user's `tenant_id` attribute survives). Verified
+on real staging via the auto-triggered post-merge deploy (run 30742799694):
+log shows the re-fetched profile with `unmanagedAttributePolicy: ENABLED`
+and `PUT: HTTP 200`, proving the setting was reapplied automatically right
+after that deploy's Keycloak force-recreate. Issue #256 auto-closed at
+merge via the PR's `Closes #256` line.
+
+Not independently re-verified: an actual live user write with `tenant_id`
+surviving specifically on staging (vs. locally) — would need droplet-console
+access not available this session. Accepted as sufficient (human decision,
+2026-08-02) given the identical mechanism was already proven locally and the
+staging log confirms the same sequence ran successfully there.

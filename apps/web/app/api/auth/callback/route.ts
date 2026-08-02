@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as client from 'openid-client';
 import { getOidcConfig } from '@/auth/oidc-config';
 import { PKCE_COOKIE_NAME, verifyPkceState } from '@/auth/pkce-store';
+import { getPublicOrigin } from '@/auth/public-origin';
 import {
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE_SECONDS,
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
     // Expired, missing, or tampered -- never proceed with a token exchange
     // that has no verified state/nonce/code_verifier to check the IdP's
     // response against.
-    return toLoginRedirect(request.nextUrl.origin);
+    return toLoginRedirect(getPublicOrigin(request));
   }
 
   const config = await getOidcConfig();
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
   } catch {
     // Bad/expired code, state/nonce mismatch, or the user denied consent --
     // all collapse to "log in again," never a partially-authenticated state.
-    return toLoginRedirect(request.nextUrl.origin);
+    return toLoginRedirect(getPublicOrigin(request));
   }
 
   const claims = tokens.claims() as LisIdTokenClaims | undefined;
@@ -59,7 +60,7 @@ export async function GET(request: NextRequest) {
   ) {
     // Same fail-closed rule apps/api's JwtAuthGuard applies (TASK-029): a
     // token that can't resolve a tenant is not a valid session, full stop.
-    return toLoginRedirect(request.nextUrl.origin);
+    return toLoginRedirect(getPublicOrigin(request));
   }
 
   const roles = Array.isArray(claims.realm_access?.roles)
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest) {
   });
 
   const response = NextResponse.redirect(
-    new URL(pkceState.redirectTo, request.nextUrl.origin),
+    new URL(pkceState.redirectTo, getPublicOrigin(request)),
   );
   response.cookies.set(SESSION_COOKIE_NAME, sessionCookie, {
     httpOnly: true,

@@ -49,14 +49,43 @@ export function getOidcConfig(): Promise<client.Configuration> {
         // TLS termination exists in front of Keycloak.
         execute: [client.allowInsecureRequests],
       },
-    ).catch((error: unknown) => {
-      // Do not memoize a failed discovery -- e.g. Keycloak not ready yet
-      // when the first login request lands. Without this, every future
-      // /api/auth/* request would reject for the whole process lifetime,
-      // recoverable only by a restart.
-      configPromise = undefined;
-      throw error;
-    });
+    )
+      .then((config) => {
+        // authorizationCodeGrant() (callback/route.ts) derives its own
+        // redirect_uri for the token-endpoint request from the passed
+        // Request's own URL -- same broken origin as request.nextUrl.origin
+        // behind a reverse proxy in this Next.js version's standalone
+        // output (see public-origin.ts). Keycloak then rejects the token
+        // exchange outright as a redirect_uri mismatch against what was
+        // actually used at the authorization step (login/route.ts, already
+        // corrected via getPublicOrigin), landing the user back on a
+        // failed-login redirect instead of completing the round trip.
+        // openid-client's own docs (customFetch.md) document exactly this
+        // correction for exactly this situation. No-op in local dev, where
+        // PUBLIC_APP_URL is unset and request.nextUrl.origin is already
+        // correct.
+        if (process.env.PUBLIC_APP_URL) {
+          const correctRedirectUri = `${process.env.PUBLIC_APP_URL}/api/auth/callback`;
+          config[client.customFetch] = (url: string, options) => {
+            if (
+              options?.body instanceof URLSearchParams &&
+              options.body.get('grant_type') === 'authorization_code'
+            ) {
+              options.body.set('redirect_uri', correctRedirectUri);
+            }
+            return fetch(url, options as RequestInit);
+          };
+        }
+        return config;
+      })
+      .catch((error: unknown) => {
+        // Do not memoize a failed discovery -- e.g. Keycloak not ready yet
+        // when the first login request lands. Without this, every future
+        // /api/auth/* request would reject for the whole process lifetime,
+        // recoverable only by a restart.
+        configPromise = undefined;
+        throw error;
+      });
   }
   return configPromise;
 }

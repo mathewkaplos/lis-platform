@@ -1,5 +1,5 @@
 import { jwtVerify, SignJWT } from 'jose';
-import { SESSION_SECRET } from './secret';
+import { getSessionSecret } from './secret';
 
 export const SESSION_COOKIE_NAME = 'lis_session';
 
@@ -44,14 +44,14 @@ export async function signSession(payload: SessionPayload): Promise<string> {
     .setIssuedAt()
     .setExpirationTime(SESSION_TTL)
     .setAudience(SESSION_AUDIENCE)
-    .sign(SESSION_SECRET);
+    .sign(getSessionSecret());
 }
 
 export async function verifySession(
   token: string,
 ): Promise<SessionPayload | undefined> {
   try {
-    const { payload } = await jwtVerify<SessionPayload>(token, SESSION_SECRET, {
+    const { payload } = await jwtVerify<SessionPayload>(token, getSessionSecret(), {
       audience: SESSION_AUDIENCE,
     });
     // Belt and suspenders on top of the audience check: never return an

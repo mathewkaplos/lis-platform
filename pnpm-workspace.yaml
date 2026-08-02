@@ -1,6 +1,16 @@
 packages:
   - "apps/*"
   - "packages/*"
+overrides:
+  # Pinned workspace-wide (2026-08-02, planning TASK-040/#265): adding
+  # vitest+vite-tsconfig-paths to apps/web (its first-ever test tooling)
+  # shifted pnpm's peer-dependency resolution for apps/api's own existing
+  # vite-tsconfig-paths, so its own vitest.config.ts started resolving
+  # against two internally-inconsistent vite versions (6.4.3 via vitest's
+  # own dependency, 7.3.6 via vite-tsconfig-paths' peer) -- a real
+  # `tsc --noEmit` regression, not a flaky one, reproduced by comparing
+  # against a clean `main` checkout. One pinned version resolves it.
+  vite: 6.4.3
 allowBuilds:
   '@scarf/scarf': false
   '@sentry/node-cpu-profiler': false

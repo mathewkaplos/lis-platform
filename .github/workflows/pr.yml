@@ -35,8 +35,15 @@ jobs:
       SESSION_SECRET: lis_web_ci_session_secret_at_least_32_bytes_long
     steps:
       - uses: actions/checkout@v4
+      # No explicit `version:` — read from package.json's "packageManager"
+      # field instead (pnpm/action-setup's own documented pattern), so this
+      # workflow, the Dockerfiles' `corepack enable`, and local dev all
+      # resolve the exact same pnpm version from one place. Specifying both
+      # here and in packageManager is a hard error
+      # ("Multiple versions of pnpm specified"), found for real (not
+      # hypothetical) fixing a Docker-build regression caused by exactly
+      # that duplication.
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: 'pnpm' }
       # TASK-029 (FEAT-008): GitHub Actions `services:` only supports an
@@ -112,8 +119,15 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.62.1-noble
     steps:
       - uses: actions/checkout@v4
+      # No explicit `version:` — read from package.json's "packageManager"
+      # field instead (pnpm/action-setup's own documented pattern), so this
+      # workflow, the Dockerfiles' `corepack enable`, and local dev all
+      # resolve the exact same pnpm version from one place. Specifying both
+      # here and in packageManager is a hard error
+      # ("Multiple versions of pnpm specified"), found for real (not
+      # hypothetical) fixing a Docker-build regression caused by exactly
+      # that duplication.
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile

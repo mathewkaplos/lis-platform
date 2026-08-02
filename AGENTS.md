@@ -74,7 +74,7 @@ packages/ui (design system) · packages/sdk (generated API client)
   selectively, only when it happens to be convenient.
 - **A pass in one test/build harness does not prove a pass in another —
   verify against the actual harness the real thing will run in, not
-  whichever one is most convenient to run.** Five real instances, not
+  whichever one is most convenient to run.** Six real instances, not
   hypothetical: (1) TASK-032/PR #185 — `CapabilityGuard`'s `Reflector`
   dependency resolved to `undefined` at runtime because vitest's esbuild
   transform doesn't emit the `design:paramtypes` metadata Nest's implicit
@@ -109,6 +109,18 @@ packages/ui (design system) · packages/sdk (generated API client)
   crashed immediately. Confirmed fixed against both a local run and a
   real `docker build` + `docker run` of the actual production image,
   not just a build-succeeds check.
+  (6) TASK-040/deploy hotfix — that same `docker build` "verification"
+  was itself a false positive: no `.dockerignore` existed anywhere in
+  this repo, so `COPY . .` silently picked up whatever
+  `node_modules`/`dist` a local build's host already had on disk —
+  specifically, this sandbox's own pre-built `packages/sdk/dist/`,
+  masking that `apps/web/Dockerfile` never had a build step for
+  `@lis/sdk` at all. The real staging deploy failed on `main` twice
+  before this was caught, because GitHub Actions' clean `actions/checkout`
+  has no such leftover `dist/` to hide behind. Fixed by adding the
+  missing build step and a real `.dockerignore`; re-verified with a
+  `--no-cache` build (which cannot benefit from any host or layer-cache
+  leftovers) before trusting the fix.
 - **No single status signal — a breadcrumb's prose, a GitHub Project field,
   or an issue's own body text — is self-verifying. Check the actual child
   tasks, merged PRs, or code when a feature's real status matters, not just

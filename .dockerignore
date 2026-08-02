@@ -1,0 +1,19 @@
+# Both Dockerfiles COPY . . from the repo root and then run their own
+# pnpm install/build steps -- without this file, that COPY picks up
+# whatever node_modules/dist/.next a local `docker build` invocation's host
+# happens to have on disk, silently masking a Dockerfile step that doesn't
+# actually (re)build something it depends on. Found for real, not
+# hypothetical: TASK-040's own local `docker build -f apps/web/Dockerfile`
+# "verified" successfully only because host-local packages/sdk/dist/ leaked
+# into the build context, while the Dockerfile itself never built @lis/sdk
+# -- CI's clean checkout (no such leftover dist/) caught the real gap this
+# local build couldn't. Mirrors .gitignore's own exclusions.
+**/node_modules
+**/dist
+**/.next
+**/*.tsbuildinfo
+**/storybook-static
+.env
+.env.local
+**/*.log
+.git

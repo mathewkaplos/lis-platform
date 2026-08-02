@@ -1,5 +1,5 @@
 import { jwtVerify, SignJWT } from 'jose';
-import { SESSION_SECRET } from './secret';
+import { getSessionSecret } from './secret';
 
 export const PKCE_COOKIE_NAME = 'lis_pkce';
 const PKCE_TTL = '5m';
@@ -19,8 +19,8 @@ export interface PkceState {
 }
 
 // Distinguishes this token type from a session token (see session.ts's own
-// SESSION_AUDIENCE comment) -- both share SESSION_SECRET, so without a
-// per-type audience the two would be interchangeable HS256 JWTs.
+// SESSION_AUDIENCE comment) -- both share the same secret (getSessionSecret()),
+// so without a per-type audience the two would be interchangeable HS256 JWTs.
 const PKCE_AUDIENCE = 'lis:pkce';
 
 export async function signPkceState(payload: PkceState): Promise<string> {
@@ -29,14 +29,14 @@ export async function signPkceState(payload: PkceState): Promise<string> {
     .setIssuedAt()
     .setExpirationTime(PKCE_TTL)
     .setAudience(PKCE_AUDIENCE)
-    .sign(SESSION_SECRET);
+    .sign(getSessionSecret());
 }
 
 export async function verifyPkceState(
   token: string,
 ): Promise<PkceState | undefined> {
   try {
-    const { payload } = await jwtVerify<PkceState>(token, SESSION_SECRET, {
+    const { payload } = await jwtVerify<PkceState>(token, getSessionSecret(), {
       audience: PKCE_AUDIENCE,
     });
     if (

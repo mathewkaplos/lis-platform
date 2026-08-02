@@ -1,6 +1,31 @@
 # Status — 2026-08-02 (session 11)
 
-Last commit on main: 3c07232 — "feat: patient registration form + duplicate detection (TASK-040) (#271)".
+Last commit on main: 215690a — "fix: clean up orphaned order/observation rows before patient FK
+backfill (#274)".
+
+## Deploy to Staging fixed this session, via PR #274 (`215690a`) — staging is healthy again
+
+TASK-038's `0012_patient.sql` migration had been failing on every real staging deploy (runs
+30757994494, 30757028776): a real `order` row left over from FEAT-009's proof routes (predating the
+`patient` table) had a `patient_id` that didn't match any real patient, so the FK-adding
+`ALTER TABLE` rejected it. Fixed by adding `DELETE` cleanup for orphaned `order`/`observation` rows
+immediately before the FK `ALTER TABLE` statements, inside the same already-merged migration —
+a narrow, human-approved exception to "never edit a past migration," justified because this
+migration had never actually succeeded against any persistent/real environment (only ephemeral
+CI/local Postgres).
+
+Verified against the exact failure condition, not just a clean DB: reverted a local DB to the
+pre-0012 schema, inserted an `order` row with the same orphaned `patient_id` from the real staging
+failure, re-ran the migration, and confirmed the row was deleted and the FK constraint now exists.
+**Confirmed for real**: the next actual "Deploy to Staging" run (30759086369, triggered by this PR's
+merge) succeeded end-to-end — `build-and-push`, `deploy` (migration + both smoke tests) all green.
+FEAT-011's patient tables/API/registration form are now actually live on staging for the first time.
+
+**AGENTS.md also gained a new standing rule this session**: Claude Code may run
+`gh pr merge <n> --squash` autonomously once CI is green, without waiting for per-PR confirmation —
+`--delete-branch` must never be combined with the merge in the same command (still independently
+blocked by `guard-dangerous-git.py`, unchanged, for the real reason it was added). This PR (#274)
+was merged by the human under the old convention; future merges should happen without asking.
 
 ## TASK-040 (FEAT-011) merged this session, via PR #271 (`3c07232`)
 

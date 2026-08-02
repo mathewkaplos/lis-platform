@@ -51,6 +51,13 @@ packages/ui (design system) · packages/sdk (generated API client)
   STOP and ask. Do not invent it.
 - Follow existing module patterns; mirror the most similar existing module.
 - Every schema change is a migration in db/migrations. Never edit a past migration.
+- Claude Code may run `gh pr merge <n> --squash` autonomously once CI is green,
+  without waiting for per-PR confirmation from the human. Never combine
+  `--delete-branch` with the merge in the same command — that exact combo
+  silently no-op'd a merge and deleted a branch holding a real unpushed commit
+  on 2026-07-26 (see `guard-dangerous-git.py`, which blocks it). Delete the
+  branch as its own separate step afterward, only after confirming the merge
+  actually landed (`git log origin/main`).
 - Whenever a real bug, gap, or gotcha is discovered — not a hypothetical —
   check whether an existing Skill should be extended with it, or whether it
   warrants a new Skill entirely. Do this the same day, before moving to the

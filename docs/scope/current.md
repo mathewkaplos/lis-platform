@@ -1,6 +1,56 @@
 # Status — 2026-08-02 (session 11)
 
-Last commit on main: 719e1c2 — "feat: migration: patient + identifiers + alerts (TASK-038) (#261)".
+Last commit on main: 5ff9b14 — "feat: patient API — create/search/get, Zod-validated, OpenAPI-documented (TASK-039) (#263)".
+
+## TASK-039 (FEAT-011) merged this session, via PR #263 (`5ff9b14`)
+
+The first real domain-resource API endpoint in this repo. Built against a new **ADR-0013**
+(accepted this session, pushed to `lis-engineering`): a minimal API baseline — Zod schemas in
+`packages/domain` drive both request validation (`nestjs-zod`) and OpenAPI generation from one
+source, RFC 9457 `problem+json` errors applied globally, `/v1` prefix scoped to new resource routes
+only (`/auth/*`/`/health` stay unversioned) — deliberately deferring `ETag`/`If-Match`,
+`Idempotency-Key`, and cursor pagination until a real task needs them, rather than building KB-08's
+full platform contract inside a single 1-day task.
+
+Delivered: `POST/GET /v1/patients`, `GET /v1/patients/:id` — MRN server-generated
+(retry-on-unique-violation, proposal §10 Q1), new `manage_patients` capability (granted to both
+existing roles, §10 Q2), `POST` audited via the existing FEAT-009 mechanism, OpenAPI served at
+`/v1/docs` generated from the same Zod schemas.
+
+**Two real bugs found and fixed via this task's own testing, not assumed correct:**
+1. Vitest's esbuild transform doesn't emit `design:paramtypes` — same root cause
+   `capability.guard.ts`'s comment already documents for constructor DI, now confirmed to also
+   silently no-op nestjs-zod's global `ZodValidationPipe` (it couldn't identify a method
+   parameter's DTO class, so a malformed request body sailed straight to the database unvalidated,
+   failing on a Postgres `NOT NULL` violation instead of `400`). Fixed by passing each Zod schema
+   explicitly at the `@Body()`/`@Query()`/`@Param()` call site. Written up as `testing` Skill entry
+   #6 (pushed to `lis-engineering`) — this is a general vitest-harness gotcha, not scoped to this
+   one task.
+2. Running `patient.e2e-spec.ts` (audit-count assertions against `TENANT_A`) alongside
+   `capability-check.e2e-spec.ts` (same tenant, same kind of assertion) under vitest's default file
+   parallelism interleaved their audited writes, breaking both files' delta assertions *and*
+   `TENANT_A`'s audit hash-chain check, nondeterministically. Fixed with `fileParallelism: false` in
+   `vitest.e2e.config.ts` — a real, previously-latent gap this task's second audit-writing e2e file
+   exposed, not a bug in either file's own logic.
+3. **CI-only failure, not reproducible locally at first**: `pr.yml` never gained a build step for
+   `@lis/domain` when this task made it apps/api's second real workspace-package dependency (it had
+   been a placeholder `export {}` before) — the exact same class of gap already fixed for `@lis/db`
+   in TASK-030. Type-aware lint resolved every `@lis/domain` import to TypeScript's "error" type in
+   CI's clean checkout (no pre-built `dist/`), which passed locally only because `packages/domain`
+   had already been built earlier in the same session. Reproduced locally by deleting
+   `packages/domain/dist` before linting, confirmed fixed by adding `pnpm --filter @lis/domain
+   build` to `pr.yml` alongside the existing `@lis/db` step.
+
+Also fixed in passing: `pnpm-workspace.yaml`'s `@scarf/scarf` build-approval was a literal
+placeholder string ("set this to true or false"), not an actual boolean — blocked every `pnpm`
+command the moment a new dependency (`swagger-ui-dist`) pulled that package in transitively. Set to
+`false` (pure install-time telemetry).
+
+**FEAT-011 remaining**: TASK-040 (registration form + duplicate detection, #99) and TASK-041
+(search + profile screens, #100) — each needs its own proposal revision once the prior task's real
+output exists, same scope-narrowing precedent as before. `engineering/api-design` and
+`domain/patient-identity` Skills (named by FEAT-011's own issue, #20) still don't exist — flagged
+again, now genuinely load-bearing for TASK-040/041's own frontend/API work.
 
 ## M3 has started: TASK-038 (FEAT-011) merged this session
 
@@ -116,13 +166,15 @@ is checked; the design-partner demo is the one remaining, non-engineering blocke
 #256 was not M2-milestoned). The one remaining open M2 item is #2 (EPIC-002) itself, not blocked on
 any further engineering work.
 
-**M3 — Pre-Analytical Workflow: started this session.** TASK-038 (#97, FEAT-011's first task)
-closed via PR #261. FEAT-011's remaining tasks — TASK-039 (#98, API), TASK-040 (#99, registration
-form + duplicate detection), TASK-041 (#100, search + profile screens) — are still open; each will
-need its own revision to `docs/plans/feat-011-patient-management.md` once the prior task's real
-output exists (same scope-narrowing precedent FEAT-010's proposal used). `engineering/api-design`
-and `domain/patient-identity` Skills, named as "Required Skills" by FEAT-011's own issue (#20), still
-don't exist — flagged in the proposal, will be load-bearing for TASK-039's own revision.
+**M3 — Pre-Analytical Workflow: started this session.** TASK-038 (#97, patient/patient_alert
+migration) and TASK-039 (#98, patient API) both closed, via PR #261 and PR #263. FEAT-011's
+remaining tasks — TASK-040 (#99, registration form + duplicate detection), TASK-041 (#100, search +
+profile screens) — are still open; each will need its own revision to
+`docs/plans/feat-011-patient-management.md` once the prior task's real output exists (same
+scope-narrowing precedent FEAT-010's proposal used). `engineering/api-design` and
+`domain/patient-identity` Skills, named as "Required Skills" by FEAT-011's own issue (#20), still
+don't exist — flagged twice now (TASK-038 and TASK-039's proposals), genuinely load-bearing for
+TASK-040/041's own frontend work.
 
 **Unrelated open issues, not M2/M3-milestoned (carried forward, still genuinely unresolved):**
 - **#192** — GCP billing/Stitch MCP decision. Still open, still not resolved.

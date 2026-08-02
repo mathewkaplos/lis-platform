@@ -74,7 +74,7 @@ packages/ui (design system) · packages/sdk (generated API client)
   selectively, only when it happens to be convenient.
 - **A pass in one test/build harness does not prove a pass in another —
   verify against the actual harness the real thing will run in, not
-  whichever one is most convenient to run.** Three real instances, not
+  whichever one is most convenient to run.** Four real instances, not
   hypothetical: (1) TASK-032/PR #185 — `CapabilityGuard`'s `Reflector`
   dependency resolved to `undefined` at runtime because vitest's esbuild
   transform doesn't emit the `design:paramtypes` metadata Nest's implicit
@@ -89,7 +89,15 @@ packages/ui (design system) · packages/sdk (generated API client)
   source directly and never exercises Next.js's own bundler; the first
   real Next.js page to render one hit a client-boundary bug
   (`transpilePackages` fix) that no amount of Storybook or `tsc
-  --noEmit` passing would ever have caught.
+  --noEmit` passing would ever have caught. (4) TASK-038/PR #261 —
+  backfilling a real FK onto `order.patient_id`/`observation.patient_id`
+  passed this task's own local testing plan (typecheck, `db:reset`,
+  `rls-check`) cleanly; only the API package's own separate e2e suite
+  (`apps/api`'s `capability-check.e2e-spec.ts`, exercised by CI's
+  `build-and-test` job, never run locally as part of this task's own plan)
+  caught that an unrelated proof controller's `randomUUID()` placeholder
+  for `patientId` — valid before the backfill, silently wrong after — now
+  failed with a 500 on every route. See `database-design` Skill entry #4.
 - **No single status signal — a breadcrumb's prose, a GitHub Project field,
   or an issue's own body text — is self-verifying. Check the actual child
   tasks, merged PRs, or code when a feature's real status matters, not just

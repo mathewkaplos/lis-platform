@@ -31,10 +31,22 @@ export async function GET(request: NextRequest) {
     // Expired, missing, or tampered -- never proceed with a token exchange
     // that has no verified state/nonce/code_verifier to check the IdP's
     // response against.
+    console.error(
+      '[auth/callback] missing/invalid PKCE state cookie -- redirecting to login',
+    );
     return toLoginRedirect(getPublicOrigin(request));
   }
 
-  const config = await getOidcConfig();
+  let config: Awaited<ReturnType<typeof getOidcConfig>>;
+  try {
+    config = await getOidcConfig();
+  } catch (err) {
+    // Previously uncaught here -- a discovery failure (Keycloak unreachable,
+    // DNS, etc.) crashed the route with no server-side trace at all. Same
+    // fail-closed redirect as every other failure path, but now logged.
+    console.error('[auth/callback] getOidcConfig() failed:', err);
+    return toLoginRedirect(getPublicOrigin(request));
+  }
 
   let tokens: Awaited<ReturnType<typeof client.authorizationCodeGrant>>;
   try {
@@ -44,9 +56,13 @@ export async function GET(request: NextRequest) {
       expectedNonce: pkceState.nonce,
       idTokenExpected: true,
     });
-  } catch {
+  } catch (err) {
     // Bad/expired code, state/nonce mismatch, or the user denied consent --
     // all collapse to "log in again," never a partially-authenticated state.
+    // Logged (not just swallowed) so this class of failure is diagnosable --
+    // confirmed 2026-08-03 this route previously gave zero server-side trace
+    // for a real staging login failure.
+    console.error('[auth/callback] authorizationCodeGrant() failed:', err);
     return toLoginRedirect(getPublicOrigin(request));
   }
 
@@ -60,6 +76,10 @@ export async function GET(request: NextRequest) {
   ) {
     // Same fail-closed rule apps/api's JwtAuthGuard applies (TASK-029): a
     // token that can't resolve a tenant is not a valid session, full stop.
+    console.error(
+      '[auth/callback] token missing sub/tenant_id claim -- claims:',
+      claims,
+    );
     return toLoginRedirect(getPublicOrigin(request));
   }
 

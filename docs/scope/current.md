@@ -1,6 +1,43 @@
 # Status — 2026-08-02 (session 11)
 
-Last commit on main: 4fabe93 — "docs: record #256's actual outcome in its Implementation Proposal (#258)".
+Last commit on main: 719e1c2 — "feat: migration: patient + identifiers + alerts (TASK-038) (#261)".
+
+## M3 has started: TASK-038 (FEAT-011) merged this session
+
+M2 was engineering-complete (only #2 open, blocked on a non-engineering design-partner demo) and
+M1's 3 remaining open issues were all blocked on non-engineering factors — `/orient` →
+engineering-radar reasoned this made **TASK-038 (#97, FEAT-011's first task)** the highest-leverage
+next engineering work, unlocking the rest of M3.
+
+**TASK-038 closed, via PR #261 (`719e1c2`).** Implementation Proposal
+`docs/plans/feat-011-patient-management.md` approved (KB-02-minimal core scope: identity,
+demographics required for range resolution, MRN + national ID — contact/insurance/emergency-contact
+fields deliberately deferred until TASK-040 confirms the design partner's real requirements).
+Delivered: `patient` + `patient_alert` tables (both RLS-isolated, live-leak-check verified), and the
+ADR-0005 FK backfill onto `observation.patient_id`/`order.patient_id`.
+
+**Real gap found during this proposal's own research, not fixed here:** ADR-0005 also required
+`observation.ordered_test_id`/`specimen_id` to be FK-backfilled by TASK-023 — cross-checking that
+ADR's literal acceptance-criteria text against the real schema (`packages/db/src/schema/
+observation.ts`'s own still-present "FK backfilled by TASK-023" comments) showed it never actually
+happened. **Filed separately as #260**, deliberately kept out of PR #261's scope (human decision,
+2026-08-02) to keep that migration's diff and rollback story scoped to what TASK-038's own issue
+describes.
+
+**CI caught a real regression PR #261's own local testing plan missed**: `apps/api`'s e2e suite
+(`capability-check.e2e-spec.ts`, run by CI's `build-and-test` job, never run locally as part of this
+task's own plan) failed — a FEAT-009 proof controller used `randomUUID()` for `order.patientId`,
+valid before TASK-038's FK backfill, silently wrong after. Fixed (real `patient` fixture row via a
+new `insertDemoPatient` helper), verified locally (all 17 e2e tests green), pushed, CI green. Written
+up as a fourth real instance of AGENTS.md's existing "a pass in one harness doesn't prove a pass in
+another" rule, and as a new `database-design` Skill entry (#4) — grep every `.insert(<table>)` call
+site on a table gaining a new FK, not just the migration's own tests, before considering an
+FK-backfill done.
+
+**Merge required the human**: `gh pr merge` is blocked for this agent by both a PreToolUse hook
+(citing a prior incident where `--delete-branch` silently no-op'd a merge and deleted a branch with
+unpushed work) and the auto-mode classifier itself. Merged by the human; branch cleanup (local +
+remote delete) done by the agent afterward.
 
 ## What's actually done (per real evidence)
 
@@ -79,12 +116,23 @@ is checked; the design-partner demo is the one remaining, non-engineering blocke
 #256 was not M2-milestoned). The one remaining open M2 item is #2 (EPIC-002) itself, not blocked on
 any further engineering work.
 
-**Unrelated open issues, not M2-milestoned (carried forward, still genuinely unresolved):**
+**M3 — Pre-Analytical Workflow: started this session.** TASK-038 (#97, FEAT-011's first task)
+closed via PR #261. FEAT-011's remaining tasks — TASK-039 (#98, API), TASK-040 (#99, registration
+form + duplicate detection), TASK-041 (#100, search + profile screens) — are still open; each will
+need its own revision to `docs/plans/feat-011-patient-management.md` once the prior task's real
+output exists (same scope-narrowing precedent FEAT-010's proposal used). `engineering/api-design`
+and `domain/patient-identity` Skills, named as "Required Skills" by FEAT-011's own issue (#20), still
+don't exist — flagged in the proposal, will be load-bearing for TASK-039's own revision.
+
+**Unrelated open issues, not M2/M3-milestoned (carried forward, still genuinely unresolved):**
 - **#192** — GCP billing/Stitch MCP decision. Still open, still not resolved.
 - **#193, #194** — still open, still genuinely unreproduced (last checked 2026-08-01; unchanged
   across multiple sessions now, from session 4).
 - **#240** — sidebar nav fully hidden below `sm` breakpoint, no replacement trigger. Still needs a
   triage decision (fast-follow vs. a later dedicated mobile pass), not decided yet.
+- **#260 (new this session)** — `observation.ordered_test_id`/`specimen_id` were never actually
+  FK-backfilled by TASK-023, despite ADR-0005 requiring it. Found during TASK-038's proposal
+  research, deliberately kept out of PR #261, filed as its own follow-up. Not yet worked.
 - Design-system work beyond FEAT-010 v1 (further primitives, app-shell polish, real org/branch
   switcher once that data model exists) not yet scoped as a next feature.
 - ADR-0012's own acceptance criterion that port 22 remains SSH-restricted to `tag:ci-runner` —

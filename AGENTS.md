@@ -58,6 +58,17 @@ packages/ui (design system) · packages/sdk (generated API client)
   on 2026-07-26 (see `guard-dangerous-git.py`, which blocks it). Delete the
   branch as its own separate step afterward, only after confirming the merge
   actually landed (`git log origin/main`).
+- PRs or commits that modify `AGENTS.md`, `.claude/settings*.json`, or hook
+  scripts under `.claude/hooks/` should be expected to need the human to run
+  the git-level stage/commit/push/PR-create steps directly, even when the
+  merge-autonomy rule above would otherwise apply — the classifier applies
+  additional, not fully predictable, scrutiny to changes touching the
+  agent's own authorization surface. Confirmed 2026-08-02: nearly every git/
+  gh write step on the PR that added the merge-autonomy rule itself (#275)
+  was denied at least once, some resolving on an immediate retry, some
+  requiring the human to run the identical command. Retry a blocked step
+  once; if it repeats, hand the exact command to the human rather than
+  continuing to retry.
 - Whenever a real bug, gap, or gotcha is discovered — not a hypothetical —
   check whether an existing Skill should be extended with it, or whether it
   warrants a new Skill entirely. Do this the same day, before moving to the

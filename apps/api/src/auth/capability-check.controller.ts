@@ -6,7 +6,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { order, verifyAuditChain } from '@lis/db';
+import { order, patient, verifyAuditChain } from '@lis/db';
 import { sql } from 'drizzle-orm';
 import { Audit } from './audit.decorator';
 import { AuditInterceptor } from './audit.interceptor';
@@ -26,12 +26,39 @@ import {
  * verification feature exists yet (M3/M4), so these prove the capability +
  * audit mechanisms structurally, same standard TASK-030's
  * tenant-check.controller.ts already established for RLS binding ahead of a
- * real business feature needing it. `order` (already migrated by FEAT-006,
- * no required FK per ADR-0005) is the synthetic mutation target — never
- * used for anything but this proof.
+ * real business feature needing it. `order` (already migrated by FEAT-006)
+ * is the synthetic mutation target — never used for anything but this
+ * proof. `order.patient_id` carries a real FK as of TASK-038 (previously a
+ * forward-reference per ADR-0005, satisfied by any `randomUUID()`); see
+ * `insertDemoPatient` below.
  */
 @Controller('auth/capability-check')
 export class CapabilityCheckController {
+  /**
+   * TASK-038 backfilled a real FK on order.patient_id (previously a
+   * forward-reference per ADR-0005, so `randomUUID()` used to satisfy it
+   * with no table to check against). Every route below needs a real patient
+   * row to reference now — this helper is the minimal, throwaway fixture,
+   * never used for anything but keeping these proof routes' `order` inserts
+   * FK-valid.
+   */
+  private async insertDemoPatient(
+    tx: RequestWithTx['tx'],
+    tenantId: string,
+  ): Promise<string> {
+    const [row] = await tx
+      .insert(patient)
+      .values({
+        tenantId,
+        mrn: randomUUID(),
+        firstName: 'Capability',
+        lastName: 'Check',
+        sex: 'U',
+      })
+      .returning();
+    return row.id;
+  }
+
   @Post('enter-result')
   @UseGuards(JwtAuthGuard, CapabilityGuard)
   @RequireCapability('enter_result')
@@ -45,7 +72,7 @@ export class CapabilityCheckController {
       .insert(order)
       .values({
         tenantId: user.tenantId,
-        patientId: randomUUID(),
+        patientId: await this.insertDemoPatient(tx, user.tenantId),
         status: 'pending',
       })
       .returning();
@@ -65,7 +92,7 @@ export class CapabilityCheckController {
       .insert(order)
       .values({
         tenantId: user.tenantId,
-        patientId: randomUUID(),
+        patientId: await this.insertDemoPatient(tx, user.tenantId),
         status: 'pending',
       })
       .returning();
@@ -91,7 +118,7 @@ export class CapabilityCheckController {
       .insert(order)
       .values({
         tenantId: user.tenantId,
-        patientId: randomUUID(),
+        patientId: await this.insertDemoPatient(tx, user.tenantId),
         status: 'pending',
       })
       .returning();
@@ -117,7 +144,7 @@ export class CapabilityCheckController {
   ) {
     await tx.insert(order).values({
       tenantId: user.tenantId,
-      patientId: randomUUID(),
+      patientId: await this.insertDemoPatient(tx, user.tenantId),
       status: 'pending',
     });
     return { resourceId: 'not-a-uuid', before: null, after: null };

@@ -78,6 +78,13 @@ jobs:
       # been built earlier in the same session, and only failed in CI's clean
       # checkout).
       - run: pnpm --filter @lis/domain build
+      # TASK-040 (FEAT-011): same gap a third time — @lis/sdk went from a
+      # placeholder `export {}` to apps/web's first real workspace-package
+      # dependency (a typed API client generated from apps/api's OpenAPI
+      # doc). Its own generated `schema.ts` is checked in (ADR-0013 §1 —
+      # a visible, diffable contract artifact, not regenerated in CI), so
+      # this is a plain build, not a `generate` + build step.
+      - run: pnpm --filter @lis/sdk build
       - run: pnpm lint
       - run: pnpm typecheck
       # TASK-026 (FEAT-007): CI's first-ever migrate+seed sequence. Mirrors

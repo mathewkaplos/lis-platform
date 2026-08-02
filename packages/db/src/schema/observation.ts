@@ -1,6 +1,7 @@
 import { pgTable, pgEnum, uuid, text, numeric, boolean, jsonb, timestamp, index, pgPolicy, check, primaryKey, foreignKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { analyte, unit } from "./catalog";
+import { patient } from "./patient";
 
 // Tenant-scoped per ADR-0004: this is operational, tenant-varying clinical
 // data, not global reference data like analyte/unit.
@@ -26,10 +27,13 @@ export const observationDataType = pgEnum("observation_data_type", [
 ]);
 
 // KB-06's canonical `observation` DDL ("heart of the schema"). ordered_test_id
-// / specimen_id / patient_id are required plain uuid columns with no FK per
-// ADR-0005 (their natural targets — ordered_test/specimen via TASK-023,
-// patient via TASK-038 — are built in later features/milestones by design;
-// the FK constraint is backfilled by those migrations, not here).
+// / specimen_id are required plain uuid columns with no FK per ADR-0005
+// (their natural target, ordered_test/specimen, was built by TASK-023 in a
+// later feature by design — the FK backfill ADR-0005 requires for these two
+// was never actually done; tracked as issue #260, found during FEAT-011's
+// proposal research, not fixed here since it's an unrelated pre-existing
+// gap). patient_id's own forward-reference FK is backfilled below, by this
+// task (TASK-038), per ADR-0005 and FEAT-011 proposal §2.
 //
 // PARTITION BY RANGE (created_at) per ADR-0008 — not representable by
 // drizzle-kit, so db/migrations/0008_observation_partitioning.sql is
@@ -46,8 +50,10 @@ export const observation = pgTable(
     analyteId: uuid("analyte_id")
       .notNull()
       .references(() => analyte.id),
-    specimenId: uuid("specimen_id").notNull(), // FK backfilled by TASK-023, see ADR-0005
-    patientId: uuid("patient_id").notNull(), // FK backfilled by TASK-038 (M3), see ADR-0005
+    specimenId: uuid("specimen_id").notNull(), // FK backfill still pending, see #260 and header comment above
+    patientId: uuid("patient_id")
+      .notNull()
+      .references(() => patient.id), // FK backfilled by TASK-038, see ADR-0005
 
     dataType: observationDataType("data_type").notNull(),
     valueNum: numeric("value_num"), // quantity

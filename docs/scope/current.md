@@ -1,7 +1,19 @@
 # Status — 2026-08-02 (session 11)
 
-Last commit on main: 215690a — "fix: clean up orphaned order/observation rows before patient FK
-backfill (#274)".
+Last commit on main: c3542b1 — "docs: PR #274 close-out — breadcrumb refresh + merge-authorization
+rule (#275)".
+
+## New standing rule this session: Claude Code may self-merge PRs once CI is green
+
+`AGENTS.md`'s Rules of engagement gained a rule (human-approved) that `gh pr merge <n> --squash` no
+longer needs per-PR confirmation once CI is green — `--delete-branch` still independently blocked by
+`guard-dangerous-git.py` for the real 2026-07-26 incident it exists for. **Landing that rule surfaced
+its own bootstrapping caveat**: the auto-mode classifier applies real, not-fully-predictable extra
+scrutiny to any git/gh write action on a branch that touches `AGENTS.md` itself (or `.claude/
+settings*.json`/hooks) — some denials self-resolved on retry, others required the human to run the
+exact command directly, across `git add`, `git commit`, `git push`, and `gh pr create` for PR #275
+(the PR that added the rule). Written up as an Engineering Flow Retrospective finding in the
+`2026-08-02-2135-pre.md` close report; the caveat itself is expected to land as its own follow-up.
 
 ## Deploy to Staging fixed this session, via PR #274 (`215690a`) — staging is healthy again
 

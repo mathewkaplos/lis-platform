@@ -294,7 +294,59 @@ jobs:
             echo "Seed data already present ($seed_count analyte rows), skipping seed."
           fi
 
-          docker compose up -d valkey keycloak api web < /dev/null
+          docker compose up -d valkey keycloak < /dev/null
+
+          # #256: unmanagedAttributePolicy must be ENABLED on the realm's
+          # User Profile for the custom tenant_id attribute to survive any
+          # live admin write -- the declarative User Profile silently drops
+          # unmanaged attributes otherwise (authentication Skill, entries
+          # #7-#10; confirmed live via a raw Admin REST API round-trip that
+          # showed the write genuinely dropped server-side, not a display
+          # quirk). Keycloak has no persisted data volume on this droplet
+          # (see the `docker compose rm -f -s keycloak` comment above), so
+          # this must be re-applied after every deploy's recreate, not set
+          # once by hand -- that manual, one-time version is exactly what
+          # this step replaces. Reuses the same GET/merge/PUT sequence
+          # already proven working against this real realm
+          # (scripts/feat009-staging-verify.md Step 1), run here against the
+          # droplet's own host-local :8080 listener instead of the
+          # droplet-console session that mechanism originally needed.
+          # Idempotent -- re-PUTting the same value is a no-op. api/web are
+          # deliberately not started until after this succeeds -- same
+          # dependency-ordering discipline as postgres/migrate above -- so
+          # nothing can race a live write against an unpatched profile.
+          ready=false
+          for i in $(seq 1 40); do
+            if curl -sSf --connect-timeout 5 --max-time 5 http://localhost:8080/realms/master/.well-known/openid-configuration < /dev/null >/dev/null 2>&1; then
+              ready=true
+              break
+            fi
+            sleep 5
+          done
+          if [ "$ready" != "true" ]; then
+            echo "Keycloak's internal admin API did not become ready in time" >&2
+            exit 1
+          fi
+
+          ADMIN_TOKEN=$(curl -sSf --connect-timeout 10 --max-time 10 \
+            --data-urlencode "grant_type=password" --data-urlencode "client_id=admin-cli" \
+            --data-urlencode "username=admin" --data-urlencode "password=$KEYCLOAK_ADMIN_PASSWORD" \
+            http://localhost:8080/realms/master/protocol/openid-connect/token < /dev/null | jq -r '.access_token // empty')
+          if [ -z "$ADMIN_TOKEN" ]; then
+            echo "Failed to obtain a Keycloak admin token" >&2
+            exit 1
+          fi
+
+          PROFILE=$(curl -sSf --connect-timeout 10 --max-time 10 http://localhost:8080/admin/realms/lis/users/profile \
+            -H "Authorization: Bearer $ADMIN_TOKEN" < /dev/null)
+
+          NEW_PROFILE=$(echo "$PROFILE" | jq '. + {unmanagedAttributePolicy: "ENABLED"}')
+
+          curl -sSf --connect-timeout 10 --max-time 10 -X PUT http://localhost:8080/admin/realms/lis/users/profile \
+            -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+            -d "$NEW_PROFILE" -w "\nunmanagedAttributePolicy PUT: HTTP %{http_code}\n" < /dev/null
+
+          docker compose up -d api web < /dev/null
 
           # #188: TLS termination + hostname, via tailscale serve rather than
           # a separate reverse-proxy container -- tailscaled is already

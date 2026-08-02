@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as client from 'openid-client';
 import { getOidcConfig } from '@/auth/oidc-config';
 import { PKCE_COOKIE_NAME, PKCE_MAX_AGE_SECONDS, signPkceState } from '@/auth/pkce-store';
+import { getPublicOrigin } from '@/auth/public-origin';
 import { sanitizeRedirectPath } from '@/auth/safe-redirect';
 
 export async function GET(request: NextRequest) {
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
   const redirectTo = sanitizeRedirectPath(
     request.nextUrl.searchParams.get('rd'),
   );
-  const callbackUrl = new URL('/api/auth/callback', request.nextUrl.origin);
+  const callbackUrl = new URL('/api/auth/callback', getPublicOrigin(request));
 
   const authorizationUrl = client.buildAuthorizationUrl(config, {
     redirect_uri: callbackUrl.href,

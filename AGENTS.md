@@ -125,3 +125,17 @@ packages/ui (design system) · packages/sdk (generated API client)
   identical `gh issue close 232 --comment ...` ran unblocked later in the
   same session — the block is not reliably predictable from the command
   shape alone, so don't assume every `gh` write will fail once one does.
+- **A PreToolUse denial does not tell you which earlier steps, if any,
+  already ran — verify with a read-only check before proceeding as if a
+  prior step succeeded (or as if it didn't).** Applies to a single denied
+  compound command (e.g. `A && B`, where the whole call is blocked
+  atomically, not per-segment) and equally to a sequence of separate tool
+  calls (a denial on step 3 says nothing about whether steps 1-2 actually
+  landed). Confirmed 2026-08-01: after `git branch <name> <sha> && git
+  reset --hard origin/main` was denied as one unit, the next turn proceeded
+  as though the `git branch` half had already created the safety branch —
+  it hadn't — and only surfaced when a later `git push` on that branch
+  failed with "unknown revision." No data was actually lost (the commit
+  was still in `git reflog`), but the wrong assumption briefly drove
+  further action on a false premise. Don't guess partial execution either
+  direction; check.

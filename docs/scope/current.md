@@ -1,85 +1,141 @@
-# Status — 2026-08-01 (session 9, continued)
+# Status — 2026-08-02 (session 10)
 
-Last commit on main: 6fa9b43 — "docs: note MCP fallback for gh write commands blocked by the classifier (#248)".
+Last commit on main: 6407ead — "fix: correct redirect_uri sent at token exchange, not just at authorization (#254)".
 
 ## What's actually done (per real evidence)
 
-Continuing the same session that produced PR #243/#244/#245/#246: #232's own comment thread was
-re-checked directly, fresh, one more time — and this time genuinely both items were confirmed by
-a human. #232 was closed with an evidence-citing comment:
+This session closed out both of M2's remaining features by actually completing a real staging
+login/logout round trip and a real capability-check/audit round trip — not by re-reading old
+evidence. Getting there surfaced and fixed four separate, real infrastructure bugs, none of which
+were visible from CI's own green checks.
 
-- **Item 1 (real browser login/logout over tailnet HTTPS)** — confirmed by a human completing the
-  actual round trip against `https://lis-staging.taila0fbf9.ts.net/`, a full interactive Keycloak
-  auth flow, not just CI's HTTP-level smoke check.
-- **Item 2 (TASK-035 Storybook visual/contrast glance)** — already confirmed in the prior comment
-  (a human viewing Storybook directly at `localhost:6006`, including the StatCard WCAG AA
-  contrast fix).
+**#18 (FEAT-009: Authorization & audit) closed.** Live-verified against the real staging API:
+verifier role attempting `:verify` → `HTTP 201` with `actorRole: "verifier"`; technologist-only
+role attempting the same → `HTTP 403`, `"No role grants the 'verify' capability"`; the audit hash
+chain re-derived and confirmed `{"valid":true}` after being exercised through this real traffic.
+Getting a valid token at all required discovering that Keycloak's declarative User Profile
+silently drops the `tenant_id` custom attribute on any live write unless
+`unmanagedAttributePolicy: "ENABLED"` is set on the realm (this realm's built-in `test-user*`
+accounts only work because they were loaded via bulk import, which bypasses that validation).
+Constitution-invariant review for #18 done by direct human review of `capability.guard.ts`/
+`audit.interceptor.ts` against all five invariants.
 
-With #232 closed, **#17 (FEAT-008: Authentication) was also closed** — all four tasks already
-closed (TASK-028/029/030/031, #87-90), its Implementation Proposal already `IMPLEMENTED`, and
-#232's now-confirmed login/logout round trip is this feature's own "demoed on staging" DoD
-evidence.
+**#19 (FEAT-010: Design system v1) closed.** App shell (sidebar, top bar, theme toggle, dark
+mode) live-verified on `https://lis-staging.taila0fbf9.ts.net/`. The six primitives themselves
+have no real page to appear on yet at this milestone (`sidebar.tsx`'s own comment: "One real
+destination exists today ('/'). Nav grows as later features add routes — not invented ahead of
+them") — already verified where they're actually reachable, Storybook, per #232's prior
+human confirmation. Constitution review: `packages/ui` is pure presentation, none of the five
+invariants apply by scope.
 
-**#2 (EPIC-002) was explicitly *not* closed** — this needs stating plainly because a first draft
-of the plan for this session listed #2 as a closeable candidate alongside #232/#17, which was
-wrong: EPIC-002's own Definition of Done requires all three child features closed, and #18
-(FEAT-009) and #19 (FEAT-010) are both still open, each blocked on its own not-yet-attempted
-staging demo — unrelated to #232. Caught by re-reading #2's actual body directly before acting,
-not by trusting the earlier framing — the same "no signal is self-verifying" discipline this
-project's own standing rule (AGENTS.md, PR #244) exists to enforce, applied here to this
-session's *own* prior claim, not just a past session's.
+**Getting a real staging login working at all took four independent fixes, three shipped as
+merged PRs, one as an accepted ADR:**
+1. **ADR-0012** (`lis-engineering`, accepted) — the tailnet's own ACL never granted human
+   members access to staging's web/Keycloak ports, only `tag:ci-runner`. A human's own device
+   couldn't even resolve the hostname; Tailscale hides a peer a device has zero ACL permission
+   to reach. Fixed by adding a scoped `autogroup:member -> tag:lis-staging:443,8443` rule.
+2. **PR #252** — `lis-web`'s `redirectUris` only ever listed `localhost:3000`; staging logins
+   failed Keycloak's `redirect_uri` validation outright.
+3. **PR #253** — two bugs found live, both fixed together: (a) self-hosted Next.js's standalone
+   output can't trust the incoming `Host` header in this exact version (`trustHostHeader` looked
+   valid from Next's own source but is confirmed non-functional here — checked the real built
+   manifest, not the warning), so `request.nextUrl.origin` resolved to the container's own
+   Docker-assigned hostname; fixed with a `PUBLIC_APP_URL` env var + `getPublicOrigin()` helper.
+   (b) Keycloak has no persisted volume on staging, so a redeploy that doesn't force-recreate its
+   container silently never re-imports `lis-realm.json` — PR #252's own `redirectUris` fix sat
+   correctly in the file through a fully green deploy and still didn't work until this was fixed
+   (`docker compose rm -f -s keycloak` before every redeploy now).
+4. **PR #254** — the same Host-header gap broke a *second*, independent code path: `openid-client`'s
+   `authorizationCodeGrant()` derives its own `redirect_uri` for the token-exchange request from
+   the request's own URL, separate from the authorization request PR #253 already fixed. Fixed
+   with a `customFetch` override correcting `redirect_uri` in the token-endpoint POST body,
+   per `openid-client`'s own documented pattern for exactly this situation.
 
-**The `engineering/frontend-design` Skill (tracked in #234) was drafted and committed** to
-lis-engineering (`21cf80e`), after explicit human approval. Five entries, each citing a real
-origin from FEAT-010's actual implementation: `StatusPill`'s never-color-only clinical-flag rule,
-`StatCard`'s WCAG AA contrast gap (only caught by CI's real a11y check, not by eyeballing the
-token hex value), the dual dark-mode mechanism wired ahead of the toggle that needed it, the
-`transpilePackages`/cross-bundler gap (Storybook passing does not prove Next.js will render it),
-and #240 (sidebar nav hidden below `sm` with no replacement trigger) flagged as an open "not yet
-covered" item. **#234 was then closed**, citing the committed Skill as the resolving evidence.
+All four gaps, plus the honest diagnostic trail that found each one, are now written into the
+`authentication` Skill (`lis-engineering`, entries #7-#10) — not just fixed in code, so the next
+session doesn't rediscover them from scratch.
 
-**#193/#194 were checked for a new repro lead, on request — none found in either issue's own
-thread** (both unchanged since 2026-07-31, zero new comments). A real cluster of ~10 failed
-"Deploy to Staging" runs *was* found in raw CI history (2026-08-01, 03:36–08:02 UTC) — but tracing
-it back through git history showed it's fully explained by **#188's own iterative fix process**
-(commits `a25ff02` through `40e3a5c`, PRs #218–#227, all merged that same morning): a MagicDNS
-discovery bug matching every tailnet peer (fixed #219), a prune-only-on-success step that let disk
-fill during #188's own repeated failed-deploy iterations (fixed #225), and Keycloak's real ~91.6s
-boot time outrunning too-short smoke-test windows (fixed #227, widened to 200s). None of these
-three signatures (Keycloak 502, disk-full, `.env` MagicDNS corruption) match #193's exit-56 or
-#194's exit-52, both specifically on the *`Smoke test (api, internal)`* step — different issue,
-already resolved, not a lead for #193/#194. Deploy to Staging has been green continuously since
-08:20 UTC. **#193 and #194 remain open, genuinely unreproduced, unchanged.**
+**`scripts/feat009-staging-verify.sh` was replaced with `scripts/feat009-staging-verify.md`**
+(PR #251) — the `.sh` had gone stale relative to what actually worked (missing required user
+profile fields, missing the `unmanagedAttributePolicy` step, `curl -d` instead of
+`--data-urlencode`). The `.md` is the fully proven runbook, every command in it actually run for
+real either locally (`docker compose down -v && up -d && pnpm db:reset`) or against staging
+directly.
 
-The `/close` Skill's Pre-Close Report (19:23) found the breadcrumb itself 2 commits stale (fixed
-by this rewrite), #234 closeable (done above), and one Engineering Flow Retrospective finding:
-`gh issue comment` was denied by the permission classifier once this session, while a
-functionally identical `gh issue close --comment` ran unblocked later in the same session — the
-MCP `add_issue_comment` tool is the confirmed-working fallback *for when that block happens*, not
-a suggestion to prefer MCP over `gh` by default. Approved and added to AGENTS.md as PR #248
-(`6fa9b43`), merged this session.
+**One AGENTS.md addition** — after a `git branch <name> <sha> && git reset --hard origin/main`
+was denied atomically by the PreToolUse guard, the next turn briefly proceeded as if the `git
+branch` half had already run (it hadn't; caught when a later `git push` failed with "unknown
+revision," recovered via `git reflog`, no data lost). New standing rule: after any PreToolUse
+denial — a chained command or a sequence of separate tool calls — verify with a read-only check
+whether any earlier step actually completed, don't assume partial execution either direction.
+
+**Session-close Pre-Close Report** written and pushed to `lis-engineering`
+(`session-close-reports/2026-08-02-1040-pre.md`) — one Engineering Flow Retrospective finding
+(the PreToolUse item above, approved and applied to AGENTS.md), one flagged-but-unresolved manual
+check (ADR-0012's "port 22 still SSH-restricted" claim was reasoned to hold by construction, never
+independently tested — still open as of this writing).
+
+## M2 exit criteria — status
+
+M2's own exit criteria (`/mnt/d/LIS/research/LIS-Execution-Plan.md:97-99`): *"a bench user logs
+in, sees only their tenant's data (proven by test), cannot verify a result, and every write is
+audited; Storybook renders all six primitives in light and dark."*
+
+**All five clauses met, each with real evidence:**
+| Clause | Evidence |
+|---|---|
+| Bench user logs in | This session's real staging login/logout round trip |
+| Sees only their tenant's data, proven by test | TASK-030's e2e cross-tenant isolation test (interleaved two-tenant requests), CI green |
+| Cannot verify a result | #18: technologist-only role → `403` on `:verify`, live on staging |
+| Every write is audited | #18: `audit-chain-valid` → `{"valid":true}` after real writes, live on staging |
+| Storybook renders all six primitives, light and dark | #232 (prior session): human-confirmed at `localhost:6006` |
+
+**M2's own exit criteria are fully satisfied.** This does not by itself close EPIC-002 — see below.
+
+## EPIC-002 (#2) — current state: open, pending a design-partner demo
+
+Checked directly against #2's own acceptance criteria, not inferred from M2's exit criteria being
+met or from all three child features (#17/#18/#19) now being closed — same discipline this
+project's standing rule already required, applied here to the parent epic itself:
+
+- "All features listed above are merged and individually demoed" — **met** (#17/#18/#19 all closed).
+- "No violation of the five Constitution invariants was introduced" — **met** (each feature's own
+  review found nothing; ADRs 0009/0010/0011 already accepted).
+- "Relevant ADRs are ratified and the knowledge base updated where authorized" — **met**
+  (ADR-0009/0010/0011/0012 all accepted; `authentication` and `frontend-design` Skills both
+  updated with real findings from this epic's work).
+- **"The milestone(s) this epic spans have been demoed to the design-partner lab" — NOT met. No
+  design partner is engaged at this project's current stage.** This is a business/scheduling
+  decision, not an engineering task — nothing in a future session should attempt to "fix" this by
+  writing code. #2 stays open until that demo actually happens, by explicit human decision
+  (2026-08-02): leave it open for now.
+
+**Do not close #2 on any future session's own initiative without this specific criterion being
+addressed** — every other box is checked; this is the one and only remaining blocker.
 
 ## Currently active milestone
 
-**M2 — Identity, Tenancy, AuthZ + Design System**: 12 closed / 3 open (was 11/4 at session start;
-#17 closing this session moved the count).
-
-M2's remaining open items:
-- **#2** (EPIC-002) — stays open until #18 and #19 both close too. Do not close on #17/#232
-  clearing alone — see the correction above.
-- **#18** (FEAT-009) — blocked on its own staging demo, not yet attempted.
-- **#19** (FEAT-010) — blocked on its own staging demo, not yet attempted.
+**M2 — Identity, Tenancy, AuthZ + Design System**: 14 closed / 1 open (was 12/3 at session start;
+#18 and #19 closing this session moved the count). The one remaining open item is #2 (EPIC-002)
+itself, per above — not blocked on any further engineering work.
 
 **Unrelated open issues, not M2-milestoned (carried forward, still genuinely unresolved):**
 - **#192** — GCP billing/Stitch MCP decision. Still open, still not resolved.
-- **#193, #194** — still open, still genuinely unreproduced (re-checked this session, see above;
-  unchanged across multiple sessions now, from session 4).
-- **#240** — sidebar nav fully hidden below `sm` breakpoint, no replacement trigger. Found this
-  session during TASK-036's own manual-verification pass; needs a triage decision (fast-follow vs.
-  a later dedicated mobile pass), not decided here. Flagged as an open item in the new
-  `frontend-design` Skill's own "not yet covered" section.
+- **#193, #194** — still open, still genuinely unreproduced (last checked 2026-08-01; unchanged
+  across multiple sessions now, from session 4).
+- **#240** — sidebar nav fully hidden below `sm` breakpoint, no replacement trigger. Still needs a
+  triage decision (fast-follow vs. a later dedicated mobile pass), not decided yet.
 - Design-system work beyond FEAT-010 v1 (further primitives, app-shell polish, real org/branch
   switcher once that data model exists) not yet scoped as a next feature.
+- **New, this session:** ADR-0012's own acceptance criterion that port 22 remains SSH-restricted
+  to `tag:ci-runner` was never independently re-tested after the ACL widening — reasoned to hold
+  by construction (the new rule is scoped to `:443,8443` only) but not confirmed. A quick manual
+  SSH attempt from a human device would close this loop for real.
+- **New, this session:** `unmanagedAttributePolicy: "ENABLED"` (needed for any custom Keycloak
+  user attribute to survive a live write) is currently a live-only setting on staging's realm, not
+  committed to `lis-realm.json` — it will be silently wiped by the next Keycloak container
+  recreate and need reapplying. Worth promoting into a `userProfile` block in the realm file
+  before the next time this bites someone.
 
 **Unresolved findings, carried forward unchanged from earlier sessions:**
 - #74 (TASK-015)'s out-of-band closure remains unverified.
@@ -89,26 +145,30 @@ M2's remaining open items:
 
 ## Notes / gotchas for the next session
 
-- **A closeable-looking epic still needs its own DoD checked, not inferred from its
-  most-recently-cleared blocker.** This session's own first pass listed EPIC-002/#2 as closeable
-  right alongside #232/#17, reasoning from "the blocker that was just resolved" rather than
-  #2's actual body text (which requires all three child features closed, and two — #18, #19 —
-  were still open for an unrelated reason). Caught before acting, by reading #2's body directly.
-  Generalizes the same standing rule already in AGENTS.md ("no single status signal is
-  self-verifying") to a subtler case: even a real, freshly-confirmed signal about *one* blocker
-  doesn't prove a parent's full DoD is met if that DoD has other, unrelated conditions.
-- **A CI failure cluster that looks like new flakiness may just be a past investigation's own
-  visible trail.** ~10 failed Deploy to Staging runs in one morning looked, from run-list alone,
-  like a real new repro lead for #193/#194. Tracing each failure's actual step and error text,
-  then cross-referencing against git log, showed it was entirely #188's own iterative fix process
-  (7 commits, already merged) — not new information. Don't conclude "new lead" from a failure
-  count alone; read what actually failed and check whether it's already an explained, closed
-  story before treating it as fresh.
-- **`gh issue comment` vs. `gh issue close --comment`** — the permission classifier blocked one
-  and not the other for functionally the same underlying write, within the same session. If a
-  `gh issue`/`gh pr` write command is denied, the equivalent `mcp__github__*` tool
-  (`add_issue_comment`, `issue_write`, etc.) is a confirmed-working fallback — reach for it *after*
-  a block, not as a default preference over `gh`. Now a standing note in AGENTS.md.
-- Session 9's earlier notes/gotchas (checking child tasks/comment threads, not just headline
-  Project-status fields; closing convention is a comment, not a body edit) are unchanged and still
-  apply — not repeated here, see git history for the full earlier breadcrumb if needed.
+- **"Staging is reachable" and "a human can log in" are not the same claim.** #188 made Keycloak
+  itself correctly configured and reachable over real HTTPS; that alone still left four separate,
+  independent gaps (Tailscale ACL, Keycloak's no-persisted-volume redeploy trap, the Next.js
+  Host-header gap in two distinct code paths, the User Profile attribute gap) that only surfaced
+  from actually driving the interactive OIDC flow end-to-end, not from any CI-level HTTP smoke
+  check. Full detail and diagnostics now in `authentication` Skill entries #7-#10 — read those
+  before touching Keycloak/staging-auth again, don't rediscover this from scratch.
+- **A realm-file change can deploy successfully and still never take effect.** Keycloak has no
+  persisted volume on staging; a redeploy that doesn't explicitly force-recreate its container
+  leaves `--import-realm` silently skipping the re-import. If a `lis-realm.json` change
+  demonstrably deployed but Keycloak's live behavior doesn't match it, suspect a stale container
+  (`docker compose ps` showing an old uptime for `keycloak` specifically) before anything else.
+  (Should no longer recur — `deploy-staging.yml` now force-recreates Keycloak every deploy — but
+  worth knowing why, if it ever does.)
+- **A PreToolUse denial doesn't tell you which earlier steps already ran.** New AGENTS.md standing
+  rule this session, from a real near-miss (see above) — verify with a read-only check before
+  assuming a prior chained command or tool call succeeded (or didn't).
+- **A cleared blocker for one child doesn't prove a parent epic's own DoD is met** — generalized
+  again this session, this time to EPIC-002 itself: even with M2's exit criteria fully satisfied
+  and all three child features closed, #2's own acceptance criteria had one further, unrelated
+  condition (design-partner demo) that nothing about the children being done resolves. Checked
+  #2's actual body text directly rather than assuming; same discipline as session 9's own
+  EPIC-002 correction, applied one level further this time.
+- Earlier sessions' notes/gotchas (checking child tasks/comment threads not just headline
+  Project-status fields; `gh issue`/`gh pr` write denials falling back to `mcp__github__*`;
+  closing convention is a comment, not a body edit) are unchanged and still apply — not repeated
+  here, see git history for earlier breadcrumbs if needed.

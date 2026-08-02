@@ -139,3 +139,28 @@ packages/ui (design system) · packages/sdk (generated API client)
   was still in `git reflog`), but the wrong assumption briefly drove
   further action on a false premise. Don't guess partial execution either
   direction; check.
+- **If a `docker`/`docker compose` command hangs rather than errors, check
+  whether the daemon itself is actually running before assuming a
+  compose-file or command bug.** `systemctl is-active docker` and `pgrep
+  dockerd` are the fast checks. Confirmed 2026-08-02: the daemon died
+  mid-session (real memory pressure — 215Mi free of 7.6Gi at the time),
+  and every subsequent `docker compose`/`docker ps` call hung for its full
+  timeout instead of failing fast, which looked at first like a compose
+  file or networking problem. There is no passwordless-sudo or interactive-
+  TTY path available to an agent in this sandbox to restart the daemon
+  itself — if it's down, say so plainly and hand off to the human (e.g.
+  restarting Docker Desktop on the Windows host, for WSL setups) rather
+  than retrying the same command.
+- **Before drafting an Implementation Proposal's mechanism for anything
+  touching staging/production infrastructure, check the relevant
+  runbook(s) for already-documented access constraints — SSH availability,
+  reachable ports/hosts, credential locations — before proposing a
+  mechanism that assumes a particular access path.** Confirmed 2026-08-02:
+  the #256 IP's first draft proposed exporting the live Keycloak realm via
+  `kc.sh export`/SSH, discovered only mid-implementation to be infeasible
+  — `scripts/feat009-staging-verify.md` already stated in plain text
+  ("there is no personal SSH key for this box... copy-paste into the
+  staging droplet console") that this exact access path doesn't exist,
+  written in an *earlier* session's own work. Checking that file first
+  would have avoided a full revision cycle (a second human decision plus
+  an IP rewrite) spent approving a mechanism that then had to change.

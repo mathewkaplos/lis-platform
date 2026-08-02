@@ -72,6 +72,13 @@ export async function GET(request: NextRequest) {
     tenantId: claims.tenant_id,
     roles,
     idToken: tokens.id_token ?? '',
+    // ADR-0014: retained so apps/web can call apps/api on the user's behalf
+    // (getValidAccessToken(), auth/access-token.ts) -- previously discarded
+    // here entirely.
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token ?? '',
+    accessTokenExpiresAt:
+      Math.floor(Date.now() / 1000) + (tokens.expiresIn() ?? 0),
   });
 
   const response = NextResponse.redirect(

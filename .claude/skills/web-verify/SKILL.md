@@ -46,6 +46,21 @@ found, `rm -rf .next`, then restart clean.
 full dev-server restart, not just a `.next` cache clear -- the config is
 only read at process start.
 
+**Gotcha (2026-08-02, planning TASK-040/#265):** `pnpm --filter web build`
+(production build, Turbopack) fails in this sandbox specifically, on
+`/_global-error`/`/_not-found`'s own prerender step --
+`TypeError: Cannot read properties of null (reading 'useContext')`. Confirmed
+this is **not** a real code bug: reproduces identically on a clean `main`
+checkout with zero changes (`git stash` + rebuild), survives a full `rm -rf
+.next`, and — most importantly — **CI's own `pnpm build` step passes
+reliably** (confirmed across four separate real PR runs the same session).
+Treat this as a known, sandbox-only Turbopack/prerender quirk, not something
+to debug further locally: use `pnpm --filter web dev` (step 1 above) for any
+local verification, and trust CI's `pnpm build` as the real proof a change
+doesn't break the production build, the same way `apps/api`'s own e2e specs
+already can't be fully trusted from a single local run for other reasons
+(see AGENTS.md's harness-mismatch rule).
+
 ## 2. Reach an authenticated route without live Keycloak
 
 Local dev has no Keycloak/Postgres by default, and the full OIDC login

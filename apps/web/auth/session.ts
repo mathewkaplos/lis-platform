@@ -9,15 +9,26 @@ const SESSION_TTL = '30m';
 export const SESSION_MAX_AGE_SECONDS = 1800;
 
 /**
- * apps/web's own session -- never the raw Keycloak access token exposed to
- * browser JS (this is only ever read/written server-side; the cookie itself
- * is httpOnly). idToken is retained solely to hint RP-initiated logout.
+ * apps/web's own session -- never exposed to browser JS (this is only ever
+ * read/written server-side; the cookie itself is httpOnly). idToken is
+ * retained solely to hint RP-initiated logout.
+ *
+ * accessToken/refreshToken/accessTokenExpiresAt (ADR-0014): the real
+ * Keycloak-issued tokens, retained so a Server Action/Route Handler can call
+ * apps/api on the user's behalf. Never read directly by a caller -- always
+ * through getValidAccessToken() (auth/access-token.ts), which refreshes
+ * accessToken via refreshToken before it's stale (the realm's
+ * accessTokenLifespan is 300s, far shorter than this session's own 30-minute
+ * lifetime).
  */
 export interface SessionPayload {
   sub: string;
   tenantId: string;
   roles: string[];
   idToken: string;
+  accessToken: string;
+  refreshToken: string;
+  accessTokenExpiresAt: number;
 }
 
 // Session and PKCE-state tokens share one secret (see secret.ts) -- this
@@ -53,7 +64,12 @@ export async function verifySession(
       payload.tenantId.length === 0 ||
       !Array.isArray(payload.roles) ||
       !payload.roles.every((role) => typeof role === 'string') ||
-      typeof payload.idToken !== 'string'
+      typeof payload.idToken !== 'string' ||
+      typeof payload.accessToken !== 'string' ||
+      payload.accessToken.length === 0 ||
+      typeof payload.refreshToken !== 'string' ||
+      payload.refreshToken.length === 0 ||
+      typeof payload.accessTokenExpiresAt !== 'number'
     ) {
       return undefined;
     }
@@ -62,6 +78,9 @@ export async function verifySession(
       tenantId: payload.tenantId,
       roles: payload.roles,
       idToken: payload.idToken,
+      accessToken: payload.accessToken,
+      refreshToken: payload.refreshToken,
+      accessTokenExpiresAt: payload.accessTokenExpiresAt,
     };
   } catch {
     return undefined;

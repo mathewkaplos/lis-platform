@@ -1,9 +1,11 @@
 import Link from 'next/link';
-import { LayoutDashboard } from 'lucide-react';
+import { LayoutDashboard, UserPlus } from 'lucide-react';
 
-// One real destination exists today ("/"). Nav grows as later features add
-// routes -- not invented ahead of them.
-const NAV_ITEMS = [{ href: '/', label: 'Dashboard', icon: LayoutDashboard }];
+// Nav grows as later features add routes -- not invented ahead of them.
+const NAV_ITEMS = [
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/patients/new', label: 'Register patient', icon: UserPlus },
+];
 
 export function Sidebar() {
   return (

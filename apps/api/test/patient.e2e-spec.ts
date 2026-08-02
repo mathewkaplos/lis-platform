@@ -175,6 +175,52 @@ describe('Patient API (e2e)', () => {
     }
   });
 
+  it('searches by firstName+lastName+birthDate (case-insensitive), the TASK-040 duplicate-detection combination', async () => {
+    const uniqueLastName = `Duped-${randomUUID()}`;
+    await request(app.getHttpServer())
+      .post('/v1/patients')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        firstName: 'Jamie',
+        lastName: uniqueLastName,
+        sex: 'U',
+        birthDate: '1990-05-15',
+      })
+      .expect(201);
+
+    const match = await request(app.getHttpServer())
+      .get('/v1/patients')
+      .query({
+        firstName: 'JAMIE', // different casing -- proves case-insensitivity
+        lastName: uniqueLastName.toLowerCase(),
+        birthDate: '1990-05-15',
+      })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const matchResults = match.body as Array<{ lastName: string }>;
+    if (matchResults.length !== 1) {
+      throw new Error(
+        `expected exactly one name+DOB match, got ${JSON.stringify(match.body)}`,
+      );
+    }
+
+    const noMatch = await request(app.getHttpServer())
+      .get('/v1/patients')
+      .query({
+        firstName: 'Jamie',
+        lastName: uniqueLastName,
+        birthDate: '1991-05-15', // different birth date -- must not match
+      })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const noMatchResults = noMatch.body as unknown[];
+    if (noMatchResults.length !== 0) {
+      throw new Error(
+        `expected no match for a different birth date, got ${JSON.stringify(noMatch.body)}`,
+      );
+    }
+  });
+
   it('returns 404 for a patient created under a different tenant (RLS at the API layer, not just the DB layer)', async () => {
     const created = await request(app.getHttpServer())
       .post('/v1/patients')

@@ -158,6 +158,11 @@ services:
       # serve now provides the real HTTPS this needed.
       KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL}
       PUBLIC_APP_URL: ${PUBLIC_APP_URL}
+      # TASK-040: apps/web's first real server-to-server call to apps/api.
+      # The compose-internal hostname/port (api's own Dockerfile EXPOSEs
+      # 4000, no ports: mapping needed -- api is never browser-facing, see
+      # that service's own comment above).
+      API_BASE_URL: http://api:4000
     # Same fix as keycloak's mapping above, same real bug -- tailscale
     # serve (host-side) needs a real host-local listener to proxy into.
     # 127.0.0.1-bound, not 0.0.0.0 -- no exposure beyond the host itself.

@@ -74,7 +74,7 @@ packages/ui (design system) · packages/sdk (generated API client)
   selectively, only when it happens to be convenient.
 - **A pass in one test/build harness does not prove a pass in another —
   verify against the actual harness the real thing will run in, not
-  whichever one is most convenient to run.** Four real instances, not
+  whichever one is most convenient to run.** Five real instances, not
   hypothetical: (1) TASK-032/PR #185 — `CapabilityGuard`'s `Reflector`
   dependency resolved to `undefined` at runtime because vitest's esbuild
   transform doesn't emit the `design:paramtypes` metadata Nest's implicit
@@ -98,6 +98,17 @@ packages/ui (design system) · packages/sdk (generated API client)
   caught that an unrelated proof controller's `randomUUID()` placeholder
   for `patientId` — valid before the backfill, silently wrong after — now
   failed with a 500 on every route. See `database-design` Skill entry #4.
+  (5) TASK-040 — `apps/api`'s real, compiled Fastify server had never
+  actually been able to start since TASK-039 added
+  `SwaggerModule.setup(...)` to `main.ts` (`@nestjs/platform-fastify`'s
+  `useStaticAssets()` needs `@fastify/static`, never installed). Every
+  e2e spec uses `Test.createTestingModule().createNestApplication()`,
+  which defaults to Express and never exercises the real Fastify
+  adapter at all; this task's own manual verification was the first
+  thing to actually boot `main.ts`'s real bootstrap path, and it
+  crashed immediately. Confirmed fixed against both a local run and a
+  real `docker build` + `docker run` of the actual production image,
+  not just a build-succeeds check.
 - **No single status signal — a breadcrumb's prose, a GitHub Project field,
   or an issue's own body text — is self-verifying. Check the actual child
   tasks, merged PRs, or code when a feature's real status matters, not just

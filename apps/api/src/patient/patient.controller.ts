@@ -18,7 +18,7 @@ import {
   type Patient,
 } from '@lis/domain';
 import { patient } from '@lis/db';
-import { eq } from 'drizzle-orm';
+import { and, eq, ilike } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { Audit } from '../auth/audit.decorator';
@@ -169,8 +169,12 @@ export class PatientController {
   }
 
   /**
-   * Exact-match only (`mrn` or `nationalId`), per FEAT-011's own AC — never
-   * free-text; TASK-041 owns that once its real UI requirements exist.
+   * Exact-match only, per FEAT-011's own AC — never free-text; TASK-041 owns
+   * that once its real UI requirements exist. Three mutually exclusive
+   * lookup shapes (`patientSearchQuerySchema` requires exactly one):
+   * `mrn`, `nationalId`, or `firstName`+`lastName`+`birthDate` together (the
+   * last one is TASK-040's own duplicate-detection check, not general
+   * search — case-insensitive on names, per that task's proposal §10 Q1).
    * Tenant isolation is RLS alone (TenantContextInterceptor's `SET LOCAL`) —
    * no `tenantId` filter added in application code, matching every existing
    * read route in this repo (e.g. `order-count`'s plain unfiltered SELECT).
@@ -184,9 +188,17 @@ export class PatientController {
     query: PatientSearchQueryDto,
     @DbTx() tx: RequestWithTx['tx'],
   ): Promise<Patient[]> {
-    const column = query.mrn !== undefined ? patient.mrn : patient.nationalId;
-    const value = query.mrn ?? query.nationalId ?? '';
-    const rows = await tx.select().from(patient).where(eq(column, value));
+    const where =
+      query.mrn !== undefined
+        ? eq(patient.mrn, query.mrn)
+        : query.nationalId !== undefined
+          ? eq(patient.nationalId, query.nationalId)
+          : and(
+              ilike(patient.firstName, query.firstName as string),
+              ilike(patient.lastName, query.lastName as string),
+              eq(patient.birthDate, new Date(query.birthDate as string)),
+            );
+    const rows = await tx.select().from(patient).where(where);
     return rows.map(toPatientDto);
   }
 

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@lis/domain": "workspace:*",
+    "@lis/sdk": "workspace:*",
     "@lis/ui": "workspace:*",
     "jose": "^5.9.6",
     "lucide-react": "^0.475.0",

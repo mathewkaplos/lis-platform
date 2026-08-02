@@ -1,6 +1,53 @@
 # Status — 2026-08-02 (session 11)
 
-Last commit on main: 45ca1bb — "fix: pin packageManager so corepack resolves the same pnpm everywhere (#269)".
+Last commit on main: 3c07232 — "feat: patient registration form + duplicate detection (TASK-040) (#271)".
+
+## TASK-040 (FEAT-011) merged this session, via PR #271 (`3c07232`)
+
+`apps/web`'s first real form, first real page beyond the app shell placeholder, and first real
+call to `apps/api`. `packages/sdk`'s first real content: types generated from `apps/api`'s live
+OpenAPI document (`openapi-typescript` + `openapi-fetch`, checked in per ADR-0013 §1 — a visible,
+diffable contract artifact). Registration screen at `/patients/new`, KB-02-minimal field set, a
+single Server Action doing duplicate-check-then-create. Soft "Possible match found" review callout
+on an exact `firstName`+`lastName`+`birthDate` match (proposal §10 Q1) — distinct from the existing
+hard `409` on an exact `nationalId` collision (TASK-039). `GET /v1/patients` extended to accept this
+name+DOB combination as a third lookup shape.
+
+**Three real bugs found and fixed via this task's own testing, not assumed correct** (full detail
+in `docs/plans/feat-011-patient-management.md`'s TASK-040 §11, a fifth instance added to AGENTS.md's
+harness-mismatch rule):
+1. **`apps/api`'s real (compiled, Fastify) server has been unable to start at all since TASK-039**
+   added `SwaggerModule.setup()` to `main.ts` — `@fastify/static` was never installed. Every e2e
+   spec defaults to Express and never exercised the real Fastify adapter; this task's own manual
+   verification was the first thing to actually boot `main.ts`'s real bootstrap path, and it
+   crashed immediately. This was a **live production-blocking regression sitting on `main` since
+   TASK-039's own merge**, only caught now. Fixed and verified against a real `docker build` +
+   `docker run` of the actual production image.
+2. A `'use server'` file may only export async functions at runtime — a plain object export
+   (`registerPatientInitialState`) threw only when a real request hit it, invisible to
+   typecheck/lint. Moved to a separate `types.ts` file.
+3. This sandbox's TypeScript incremental build cache is unreliable under WSL2 (`nest build`/`tsc`
+   reported success while silently producing no `dist/` output) — a real, reproducible sandbox
+   limitation, not a code bug; worked around locally, not chased further.
+
+**Verified end-to-end with a real headless-Chromium Playwright check** (real Keycloak tokens, real
+`apps/api`, real Postgres, this sandbox's own missing-`libnss3.so` workaround per the `web-verify`
+Skill): registration succeeds with a real assigned MRN; a repeat submission with the same name+DOB
+shows the duplicate warning with correct existing-patient details; proceeding past it creates the
+second patient.
+
+**CI gap found and fixed after merge, same class as before**: `apps/web` now genuinely imports
+`@lis/sdk`'s exports for the first time — `pr.yml` never gained a build step for it (same class of
+gap already fixed twice this session for `@lis/db`/`@lis/domain`). Reproduced locally, fixed, PR
+re-verified green before merge.
+
+**`#99` didn't auto-close** (same gotcha as `#265` before it — the PR body referenced it in prose,
+not a bare `Closes #99` line) — closed manually via comment.
+
+**FEAT-011 remaining**: only TASK-041 (search + profile screens, #100) is left. `engineering/
+api-design` and `domain/patient-identity` Skills, named by FEAT-011's own issue (#20), still don't
+exist — flagged four times now across TASK-038/039/040-adjacent proposals, genuinely load-bearing
+for TASK-041's own frontend work.
 
 ## Real deploy-blocking bug found and fixed this session, via PR #269 (`45ca1bb`)
 

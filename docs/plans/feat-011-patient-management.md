@@ -457,3 +457,210 @@ No production data or deployed feature depends on this yet.
    `AuditInterceptor` mechanism unchanged.
 
 **Both questions resolved — see Status header. Implementation begins now.**
+
+---
+
+# Revision: TASK-040 — Registration form + duplicate detection
+Status: APPROVED
+ADR: none — §10 Q1 resolved as a reversible, well-reasoned scope decision, not architectural
+Date: 2026-08-02    Backlog ID: TASK-040 (#99)
+
+## 1. Goal
+
+TASK-039 (patient API) and the session token bridge (#265/ADR-0014) are both merged — the two
+things this task actually depends on (a working `/v1/patients` endpoint, and a way for `apps/web`
+to call it at all) now exist. This is `apps/web`'s first real form, first real page beyond the
+"Signed in" placeholder, and its first real call to `apps/api`.
+
+**This revision's approvable scope is TASK-040 only**, same scope-narrowing precedent as every
+prior revision in this file — TASK-041 (search + profile screens) depends on this task's actual
+patient-detail rendering conventions in ways not responsibly knowable yet, and this task does not
+build the search UI TASK-041 owns.
+
+## 2. Affected files
+
+- `packages/sdk/src/index.ts` (+ new files) — `packages/sdk`'s first real content: TypeScript
+  types generated from `apps/api`'s live OpenAPI document (`openapi-typescript`), plus a thin typed
+  fetch client (`openapi-fetch`) — no hand-maintained parallel client, per ADR-0013 §1's same
+  "contract never drifts from code" principle, now extended to the generated-client side.
+- `apps/web/lib/api-client.ts` (new) — `createPatientApiClient(accessToken: string)`: returns a
+  **fresh** `openapi-fetch` client per call, with the `Authorization` header baked in at creation
+  time — never a module-scoped singleton reused across requests. `openapi-fetch`'s own docs
+  explicitly warn that caching a token in module state "is safe... for client applications but
+  should be avoided for server applications" — `apps/web` is exactly that server application,
+  multi-tenant and multi-user, so a cached token would leak across requests/users. Always
+  constructed fresh from `getValidAccessToken()`'s own per-request result.
+- `apps/web/.env.example` / staging env — new `API_BASE_URL` (default `http://localhost:4000`
+  locally, matching `apps/api`'s own local port). **Confirmed directly**:
+  `infra/docker-compose.staging.yml`'s `api` service has no `ports:` mapping at all, with its own
+  header comment already stating the intended architecture — "apps/web never calls api from the
+  browser... only server-to-server on `lis_staging_net`" — exactly this task's own call shape.
+  `infra/docker-compose.staging.yml`'s `web` service environment gains `API_BASE_URL:
+  http://api:4000` (the compose-internal hostname).
+- `apps/web/src/patient/patient-form-schema.ts` or reuse `packages/domain`'s existing
+  `patientCreateSchema` directly for client + server-side validation (exact choice at
+  implementation time — likely direct reuse, avoiding a second schema for the same shape).
+- `apps/web/app/(app)/patients/new/page.tsx` (new) — the registration screen.
+- `apps/web/app/(app)/patients/new/actions.ts` (new) — the Server Action: duplicate-check, then
+  create, calling `apps/api` via `createPatientApiClient(await getValidAccessToken())`.
+- `apps/web/app/(app)/_components/sidebar.tsx` — add a "Patients" (or "Register patient") nav
+  entry, since this is the first real feature page beyond the app shell's own placeholder content.
+- **`apps/api/src/patient/patient.controller.ts` — `GET /v1/patients`'s search extended** to also
+  accept `firstName`+`lastName`+`birthDate` as a combination (see §10 Q1) for duplicate-detection
+  specifically, alongside its existing exact `mrn`/`nationalId` lookup. `packages/domain/src/
+  patient.ts`'s `patientSearchQuerySchema` gains this as a third valid combination.
+
+## 3. Architecture consulted
+
+- **FEAT-011 issue (#20) AC**: "Duplicate-patient warning triggers on matching name+DOB+ID
+  combination"; "Registration form captures the design partner's actual required field set."
+- **Google Stitch Prompt Library §4.1** (Patient Registration) — the only place "duplicate
+  detection" is described concretely: "Duplicate-detection callout if name+DOB+ID match an existing
+  patient (‘Possible match found — review’)" — a **soft, reviewable warning**, not a hard block;
+  the user can still proceed after reviewing. This directly shapes §5/§10 Q1: TASK-040 is not
+  building a hard-reject mechanism (that already exists, separately, as the DB's own unique
+  constraint + `409` on an exact `nationalId` collision, shipped in TASK-039) — it's a second,
+  softer, earlier signal shown before save.
+- **TASK-038's own KB-02-minimal scope decision** (already approved, `docs/plans/
+  feat-011-patient-management.md`'s TASK-038 revision, §10 Q1) — directly bounds this task's own
+  field set: the API only accepts `firstName`/`middleName`/`lastName`/`sex`/`birthDate`/
+  `nationalId` today, so the registration form can only meaningfully capture those fields
+  regardless of what Stitch's wider mockup shows (contact/insurance/emergency-contact/photo/blood
+  group) — there is nothing yet for those fields to be submitted to.
+- **`infra/docker-compose.staging.yml`** — read directly (not assumed) to confirm the
+  server-to-server-only architecture already anticipated for `apps/web`↔`apps/api` calls (§2).
+- **`openapi-typescript`/`openapi-fetch` docs** (Context7, this session) — confirmed the
+  generate-types + thin-client pattern, and the specific server-vs-client token-caching warning
+  that directly shapes §2's `createPatientApiClient` design (fresh client per call, never a
+  module-level singleton).
+- **`packages/ui`'s existing primitives** (`form-field.tsx`, `input.tsx`) — checked directly:
+  `Input` is a generic wrapper accepting any native `type` (including `date`), and `FormField`
+  already implements the label-above-input, `aria-describedby`/`aria-invalid` pattern this form
+  needs. No dedicated select/radio primitive exists for the `sex` field (`M`/`F`/`U`) — see §5.
+
+## 4. Skills loaded
+
+- `frontend-design` — re-checked; still doesn't exist (same gap TASK-038/039's proposals already
+  flagged, now a third time). Not authored here — real findings from this task become its first
+  content afterward, per AGENTS.md's same-day rule, matching TASK-034/035's own precedent for the
+  same gap.
+- `engineering/api-design` / `domain/patient-identity` — re-checked, still don't exist (flagged a
+  third time, per the breadcrumb).
+- `authentication` — re-checked for the token-bridge's own established conventions
+  (`getValidAccessToken()`, ADR-0014) — directly reused here, no new auth pattern invented.
+
+## 5. Assumptions & autonomous decisions
+
+- **`sex` is a native `<select>` wrapped in `FormField`, not a new shared `packages/ui`
+  primitive.** A single three-option field for one form doesn't warrant a new reusable component
+  the way `DataTable`/`StatusPill` did — those exist because multiple future screens need them;
+  nothing else in this task's scope needs a select/radio primitive yet. Revisit only if a second,
+  independent need for one appears.
+- **The duplicate-check and the create both happen inside one Server Action**, sequentially (check
+  first, if the user confirms past a warning, then create) — not two separate round trips the
+  client orchestrates. Keeps the token-refresh/API-call pattern in one place, matching
+  `getValidAccessToken()`'s own "Server Action or Route Handler only" constraint (ADR-0014 §3).
+- **Name matching for duplicate detection is case-insensitive exact match**, not fuzzy/phonetic
+  (e.g. no Soundex/Levenshtein). A real patient-matching algorithm is its own substantial body of
+  work, well beyond this task's 2-day sizing — exact-match-on-normalized-casing is the honest,
+  scoped starting point; a follow-up task can add fuzzier matching once this simpler mechanism's
+  real false-negative rate is actually observed.
+
+## 6. Risks
+
+- **§10 Q1 (duplicate-match criteria) is the one genuinely open, load-bearing question** — changes
+  the API extension's actual shape, not decided unilaterally.
+- **First real `apps/web`-to-`apps/api` call** — the token bridge (ADR-0014) was built and tested
+  against a real Keycloak refresh call, but never yet exercised end-to-end against a real
+  `apps/api` request. Worth a direct, real check (§8), not assumed to work from the token bridge's
+  own tests alone.
+- **`API_BASE_URL` staging wiring is a real infra change** (`infra/docker-compose.staging.yml`),
+  not just application code — per this repo's own established rule (AGENTS.md's Rules of
+  engagement: check runbooks/access constraints before drafting a mechanism touching
+  staging/production infra), confirmed directly against the compose file itself (§2/§3) rather than
+  assumed.
+- **`packages/sdk`'s first real build** — first time this package has real content; worth
+  confirming its own `tsc -p tsconfig.json` build step actually works with generated
+  `openapi-typescript` output before considering this "done."
+
+## 7. Acceptance criteria
+
+TASK-040's literal AC (the only AC this revision covers):
+- [ ] A duplicate name+DOB+ID combination triggers a warning before save. Judged by: submitting a
+  registration whose `firstName`+`lastName`+`birthDate` (and `nationalId`, when provided — see §10
+  Q1) matches an existing patient in the same tenant shows a review callout ("Possible match
+  found") before the create actually happens; the user can still proceed (soft warning, not a hard
+  block) or cancel; a genuinely new patient (no match) saves without any warning shown.
+
+FEAT-011's feature-level AC is explicitly **not** claimed as satisfied by this revision — the
+search/profile screens (TASK-041) and the "design partner's actual required field set" (§3, bounded
+by TASK-038's own already-approved KB-02-minimal scope) are out of scope here.
+
+## 8. Testing plan
+
+1. `pnpm --filter @lis/sdk typecheck`/build with the generated OpenAPI types + `openapi-fetch`
+   client.
+2. `pnpm --filter web typecheck`/`lint` with the new page/Server Action/API-extension changes.
+3. `pnpm --filter api typecheck`/`lint` with the extended search endpoint.
+4. A real, end-to-end manual check (this sandbox's `next build` has its own known, unrelated
+   Turbopack quirk — see `web-verify` Skill — so `pnpm --filter web dev` is the real verification
+   path, not `build`): register a patient through the actual browser form, confirm it appears via
+   `GET /v1/patients/:id`; attempt a second registration with the same `firstName`/`lastName`/
+   `birthDate`, confirm the review callout appears; confirm proceeding past the callout still
+   creates the second patient (soft warning, not a block).
+5. A real e2e spec (`apps/api/test/patient.e2e-spec.ts`, extended) proving the new
+   `firstName`+`lastName`+`birthDate` search combination returns the correct row(s), matching the
+   same real-Postgres/real-Keycloak standard every existing spec in that file already uses.
+6. `pnpm typecheck`/`pnpm lint` at the repo root.
+
+## 9. Rollback plan
+
+Additive: new `packages/sdk` content, a new `apps/web` route + Server Action, a new nav entry, and
+an additive extension to the existing search endpoint's accepted query shape (old `mrn`/
+`nationalId` behavior unchanged). Rollback is reverting the PR: the new route/Server Action/nav
+entry removed, the search endpoint's extension removed, `packages/sdk` returns to its placeholder
+state, `infra/docker-compose.staging.yml`'s `API_BASE_URL` line removed. No production data or
+deployed feature depends on this yet.
+
+## 10. Questions requiring human approval
+
+1. **RESOLVED 2026-08-02 — `firstName`+`lastName`+`birthDate` only.** Exact, case-insensitive match
+   on these three triggers the soft "Possible match found" review callout, regardless of
+   `nationalId`. An exact `nationalId` match is already a separate, harder signal the API rejects
+   outright with `409` (TASK-039) — requiring it here too would make the soft warning rarely add
+   value beyond that existing hard block.
+
+**Question resolved — see Status header. Implementation begins now.**
+
+## 11. Real bugs found and fixed during implementation (not assumed correct — verified)
+
+1. **`apps/api`'s real (compiled, Fastify) server has never actually been able to start since
+   TASK-039 shipped `SwaggerModule.setup(...)` in `main.ts`.** `@nestjs/platform-fastify`'s
+   `useStaticAssets()` (which `SwaggerModule.setup` calls internally to serve the Swagger UI)
+   requires `@fastify/static`, never installed. Every prior verification of `main.ts`'s own
+   bootstrap path used either `Test.createTestingModule().createNestApplication()` (defaults to
+   Express, never exercises Fastify at all — every existing e2e spec) or a bespoke script that
+   called `SwaggerModule.createDocument`/`cleanupOpenApiDoc` directly without ever calling
+   `.setup()` (this session's own earlier OpenAPI-validation checks). This task's own manual
+   verification (§8 item 4) was the first time anything actually booted the real `main.ts` path
+   end-to-end, and the process crashed immediately. Fixed: added `@fastify/static@^9` (pinned to
+   the version range `@nestjs/platform-fastify@11.1.28` actually declares as its peer — the
+   unpinned `pnpm add` resolved `10.1.2` first, which mismatches). Verified for real: the compiled
+   server now starts, `/health` and `/v1/docs` both return `200`, confirmed both directly and via
+   the actual Docker image (`docker build` + `docker run`, not just a build-succeeds check).
+2. **A `'use server'` file may only export async functions at runtime — a plain object export
+   throws only when a real request hits it, not caught by typecheck or lint.** `actions.ts`
+   originally also exported `registerPatientInitialState` (a plain object) alongside the action
+   function itself; Next.js's real dev server threw `A "use server" file can only export async
+   functions, found object` the moment the page rendered — confirmed only by the actual Playwright
+   browser check (§8 item 4), invisible to `tsc`/`eslint`. Fixed by moving the shared types and the
+   `initialState` object into a separate `types.ts` file, keeping `actions.ts` to only its one
+   exported async function.
+3. **This sandbox's TypeScript incremental build cache (`tsconfig.build.tsbuildinfo`) is unreliable
+   under WSL2** — `nest build`/`tsc -p tsconfig.build.json` repeatedly reported success while
+   silently producing no `dist/` output at all, apparently because the cache believed prior output
+   already existed and matched, even after `dist/` was deleted. Not a code bug; worked around by
+   deleting `tsconfig.build.tsbuildinfo` before every local build attempt during this task. Noted
+   here as a real, reproducible sandbox limitation for the next session, not chased further (the
+   real, authoritative build proof is CI's own `pnpm build` step and the direct Docker builds this
+   task's own testing plan already ran).

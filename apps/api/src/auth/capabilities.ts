@@ -3,16 +3,22 @@
  * policy per KB-10's own design decision — the cheap version of its
  * "Policy-as-code" future item, not a competing design (ADR-0011).
  *
- * Only the two roles TASK-032's AC actually needs are modeled here
+ * Only the roles TASK-032/TASK-039's own ACs actually need are modeled here
  * (`technologist`, `verifier`) — the rest of KB-10's role list is added
  * when a future task first needs it, same discipline TASK-028 already used
  * to defer inventing roles ahead of this feature.
+ *
+ * `manage_patients` (TASK-039, FEAT-011 proposal §10 Q2): granted to both
+ * existing roles for now — no dedicated `registrar`/front-desk role exists
+ * in Keycloak yet, and inventing one is a separate, real infra decision, not
+ * this task's own scope. Narrowing this grant once a real registrar role
+ * exists is a small follow-up, not a rearchitecture.
  */
-export type Capability = 'enter_result' | 'verify';
+export type Capability = 'enter_result' | 'verify' | 'manage_patients';
 
 const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
-  technologist: ['enter_result'],
-  verifier: ['enter_result', 'verify'],
+  technologist: ['enter_result', 'manage_patients'],
+  verifier: ['enter_result', 'verify', 'manage_patients'],
 };
 
 /**

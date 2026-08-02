@@ -45,6 +45,16 @@ CREATE UNIQUE INDEX "ux_patient_tenant_mrn" ON "patient" USING btree ("tenant_id
 CREATE UNIQUE INDEX "ux_patient_tenant_national_id" ON "patient" USING btree ("tenant_id","national_id") WHERE "patient"."national_id" IS NOT NULL;--> statement-breakpoint
 CREATE INDEX "ix_patient_tenant_name" ON "patient" USING btree ("tenant_id","last_name","first_name");--> statement-breakpoint
 CREATE INDEX "ix_patient_alert_tenant_patient" ON "patient_alert" USING btree ("tenant_id","patient_id");--> statement-breakpoint
+-- Real-environment data cleanup, added after this migration's original merge
+-- (justified exception to "never edit a past migration" -- this migration has
+-- never successfully applied to any persistent/real environment, only
+-- ephemeral CI/local Postgres; see the Deploy to Staging failure on run
+-- 30757994494). Staging carries leftover synthetic `order` rows predating
+-- this table (FEAT-009 proof routes, before a real `patient` existed), whose
+-- patient_id doesn't reference any row here. Delete both tables' orphans
+-- before adding the FK so the backfill can't fail the same way again.
+DELETE FROM "observation" WHERE "patient_id" NOT IN (SELECT "id" FROM "patient");--> statement-breakpoint
+DELETE FROM "order" WHERE "patient_id" NOT IN (SELECT "id" FROM "patient");--> statement-breakpoint
 ALTER TABLE "observation" ADD CONSTRAINT "observation_patient_id_patient_id_fk" FOREIGN KEY ("patient_id") REFERENCES "public"."patient"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "order" ADD CONSTRAINT "order_patient_id_patient_id_fk" FOREIGN KEY ("patient_id") REFERENCES "public"."patient"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE POLICY "tenant_isolation" ON "patient" AS PERMISSIVE FOR ALL TO public USING (tenant_id = current_setting('app.tenant_id')::uuid);--> statement-breakpoint

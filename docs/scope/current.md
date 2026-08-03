@@ -1,7 +1,7 @@
 # Status — 2026-08-03 (session 12)
 
-Last commit on main: 6e073ca — "feat: patient search + profile screens, closing FEAT-011
-(TASK-041) (#287)".
+Last commit on main: 5ae10f9 — "docs: FEAT-011 close-out -- breadcrumb refresh, plan doc marked
+IMPLEMENTED (#288)".
 
 ## FEAT-011 fully closed this session: TASK-041 (search + profile screens) merged via PR #287
 (`6e073ca`) — no tasks remain in the feature

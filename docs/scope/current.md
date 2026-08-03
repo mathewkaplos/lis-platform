@@ -1,7 +1,54 @@
 # Status — 2026-08-03 (session 12)
 
-Last commit on main: 9c7d739 — "fix(deploy): don't redeploy on docs-only pushes; don't let a
-Keycloak hiccup take down api/web (#285)".
+Last commit on main: 6e073ca — "feat: patient search + profile screens, closing FEAT-011
+(TASK-041) (#287)".
+
+## FEAT-011 fully closed this session: TASK-041 (search + profile screens) merged via PR #287
+(`6e073ca`) — no tasks remain in the feature
+
+Drafted the two Skills FEAT-011's own issue (#20) had flagged as missing across three prior
+sessions (`engineering/api-design`, `domain/patient-identity`, both pushed to `lis-engineering`),
+then a proposal revision, then implementation: `GET /v1/patients` gained a fourth, free-text `q`
+search mode (partial name match, MRN/national-ID prefix match, capped at 50 results per ADR-0013's
+pagination deferral), and two new `apps/web` screens — `/patients` (search/list) and
+`/patients/[id]` (read-only profile). Sidebar's "Register patient" became "Patients".
+
+**Deliberately narrower than the Stitch mockups** referenced in FEAT-011's own issue: no tabs, no
+inline-editable demographics, no "Merge" action, no alerts display, no filter panel beyond the
+search box — none of that has supporting API/data yet (`patient_alert` has no read route, no
+`PATCH /v1/patients/:id` exists, patient merge has no mechanism anywhere). Full reasoning in
+`docs/plans/feat-011-patient-management.md`'s TASK-041 revision §1/§5.
+
+**Two real bugs found and fixed via this task's own testing, not assumed correct** (full detail in
+the plan doc's new §11):
+1. `getValidAccessToken()` (ADR-0014) threw `Cookies can only be modified in a Server Action or
+   Route Handler` once the access token actually went stale mid-render — these two new screens are
+   the first plain-GET Server Components in the repo to call `apps/api` at all (every prior call
+   site was a Server Action). Real browser verification caught it directly, not a hypothetical.
+   Fixed in `apps/web/auth/access-token.ts`: a refresh that can't persist its cookie still returns
+   the refreshed token for that request; confirmed safe against Keycloak's default (non-rotating)
+   refresh-token policy.
+2. The new `q`-cap e2e test (seeding 51 rows) was flaky (`ECONNRESET`) firing all 51 seed requests
+   via `Promise.all` against this suite's own `DB_POOL_MAX=1`. Fixed by seeding sequentially.
+   Verified stable across 3 consecutive full-suite runs (28/28 each time) after the fix.
+
+**Also hit, this session, unrelated to the feature work itself**: Docker Desktop's WSL2 backend
+hung on startup for 10+ minutes with no daemon socket ever appearing, not a repeat of the prior
+session's memory-pressure cause (both Windows and WSL had ample free memory this time) — resolved
+by directly launching `Docker Desktop.exe` from the Windows host and waiting it out; no code
+implication, noted only in case a future session hits the same thing.
+
+Verified end-to-end with a real headless-Chromium browser (real Keycloak/Postgres/`apps/api`, this
+sandbox's own missing-`libnss3.so`/Chromium-install workaround): register → search by MRN, by
+partial name (different casing), and by national ID → click and separately Enter-key row activation
+→ correct profile content → nonexistent-id real 404 state → sidebar nav label, all confirmed. Full
+repo-wide `typecheck`/`lint`, `apps/api`'s e2e suite (28/28), and `apps/web`'s production build all
+green.
+
+`docs/plans/feat-011-patient-management.md`'s own top-level Status updated to `IMPLEMENTED` with all
+four tasks' merge SHAs. FEAT-011 (#20) and TASK-041 (#100) both closed via comment (neither PR body
+used a literal `Closes #N` line, so neither auto-closed — same recurring gotcha as `#99`/`#265`
+before them; closed manually).
 
 ## Real staging outage this session, caused by our own docs-only merge — recovered, and the deploy
 pipeline hardened so it can't recur the same way, via PR #285 (`9c7d739`)
@@ -406,16 +453,15 @@ is checked; the design-partner demo is the one remaining, non-engineering blocke
 #256 was not M2-milestoned). The one remaining open M2 item is #2 (EPIC-002) itself, not blocked on
 any further engineering work.
 
-**M3 — Pre-Analytical Workflow: started this session.** TASK-038 (#97, patient/patient_alert
-migration) and TASK-039 (#98, patient API) both closed, via PR #261 and PR #263. The session-token
-bridge (#265, prerequisite for TASK-040) also closed, via PR #266 — see its own section above.
-**TASK-040 (#99, registration form + duplicate detection) itself has not started yet.** FEAT-011's
-remaining tasks — TASK-040, TASK-041 (#100, search + profile screens) — are still open; each will
-need its own revision to `docs/plans/feat-011-patient-management.md` once the prior task's real
-output exists (same scope-narrowing precedent FEAT-010's proposal used). `engineering/api-design`
-and `domain/patient-identity` Skills, named as "Required Skills" by FEAT-011's own issue (#20), still
-don't exist — flagged three times now (TASK-038, TASK-039, and the token-bridge proposals),
-genuinely load-bearing for TASK-040/041's own frontend work.
+**M3 — Pre-Analytical Workflow: FEAT-011 fully closed this session (see the section at the top of
+this file).** All four tasks merged: TASK-038 (#97, PR #261), TASK-039 (#98, PR #263), TASK-040
+(#99, PR #271), TASK-041 (#100, PR #287). The session-token bridge (#265, TASK-040's own
+prerequisite) closed via PR #266. `engineering/api-design` and `domain/patient-identity` Skills
+(named as "Required Skills" by FEAT-011's own issue, #20) were drafted from real TASK-038/039/040
+decisions ahead of TASK-041's own implementation — both pushed to `lis-engineering`. FEAT-011 (#20)
+and TASK-041 (#100) both closed via comment. **No open task remains in M3** — its next task, if any,
+is not yet identified; `/orient`'s next run should re-run milestone discovery from scratch rather
+than assume M3 continues in any particular direction.
 
 **Unrelated open issues, not M2/M3-milestoned (carried forward, still genuinely unresolved):**
 - **#192** — GCP billing/Stitch MCP decision. Still open, still not resolved.

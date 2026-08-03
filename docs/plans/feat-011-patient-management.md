@@ -1,5 +1,6 @@
 # Implementation Proposal: FEAT-011 Patient management
-Status: APPROVED
+Status: IMPLEMENTED — all four tasks merged (TASK-038 `719e1c2`, TASK-039 `5ff9b14`,
+TASK-040 `3c07232`, TASK-041 `6e073ca`). FEAT-011 (#20) and TASK-041 (#100) both closed 2026-08-03.
 ADR: none — all four §10 questions resolved as reversible implementation/scope decisions, none
 judged architectural enough to warrant one
 Date: 2026-08-02    Backlog ID: FEAT-011 (#20) / TASK-038 (#97)

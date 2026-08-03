@@ -159,8 +159,8 @@
       "credentials": [
         {
           "type": "password",
-          "value": "test-password",
-          "temporary": false
+          "secretData": "{\"value\": \"qCqJYMrdK0EzeyQ4YvQ6G7cJD3zLQDLUw1W69dkMO84c2OeoGg9lIDLccJ+EzzvOvKFBHIW4JwgF6R8e81txew==\", \"salt\": \"eihYMGM7/paj+TpOs2oghg==\", \"additionalParameters\": {}}",
+          "credentialData": "{\"hashIterations\": 210000, \"algorithm\": \"pbkdf2-sha512\", \"additionalParameters\": {}}"
         }
       ]
     },
@@ -178,8 +178,8 @@
       "credentials": [
         {
           "type": "password",
-          "value": "test-password-2",
-          "temporary": false
+          "secretData": "{\"value\": \"6rfO3Y5imgozaNP+kRCeEcGBLYaW49cJ9e6/yXlEutpp6JPdnUIoCu52S5Pf3QtgPzcvtO9QVIyK517X7BPmXQ==\", \"salt\": \"mjezmH+YFElQjgR34pI9iQ==\", \"additionalParameters\": {}}",
+          "credentialData": "{\"hashIterations\": 210000, \"algorithm\": \"pbkdf2-sha512\", \"additionalParameters\": {}}"
         }
       ]
     },
@@ -196,8 +196,8 @@
       "credentials": [
         {
           "type": "password",
-          "value": "test-password-3",
-          "temporary": false
+          "secretData": "{\"value\": \"MN72KCy0aq9Qje0Zzqx5Zz0Tr94dbGH1uZoqxUHYdSuTHcphCPT0l8dzh7aKTqrLgLy/Ac9KVSJ3tzKw46rXSQ==\", \"salt\": \"VmmOyQhdtcYgPxpkS7P40w==\", \"additionalParameters\": {}}",
+          "credentialData": "{\"hashIterations\": 210000, \"algorithm\": \"pbkdf2-sha512\", \"additionalParameters\": {}}"
         }
       ]
     },
@@ -215,8 +215,8 @@
       "credentials": [
         {
           "type": "password",
-          "value": "test-password-4",
-          "temporary": false
+          "secretData": "{\"value\": \"nr4yXj+gwU8S+dZ3r1qKsTkm5Z0qkxcz6zGFDeIQ741cYhpcU1KKSo4OYETAhfxAhVGVItVCQqgvoaEKSwC2iQ==\", \"salt\": \"vYVvohihiqhzySGm7OfODA==\", \"additionalParameters\": {}}",
+          "credentialData": "{\"hashIterations\": 210000, \"algorithm\": \"pbkdf2-sha512\", \"additionalParameters\": {}}"
         }
       ]
     }

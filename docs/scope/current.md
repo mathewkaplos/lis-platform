@@ -32,11 +32,15 @@ be available) confirmed the proxy correctly redirects to a genuine Keycloak chal
 `redirect_uri` all correct — the layer entry #12's bug lived in is healthy). But submitting the
 documented `test-user`/`test-password` credential was rejected by Keycloak itself with "Invalid
 username or password," before ever reaching `apps/web`'s callback route — upstream of and unrelated
-to the SESSION_SECRET bug. Most likely Keycloak's default brute-force lockout from the sheer volume
-of prior login-debugging sessions against this same account; not confirmed via Admin API (no admin
-credential available in this sandbox). **Still open**: someone with Keycloak admin access should
-check/clear `test-user`'s lockout status so a real end-to-end login can be confirmed directly,
-rather than inferred from the redirect-layer check alone. See `authentication` Skill entry #13.
+to the SESSION_SECRET bug. **Initially suspected brute-force lockout — checked locally and ruled
+out**: local Keycloak's live realm shows `bruteForceProtected: false`, and the identical credential
+logs in successfully there (real password-grant token issued). Staging's Keycloak *is* fully
+recreated from `lis-realm.json` on every deploy, so it isn't stale state either. Real difference
+found: staging runs Keycloak in production `start` mode under a real `mem_limit: 320m`, where local
+runs unconstrained `start-dev` — plausible (import-time credential hashing failing under memory
+pressure) but unconfirmed. **Still open**: someone with Keycloak admin API access on staging should
+inspect `test-user`'s live representation or the container's boot log to find the actual cause.
+See `authentication` Skill entry #13.
 
 **Local branch cleanup done this session**: `fix-session-secret-build-time-inlining` (already merged
 as PR #279) deleted, both local and remote; local checkout fast-forwarded to `0750e6c`.

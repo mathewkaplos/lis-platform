@@ -2,6 +2,19 @@ name: Deploy to Staging
 on:
   push:
     branches: [main]
+    # A pure documentation/breadcrumb merge has no effect on the deployed
+    # application, but until this filter existed every one still re-ran the
+    # full build-and-push + droplet redeploy pipeline -- on a 1vCPU/1GB
+    # droplet that has shown real Keycloak-readiness variance under normal
+    # conditions. Confirmed 2026-08-03: a docs-only breadcrumb-refresh PR's
+    # merge triggered exactly this redeploy, which hit that readiness
+    # timeout and took real staging down (api/web stopped, never
+    # restarted) until a human noticed and a rerun fixed it. Root-scoped
+    # *.md (not **/*.md) so a PR touching both code and a nested package
+    # README still triggers normally.
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
   workflow_dispatch: {}
 
 jobs:
@@ -311,40 +324,58 @@ jobs:
           # (scripts/feat009-staging-verify.md Step 1), run here against the
           # droplet's own host-local :8080 listener instead of the
           # droplet-console session that mechanism originally needed.
-          # Idempotent -- re-PUTting the same value is a no-op. api/web are
-          # deliberately not started until after this succeeds -- same
-          # dependency-ordering discipline as postgres/migrate above -- so
-          # nothing can race a live write against an unpatched profile.
-          ready=false
+          # Idempotent -- re-PUTting the same value is a no-op.
+          #
+          # Non-fatal by design (changed 2026-08-03): this whole block used
+          # to `exit 1` on any failure here, which -- combined with api/web
+          # already being stopped above -- meant a single transient Keycloak
+          # hiccup took the *entire* site down (502, api/web never
+          # restarted) rather than just leaving unmanagedAttributePolicy
+          # unpatched for this one deploy. Confirmed real, not hypothetical:
+          # a deploy this same day hit exactly this -- the lightweight
+          # readiness probe below passed, but the token-endpoint call
+          # (heavier: a real password check, right after --import-realm's
+          # own hashing work) timed out once, and the whole job died with
+          # api/web left stopped until a human noticed and reran it. Realm/
+          # client config (what api/web actually need to function) is
+          # already live as soon as Keycloak's own --import-realm completes,
+          # independent of this admin-API dance -- so api/web restarting
+          # doesn't actually depend on this block succeeding. A skipped
+          # unmanagedAttributePolicy re-apply is a real, visible gap (a live
+          # admin write of a custom attribute would silently drop it) but a
+          # far smaller failure than a full outage, and it self-heals on the
+          # next successful deploy.
+          keycloak_healthy=false
           for i in $(seq 1 40); do
             if curl -sSf --connect-timeout 5 --max-time 5 http://localhost:8080/realms/master/.well-known/openid-configuration < /dev/null >/dev/null 2>&1; then
-              ready=true
+              keycloak_healthy=true
               break
             fi
             sleep 5
           done
-          if [ "$ready" != "true" ]; then
-            echo "Keycloak's internal admin API did not become ready in time" >&2
-            exit 1
+          if [ "$keycloak_healthy" != "true" ]; then
+            echo "WARNING: Keycloak's internal admin API did not become ready in time -- skipping unmanagedAttributePolicy re-apply this deploy, api/web will still restart" >&2
+          else
+            ADMIN_TOKEN=$(curl -sSf --connect-timeout 10 --max-time 10 \
+              --data-urlencode "grant_type=password" --data-urlencode "client_id=admin-cli" \
+              --data-urlencode "username=admin" --data-urlencode "password=$KEYCLOAK_ADMIN_PASSWORD" \
+              http://localhost:8080/realms/master/protocol/openid-connect/token < /dev/null | jq -r '.access_token // empty' || true)
+            if [ -z "${ADMIN_TOKEN:-}" ]; then
+              echo "WARNING: failed to obtain a Keycloak admin token -- skipping unmanagedAttributePolicy re-apply this deploy, api/web will still restart" >&2
+            else
+              PROFILE=$(curl -sSf --connect-timeout 10 --max-time 10 http://localhost:8080/admin/realms/lis/users/profile \
+                -H "Authorization: Bearer $ADMIN_TOKEN" < /dev/null || true)
+              if [ -z "$PROFILE" ]; then
+                echo "WARNING: failed to fetch Keycloak's User Profile -- skipping unmanagedAttributePolicy re-apply this deploy, api/web will still restart" >&2
+              else
+                NEW_PROFILE=$(echo "$PROFILE" | jq '. + {unmanagedAttributePolicy: "ENABLED"}')
+                curl -sS --connect-timeout 10 --max-time 10 -X PUT http://localhost:8080/admin/realms/lis/users/profile \
+                  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+                  -d "$NEW_PROFILE" -w "\nunmanagedAttributePolicy PUT: HTTP %{http_code}\n" < /dev/null || \
+                  echo "WARNING: unmanagedAttributePolicy PUT failed -- api/web will still restart" >&2
+              fi
+            fi
           fi
-
-          ADMIN_TOKEN=$(curl -sSf --connect-timeout 10 --max-time 10 \
-            --data-urlencode "grant_type=password" --data-urlencode "client_id=admin-cli" \
-            --data-urlencode "username=admin" --data-urlencode "password=$KEYCLOAK_ADMIN_PASSWORD" \
-            http://localhost:8080/realms/master/protocol/openid-connect/token < /dev/null | jq -r '.access_token // empty')
-          if [ -z "$ADMIN_TOKEN" ]; then
-            echo "Failed to obtain a Keycloak admin token" >&2
-            exit 1
-          fi
-
-          PROFILE=$(curl -sSf --connect-timeout 10 --max-time 10 http://localhost:8080/admin/realms/lis/users/profile \
-            -H "Authorization: Bearer $ADMIN_TOKEN" < /dev/null)
-
-          NEW_PROFILE=$(echo "$PROFILE" | jq '. + {unmanagedAttributePolicy: "ENABLED"}')
-
-          curl -sSf --connect-timeout 10 --max-time 10 -X PUT http://localhost:8080/admin/realms/lis/users/profile \
-            -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-            -d "$NEW_PROFILE" -w "\nunmanagedAttributePolicy PUT: HTTP %{http_code}\n" < /dev/null
 
           docker compose up -d api web < /dev/null
 

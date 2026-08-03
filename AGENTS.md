@@ -73,6 +73,18 @@ packages/ui (design system) · packages/sdk (generated API client)
   check whether an existing Skill should be extended with it, or whether it
   warrants a new Skill entirely. Do this the same day, before moving to the
   next task. Do not wait to be asked.
+- The same same-day discipline applies to a *new* Skill's initial authoring,
+  not just later extensions: commit and push it to `lis-engineering` main
+  immediately after drafting or editing it, before moving on to the next
+  step of whatever task motivated it. A Skill that only exists locally is
+  invisible to every other session's own Skill-loading step, and this has
+  already happened three times (`engineering-radar` sat uncommitted two full
+  sessions, the `testing` Skill one, and `domain/patient-identity`/
+  `engineering/api-design` sat uncommitted through an entire session's
+  implementation work — caught only by a `/close` run, by which point both
+  had already been cited elsewhere as already pushed). `/close`'s own
+  uncommitted-Skills check remains the backstop for whatever still slips
+  through, not a substitute for committing at authoring time.
 - Before stating a justification like "consistent with" or "same pattern as"
   a prior decision, verify it against the actual precedent (the real issue
   history, closed PRs, or prior comments) rather than trusting that it sounds

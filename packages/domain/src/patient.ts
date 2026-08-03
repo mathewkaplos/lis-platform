@@ -36,12 +36,13 @@ export const patientSchema = z.object({
 export type Patient = z.infer<typeof patientSchema>;
 
 /**
- * Exact-match only, per FEAT-011's own AC ("searchable by national ID and MRN") —
- * free-text/name search is TASK-041's own future concern, not built ahead of it.
- * At least one of mrn/nationalId, or firstName+lastName+birthDate together, must
- * be supplied. The name+DOB combination exists for TASK-040's own duplicate-
- * detection check (a "possible match" review signal, not a general search UX) —
- * see docs/plans/feat-011-patient-management.md's TASK-040 revision §10 Q1.
+ * Four mutually-exclusive lookup modes. mrn/nationalId are exact-match
+ * (FEAT-011's own AC: "searchable by national ID and MRN"). firstName+
+ * lastName+birthDate together is TASK-040's own duplicate-detection check (a
+ * "possible match" review signal, not general search UX) — see
+ * docs/plans/feat-011-patient-management.md's TASK-040 revision §10 Q1. `q`
+ * is TASK-041's free-text search (name/MRN/national ID), added last — see
+ * that revision's §2.
  */
 export const patientSearchQuerySchema = z
   .object({
@@ -50,17 +51,23 @@ export const patientSearchQuerySchema = z
     firstName: z.string().min(1).optional(),
     lastName: z.string().min(1).optional(),
     birthDate: z.iso.date().optional(),
+    q: z.string().min(1).optional(),
   })
   .refine(
     (query) =>
       query.mrn !== undefined ||
       query.nationalId !== undefined ||
+      query.q !== undefined ||
       (query.firstName !== undefined &&
         query.lastName !== undefined &&
         query.birthDate !== undefined),
     {
       message:
-        "mrn, nationalId, or firstName+lastName+birthDate together is required",
+        "mrn, nationalId, q, or firstName+lastName+birthDate together is required",
     },
   );
 export type PatientSearchQuery = z.infer<typeof patientSearchQuerySchema>;
+
+/** TASK-041 §2/§5: no cursor pagination yet (ADR-0013 §Decision 4) — a fixed
+ * cap on the free-text search instead, revisited once real volume needs one. */
+export const PATIENT_SEARCH_RESULT_LIMIT = 50;

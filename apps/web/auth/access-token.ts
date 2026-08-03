@@ -58,12 +58,19 @@ export async function refreshIfStale(
  * access token is stale or within `REFRESH_BUFFER_SECONDS` of expiring (the
  * realm's `accessTokenLifespan` is 300s, far shorter than this session's own
  * 30-minute lifetime), re-persisting the session cookie with the refreshed
- * tokens.
+ * tokens when it can.
  *
- * Only callable from a Server Action or Route Handler -- `cookies().set(...)`
- * (called here on refresh) throws outside that context, since mutating
- * cookies during a plain Server Component render has no HTTP response left
- * to attach a Set-Cookie header to.
+ * Safe to call from a plain (GET) Server Component render, not just a Server
+ * Action/Route Handler -- found for real, not hypothetical, by TASK-041's own
+ * browser verification of its two new read-only screens: `cookies().set(...)`
+ * throws ("Cookies can only be modified in a Server Action or Route
+ * Handler") once the access token actually goes stale mid-render, which a
+ * long-lived search/profile session will always eventually hit. When that
+ * write fails, the refreshed access token is still returned for this
+ * request -- just not persisted -- and the *next* call re-refreshes from the
+ * same still-valid `refreshToken` (Keycloak's default `revokeRefreshToken:
+ * false` means it isn't single-use, so this is safe, just an extra round
+ * trip until a real Server Action/Route Handler call persists a refresh).
  *
  * Returns undefined when there is no session at all, or when the refresh
  * itself fails (expired refresh token, revoked session, Keycloak
@@ -85,22 +92,34 @@ export async function getValidAccessToken(): Promise<string | undefined> {
       return session.accessToken;
     }
 
-    const sessionCookie = await signSession({ ...session, ...refreshed });
-    const cookieStore = await cookies();
-    cookieStore.set(SESSION_COOKIE_NAME, sessionCookie, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: SESSION_MAX_AGE_SECONDS,
-    });
+    try {
+      const sessionCookie = await signSession({ ...session, ...refreshed });
+      const cookieStore = await cookies();
+      cookieStore.set(SESSION_COOKIE_NAME, sessionCookie, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: SESSION_MAX_AGE_SECONDS,
+      });
+    } catch {
+      // Called from a plain Server Component render -- no response left to
+      // attach a Set-Cookie header to. The refreshed token below is still
+      // good for this request; see this function's own header comment.
+    }
 
     return refreshed.accessToken;
   } catch {
     // Refresh token expired/revoked, or Keycloak unreachable -- fail closed,
     // never retry indefinitely or return a stale/invalid token.
-    const cookieStore = await cookies();
-    cookieStore.delete(SESSION_COOKIE_NAME);
+    try {
+      const cookieStore = await cookies();
+      cookieStore.delete(SESSION_COOKIE_NAME);
+    } catch {
+      // Same plain-render restriction as above -- nothing to delete from
+      // this request's own response either; the next Server Action/Route
+      // Handler call will hit the same failure and clear it for real.
+    }
     return undefined;
   }
 }

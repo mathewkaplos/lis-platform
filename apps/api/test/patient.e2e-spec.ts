@@ -246,4 +246,118 @@ describe('Patient API (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(404);
   });
+
+  /**
+   * TASK-041 §2/§8: the new free-text `q` search mode. Case-insensitive
+   * partial match on name, prefix match on mrn/nationalId.
+   */
+  it('q matches a name fragment (case-insensitive, partial)', async () => {
+    const uniqueLastName = `Freetext-${randomUUID()}`;
+    await request(app.getHttpServer())
+      .post('/v1/patients')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ firstName: 'Grace', lastName: uniqueLastName, sex: 'F' })
+      .expect(201);
+
+    const res = await request(app.getHttpServer())
+      .get('/v1/patients')
+      .query({ q: uniqueLastName.slice(0, -4).toUpperCase() }) // partial, different casing
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const results = res.body as Array<{ lastName: string }>;
+    if (!results.some((r) => r.lastName === uniqueLastName)) {
+      throw new Error(
+        `expected q name-fragment match, got ${JSON.stringify(res.body)}`,
+      );
+    }
+  });
+
+  it('q matches an mrn prefix', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/v1/patients')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ firstName: 'Mrn', lastName: 'PrefixMatch', sex: 'U' })
+      .expect(201);
+    const mrn = (created.body as { after: { mrn: string } }).after.mrn;
+
+    const res = await request(app.getHttpServer())
+      .get('/v1/patients')
+      .query({ q: mrn.slice(0, 4) })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const results = res.body as Array<{ mrn: string }>;
+    if (!results.some((r) => r.mrn === mrn)) {
+      throw new Error(
+        `expected q mrn-prefix match, got ${JSON.stringify(res.body)}`,
+      );
+    }
+  });
+
+  it('q matches a nationalId prefix, and returns an empty array (not an error) for no match', async () => {
+    const nationalId = randomUUID();
+    await request(app.getHttpServer())
+      .post('/v1/patients')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        firstName: 'National',
+        lastName: 'IdMatch',
+        sex: 'U',
+        nationalId,
+      })
+      .expect(201);
+
+    const match = await request(app.getHttpServer())
+      .get('/v1/patients')
+      .query({ q: nationalId.slice(0, 8) })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const matchResults = match.body as Array<{ nationalId: string }>;
+    if (!matchResults.some((r) => r.nationalId === nationalId)) {
+      throw new Error(
+        `expected q nationalId-prefix match, got ${JSON.stringify(match.body)}`,
+      );
+    }
+
+    const noMatch = await request(app.getHttpServer())
+      .get('/v1/patients')
+      .query({ q: `no-such-patient-${randomUUID()}` })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    if ((noMatch.body as unknown[]).length !== 0) {
+      throw new Error(
+        `expected empty array for a q with no match, got ${JSON.stringify(noMatch.body)}`,
+      );
+    }
+  });
+
+  it('q caps results at PATIENT_SEARCH_RESULT_LIMIT (50), proven by seeding more than the cap', async () => {
+    const uniqueLastName = `CapTest-${randomUUID()}`;
+    // Sequential, not Promise.all: this suite runs with DB_POOL_MAX=1 (a
+    // single physical connection), and 51 truly concurrent requests caused a
+    // real, reproducible-but-flaky `ECONNRESET` under connection pressure —
+    // proving the cap only needs 51 rows to exist, not concurrent writes.
+    for (let i = 0; i < 51; i++) {
+      await request(app.getHttpServer())
+        .post('/v1/patients')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          firstName: `Capped${i}`,
+          lastName: uniqueLastName,
+          sex: 'U',
+        })
+        .expect(201);
+    }
+
+    const res = await request(app.getHttpServer())
+      .get('/v1/patients')
+      .query({ q: uniqueLastName })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const results = res.body as unknown[];
+    if (results.length !== 50) {
+      throw new Error(
+        `expected the q result set capped at 50 (51 rows seeded), got ${results.length}`,
+      );
+    }
+  });
 });

@@ -15,10 +15,11 @@ import {
   patientCreateSchema,
   patientSchema,
   patientSearchQuerySchema,
+  PATIENT_SEARCH_RESULT_LIMIT,
   type Patient,
 } from '@lis/domain';
 import { patient } from '@lis/db';
-import { and, eq, ilike } from 'drizzle-orm';
+import { and, eq, ilike, or } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { Audit } from '../auth/audit.decorator';
@@ -169,12 +170,17 @@ export class PatientController {
   }
 
   /**
-   * Exact-match only, per FEAT-011's own AC — never free-text; TASK-041 owns
-   * that once its real UI requirements exist. Three mutually exclusive
-   * lookup shapes (`patientSearchQuerySchema` requires exactly one):
-   * `mrn`, `nationalId`, or `firstName`+`lastName`+`birthDate` together (the
-   * last one is TASK-040's own duplicate-detection check, not general
-   * search — case-insensitive on names, per that task's proposal §10 Q1).
+   * Four mutually exclusive lookup shapes (`patientSearchQuerySchema`
+   * requires exactly one): `mrn` (exact), `nationalId` (exact),
+   * `firstName`+`lastName`+`birthDate` together (TASK-040's own duplicate-
+   * detection check, not general search — case-insensitive on names, per
+   * that task's proposal §10 Q1), or `q` (TASK-041's free-text search:
+   * case-insensitive partial match on name, prefix match on mrn/nationalId
+   * — an MRN/national ID is typically typed in full or scanned, not
+   * partially searched the way a name is). `q` results are capped at
+   * `PATIENT_SEARCH_RESULT_LIMIT` since cursor pagination is deliberately
+   * deferred (ADR-0013 §Decision 4, TASK-041 proposal §5/§10 Q2) — the other
+   * three modes return at most one row each, so no cap applies there.
    * Tenant isolation is RLS alone (TenantContextInterceptor's `SET LOCAL`) —
    * no `tenantId` filter added in application code, matching every existing
    * read route in this repo (e.g. `order-count`'s plain unfiltered SELECT).
@@ -188,6 +194,22 @@ export class PatientController {
     query: PatientSearchQueryDto,
     @DbTx() tx: RequestWithTx['tx'],
   ): Promise<Patient[]> {
+    if (query.q !== undefined) {
+      const term = query.q;
+      const rows = await tx
+        .select()
+        .from(patient)
+        .where(
+          or(
+            ilike(patient.firstName, `%${term}%`),
+            ilike(patient.lastName, `%${term}%`),
+            ilike(patient.mrn, `${term}%`),
+            ilike(patient.nationalId, `${term}%`),
+          ),
+        )
+        .limit(PATIENT_SEARCH_RESULT_LIMIT);
+      return rows.map(toPatientDto);
+    }
     const where =
       query.mrn !== undefined
         ? eq(patient.mrn, query.mrn)

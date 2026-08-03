@@ -414,6 +414,7 @@ export interface operations {
                 firstName?: string;
                 lastName?: string;
                 birthDate?: string;
+                q?: string;
             };
             header?: never;
             path?: never;

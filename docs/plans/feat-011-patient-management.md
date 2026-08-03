@@ -664,3 +664,242 @@ deployed feature depends on this yet.
    here as a real, reproducible sandbox limitation for the next session, not chased further (the
    real, authoritative build proof is CI's own `pnpm build` step and the direct Docker builds this
    task's own testing plan already ran).
+
+---
+
+# Revision: TASK-041 — Patient search + profile screens
+Status: APPROVED
+ADR: none — §10 Q1 resolved as a reversible, well-reasoned scope decision, not architectural
+Date: 2026-08-03    Backlog ID: TASK-041 (#100)
+
+## 1. Goal
+
+TASK-038/039/040 are all merged and independently re-verified; this is the last task in FEAT-011.
+TASK-041's own issue AC is thin ("All four states implemented; screen is fully keyboard-navigable"),
+but FEAT-011's feature-level AC assigns this task the actual substance: "Patient searchable by
+national ID and MRN with correct results" (a UI for what TASK-039's API already does) and "Search
+and profile screens implement all four states... and full keyboard navigation."
+
+**Real, load-bearing finding from this revision's own research, not present in TASK-041's issue
+text:** Google Stitch Prompt Library §4.2/§4.3 (the only place a "patient search" and "patient
+profile" screen are defined concretely) mock up a **materially wider surface than the schema and API
+this repo has actually built**. §4.2's table wants Photo, Phone, Insurance, Last visit, and an Alerts
+badge as columns, plus filters for insurance/branch/has-critical-alert; §4.3's profile wants a
+photo, blood group, insurance, employer, next-of-kin, inline-editable demographics, a "Merge" action,
+and six tabs (Overview/Timeline/Orders/Results/Documents/Billing/Notes). None of this data exists:
+`patient` (per `domain/patient-identity` Skill entry #8) is deliberately KB-02-minimal — no photo,
+phone, insurance, employer, blood group, or next-of-kin columns. `patient_alert` was created by
+TASK-038's own migration but **no API route reads or writes it** — TASK-039/040 never touched it.
+No `order`/`observation`-reading endpoint exists yet for a Timeline/Orders/Results tab (those are
+FEAT-012/014/016's own future scope). Patient merge is a named KB-02 invariant with no implementing
+mechanism anywhere (`domain/patient-identity` Skill entry #6). Building any of this now would mean
+inventing UI for data and endpoints that don't exist — the same premature-scope risk TASK-038/040
+already flagged and declined. See §10 Q1 for the proposed narrower scope.
+
+**This revision closes FEAT-011** — no further task follows it in the feature's own task list.
+
+## 2. Affected files
+
+- `packages/domain/src/patient.ts` — `patientSearchQuerySchema` gains a fourth, mutually-exclusive
+  lookup mode: `q` (free-text, matched against `firstName`/`lastName`/`mrn`/`nationalId`), distinct
+  from the existing `mrn`-exact, `nationalId`-exact, and `firstName+lastName+birthDate`
+  (duplicate-detection) modes, which are unchanged.
+- `apps/api/src/patient/patient.controller.ts` — `search()` extended to handle the new `q` mode:
+  case-insensitive partial match (`ilike`) across `firstName`, `lastName`, plus exact-or-prefix match
+  on `mrn`/`nationalId` (an MRN/national ID is typically typed in full or scanned, not partially
+  searched the way a name is) — combined with `OR`, capped at a fixed result limit (see §5) since
+  cursor pagination is explicitly deferred (ADR-0013 §Decision 4) and no task's real data volume
+  needs it yet.
+- `apps/web/app/(app)/patients/page.tsx` (new) — the search/list screen. `DataTable` +
+  `FilterBar` (search input only, per §5) + `StatusPill` (sex, rendered as a small badge) from
+  `packages/ui`. Row click navigates to `/patients/[id]`. All four states (populated, empty, loading
+  skeleton, error) plus a persistent "Register patient" button linking to the existing
+  `/patients/new`.
+- `apps/web/app/(app)/patients/[id]/page.tsx` (new) — the profile screen. `Card`-based layout:
+  identity header (name, MRN + national ID as copyable mono chips, sex, age computed from
+  `birthDate`), no tabs (see §5). All four states, including a real "not found" error state for a
+  bad/cross-tenant id (matches the API's `404`, per `engineering/api-design` Skill entry #7).
+- `apps/web/app/(app)/patients/[id]/actions.ts` (new) — thin Server Action wrapping
+  `createPatientApiClient(await getValidAccessToken())` for the profile page's server-side fetch (or
+  a direct Route Handler — exact choice at implementation time, following TASK-040's own established
+  `getValidAccessToken()` pattern, ADR-0014).
+- `apps/web/app/(app)/_components/sidebar.tsx` — the existing "Register patient" nav entry becomes
+  "Patients", linking to `/patients` (the list) with registration reachable from there, matching the
+  Stitch pattern of list-screen-owns-the-create-button rather than two separate top-level nav
+  entries for one resource.
+- `apps/api/test/patient.e2e-spec.ts` — extended with real-Postgres/real-Keycloak-token coverage for
+  the new `q` search mode (see §8).
+
+## 3. Architecture consulted
+
+- **FEAT-011 issue (#20) AC**: "Patient searchable by national ID and MRN with correct results";
+  "Search and profile screens implement all four states... and full keyboard navigation."
+- **Google Stitch Prompt Library §4.2 (Patient Search) / §4.3 (Patient Profile)** — read in full;
+  see §1 for the material gap between what these mock up and what the schema/API actually support.
+- **`domain/patient-identity` Skill** (drafted this session from TASK-038/039/040's real decisions) —
+  entries #1-#3 (identifier/sex/birth-date shape, directly bound the profile header's fields),
+  #4 (the two duplicate-detection tiers — not this task's concern, already built), #6 (patient merge
+  is unbuilt — directly rules out the Stitch "Merge" action), #8 (the wider Stitch field set is
+  illustrative, not built — directly rules out photo/insurance/employer/blood-group/next-of-kin).
+- **`engineering/api-design` Skill** (drafted this session) — entry #7 (cross-tenant access returns
+  `404`, not `403` — directly shapes the profile page's error-state handling), entry #4 (cursor
+  pagination deferred until a real endpoint needs it — directly informs §5's fixed-limit decision
+  for the new `q` search instead of building a pager).
+- **`apps/api/src/patient/patient.controller.ts` / `packages/domain/src/patient.ts`** (TASK-039,
+  read directly) — confirmed the three existing search modes and their exact shape; the new `q` mode
+  is designed to be a fourth, additive, mutually-exclusive option in the same `refine()`, not a
+  replacement.
+- **`packages/ui`'s existing primitives** (read directly): `DataTable`, `FilterBar`, `StatusPill`,
+  `StatCard`, `SlideOver`, `Card` all already exist from FEAT-010/TASK-035. `StatCard` and
+  `SlideOver` are not used here — `StatCard` has no real data source yet (no order/result counts
+  exist per patient), and a full profile page reads better as its own route than a `SlideOver` given
+  how much header/identity content §4.3 itself wants shown.
+- **`apps/web/app/(app)/patients/new/`** (TASK-040, read directly) — the existing
+  `createPatientApiClient(await getValidAccessToken())` pattern and Server Action structure this
+  revision reuses rather than reinventing.
+
+## 4. Skills loaded
+
+- `domain/patient-identity` — **authored this session** (see §1), drawn from TASK-038/039/040's real
+  decisions; directly shapes §1/§5's scope-narrowing.
+- `engineering/api-design` — **authored this session**, same origin; directly shapes §2/§5's search
+  and error-handling design.
+- `frontend-design` — checked; its four-states/keyboard-nav/primitive-reuse conventions (from
+  FEAT-010) directly shape §2's screen designs.
+- `authentication` — re-checked for `getValidAccessToken()` (ADR-0014), reused unchanged.
+- `testing` — re-checked; its real-Postgres/real-Keycloak e2e standard and the vitest
+  `design:paramtypes` gotcha (entry #6, already handled by TASK-039's explicit-schema pattern, which
+  this revision's new `q` parameter must follow identically) both apply to §8.
+
+## 5. Assumptions & autonomous decisions
+
+- **No tabs on the profile screen; Overview content only, inline (not tabbed).** Timeline/Orders/
+  Results/Documents/Billing/Notes all depend on features that don't exist yet (FEAT-012 order entry,
+  FEAT-014 result entry, billing is unscoped anywhere in the current roadmap window). Building empty
+  or stubbed tabs for features that don't exist would misrepresent what the product can currently do.
+  Revisit once FEAT-012/014 land and have their own real content to show.
+- **No inline-editable demographics, no "Merge" action.** Neither has a supporting API — TASK-039
+  built `create`/`search`/`get` only, no `update`. Adding a `PATCH /v1/patients/:id` endpoint to
+  support this would be new API scope beyond "search + profile screens," and patient merge has no
+  mechanism anywhere yet (`domain/patient-identity` entry #6). Both are real gaps, not silently
+  assumed unnecessary — flagged here for whichever future task first needs patient demographic edits.
+- **Patient alerts are not shown**, despite `patient_alert` existing in the schema since TASK-038.
+  No API route reads it. Building one is new API scope this task's own issue doesn't ask for
+  ("search + profile *screens*," not "alerts API"). Flagged as a real, visible gap in the Stitch
+  design's own "medical-alert pills" and "Alerts" column — not silently dropped.
+- **Free-text search (`q`) is capped at a fixed result limit (proposed: 50 rows), no pager UI.**
+  Matches ADR-0013's deferral of cursor pagination until a real endpoint needs it — patient counts at
+  this milestone are test/demo-scale, not production volume. A search returning more than the cap
+  shows a "refine your search" hint rather than silently truncating without explanation. Revisit
+  once real data volume makes this a genuine UX problem, per `engineering/api-design` entry #4.
+- **Filters are limited to the search box itself; no separate `FilterBar` filter panel** (gender/age
+  range/insurance/branch/has-critical-alert/registered-date from Stitch §4.2). Insurance, branch, and
+  has-critical-alert have no backing data (§1); gender and registered-date *could* be built, but a
+  single-field filter panel for two attributes is marginal value for this task's sizing (M, 1 day) —
+  proposed to defer all filtering to a follow-up once alerts/branch data actually exist and the
+  filter panel has real substance. **This is the revision's central open question — see §10 Q1.**
+- **Age is computed client- or server-side from `birthDate`, not stored.** `birthDate` is nullable
+  (unknown) per `domain/patient-identity` entry #3 — age display shows "Unknown" rather than a
+  computed value when `birthDate` is null, never a misleading default like age 0.
+
+## 6. Risks
+
+- **§10 Q1 (whether to defer all filtering, or build the gender/registered-date subset now) is the
+  one genuinely open, load-bearing question** — changes `FilterBar`'s actual presence on the search
+  screen, not decided unilaterally.
+- **The new `q` free-text search mode is a real, if small, API extension** — must follow TASK-039's
+  established explicit-schema pattern (`engineering/api-design` entry #8) exactly, or it will
+  silently no-op under this repo's vitest harness the same way an earlier oversight would have.
+- **A materially narrower profile screen than the Stitch mockup shows** is a visible product gap if
+  presented to the design partner without context — the demo should be framed as "search, browse, and
+  view an existing patient's core identity," not implied to be feature-complete against §4.3's full
+  mockup. Worth flagging explicitly in the PR description, not just in this proposal.
+- **This closes FEAT-011.** Once merged, `docs/plans/feat-011-patient-management.md`'s own
+  Definition of Done requires the whole proposal be archived with status `IMPLEMENTED` and the merge
+  commit SHA — a step worth remembering explicitly since no further task-revision will naturally
+  prompt it the way TASK-039/040's own revisions prompted each other.
+
+## 7. Acceptance criteria
+
+TASK-041's literal AC (the only AC this revision covers), plus FEAT-011's feature-level AC items
+this task is responsible for:
+- [ ] All four states (populated, empty, loading, error) implemented on both the search and profile
+  screens; both screens are fully keyboard-navigable (tab order, focus rings, `Enter` activates the
+  focused row/button, no keyboard trap).
+- [ ] A patient is findable via the search screen by MRN, national ID, or free-text name, landing on
+  the correct patient's profile.
+- [ ] The profile screen correctly renders a real patient's identity/demographics; a bad or
+  cross-tenant id shows the error state (via the API's real `404`), not a blank page or an
+  unhandled exception.
+
+## 8. Testing plan
+
+1. `pnpm --filter @lis/domain typecheck`/build with the `patientSearchQuerySchema` extension.
+2. `pnpm --filter api typecheck`/`lint`/build with the extended `search()` handler; re-run the full
+   existing `apps/api` e2e suite to confirm the three existing search modes are unaffected by the
+   new `q` branch.
+3. A real e2e spec extension (`patient.e2e-spec.ts`): `q` matching a name fragment, an MRN fragment
+   (prefix), and a national ID returns the expected row(s); a `q` matching nothing returns an empty
+   array, not an error; a result count at/above the fixed cap is verified to actually cap (seed
+   enough rows to prove it, not just trust the `LIMIT` clause is present).
+4. `pnpm --filter web typecheck`/`lint`/build with the two new pages + Server Action.
+5. A real, end-to-end manual check via a real headless-Chromium browser (`web-verify` Skill, real
+   Keycloak/Postgres/apps/api, not mocked): register a patient (existing TASK-040 flow), search for
+   them by MRN, by partial name, and by national ID from the new search screen, confirm each lands
+   on the correct profile; navigate to a nonexistent id directly by URL and confirm the error state
+   renders, not a crash; verify keyboard-only navigation reaches and activates a search result row.
+6. `pnpm typecheck`/`pnpm lint` at the repo root.
+
+## 9. Rollback plan
+
+Additive: two new `apps/web` routes, a small additive extension to the existing search endpoint's
+accepted query shape (the three existing modes are unchanged), and a nav-label change
+("Register patient" → "Patients"). Rollback is reverting the PR: the new routes and `q` search mode
+removed, the nav label reverted. No production data or deployed feature depends on this yet.
+
+## 10. Questions requiring human approval
+
+1. **RESOLVED 2026-08-03 — search box only.** Defer all filtering (including gender/registered-date)
+   to a follow-up once alerts/branch data actually exist and the filter panel has real substance
+   across more than two attributes. No `FilterBar` panel in this task.
+2. **RESOLVED 2026-08-03 — 50-row cap, no pager.** Matches ADR-0013's deferral of cursor pagination
+   until a real endpoint's data volume needs it.
+
+**Both questions resolved — see Status header. Implementation begins now.**
+
+## 11. Real bugs found and fixed during implementation (not assumed correct — verified)
+
+1. **`getValidAccessToken()` (ADR-0014) throws when called from a plain (GET) Server Component
+   render, not just a Server Action/Route Handler — a real gap in ADR-0014 itself, not a hypothetical
+   edge case.** Its own header comment already documented "only callable from a Server Action or
+   Route Handler," since a stale-token refresh calls `cookies().set(...)`, which Next.js rejects
+   outside those two contexts. TASK-040's registration flow never hit this (its one call site is a
+   Server Action). TASK-041's two new screens are this repo's *first* plain-GET Server Components to
+   call `apps/api` at all, and real browser verification (§8 item 5) caught it directly: the search
+   page threw `Cookies can only be modified in a Server Action or Route Handler` the moment the
+   access token (300s realm `accessTokenLifespan`) actually went stale mid-session — which any
+   real, longer-than-~5-minute session on `/patients` or `/patients/[id]` will always eventually
+   hit. Fixed in `apps/web/auth/access-token.ts`: the cookie-write (and the fail-closed
+   cookie-delete) are now each wrapped in their own `try`/`catch` — a plain Server Component render
+   still gets the refreshed access token for that request, just without persisting it to the
+   cookie. Confirmed safe, not just convenient: Keycloak's realm has no `revokeRefreshToken`
+   override (defaults to `false`, i.e. refresh tokens are not single-use here), so a non-persisted
+   refresh doesn't invalidate the `refreshToken` a later Server Action/Route Handler call would use
+   — it just means an extra Keycloak round trip on each stale GET render until a real mutation
+   persists a fresh one. Verified end-to-end with a real headless-Chromium browser after the fix
+   (§8 item 5).
+2. **The new `q` cap-enforcement e2e test (seeding 51 rows) was itself flaky against a real
+   Postgres/Keycloak stack, not just under this sandbox's earlier no-Docker gap.** Firing all 51
+   seed requests via `Promise.all` against this suite's own `DB_POOL_MAX=1` (a single physical
+   connection, set for the existing audit hash-chain ordering requirement) produced a real,
+   reproducible-but-intermittent `ECONNRESET` under connection pressure — confirmed by re-running
+   the isolated test twice, once failing and once passing. The test only needs 51 rows to *exist*,
+   not to be written concurrently, so fixed by seeding sequentially instead of via `Promise.all`.
+   Verified stable across three consecutive full-suite runs (28/28 passing each time) after the fix.
+3. **This session's own Docker Desktop instance hung on startup for several minutes with no visible
+   cause** (WSL2 `docker-desktop` distro reporting `Stopped`, then the daemon socket simply not
+   appearing for 10+ minutes after the app process was confirmed running) — not a memory-pressure
+   repeat of the prior session's known issue (`free -h`/Windows `wmic` both showed ample headroom
+   this time). No code implication; noted here only as a reproducible-again instance of "Docker can
+   hang on this host for reasons beyond memory pressure," in case a future session hits the same
+   thing and wants to rule out memory first before waiting it out.

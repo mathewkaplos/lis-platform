@@ -19,6 +19,12 @@ reading `SESSION_SECRET` via a function called fresh at each call site instead o
 evaluated constant. PR #278 (merged first) added real error logging to every auth-callback failure
 path, ahead of the actual fix. Written up as `authentication` Skill entries #12-#13.
 
+**Confirmed the real way, 2026-08-03**: a human logged into `apps/web` locally
+(`pnpm --filter web dev`, real local Keycloak/Postgres) through the actual browser flow, landed on
+`/` authenticated, then opened a second, independent tab to the same URL — the exact "next request"
+shape of the original bug — and stayed authenticated. The fix is confirmed end-to-end, not just via
+a Docker-image repro. See `authentication` Skill entry #12.
+
 **This session's own `/orient` found that session had no close-out**: `docs/scope/current.md` still
 read session 11's own PR #274/#275 recap, unaware #278/#279 had merged; no session-close report
 existed after `2135-pre.md` (which predates both PRs); the `authentication` Skill hadn't been

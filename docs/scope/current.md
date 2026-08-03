@@ -1,7 +1,49 @@
 # Status — 2026-08-03 (session 12)
 
-Last commit on main: 0750e6c — "fix: every real staging login fails -- SESSION_SECRET frozen at
-build time in proxy.ts (#279)".
+Last commit on main: 9c7d739 — "fix(deploy): don't redeploy on docs-only pushes; don't let a
+Keycloak hiccup take down api/web (#285)".
+
+## Real staging outage this session, caused by our own docs-only merge — recovered, and the deploy
+pipeline hardened so it can't recur the same way, via PR #285 (`9c7d739`)
+
+Continuing the login investigation below: a docs-only breadcrumb-refresh PR's merge (#282) auto-
+triggered a full "Deploy to Staging" run (no path filtering existed yet), which hit a Keycloak
+readiness/token-endpoint timeout and died with `api`/`web` already stopped but never restarted —
+real staging was down (502) until this was noticed and the run manually retried. Fixed at the root,
+via PR #285: (1) `deploy-staging.yml` now has `paths-ignore` for `docs/**`/root `*.md`, so a pure
+documentation merge no longer redeploys at all; (2) the Keycloak-readiness/`unmanagedAttributePolicy`
+re-apply block is now non-fatal (warns instead of `exit 1`) — `api`/`web` restarting no longer depends
+on that block succeeding, since realm/client config is already live as soon as `--import-realm`
+completes. Validated the happy-path GET/merge/PUT sequence unchanged against real local Keycloak
+before shipping. **Confirmed live**: this exact fix's own deploy (triggered by its own merge, since
+it touches `deploy-staging.yml` itself) completed successfully and staging is serving correctly.
+
+## Real root cause of the staging login-rejection mystery, found — and why the first fix (PR #283)
+didn't address it
+
+Chased an elaborate, well-validated but ultimately wrong hypothesis first (Keycloak's JVM heap
+capped at `-Xmx224m` on the droplet's 1vCPU/1GB budget making PBKDF2 password-hash import unreliable
+under memory pressure) — validated it against an isolated Keycloak instance and the real local stack,
+shipped it as PR #283 (pre-hashed `test-user*` credentials in `lis-realm.json`), merged, redeployed.
+**Staging login was still rejected afterward.** The actual cause, found only after: `deploy-staging.yml`
+has an explicit step ("Strip local/CI-only test user from the realm export for staging") that deletes
+the realm file's entire `.users` array before it ever reaches the droplet — a deliberate, sensible
+security decision (staging is network-reachable; a well-known `test-password` shouldn't be there).
+**`test-user` has never existed on staging's Keycloak, by design.** PR #283 itself isn't wrong or
+harmful (real improvement for local/CI imports) but did not and could not fix the staging issue.
+Written up as a new `AGENTS.md` standing rule (PR #284, `cb5df41`): check the deploy workflow's own
+file-transformation steps before reasoning about runtime/environment differences.
+
+**Real account for staging is `login-test-user`** (created live, directly on the droplet, per PR
+#278's own description — consistent with bulk test-users being deliberately excluded). Investigation
+paused here at the human's own request, to make progress on other things. Live leads not yet chased:
+(1) a live-created user needs an explicit follow-up attribute-set step for `tenant_id`, or it's
+silently missing (authentication Skill entries #7-#10) — this would explain the `ERR_TOO_MANY_REDIRECTS`
+loop seen when logging into a freshly-created staging user; (2) the Keycloak admin console
+(`https://lis-staging.taila0fbf9.ts.net:8443/admin/master/console/`, user `admin`) needs the
+`KEYCLOAK_ADMIN_PASSWORD` GitHub Actions secret's current value, which — since Keycloak has no
+persisted data and is fully recreated every deploy — can simply be rotated to a known value and
+redeployed if it isn't already known, rather than needing to be "recovered."
 
 ## Real staging login bug found and fixed, via PR #278 (`086226e`) + PR #279 (`0750e6c`) — from a
 prior, un-closed-out session

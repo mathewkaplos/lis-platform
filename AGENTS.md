@@ -213,3 +213,20 @@ packages/ui (design system) · packages/sdk (generated API client)
   written in an *earlier* session's own work. Checking that file first
   would have avoided a full revision cycle (a second human decision plus
   an IP rewrite) spent approving a mechanism that then had to change.
+- **When a symptom reproduces on staging but not locally, check the deploy
+  workflow's own file-transformation/copy steps for differences between
+  the deployed artifact and the one tested locally, before reasoning about
+  runtime/environment differences as the cause.** Confirmed 2026-08-03: a
+  real, well-tested hypothesis (Keycloak's JVM heap capped under the
+  droplet's 1GB budget making password-hash import unreliable) was
+  validated end-to-end (an isolated Keycloak instance, a real local
+  fresh-reimport) and shipped as a merged fix — but staging's login was
+  still broken afterward, because `deploy-staging.yml` has an explicit
+  step that deletes the realm file's entire `.users` array before it ever
+  reaches the droplet. `test-user` was never present on staging at all, a
+  fact one `grep` of the deploy workflow would have shown before any of
+  that investigation started. A deploy pipeline that transforms an
+  artifact before shipping it (this one also live-reapplies
+  `unmanagedAttributePolicy` post-boot) can make staging and local behave
+  differently for reasons invisible from comparing runtime environments
+  alone — check the pipeline's own transformations first.

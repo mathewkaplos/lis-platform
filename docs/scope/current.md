@@ -1,7 +1,45 @@
-# Status — 2026-08-02 (session 11)
+# Status — 2026-08-03 (session 12)
 
-Last commit on main: c3542b1 — "docs: PR #274 close-out — breadcrumb refresh + merge-authorization
-rule (#275)".
+Last commit on main: 0750e6c — "fix: every real staging login fails -- SESSION_SECRET frozen at
+build time in proxy.ts (#279)".
+
+## Real staging login bug found and fixed, via PR #278 (`086226e`) + PR #279 (`0750e6c`) — from a
+prior, un-closed-out session
+
+Every real login on staging looped forever between `/`, `/api/auth/login`, and Keycloak — the
+callback route succeeded on every single attempt, but the very next request to `/` immediately
+bounced back to login. Root cause: `apps/web/auth/secret.ts` read `SESSION_SECRET` as a top-level
+module constant; `deploy-staging.yml` builds the image with a hardcoded placeholder secret (so the
+real one never lands in a Docker layer) and supplies the real secret only at container start.
+Next.js 16's `proxy.ts` goes through the `MiddlewarePlugin` webpack step, which does its own
+build-time `process.env.*` substitution — separate from ordinary Route Handlers, which read
+`process.env` fresh at request time. `signSession()` (callback route) signed with the real runtime
+secret; `verifySession()` (`proxy.ts`) verified against the frozen build-time placeholder. Fixed by
+reading `SESSION_SECRET` via a function called fresh at each call site instead of an eagerly-
+evaluated constant. PR #278 (merged first) added real error logging to every auth-callback failure
+path, ahead of the actual fix. Written up as `authentication` Skill entries #12-#13.
+
+**This session's own `/orient` found that session had no close-out**: `docs/scope/current.md` still
+read session 11's own PR #274/#275 recap, unaware #278/#279 had merged; no session-close report
+existed after `2135-pre.md` (which predates both PRs); the `authentication` Skill hadn't been
+extended with the new gotcha despite AGENTS.md's same-day standing rule. All three fixed this
+session (this refresh, the Skill entries above, and a new close report).
+
+**Verification attempted this session, partially blocked by a separate, real, still-open issue**:
+driving a real headless-Chromium browser against real staging (`https://lis-staging.taila0fbf9.ts.net`
+— reachable from this dev sandbox via a WSL-host-inherited Tailscale route, not previously known to
+be available) confirmed the proxy correctly redirects to a genuine Keycloak challenge (TLS, PKCE,
+`redirect_uri` all correct — the layer entry #12's bug lived in is healthy). But submitting the
+documented `test-user`/`test-password` credential was rejected by Keycloak itself with "Invalid
+username or password," before ever reaching `apps/web`'s callback route — upstream of and unrelated
+to the SESSION_SECRET bug. Most likely Keycloak's default brute-force lockout from the sheer volume
+of prior login-debugging sessions against this same account; not confirmed via Admin API (no admin
+credential available in this sandbox). **Still open**: someone with Keycloak admin access should
+check/clear `test-user`'s lockout status so a real end-to-end login can be confirmed directly,
+rather than inferred from the redirect-layer check alone. See `authentication` Skill entry #13.
+
+**Local branch cleanup done this session**: `fix-session-secret-build-time-inlining` (already merged
+as PR #279) deleted, both local and remote; local checkout fast-forwarded to `0750e6c`.
 
 ## New standing rule this session: Claude Code may self-merge PRs once CI is green
 

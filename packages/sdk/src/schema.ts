@@ -326,6 +326,11 @@ export interface components {
                 /** Format: date-time */
                 createdAt: string;
             }[];
+            patient?: {
+                firstName: string;
+                lastName: string;
+                mrn: string;
+            };
         };
         CatalogDto_Output: {
             tests: {

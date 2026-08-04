@@ -698,6 +698,26 @@
               ],
               "additionalProperties": false
             }
+          },
+          "patient": {
+            "type": "object",
+            "properties": {
+              "firstName": {
+                "type": "string"
+              },
+              "lastName": {
+                "type": "string"
+              },
+              "mrn": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "firstName",
+              "lastName",
+              "mrn"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [

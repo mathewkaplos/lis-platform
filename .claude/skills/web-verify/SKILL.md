@@ -42,6 +42,29 @@ process survives a previous session before starting a new one:
 `ps aux | grep -i "next-server\|next dev" | grep -v grep` -- kill any
 found, `rm -rf .next`, then restart clean.
 
+**Gotcha (2026-08-04, TASK-042/043/044 verification): the same discipline
+applies to `apps/api`'s own dev/compiled server, and a `kill` command's own
+exit code is not proof the port is actually free.** A stray `node dist/main`
+or `nest start --watch` process left listening on `:4000` from an earlier
+verification pass survived at least two `kill $(lsof -ti:PORT)`-style
+cleanup attempts this session, and being reachable on the same port as a
+"fresh" server it silently corrupted shared local Postgres state in a way
+that produced a confusing, misleading downstream symptom (an apparently
+nondeterministic test failure, chased down the wrong path for a while
+before the real cause was found — see `testing` Skill entry #8). Before
+trusting a server is actually stopped, positively verify zero listeners
+remain, don't just trust the kill command ran:
+
+```bash
+kill $(lsof -ti:4000 -sTCP:LISTEN) $(lsof -ti:3000 -sTCP:LISTEN) 2>/dev/null
+sleep 1
+ps aux | grep -iE "node.*(dist/main|nest|main\.js|next)" | grep -v grep
+lsof -i -P -n 2>/dev/null | grep LISTEN | grep -E ":4000|:3000"
+# both commands above should print nothing -- if either does, kill -9 the
+# listed PID(s) directly (a piped `lsof -ti | xargs kill` can silently fail
+# to signal a process in this sandbox) and re-check before proceeding.
+```
+
 **Gotcha:** a `next.config.ts` change (e.g. `transpilePackages`) requires a
 full dev-server restart, not just a `.next` cache clear -- the config is
 only read at process start.

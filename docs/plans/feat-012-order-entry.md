@@ -1,5 +1,6 @@
 # Implementation Proposal: FEAT-012 Order entry
-Status: APPROVED — both §10 questions resolved 2026-08-04; TASK-042 implementation begins now
+Status: IMPLEMENTED — all three tasks merged (TASK-042 `eb41052`, TASK-043 `43653ce`, TASK-044
+`0aee3bc`). FEAT-012 (#21) and TASK-044 (#103) both closed 2026-08-04.
 ADR: none — action sub-resources for lifecycle transitions are already KB-08's stated convention,
 and ADR-0013 §5 explicitly says the first task introducing one should follow KB-08 directly, no
 new ADR needed for that specific point. §10 Q2 (Idempotency-Key) resolved as continued deferral,

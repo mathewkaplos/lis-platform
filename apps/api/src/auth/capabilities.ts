@@ -13,12 +13,17 @@
  * in Keycloak yet, and inventing one is a separate, real infra decision, not
  * this task's own scope. Narrowing this grant once a real registrar role
  * exists is a small follow-up, not a rearchitecture.
+ *
+ * `manage_orders` (TASK-042, FEAT-012 proposal §5): identical reasoning and
+ * grant as `manage_patients` — order entry is the same front-desk-adjacent
+ * action with no dedicated role yet.
  */
-export type Capability = 'enter_result' | 'verify' | 'manage_patients';
+export type Capability =
+  'enter_result' | 'verify' | 'manage_patients' | 'manage_orders';
 
 const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
-  technologist: ['enter_result', 'manage_patients'],
-  verifier: ['enter_result', 'verify', 'manage_patients'],
+  technologist: ['enter_result', 'manage_patients', 'manage_orders'],
+  verifier: ['enter_result', 'verify', 'manage_patients', 'manage_orders'],
 };
 
 /**

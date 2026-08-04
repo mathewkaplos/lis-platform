@@ -1,0 +1,96 @@
+import { z } from "zod";
+
+/**
+ * KB-02 Order aggregate, TASK-042 scope (docs/plans/feat-012-order-entry.md):
+ * single source of truth for both request validation (nestjs-zod's
+ * ZodValidationPipe) and OpenAPI generation — never a parallel, hand-
+ * maintained schema (engineering/api-design Skill entry #1).
+ */
+export const orderPrioritySchema = z.enum(["routine", "stat"]);
+export type OrderPriority = z.infer<typeof orderPrioritySchema>;
+
+/** Order-level status. No canonical Order state machine exists in KB-03 (only
+ * OrderedTest/Specimen/Observation/Report do) — TASK-042 writes only these
+ * two real values (create -> 'ordered', full cascade cancel -> 'cancelled'),
+ * per proposal §5/§10 Q1. */
+export const orderStatusSchema = z.enum(["ordered", "cancelled"]);
+export type OrderStatus = z.infer<typeof orderStatusSchema>;
+
+/** Full canonical OrderedTest lifecycle (KB-03, 03-business-workflows.md:68-73).
+ * TASK-042 only ever writes 'ordered' and 'cancelled' — the rest are reserved
+ * for FEAT-013+ (reception, result entry, verification, reporting). */
+export const orderedTestStatusSchema = z.enum([
+  "ordered",
+  "collected",
+  "received",
+  "in_process",
+  "resulted",
+  "verified",
+  "reported",
+  "cancelled",
+  "rejected",
+]);
+export type OrderedTestStatus = z.infer<typeof orderedTestStatusSchema>;
+
+/**
+ * At least one of testDefinitionIds/panelIds must be non-empty (proposal
+ * §5): panelIds are expanded server-side into their member testDefinitionIds
+ * and unioned with any directly-supplied testDefinitionIds, deduplicated —
+ * ordering the same test both directly and via a panel creates exactly one
+ * ordered_test row, not two.
+ */
+export const orderCreateSchema = z
+  .object({
+    patientId: z.uuid(),
+    testDefinitionIds: z.array(z.uuid()).min(1).optional(),
+    panelIds: z.array(z.uuid()).min(1).optional(),
+    priority: orderPrioritySchema.optional(),
+  })
+  .refine(
+    (body) =>
+      (body.testDefinitionIds && body.testDefinitionIds.length > 0) ||
+      (body.panelIds && body.panelIds.length > 0),
+    { message: "testDefinitionIds or panelIds (or both) is required" },
+  );
+export type OrderCreateInput = z.infer<typeof orderCreateSchema>;
+
+export const orderedTestSchema = z.object({
+  id: z.uuid(),
+  tenantId: z.uuid(),
+  orderId: z.uuid(),
+  testDefinitionId: z.uuid(),
+  status: orderedTestStatusSchema,
+  createdAt: z.iso.datetime(),
+});
+export type OrderedTest = z.infer<typeof orderedTestSchema>;
+
+export const orderSchema = z.object({
+  id: z.uuid(),
+  tenantId: z.uuid(),
+  patientId: z.uuid(),
+  status: orderStatusSchema,
+  priority: orderPrioritySchema,
+  createdAt: z.iso.datetime(),
+  orderedTests: z.array(orderedTestSchema),
+});
+export type Order = z.infer<typeof orderSchema>;
+
+/**
+ * All filters are optional and combine with AND. No free-text search mode
+ * (unlike patient's `q`) — FEAT-012's own AC only names status/priority/date
+ * range, not name-based search; that's worklist-level (FEAT-017+), not built
+ * ahead of a real need.
+ */
+export const orderSearchQuerySchema = z.object({
+  patientId: z.uuid().optional(),
+  status: orderStatusSchema.optional(),
+  priority: orderPrioritySchema.optional(),
+  createdFrom: z.iso.datetime().optional(),
+  createdTo: z.iso.datetime().optional(),
+});
+export type OrderSearchQuery = z.infer<typeof orderSearchQuerySchema>;
+
+/** engineering/api-design entry #4: cursor pagination deliberately deferred
+ * (ADR-0013 §Decision 4) — a fixed cap instead, same pattern as
+ * PATIENT_SEARCH_RESULT_LIMIT, revisited once real order volume needs one. */
+export const ORDER_SEARCH_RESULT_LIMIT = 100;

@@ -6,10 +6,11 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { PatientModule } from './patient/patient.module';
+import { OrderModule } from './order/order.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
 @Module({
-  imports: [SentryModule.forRoot(), AuthModule, PatientModule],
+  imports: [SentryModule.forRoot(), AuthModule, PatientModule, OrderModule],
   controllers: [AppController],
   providers: [
     AppService,

@@ -73,7 +73,7 @@ export class CapabilityCheckController {
       .values({
         tenantId: user.tenantId,
         patientId: await this.insertDemoPatient(tx, user.tenantId),
-        status: 'pending',
+        status: 'ordered', // TASK-042: 'pending' is no longer a valid order.status value (ck_order_status)
       })
       .returning();
     return { resourceId: row.id, before: null, after: { status: row.status } };
@@ -93,7 +93,7 @@ export class CapabilityCheckController {
       .values({
         tenantId: user.tenantId,
         patientId: await this.insertDemoPatient(tx, user.tenantId),
-        status: 'pending',
+        status: 'ordered', // TASK-042: 'pending' is no longer a valid order.status value (ck_order_status)
       })
       .returning();
     return { resourceId: row.id, before: null, after: { status: row.status } };
@@ -119,7 +119,7 @@ export class CapabilityCheckController {
       .values({
         tenantId: user.tenantId,
         patientId: await this.insertDemoPatient(tx, user.tenantId),
-        status: 'pending',
+        status: 'ordered', // TASK-042: 'pending' is no longer a valid order.status value (ck_order_status)
       })
       .returning();
     return { resourceId: row.id };
@@ -145,7 +145,7 @@ export class CapabilityCheckController {
     await tx.insert(order).values({
       tenantId: user.tenantId,
       patientId: await this.insertDemoPatient(tx, user.tenantId),
-      status: 'pending',
+      status: 'ordered', // TASK-042: 'pending' is no longer a valid order.status value (ck_order_status)
     });
     return { resourceId: 'not-a-uuid', before: null, after: null };
   }

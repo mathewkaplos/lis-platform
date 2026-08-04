@@ -64,6 +64,16 @@ export const orderedTestSchema = z.object({
 });
 export type OrderedTest = z.infer<typeof orderedTestSchema>;
 
+/** TASK-044 (FEAT-012 proposal §2): a display projection, not the full
+ * patient record -- just enough for a list/detail screen to show identity
+ * without a second round trip. */
+export const orderPatientSummarySchema = z.object({
+  firstName: z.string(),
+  lastName: z.string(),
+  mrn: z.string(),
+});
+export type OrderPatientSummary = z.infer<typeof orderPatientSummarySchema>;
+
 export const orderSchema = z.object({
   id: z.uuid(),
   tenantId: z.uuid(),
@@ -72,6 +82,11 @@ export const orderSchema = z.object({
   priority: orderPrioritySchema,
   createdAt: z.iso.datetime(),
   orderedTests: z.array(orderedTestSchema),
+  // Optional: only POST /v1/orders' and POST /v1/orders/:id/cancel's
+  // {resourceId, before, after} response isn't run through @ZodResponse
+  // (order.controller.ts's own header comment) and doesn't populate this --
+  // search()/getById() always do (TASK-044 proposal §2/§6).
+  patient: orderPatientSummarySchema.optional(),
 });
 export type Order = z.infer<typeof orderSchema>;
 

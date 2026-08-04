@@ -1,0 +1,97 @@
+import { notFound } from 'next/navigation';
+import { Badge, Card, CardContent, CardHeader, CardTitle } from '@lis/ui';
+import { getValidAccessToken } from '@/auth/access-token';
+import { createLisApiClient } from '@/lib/api-client';
+import { CancelOrderButton } from './cancel-order-button';
+
+/**
+ * TASK-044 (FEAT-012 proposal §1/§5). Overview only -- no Specimens/
+ * Timeline/Results/Billing/Documents tabs (FEAT-013/014+, not started), no
+ * accession number (TASK-045, not started), no ordering-doctor/insurance
+ * rail (no supporting column). "Cancel order" is the one deliberate
+ * addition beyond the screen's own literal AC -- see the proposal §5 for
+ * why.
+ *
+ * A cross-tenant or nonexistent id surfaces the API's real 404 via
+ * `notFound()`, matching `patients/[id]/page.tsx`'s own convention
+ * (`engineering/api-design` entry #7).
+ */
+export default async function OrderDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    throw new Error('Your session has expired — please log in again.');
+  }
+  const client = createLisApiClient(accessToken);
+
+  const [
+    { data: order, response: orderResponse },
+    { data: catalog, response: catalogResponse },
+  ] = await Promise.all([
+    client.GET('/v1/orders/{id}', { params: { path: { id } } }),
+    client.GET('/v1/catalog'),
+  ]);
+  if (orderResponse.status === 404) {
+    notFound();
+  }
+  if (!orderResponse.ok || !order) {
+    throw new Error('Something went wrong loading this order. Please try again.');
+  }
+  if (!catalogResponse.ok || !catalog) {
+    throw new Error('Something went wrong loading the test catalog. Please try again.');
+  }
+
+  const testNameById = new Map(catalog.tests.map((t) => [t.id, t.displayName]));
+
+  return (
+    <div className="flex flex-1 flex-col gap-4 p-6">
+      <Card className="mx-auto w-full max-w-2xl">
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle>
+              {order.patient ? `${order.patient.firstName} ${order.patient.lastName}` : 'Order'}
+            </CardTitle>
+            {order.patient ? (
+              <p className="mt-1 text-sm text-text-secondary">
+                MRN <span className="font-mono text-foreground">{order.patient.mrn}</span>
+              </p>
+            ) : null}
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex gap-2">
+              <Badge variant={order.priority === 'stat' ? 'destructive' : 'outline'}>
+                {order.priority}
+              </Badge>
+              <Badge variant={order.status === 'cancelled' ? 'secondary' : 'outline'}>
+                {order.status}
+              </Badge>
+            </div>
+            {order.status === 'ordered' ? <CancelOrderButton orderId={order.id} /> : null}
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <p className="text-sm text-text-secondary">
+            Ordered at {new Date(order.createdAt).toLocaleString()}
+          </p>
+          <div>
+            <h3 className="mb-2 text-sm font-medium text-foreground">Tests</h3>
+            <ul className="flex flex-col gap-1 text-sm">
+              {order.orderedTests.map((t) => (
+                <li key={t.id} className="flex items-center justify-between gap-4">
+                  <span className="text-foreground">
+                    {testNameById.get(t.testDefinitionId) ?? t.testDefinitionId}
+                  </span>
+                  <Badge variant="outline">{t.status}</Badge>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

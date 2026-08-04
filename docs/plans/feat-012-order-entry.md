@@ -554,3 +554,212 @@ built request shape, the schema's actual columns) or a reversible, narrowly-scop
 directly following this repo's own established precedent (FEAT-011's four revisions, TASK-040's
 identical hidden-field-resubmission and inline-confirmation patterns). Status: APPROVED — implementation
 begins now.
+
+---
+
+# Revision: TASK-044 — Order list + detail screens
+Status: APPROVED — no open questions; every design choice below is either dictated by an existing
+constraint or a reversible UI/scope decision matching this repo's established narrowing precedent
+ADR: none
+Date: 2026-08-04    Backlog ID: TASK-044 (#103)
+
+## 1. Goal
+
+TASK-043 (order builder UI) merged via PR #291 (`43653ce`); TASK-044's own stated dependency is
+satisfied. This is FEAT-012's last task — no task follows it in the feature's own list.
+
+**This revision closes FEAT-012.**
+
+**Real, load-bearing finding:** `GET /v1/orders`/`GET /v1/orders/:id` (TASK-042) return `patientId`
+only, never the patient's name/MRN — fine for TASK-042's own scope (no UI existed yet), but a list
+screen showing raw UUIDs instead of patient names is unusable. No endpoint exists to bulk-resolve
+patient ids either (`GET /v1/patients` requires `mrn`/`nationalId`/`q`/name+DOB — no "list all"
+mode). Resolving this is this revision's own scope, not a separate task — same precedent as
+TASK-040 extending patient search and TASK-043 adding the catalog endpoint.
+
+## 2. Affected files
+
+- `packages/domain/src/order.ts` — `orderSchema` gains an **optional** `patient:
+  {firstName, lastName, mrn}` field (a display projection, not the full patient record).
+  Optional because `POST /v1/orders`/`POST /v1/orders/:id/cancel`'s `{resourceId, before, after}`
+  shape isn't run through `@ZodResponse` (§3) and won't populate it — only `search`/`getById` do.
+- `apps/api/src/order/order.controller.ts` — `toOrderDto` accepts an optional patient-summary
+  parameter; `search()` batch-resolves every result row's patient in one extra query
+  (`inArray(patient.id, uniquePatientIds)`, no N+1); `getById()` resolves its single order's
+  patient the same way. `create()`/`cancel()` unchanged (§5 -- their responses don't need it).
+- `apps/web/app/(app)/orders/page.tsx` (new) — the list screen. Plain GET form (status/priority/
+  date-range filters in the URL's `searchParams`), same `patients/page.tsx` pattern (a Server
+  Component, no client JS needed for filtering itself).
+- `apps/web/app/(app)/orders/orders-table.tsx` (new, client) — thin `DataTable` wrapper owning
+  row-click navigation, mirroring `patients-table.tsx` exactly.
+- `apps/web/app/(app)/orders/loading.tsx`, `apps/web/app/(app)/orders/error.tsx` (new) — mirror
+  `patients/loading.tsx`/`patients/error.tsx` exactly.
+- `apps/web/app/(app)/orders/[id]/page.tsx` (new) — the detail screen: patient identity, status,
+  priority, created date, the ordered-tests list (name + per-test status), and a "Cancel order"
+  action when the order's own status is still `ordered` (§5).
+- `apps/web/app/(app)/orders/[id]/cancel-order-button.tsx` (new, client) — a confirm-then-submit
+  wrapper around the Server Action below (native `<dialog>`/`confirm()` — no new primitive needed
+  for a single yes/no confirmation).
+- `apps/web/app/(app)/orders/[id]/actions.ts` (new) — the `cancelOrder` Server Action, calling
+  `POST /v1/orders/:id/cancel`.
+- `apps/web/app/(app)/orders/[id]/loading.tsx`, `apps/web/app/(app)/orders/[id]/error.tsx` (new) —
+  mirror `patients/[id]/loading.tsx`/`patients/[id]/error.tsx`.
+- `apps/web/app/(app)/_components/sidebar.tsx` — gains an "Orders" nav entry (`/orders`), same
+  pattern as the existing "Patients" entry.
+
+## 3. Architecture consulted
+
+- **TASK-044 issue (#103) AC**: "Filters by status/priority/date all return correct results" — maps
+  directly onto `GET /v1/orders`'s already-built `status`/`priority`/`createdFrom`/`createdTo` query
+  params (TASK-042); no new filtering logic needed server-side, only a UI for it.
+- **Google Stitch Prompt Library §6.2 (Order List) / §6.3 (Order Details)** — read in full. §6.2
+  wants ordering-doctor, discipline, branch, TAT indicator, saved views, and bulk actions
+  (print/cancel/export); §6.3 wants an accession number, insurance/billing rail, specimen summary,
+  and Tests/Specimens/Timeline/Results/Billing/Documents tabs. None has supporting schema/API
+  (`order`/`ordered_test` have no provider/discipline/branch/accession columns — TASK-045 owns
+  accession numbers, not yet built; FEAT-013/014+ own specimens/results/billing). §6.3 explicitly
+  lists **"Cancel"** among its action-bar items, and FEAT-012's own feature-level AC names
+  cancellation as a first-class capability of this resource, already fully built and tested at the
+  API layer (TASK-042) — this revision is the first and only place in the app that capability
+  becomes reachable at all. Included for that reason (§5), everything else from §6.2/§6.3 declined
+  per this repo's established narrowing precedent (FEAT-011's four revisions, TASK-043 §1).
+- **`apps/api/src/order/order.controller.ts`** (TASK-042, read in full) — the exact response shape
+  this revision extends; `search`/`getById` both already use `@ZodResponse`, so the schema change
+  in §2 is enforced, not just documented.
+- **`apps/web/app/(app)/patients/{page,patients-table,loading,error}.tsx`** (TASK-041, read in
+  full) — the exact list-screen pattern (plain GET form, `DataTable` + thin client row-click
+  wrapper, `loading.tsx`/`error.tsx` boundary files) this revision reuses directly.
+- **`apps/web/app/(app)/patients/[id]/{page,loading,error}.tsx`** (TASK-041) — the exact
+  detail-screen pattern (RSC fetch, real `notFound()` on `404`) this revision reuses.
+- **`apps/web/app/(app)/orders/new/{page,order-builder-form,actions}.tsx`** (TASK-043, read in
+  full) — the catalog-fetch-and-map-client-side pattern for resolving `testDefinitionId` →
+  display name, reused identically here rather than joining test names into the API response
+  (§5 explains why).
+- **`packages/ui`'s `DataTable`/`Badge`** (read in full) — `StatusPill` is reserved for clinical
+  result flags (N/H/L/HH/LL/A) per `frontend-design` Skill entry #1, not general resource status —
+  `order.status`/`order.priority` use plain `Badge`, matching `patients-table.tsx`'s own `sex`
+  column precedent, not `StatusPill`.
+- **`engineering/api-design` Skill** — entry #6 (reads not audited — `search`/`getById` unchanged
+  here), #7 (404 not 403, already correct, unaffected by this revision).
+
+## 4. Skills loaded
+
+- `frontend-design` — re-checked; no new primitive needed (`DataTable`, `Badge`, `Button` all
+  already exist).
+- `engineering/api-design` — re-checked for the `patient`-summary addition; purely additive to an
+  existing `@ZodResponse`-validated schema, no versioning/breaking-change concern (ADR-0013 §
+  Conventions: additive-by-default within a major version).
+- `database-design` — re-checked; the new patient-summary query is a plain `SELECT` with
+  `inArray`, no schema/migration change, no new FK.
+- `testing` — re-checked; shapes §8's insistence on a real e2e assertion for the new `patient`
+  field and a real browser check for both screens, not just component-level reasoning.
+
+## 5. Assumptions & autonomous decisions
+
+- **A global order list at `/orders`, not a patient-scoped section.** Stitch §6.2 itself describes
+  a standalone, cross-patient screen with its own filters — matching real lab-operations value
+  ("show me every STAT order today") distinct from a per-patient view, and matching "Order list...
+  screens" (definite article, TASK-044's own "Expected output") as its own top-level surface, same
+  status as the existing "Patients" nav entry, not nested under a patient's profile.
+- **Patient identity is resolved server-side (joined into the API response, §2); test display
+  names are resolved client-side from the existing catalog fetch, not joined.** Patient identity is
+  per-order-unique (a join is the natural, minimal-redundancy shape); test names are catalog-wide
+  reference data already fully fetchable via TASK-043's own `GET /v1/catalog` — reusing that
+  established pattern avoids both a second server-side join and duplicating catalog data into every
+  order response.
+- **"Cancel order" is included on the detail screen** (§3) — the one deliberate exception to this
+  revision's otherwise-strict AC-only scope, justified because it is FEAT-012's own named
+  capability with zero UI surface anywhere else in the app, Stitch's own §6.3 explicitly lists it,
+  and the API already fully supports it (TASK-042, tested). Implemented as a plain confirm-then-
+  submit action, not a new primitive; a `409` (already fully cancelled) or an order already
+  `cancelled` server-side is shown as a real error message, not silently ignored — the button is
+  hidden entirely once `order.status !== 'ordered'`, so the `409` path is a genuine race (opened in
+  two tabs), not a first-line UX affordance.
+- **No bulk actions, saved views, export, print, TAT indicator, or discipline/branch/doctor
+  columns** (§3) — none has supporting data; not built ahead of a real need.
+- **Date-range filter is two plain `<input type="date">` fields** (from/to), submitted as
+  `createdFrom`/`createdTo` — matches the API's existing param names exactly, no new client-side
+  date-picker primitive.
+
+## 6. Risks
+
+- **The `patient` field is optional in the shared `orderSchema`** (§2) — a future consumer of
+  `create`/`cancel`'s response that assumes `patient` is always present would be wrong; not an
+  issue for this revision's own two consumers (list/detail, both via `search`/`getById`), but worth
+  a type-level reminder (the field's own comment) for whoever touches this next.
+- **Batch patient resolution in `search()`** is a second query per request (was: one) — negligible
+  at this milestone's real data volume (same reasoning already applied to `ORDER_SEARCH_RESULT_LIMIT`
+  /`CATALOG_RESULT_LIMIT`'s own fixed caps, not re-litigated here).
+
+## 7. Acceptance criteria
+
+TASK-044's literal AC (the only AC this revision covers):
+- [ ] Filters by status/priority/date all return correct results. Judged by: the list screen's
+  filter form, submitted with each filter independently and in combination, shows exactly the
+  orders `GET /v1/orders`'s own already-tested query logic would return (TASK-042's own e2e
+  coverage already proves the query logic itself; this revision's own testing proves the UI
+  reaches it correctly end-to-end, per §8).
+
+## 8. Testing plan
+
+1. `pnpm --filter @lis/domain` typecheck/build with the `patient` field addition.
+2. `pnpm --filter api` typecheck/build/lint with the extended controller.
+3. `apps/api/test/order.e2e-spec.ts` extended: `search`/`getById` responses include the correct
+   `patient.firstName`/`lastName`/`mrn`; a `create`/`cancel` response's `after` has no `patient`
+   key asserted (documents the intentional asymmetry from §2/§6, not an oversight).
+4. The full existing `apps/api` e2e suite re-run and confirmed still green.
+5. `pnpm --filter @lis/sdk` typecheck/build after regenerating `schema.ts`.
+6. `pnpm --filter web` typecheck/lint/build with the two new routes.
+7. A real, end-to-end browser check (`web-verify` Skill): place an order (reusing TASK-043's own
+   flow), navigate to `/orders`, filter by status/priority/date and confirm the fixture order
+   appears/disappears correctly across each filter combination, click through to its detail screen,
+   confirm patient identity/tests/status render correctly, click "Cancel order", confirm the
+   confirmation step, confirm the detail screen reflects `cancelled` afterward and the button is
+   gone — independently confirmed via a direct API call, not just the UI's own claim.
+8. `pnpm typecheck`/`pnpm lint`/`pnpm build` at the repo root.
+
+## 9. Rollback plan
+
+Additive: two new `apps/web` routes, one new nav entry, and an additive (`optional`) field on an
+existing, already-`@ZodResponse`-validated schema plus its two read-endpoint call sites. Rollback
+is reverting the PR: the new routes/nav entry removed, `patient` removed from `orderSchema`,
+`search()`/`getById()` revert to their TASK-042 shape. No production data or deployed feature
+depends on this yet.
+
+## 10. Questions requiring human approval
+
+None — see this revision's own header. Implementation begins now.
+
+## 11. Real bugs found during implementation (not assumed correct — verified)
+
+1. **The filter form's empty fields submit as literal empty strings, not absent keys — the API's
+   Zod schema rejected them with a real `400`, not just "no filter applied".** Caught live during
+   browser verification: selecting only `priority=stat` and submitting produced
+   `?status=&priority=stat&createdFrom=&createdTo=`; `status=""`/`createdFrom=""`/`createdTo=""`
+   all failed `orderStatusSchema`/ISO-datetime validation, and the page's own generic error
+   handling turned that `400` into "Something went wrong loading orders." `createdFrom`/
+   `createdTo` already had a truthy-check ternary: `status`/`priority` did not. Fixed by
+   normalizing every filter field the same way before constructing the query. Verified: `priority
+   =stat` alone and `status=cancelled` alone both now return the correct filtered subset, confirmed
+   against real seeded data with a real browser.
+2. **A real, pre-existing race condition in `writeAuditEvent`'s hash-chaining, exposed (not
+   caused) by this task's own testing** — found while repeatedly running the full e2e suite locally
+   to verify PR readiness: `capability-check.e2e-spec.ts`'s own `verifyAuditChain` check
+   intermittently failed on a fresh `db:reset`. Empirically isolated, not just suspected: 3/3 clean
+   runs on `main`, 2/3 *failing* runs on this branch (which adds exactly one more audited write via
+   a new `order.e2e-spec.ts` test) — consistent with a genuine, low-probability TOCTOU race in
+   `writeAuditEvent`'s own read-`MAX(sequence)`-then-insert pattern that gets statistically more
+   likely to manifest as total audited-write volume in a run grows, not a defect this task's own
+   code introduced. Real CI has been green across the last 15 runs (including TASK-042/043's own,
+   which already exercise plenty of audited writes) — plausibly explained by CI's fresh, fast,
+   ephemeral Postgres per run vs. this session's long-lived, heavily-reused local Docker volume
+   exposing the same latent race more easily. **Not fixed here** — a `writeAuditEvent`/FEAT-009
+   audit-infrastructure concern, not this task's own order-list-detail scope. Filed as its own
+   issue (#293) with the full empirical evidence, per this repo's established precedent (#260,
+   #267, #292) for a real, adjacent finding surfaced mid-task. This PR's own merge gate is real CI,
+   not repeated local runs, per AGENTS.md's standing rule that CI is the authoritative harness.
+
+Both findings verified: repo-wide `typecheck`/`lint`/`build` green; the full `apps/api` e2e suite
+green on isolated, clean runs (45/45); a real, end-to-end browser check (list filter by priority
+and by status independently, detail screen, cancel flow) confirmed correct against real seeded
+data, independently re-confirmed via direct API calls, not just the UI's own claims.

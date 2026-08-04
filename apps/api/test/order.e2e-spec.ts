@@ -40,6 +40,7 @@ describe('Order API (e2e)', () => {
   let tokenA: string;
   let tokenB: string;
   let patientId: string;
+  let patientMrn: string;
   let glucoseId: string;
   let bunId: string;
   let cmpPanelId: string;
@@ -103,7 +104,12 @@ describe('Order API (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .send({ firstName: 'Order', lastName: 'Fixture', sex: 'U' })
       .expect(201);
-    patientId = (patientRes.body as { resourceId: string }).resourceId;
+    const createdPatient = patientRes.body as {
+      resourceId: string;
+      after: { mrn: string };
+    };
+    patientId = createdPatient.resourceId;
+    patientMrn = createdPatient.after.mrn;
   });
 
   afterAll(async () => {
@@ -131,10 +137,19 @@ describe('Order API (e2e)', () => {
         status: string;
         priority: string;
         orderedTests: { testDefinitionId: string; status: string }[];
+        patient?: unknown;
       };
     };
     if (body.after.status !== 'ordered' || body.after.priority !== 'routine') {
       throw new Error(`unexpected order state: ${JSON.stringify(res.body)}`);
+    }
+    // TASK-044 proposal §2/§6: create's {resourceId, before, after} isn't
+    // run through @ZodResponse and never populates `patient` -- documents
+    // the intentional asymmetry with search()/getById(), not an oversight.
+    if (body.after.patient !== undefined) {
+      throw new Error(
+        `expected create's response to have no patient field, got ${JSON.stringify(res.body)}`,
+      );
     }
     if (body.after.orderedTests.length !== 2) {
       throw new Error(
@@ -375,6 +390,54 @@ describe('Order API (e2e)', () => {
       .post(`/v1/orders/${randomUUID()}/cancel`)
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(404);
+  });
+
+  it("search() and getById() both include the order's real patient identity (TASK-044)", async () => {
+    const created = await request(app.getHttpServer())
+      .post('/v1/orders')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ patientId, testDefinitionIds: [glucoseId] })
+      .expect(201);
+    const orderId = (created.body as { resourceId: string }).resourceId;
+
+    const searchRes = await request(app.getHttpServer())
+      .get('/v1/orders')
+      .query({ patientId })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const searchResults = searchRes.body as {
+      id: string;
+      patient?: { firstName: string; lastName: string; mrn: string };
+    }[];
+    const found = searchResults.find((o) => o.id === orderId);
+    if (
+      !found?.patient ||
+      found.patient.firstName !== 'Order' ||
+      found.patient.lastName !== 'Fixture' ||
+      found.patient.mrn !== patientMrn
+    ) {
+      throw new Error(
+        `expected search() to include the real patient identity, got ${JSON.stringify(found)}`,
+      );
+    }
+
+    const byIdRes = await request(app.getHttpServer())
+      .get(`/v1/orders/${orderId}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const byId = byIdRes.body as {
+      patient?: { firstName: string; lastName: string; mrn: string };
+    };
+    if (
+      !byId.patient ||
+      byId.patient.firstName !== 'Order' ||
+      byId.patient.lastName !== 'Fixture' ||
+      byId.patient.mrn !== patientMrn
+    ) {
+      throw new Error(
+        `expected getById() to include the real patient identity, got ${JSON.stringify(byId)}`,
+      );
+    }
   });
 
   it('GET /v1/orders filters by status, priority, and createdAt date range', async () => {

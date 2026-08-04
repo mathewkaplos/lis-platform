@@ -1,13 +1,15 @@
 import Link from 'next/link';
-import { LayoutDashboard, Users } from 'lucide-react';
+import { ClipboardList, LayoutDashboard, Users } from 'lucide-react';
 
 // Nav grows as later features add routes -- not invented ahead of them.
 // TASK-041: "Register patient" -> "Patients" (search list owns the
 // create-button, matching the Stitch pattern) -- registration is still
-// reachable from /patients.
+// reachable from /patients. TASK-044: "Orders" added, closing FEAT-012 --
+// a global, cross-patient list (proposal §5), same standing as "Patients".
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/patients', label: 'Patients', icon: Users },
+  { href: '/orders', label: 'Orders', icon: ClipboardList },
 ];
 
 export function Sidebar() {

@@ -60,6 +60,7 @@ function toOrderedTestDto(row: typeof orderedTest.$inferSelect): OrderedTest {
 function toOrderDto(
   row: typeof order.$inferSelect,
   tests: (typeof orderedTest.$inferSelect)[],
+  patientSummary?: { firstName: string; lastName: string; mrn: string },
 ): Order {
   return {
     ...row,
@@ -67,6 +68,7 @@ function toOrderDto(
     priority: row.priority as Order['priority'], // CHECK-constrained (ck_order_priority)
     createdAt: row.createdAt.toISOString(),
     orderedTests: tests.map(toOrderedTestDto),
+    patient: patientSummary,
   };
 }
 
@@ -267,7 +269,31 @@ export class OrderController {
       testsByOrderId.set(testRow.orderId, existing);
     }
 
-    return rows.map((row) => toOrderDto(row, testsByOrderId.get(row.id) ?? []));
+    // TASK-044 (proposal §2): batch-resolve every result row's patient in one
+    // extra query, not N+1 — a list screen showing raw patientId uuids is
+    // unusable, and no endpoint exists to bulk-resolve patients otherwise.
+    const patientIds = Array.from(new Set(rows.map((row) => row.patientId)));
+    const patientRows =
+      patientIds.length > 0
+        ? await tx
+            .select({
+              id: patient.id,
+              firstName: patient.firstName,
+              lastName: patient.lastName,
+              mrn: patient.mrn,
+            })
+            .from(patient)
+            .where(inArray(patient.id, patientIds))
+        : [];
+    const patientById = new Map(patientRows.map((row) => [row.id, row]));
+
+    return rows.map((row) =>
+      toOrderDto(
+        row,
+        testsByOrderId.get(row.id) ?? [],
+        patientById.get(row.patientId),
+      ),
+    );
   }
 
   @Get(':id')
@@ -291,7 +317,17 @@ export class OrderController {
       .select()
       .from(orderedTest)
       .where(eq(orderedTest.orderId, id));
-    return toOrderDto(row, tests);
+    const [patientRow] = await tx
+      .select({
+        id: patient.id,
+        firstName: patient.firstName,
+        lastName: patient.lastName,
+        mrn: patient.mrn,
+      })
+      .from(patient)
+      .where(eq(patient.id, row.patientId))
+      .limit(1);
+    return toOrderDto(row, tests, patientRow);
   }
 
   /**

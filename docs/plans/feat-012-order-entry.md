@@ -742,22 +742,32 @@ None — see this revision's own header. Implementation begins now.
    normalizing every filter field the same way before constructing the query. Verified: `priority
    =stat` alone and `status=cancelled` alone both now return the correct filtered subset, confirmed
    against real seeded data with a real browser.
-2. **A real, pre-existing race condition in `writeAuditEvent`'s hash-chaining, exposed (not
-   caused) by this task's own testing** — found while repeatedly running the full e2e suite locally
-   to verify PR readiness: `capability-check.e2e-spec.ts`'s own `verifyAuditChain` check
-   intermittently failed on a fresh `db:reset`. Empirically isolated, not just suspected: 3/3 clean
-   runs on `main`, 2/3 *failing* runs on this branch (which adds exactly one more audited write via
-   a new `order.e2e-spec.ts` test) — consistent with a genuine, low-probability TOCTOU race in
-   `writeAuditEvent`'s own read-`MAX(sequence)`-then-insert pattern that gets statistically more
-   likely to manifest as total audited-write volume in a run grows, not a defect this task's own
-   code introduced. Real CI has been green across the last 15 runs (including TASK-042/043's own,
-   which already exercise plenty of audited writes) — plausibly explained by CI's fresh, fast,
-   ephemeral Postgres per run vs. this session's long-lived, heavily-reused local Docker volume
-   exposing the same latent race more easily. **Not fixed here** — a `writeAuditEvent`/FEAT-009
-   audit-infrastructure concern, not this task's own order-list-detail scope. Filed as its own
-   issue (#293) with the full empirical evidence, per this repo's established precedent (#260,
-   #267, #292) for a real, adjacent finding surfaced mid-task. This PR's own merge gate is real CI,
-   not repeated local runs, per AGENTS.md's standing rule that CI is the authoritative harness.
+2. **This revision's own `patient` field addition broke every order-creation audit row's hash —
+   a real canonicalization bug, not a pre-existing concurrency race as first suspected.** First
+   surfaced as an apparently-intermittent `capability-check.e2e-spec.ts` failure
+   (`verifyAuditChain` reporting `valid: false`) across repeated local runs and — critically — a
+   real failure on PR #294's own first two CI attempts, not just locally. Initial hypothesis (a
+   TOCTOU race in `writeAuditEvent`'s read-`MAX(sequence)`-then-insert pattern, exposed by this
+   task's added write volume) was filed as issue #293 — **and was wrong**. The real, root cause,
+   found by actually tracing the mismatch rather than accepting the first plausible theory:
+   `toOrderDto`'s `patient: patientSummary` line set an **explicit `patient: undefined` own-property**
+   on `create()`/`cancel()`'s audited response (`patientSummary` is never resolved for those two
+   call sites, §2/§6). `writeAuditEvent`'s `stableStringify` walks `Object.keys()`, which *does*
+   include an undefined-valued key — so the write-time hash included `"patient":undefined`. But
+   Postgres jsonb storage's own insert path uses real `JSON.stringify`, which *silently drops*
+   undefined-valued keys (verified directly: `JSON.stringify({patient: undefined})` → `{}`) — so
+   the row read back at verify time never had that key at all, recomputing a different hash. Not a
+   race: fully deterministic on every order-creation audit write, just *appeared* intermittent
+   because it only broke the shared TENANT_A chain that `capability-check.e2e-spec.ts`'s own check
+   validates when `order.e2e-spec.ts`'s tests happened to run before it within the same suite
+   invocation — vitest's file execution order isn't fixed run to run, which is what actually varied,
+   not the underlying write path. **Fixed here, two layers**: (1) `toOrderDto` now sets `patient`
+   via a conditional spread, never an explicit `undefined`; (2) `stableStringify`
+   (`packages/db/src/audit.ts`) hardened to skip undefined-valued keys itself, matching real
+   `JSON.stringify`'s behavior — closes this whole bug class for any future caller, not just this
+   one call site. Verified: 5/5 clean local e2e runs after the fix (was ~1/3 before, and had failed
+   PR #294's own first two real CI attempts before this fix). Issue #293 corrected with the real
+   finding and closed as fixed by this PR, not left as a separate follow-up.
 
 Both findings verified: repo-wide `typecheck`/`lint`/`build` green; the full `apps/api` e2e suite
 green on isolated, clean runs (45/45); a real, end-to-end browser check (list filter by priority

@@ -49,6 +49,17 @@ interface CanonicalEnvelope {
 // the one computed at write time, with zero actual tampering. Sorting keys
 // on both the write path and the verify path guarantees both sides always
 // serialize identically for the same logical content.
+//
+// Explicit undefined-valued keys are skipped, matching real JSON.stringify's
+// own behavior (which drops them) — the exact serializer Postgres' jsonb
+// column type uses on insert. Found for real, not hypothetical (TASK-044,
+// FEAT-012): a caller's before/after payload with a key like
+// `{ patient: undefined }` hashed differently at write time (this function
+// saw the key via Object.keys) than at verify time (jsonb storage had
+// already silently dropped it), breaking the chain for every such row —
+// not a concurrency issue, a canonicalization mismatch with jsonb's own
+// real storage semantics. See order.controller.ts's own toOrderDto for the
+// call site this was found through.
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value);
@@ -57,7 +68,9 @@ function stableStringify(value: unknown): string {
     return `[${value.map(stableStringify).join(",")}]`;
   }
   const record = value as Record<string, unknown>;
-  const keys = Object.keys(record).sort();
+  const keys = Object.keys(record)
+    .filter((k) => record[k] !== undefined)
+    .sort();
   const entries = keys.map((k) => `${JSON.stringify(k)}:${stableStringify(record[k])}`);
   return `{${entries.join(",")}}`;
 }

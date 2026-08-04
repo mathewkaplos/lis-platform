@@ -68,7 +68,14 @@ function toOrderDto(
     priority: row.priority as Order['priority'], // CHECK-constrained (ck_order_priority)
     createdAt: row.createdAt.toISOString(),
     orderedTests: tests.map(toOrderedTestDto),
-    patient: patientSummary,
+    // Only set when actually resolved (search()/getById()) -- never an
+    // explicit `patient: undefined` key. create()/cancel()'s response feeds
+    // AuditInterceptor's `after` payload; an explicit undefined-valued key
+    // there broke every such audit row's hash (packages/db/src/audit.ts's
+    // own header comment has the full story, found via this exact call
+    // site) -- real JSON.stringify (jsonb storage) drops the key, so the
+    // key must genuinely not exist, not just be undefined.
+    ...(patientSummary ? { patient: patientSummary } : {}),
   };
 }
 

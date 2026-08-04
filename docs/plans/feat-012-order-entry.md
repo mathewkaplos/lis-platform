@@ -317,3 +317,240 @@ production data or deployed feature depends on this yet.
 Both findings verified: full `apps/api` e2e suite (42/42, including the 14 new order tests) green;
 repo-wide `typecheck`/`lint`/`build` green; a real compiled-server boot + direct `curl` proof of the
 final `/cancel` route, not just the e2e harness.
+
+---
+
+# Revision: TASK-043 — Order builder UI (catalog, panels, summary)
+Status: APPROVED — no open questions; every design choice below is either dictated by an existing
+constraint (schema/API shape already built by TASK-042) or a reversible UI/scope decision matching
+this repo's established narrowing precedent (FEAT-011's own four revisions)
+ADR: none
+Date: 2026-08-04    Backlog ID: TASK-043 (#102)
+
+## 1. Goal
+
+TASK-042 (order create/search/cancel API) merged via PR #290 (`eb41052`); TASK-043's own stated
+dependency is satisfied. This is `apps/web`'s first order-related screen and its second real form
+(after TASK-040's patient registration).
+
+**This revision's approvable scope is TASK-043 only** — TASK-044 (order list/detail screens) will
+be specified as its own revision once this task's real response/display conventions exist, same
+precedent as every prior task in this file and in FEAT-011.
+
+**Real, load-bearing finding from this revision's own research, not present in TASK-043's issue
+text:** no API endpoint anywhere in this repo can list the test/panel catalog — TASK-042 deliberately
+did not build one (its own scope was order create/search/cancel, not catalog browsing), and no
+earlier feature built one either (`packages/db/src/schema/test-catalog.ts`'s tables have existed
+since TASK-016/FEAT-004 but have never been read by any controller — confirmed directly, grepped for
+any `v1/catalog`/`test-definitions`/`panels` route, found none). `apps/web` cannot query Postgres
+directly (server-to-server only, TASK-040 proposal §2) — without a catalog-read endpoint, this
+screen's entire right pane (Stitch §6.1's "test catalog... panels and individual analytes") has no
+data source. Adding a minimal one is this revision's own scope, not a separate task — matches
+TASK-040's own precedent of extending `GET /v1/patients`'s search shape as part of a nominally
+"frontend" task, when the real prerequisite didn't exist yet.
+
+**Real, load-bearing finding #2:** Google Stitch Prompt Library §6.1 (the only place an order-builder
+screen is defined concretely) mocks up a **materially wider surface than the schema and API this
+repo has actually built**: ordering-doctor select, diagnosis/ICD search, clinical notes/history,
+collection scheduling (now/scheduled + site), specimen-requirement auto-derivation (tube
+types/volumes), estimated price, TAT, discipline-grouped catalog, favorites/recently-ordered,
+insurance-coverage hints, duplicate-test warnings, save-draft, and print-labels. None of this data
+exists: `order`/`ordered_test` (FEAT-006 proposal §5, unchanged by TASK-042) have no
+ordering-provider, diagnosis, or collection-scheduling columns; `test_definition` has no discipline
+column; no specimen/container catalog exists yet (FEAT-013, not started); no pricing/insurance/TAT
+model exists anywhere in the roadmap yet. Building UI for any of this would mean inventing data and
+endpoints that don't exist — the same premature-scope risk TASK-038/040/041 already flagged and
+declined. See §5 for the resulting narrower scope.
+
+## 2. Affected files
+
+- `packages/domain/src/catalog.ts` (new) — `catalogTestSchema` (`id`/`code`/`displayName`),
+  `catalogPanelSchema` (same + `testDefinitionIds: uuid[]`), `catalogSchema`
+  (`{ tests: CatalogTest[], panels: CatalogPanel[] }`). Same "one schema, three consumers" pattern
+  as `order.ts`/`patient.ts`.
+- `packages/domain/src/index.ts` — `export * from "./catalog"`.
+- `apps/api/src/catalog/catalog.controller.ts` (new) — `GET /v1/catalog`: the tenant's full
+  test/panel catalog in one response (no query param — see §5 for why no server-side search is
+  built). Not audited (a read, `engineering/api-design` entry #6), no capability gate (browsing the
+  catalog is informational, not a mutation — matches patient search's own gate-free reads).
+- `apps/api/src/catalog/catalog.module.ts` (new), registered in `AppModule`.
+- `apps/api/test/catalog.e2e-spec.ts` (new) — real-Postgres/real-Keycloak-token coverage.
+- `apps/api/openapi.json`, `packages/sdk/src/schema.ts` — regenerated (`pnpm --filter api
+  generate-openapi && pnpm --filter @lis/sdk generate`) to include both the new `/v1/catalog` route
+  and TASK-042's own `/v1/orders*` routes, which were merged but never regenerated into the checked
+  -in OpenAPI artifact — a real, pre-existing gap this revision also closes (ADR-0013 §1 requires
+  this artifact stay a live, diffable mirror of the real API; it had silently drifted one task
+  behind).
+- `apps/web/lib/api-client.ts` — `createPatientApiClient` renamed to `createLisApiClient` (mechanical:
+  the function has always been resource-agnostic under the hood — `baseUrl` + token only — and is
+  about to serve a second resource; the old name is actively misleading once that happens). All
+  three existing call sites (`patients/new/actions.ts`, `patients/page.tsx`, `patients/[id]/page.tsx`)
+  updated to the new name, no behavior change.
+- `apps/web/app/(app)/patients/[id]/page.tsx` — gains a "New order" link to
+  `/orders/new?patientId=${id}` (the screen's only entry point — see §5).
+- `apps/web/app/(app)/orders/new/page.tsx` (new) — Server Component: resolves `patientId` from the
+  query string, fetches the patient (`GET /v1/patients/{id}`, real 404 via `notFound()` on a bad id,
+  matching `patients/[id]/page.tsx`'s own convention) and the catalog (`GET /v1/catalog`), renders a
+  real error state if `patientId` is missing entirely (not a silent redirect — see §5) or either
+  fetch fails.
+- `apps/web/app/(app)/orders/new/order-builder-form.tsx` (new, client component) — the interactive
+  catalog picker + live summary + priority select + submit, wrapping the Server Action below.
+- `apps/web/app/(app)/orders/new/actions.ts` (new) — the `createOrder` Server Action: parses
+  `testDefinitionIds`/`panelIds` (JSON-encoded hidden-field values, same "state synced to a hidden
+  input, never read back out of scattered checkbox DOM state" convention already used by the
+  patient registration form's duplicate-confirm resubmission), calls `POST /v1/orders`.
+- `apps/web/app/(app)/orders/new/types.ts` (new) — `CreateOrderState` + `createOrderInitialState`,
+  split from `actions.ts` for the same runtime reason `patients/new/types.ts` already documents
+  (`'use server'` files may only export async functions).
+
+## 3. Architecture consulted
+
+- **TASK-043 issue (#102) AC**: "Ordering a lipid panel creates the correct set of ordered_test
+  rows" — the literal, narrow scope this revision is judged against.
+- **FEAT-012 issue (#21)**: names Stitch §6.1 as the reference prompt; §1 above details the real
+  gap between that mockup and this repo's actual data model.
+- **Google Stitch Prompt Library §6.1** — read in full; see §1.
+- **`apps/api/src/order/order.controller.ts`** (TASK-042, read in full) — the exact request shape
+  this form must produce: `{ patientId, testDefinitionIds?, panelIds?, priority? }`, panel expansion
+  and dedupe already handled server-side, so the client only needs to send whichever ids were
+  actually checked (a test checked both directly and via its panel is already deduped by the API,
+  confirmed by TASK-042's own e2e coverage — this form doesn't need to replicate that logic
+  client-side).
+- **`packages/db/src/schema/test-catalog.ts`** (read in full) — `testDefinition`/`panel`/`panelTest`
+  shape; confirms no discipline/category column exists (rules out Stitch's discipline-grouped
+  catalog, §5).
+- **`apps/web/app/(app)/patients/new/{page,actions,types}.tsx`** (TASK-040, read in full) — the
+  exact Server Action / `useActionState` / hidden-field-resubmission pattern this revision reuses.
+- **`apps/web/app/(app)/patients/[id]/page.tsx`** (TASK-041, read in full) — the `notFound()`
+  convention on a real API `404`; its own header comment already anticipated an "Orders" affordance
+  depending on FEAT-012 — this revision is that dependency landing.
+- **`packages/ui/src/index.ts`** (read in full) — `Checkbox`, `Badge`, `Card`, `Button`, `FormField`,
+  `Input` all already exist (TASK-035); no new primitive needed for a catalog checkbox list plus a
+  summary panel.
+- **`frontend-design` Skill** — loaded in full; entry #4 (`transpilePackages` already wired, no new
+  primitive added here so not newly at risk) and #5's open mobile-nav gap (#240, still unresolved —
+  this screen inherits the same "don't assume the sidebar is reachable below `sm`" caveat as every
+  other screen until #240 lands, not re-litigated here).
+- **`engineering/api-design` Skill** — entry #1 (schema-drives-validation-and-docs, followed for the
+  new catalog schema), #6 (reads not audited), #11/#12 (this task's own two real findings from
+  TASK-042, re-checked here for the new catalog controller — no action-sub-resource or CHECK
+  constraint involved, so neither applies directly, confirmed by inspection not assumption).
+
+## 4. Skills loaded
+
+- `frontend-design` — in full, see §3.
+- `engineering/api-design` — re-checked for the new `GET /v1/catalog` route; matches every existing
+  convention (no new pattern needed).
+- `domain/patient-identity` — checked, not relevant (no patient-identity question in this task).
+- `testing` — re-checked; its "verify against the real harness" standard shapes §8's insistence on
+  both a real e2e spec for the new catalog endpoint and a real browser check (`web-verify` Skill) for
+  the actual form, not just component-level reasoning.
+
+## 5. Assumptions & autonomous decisions
+
+- **Entry point is exclusively from a patient's profile page (`/patients/[id]` → "New order" link),
+  not a standalone patient-searchable `/orders/new`.** Stitch §6.1's own left pane starts with
+  "search-or-register" for the patient — but `apps/web` already has a complete, working patient
+  search screen (TASK-041); duplicating that search UI inside the order builder would be a second,
+  parallel implementation of the same lookup for no real benefit, and the actual clinical workflow
+  (place an order for a patient you're already looking at) matches the profile-page entry point
+  more naturally. `patientId` arrives as a required query string param; if missing, the page renders
+  a real error state directing the user back to patient search — never a silent redirect/guess.
+- **No server-side catalog search.** `GET /v1/catalog` returns the tenant's full test/panel list
+  (capped defensively at 500 rows — catalog/reference data, not operational data, so this is a
+  generous ceiling, not `ADR-0013 §4`'s deferred-pagination concern re-litigated); the form filters
+  it client-side by a plain text match on code/display name. Real catalogs at this milestone are
+  small (the seeded CMP panel has 14 tests); a client-side filter is simpler, fully keyboard-
+  navigable without debounced network round trips, and avoids inventing a search API shape ahead of
+  a real need — revisit only once a real tenant's catalog size makes this genuinely slow.
+- **No discipline grouping, favorites, or recently-ordered.** None has a backing column/table.
+  Catalog is shown as two flat, alphabetized sections: Panels, then Individual tests.
+- **No duplicate-active-order warning.** `GET /v1/orders?patientId=...&status=ordered` already
+  exists and *could* power one, but TASK-043's own AC doesn't require it and building it now is
+  exactly the kind of unrequested "smart behavior" this repo's conventions warn against adding ahead
+  of a real, observed need. Flagged as a real, deliberately-deferred gap (not silently dropped) for
+  whoever scopes a future polish pass.
+- **No "save draft."** `order.status` has exactly two values (`ordered`, `cancelled` — TASK-042 §5);
+  there is no draft state to save into. Single "Place order" action only.
+- **No "place & print labels."** Label printing is TASK-046's own future scope (FEAT-013, barcode
+  rendering, not started); this form places the order only.
+- **Selected test/panel ids are serialized into hidden form inputs as JSON** (`testDefinitionIds`,
+  `panelIds`), synced from the client component's own selection state on every change, then parsed
+  server-side by the Server Action — not read back out of a variable number of checkbox DOM nodes by
+  name, which doesn't compose cleanly with native form serialization for a dynamic list. Same
+  "state resubmitted via a hidden field, not re-derived from ambiguous DOM state" convention the
+  patient registration form's duplicate-confirm resubmission already established.
+- **Priority is a native `<select>` (`routine`/`stat`)**, not a new shared primitive — identical
+  reasoning to `patients/new/page.tsx`'s own `sex` field (proposal precedent): one two-option field
+  in one form doesn't warrant a reusable component yet.
+- **Confirmation is inline, not a redirect to an order-detail page.** TASK-044 (order detail screen)
+  doesn't exist yet — linking to `/orders/[id]` would `404`. Matches `patients/new/page.tsx`'s own
+  "registered" inline-confirmation pattern exactly: on success, the form is replaced with a summary
+  card (tests ordered, priority) and a link back to the patient's profile.
+- **`createPatientApiClient` renamed to `createLisApiClient`** (§2) — mechanical, all call sites
+  updated, no behavior change; done now because a second real resource (orders) using a
+  patient-named function would be actively misleading, not because of any defect.
+
+## 6. Risks
+
+- **Second real Next.js page composing `packages/ui` primitives beyond `patients/new`'s simpler
+  single-column form** — `frontend-design` entry #4's `transpilePackages` risk is already mitigated
+  (wired since TASK-036), but this is the first screen combining a checkbox list, a live summary,
+  and a select in one interactive client component; worth a real, direct browser check (§8), not
+  assumed from `patients/new`'s simpler precedent alone.
+- **`apps/api/openapi.json` had already silently drifted one task behind `main`** (§2) — TASK-042's
+  own routes were merged without a `generate-openapi` re-run. This revision fixes it, but flags the
+  gap: no CI check currently catches a stale `openapi.json`/`schema.ts` pair against the real
+  live routes. Not fixed here (a real, separate follow-up — filing as a new issue after this task
+  merges, not silently absorbed into this task's own scope).
+- **Client-side catalog filtering doesn't scale indefinitely** (§5) — explicitly flagged, not a
+  hidden assumption, revisit if a real tenant's catalog size makes this slow.
+
+## 7. Acceptance criteria
+
+TASK-043's literal AC (the only AC this revision covers):
+- [ ] Ordering a lipid-panel-equivalent (the seeded CMP panel, this repo's real stand-in — no lipid
+  panel is seeded) creates the correct set of `ordered_test` rows. Judged by: selecting the CMP
+  panel's checkbox and submitting produces an order with exactly `cmpMemberCount` `ordered_test`
+  rows (verified via a real browser check against the real API, §8) — proves the same server-side
+  expansion TASK-042's own e2e suite already covers is correctly reachable end-to-end through this
+  screen, not just directly via `curl`.
+
+## 8. Testing plan
+
+1. `pnpm --filter @lis/domain` typecheck/build with the new `catalog.ts` Zod schemas.
+2. `pnpm --filter api` typecheck/build/lint with the new catalog controller/module.
+3. A real e2e spec (`apps/api/test/catalog.e2e-spec.ts`), real Postgres + real Keycloak token: `GET
+   /v1/catalog` returns the seeded CMP panel with its 14 `testDefinitionIds` and every seeded test
+   code; a cross-tenant token (`tokenB`, no seeded catalog) returns empty arrays, not an error or
+   another tenant's data (RLS proof).
+4. The full existing `apps/api` e2e suite re-run and confirmed still green (43 existing + new
+   catalog tests).
+5. `pnpm --filter @lis/sdk` typecheck/build after regenerating `schema.ts`.
+6. `pnpm --filter web` typecheck/lint/build with the new route + renamed `createApiClient`.
+7. A real, end-to-end manual browser check (`web-verify` Skill, real Keycloak/Postgres/`apps/api`,
+   this sandbox's own missing-`libnss3.so` workaround): from a real patient's profile page, click
+   "New order" → catalog renders (panels + individual tests, real seeded data) → filter by text →
+   check the CMP panel's checkbox → summary updates live → submit → inline confirmation shows the
+   correct test count → a direct `GET /v1/orders?patientId=...` (or a follow-up `curl`) confirms
+   exactly `cmpMemberCount` `ordered_test` rows were actually created, not just that the UI claims
+   success. Also: the missing-`patientId` error state, and submitting with zero catalog items
+   checked (client-side validation, not a broken empty order request).
+8. `pnpm typecheck`/`pnpm lint`/`pnpm build` at the repo root.
+
+## 9. Rollback plan
+
+Additive: new `packages/domain`/`apps/api` catalog module, a new `apps/web` route, one link added to
+an existing page, and a mechanical rename (`createPatientApiClient` → `createLisApiClient`) confined to
+four already-identified call sites. Rollback is reverting the PR: the new route/controller/module
+deleted, the "New order" link removed, `apps/api/openapi.json`/`packages/sdk/src/schema.ts` reverted
+to their pre-revision generated state (or simply regenerated again post-revert), the rename reverted
+alongside its call sites. No production data or deployed feature depends on this yet.
+
+## 10. Questions requiring human approval
+
+None — every design choice in §5 is either dictated by an existing constraint (TASK-042's already-
+built request shape, the schema's actual columns) or a reversible, narrowly-scoped UI decision
+directly following this repo's own established precedent (FEAT-011's four revisions, TASK-040's
+identical hidden-field-resubmission and inline-confirmation patterns). Status: APPROVED — implementation
+begins now.

@@ -2,7 +2,7 @@
 
 import { patientCreateSchema } from '@lis/domain';
 import { getValidAccessToken } from '@/auth/access-token';
-import { createPatientApiClient } from '@/lib/api-client';
+import { createLisApiClient } from '@/lib/api-client';
 import type { RegisterPatientState, SubmittedValues } from './types';
 
 function rawFormValues(formData: FormData) {
@@ -63,7 +63,7 @@ export async function registerPatient(
       submittedValues,
     };
   }
-  const client = createPatientApiClient(accessToken);
+  const client = createLisApiClient(accessToken);
 
   const confirmedDuplicate = formData.get('confirmDuplicate') === 'true';
   if (!confirmedDuplicate && parsed.data.birthDate) {

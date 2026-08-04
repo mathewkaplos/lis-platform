@@ -7,10 +7,17 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { PatientModule } from './patient/patient.module';
 import { OrderModule } from './order/order.module';
+import { CatalogModule } from './catalog/catalog.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
 @Module({
-  imports: [SentryModule.forRoot(), AuthModule, PatientModule, OrderModule],
+  imports: [
+    SentryModule.forRoot(),
+    AuthModule,
+    PatientModule,
+    OrderModule,
+    CatalogModule,
+  ],
   controllers: [AppController],
   providers: [
     AppService,

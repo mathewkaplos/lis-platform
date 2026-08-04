@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { UserPlus } from 'lucide-react';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '@lis/ui';
 import { getValidAccessToken } from '@/auth/access-token';
-import { createPatientApiClient } from '@/lib/api-client';
+import { createLisApiClient } from '@/lib/api-client';
 import { PatientsTable, type PatientRow } from './patients-table';
 import { PATIENT_SEARCH_RESULT_LIMIT } from '@lis/domain';
 
@@ -32,7 +32,7 @@ export default async function PatientsPage({
     if (!accessToken) {
       throw new Error('Your session has expired — please log in again.');
     }
-    const client = createPatientApiClient(accessToken);
+    const client = createLisApiClient(accessToken);
     const { data, response } = await client.GET('/v1/patients', {
       params: { query: { q: trimmedQ } },
     });

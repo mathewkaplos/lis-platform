@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, index, pgPolicy } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, index, pgPolicy, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { testDefinition } from "./test-catalog";
 import { patient } from "./patient";
@@ -11,13 +11,21 @@ const tenantIsolation = () =>
   });
 
 // KB-02 Order aggregate. patient_id's forward-reference FK is backfilled by
-// this task (TASK-038, FEAT-011 proposal §5 — not literally named in
-// ADR-0005's own acceptance criteria, which only lists observation's
-// columns, but this column's comment independently cited the same ADR and
-// gets the identical treatment for consistency). Scope deliberately excludes
-// priority, clinical notes, diagnosis codes, billing linkage, and
-// ordering-provider reference — none has consuming code or a catalog table
-// yet anywhere in this repo (FEAT-006 proposal §5/§10 Q3).
+// TASK-038 (FEAT-011 proposal §5 — not literally named in ADR-0005's own
+// acceptance criteria, which only lists observation's columns, but this
+// column's comment independently cited the same ADR and gets the identical
+// treatment for consistency). priority added by TASK-042 (FEAT-012 proposal
+// §1/§5) — required by FEAT-012's own AC ("Order list filters correctly by
+// status, priority, and date range"); KB-03's own variant-workflow table
+// names 'routine'/'STAT' as the two real values. Order-level status has no
+// canonical state machine of its own in KB-03 (only OrderedTest/Specimen/
+// Observation/Report do) — TASK-042 writes only 'ordered' (create) and
+// 'cancelled' (cascade cancel, all ordered_test rows cancelled), so the
+// CHECK constraint below is scoped to exactly those two values, not a wider
+// speculative set. Scope still deliberately excludes clinical notes,
+// diagnosis codes, billing linkage, and ordering-provider reference — none
+// has consuming code or a catalog table yet anywhere in this repo (FEAT-006
+// proposal §5/§10 Q3).
 export const order = pgTable(
   "order",
   {
@@ -26,15 +34,28 @@ export const order = pgTable(
     patientId: uuid("patient_id")
       .notNull()
       .references(() => patient.id), // FK backfilled by TASK-038, see ADR-0005
-    status: text("status").notNull().default("pending"), // full state machine (KB-03) deferred, see FEAT-006 proposal §5
+    status: text("status").notNull().default("ordered"), // 'ordered' | 'cancelled' (TASK-042; see header comment)
+    priority: text("priority").notNull().default("routine"), // 'routine' | 'stat' (KB-03), TASK-042
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [tenantIsolation()],
+  (table) => [
+    check("ck_order_status", sql`${table.status} IN ('ordered','cancelled')`),
+    check("ck_order_priority", sql`${table.priority} IN ('routine','stat')`),
+    tenantIsolation(),
+  ],
 ).enableRLS();
 
 // KB-02: OrderedTest is a single test/panel requested within an Order, with
 // its own status; references TestDefinition by ID (catalog vs. operational
-// split).
+// split). status's full canonical value set is KB-03's own OrderedTest state
+// machine (03-business-workflows.md:68-73); TASK-042 (FEAT-012 proposal §5)
+// is the first task to write real rows, and writes only 'ordered' (create)
+// and 'cancelled' (cascade cancel) — the remaining values are reserved for
+// later features (FEAT-013+) per the same "don't build ahead of a real
+// consumer" discipline already used elsewhere in this schema, but included
+// in the CHECK now since KB-03 already documents them as this column's real,
+// non-speculative eventual range (matching specimen.status's identical
+// precedent, packages/db/src/schema/specimen.ts).
 export const orderedTest = pgTable(
   "ordered_test",
   {
@@ -46,8 +67,15 @@ export const orderedTest = pgTable(
     testDefinitionId: uuid("test_definition_id")
       .notNull()
       .references(() => testDefinition.id),
-    status: text("status").notNull().default("pending"), // full state machine (KB-03) deferred, see FEAT-006 proposal §5
+    status: text("status").notNull().default("ordered"), // TASK-042; see header comment for the full canonical set
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("ix_ordered_test_order").on(table.orderId), tenantIsolation()],
+  (table) => [
+    index("ix_ordered_test_order").on(table.orderId),
+    check(
+      "ck_ordered_test_status",
+      sql`${table.status} IN ('ordered','collected','received','in_process','resulted','verified','reported','cancelled','rejected')`,
+    ),
+    tenantIsolation(),
+  ],
 ).enableRLS();

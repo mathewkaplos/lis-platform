@@ -1,3 +1,78 @@
+# Status — 2026-08-04 (session 13)
+
+Last commit on main: 2f567e3 — "fix(audit): hash undefined-valued keys the way jsonb storage
+actually drops them", part of PR #294 (merged as `0aee3bc`).
+
+## FEAT-012 (Order entry) fully closed this session — all three tasks merged, EPIC-003's second
+feature done
+
+TASK-042 (API: create/search/cancel, PR #290 `eb41052`), TASK-043 (order builder UI, PR #291
+`43653ce`), TASK-044 (order list + detail screens, PR #294 `0aee3bc`) — all merged, all closed via
+comment (`Closes #N` never auto-closed for any of the three, same recurring PR-body-prose gotcha as
+`#99`/`#265`/`#74` before them). `docs/plans/feat-012-order-entry.md` marked `IMPLEMENTED` with all
+three merge SHAs. FEAT-012 (#21) and TASK-044 (#103) closed via comment.
+
+**Delivered**: `POST/GET /v1/orders`, `GET /v1/orders/:id`, `POST /v1/orders/:id/cancel` (this
+repo's first action sub-resource), `GET /v1/catalog` (a real prerequisite gap found and filled
+mid-feature — no endpoint had ever exposed the test/panel catalog). `apps/web` gained three new
+screens: `/orders/new` (catalog picker, panel expansion, priority), `/orders` (global cross-patient
+list, filters by status/priority/date range), `/orders/[id]` (detail + cancel action). Sidebar
+gained "Orders". `order.priority` added to the schema (FEAT-006 had deliberately deferred it since
+nothing consumed it yet — FEAT-012 is that first real consumer).
+
+**Deliberately narrower than the Stitch mockups** (§6.1–6.3), same precedent as FEAT-011: no
+ordering-doctor/ICD/insurance/pricing/TAT/discipline-grouping/accession-number/specimen-tracking/
+billing/documents — none has supporting schema or API yet (TASK-045+/FEAT-013/014 own scope).
+"Cancel order" on the detail screen is the one deliberate exception to strict AC-only scope,
+justified because the API already fully supported it with zero UI surface anywhere until now.
+
+**Four real bugs found and fixed via this feature's own testing, not assumed correct**:
+1. KB-08's literal colon-suffix action-sub-resource syntax (`:id:cancel`) crashes NestJS route
+   registration outright, and even escaped, real Fastify (production's actual adapter) matches the
+   route but fails to bind the param — only caught by booting the real compiled server, not the
+   e2e harness alone (which passed regardless). Used `/cancel` (slash) instead — this repo's one
+   documented deviation from KB-08's literal syntax. `engineering/api-design` Skill entry #11.
+2. A new `order.status` CHECK constraint broke four pre-existing, unrelated
+   `capability-check.controller.ts` fixture inserts still using the old `'pending'` placeholder.
+   `engineering/api-design` Skill entry #12.
+3. The order list's filter form submitted empty fields as literal empty strings, not absent keys —
+   the API correctly `400`'d, surfaced as an opaque "Something went wrong" error.
+4. **The most significant**: `toOrderDto`'s optional `patient` field, added for the list/detail
+   screens, set an explicit `patient: undefined` on `create()`/`cancel()`'s audited response.
+   `writeAuditEvent`'s hash computation saw that key (`Object.keys()` includes undefined-valued
+   keys); Postgres jsonb storage's own insert (`JSON.stringify`) silently drops it — a genuine,
+   deterministic canonicalization mismatch, not a race, though it looked exactly like an
+   intermittent one (order-dependent on which test file's writes landed first in the shared tenant
+   chain). **Initially misdiagnosed** as a pre-existing `writeAuditEvent` concurrency race and filed
+   as its own issue (#293) — including two real failures on this PR's own CI, not just locally, that
+   looked like confirmation of that theory. Corrected once actually traced end-to-end instead of
+   accepting the first plausible explanation: fixed both at the call site (conditional spread, never
+   an explicit `undefined`) and at the root (`stableStringify` now skips undefined-valued keys,
+   matching `JSON.stringify`). Verified 5/5 clean local e2e runs after the fix (was ~1/3 before).
+   Issue #293 corrected with the real root cause and closed as fixed, not left open. Written up as
+   `database-design` Skill entry #6 — a real, generically-applicable lesson: hashing an object bound
+   for jsonb storage must treat undefined-valued keys the same way `JSON.stringify` does.
+
+**Also found, not this feature's own bug but caught and fixed in passing**: `apps/api/openapi.json`
+and `packages/sdk/src/schema.ts` had silently fallen one task behind `main` — TASK-042's own routes
+merged without a `generate-openapi` re-run. Fixed as part of TASK-043; the underlying gap (no CI
+check catches this drift automatically) filed separately as #292, not fixed.
+
+Verified end-to-end with a real headless-Chromium browser across all three tasks (real
+Keycloak/Postgres/`apps/api`, this sandbox's own missing-`libnss3.so` workaround): register →
+search → profile → new order → catalog picker → panel selection → priority → place order → list →
+filter by priority/status → detail → cancel → confirmed cancelled — every claim independently
+re-verified via a direct API call, not just the UI's own claims. Full repo-wide `typecheck`/`lint`/
+`build` and the complete `apps/api` e2e suite green throughout.
+
+**Next**: FEAT-012's own next task, if any — EPIC-003 (Pre-Analytical Workflow) still has FEAT-013
+(Accessioning, labels & reception, #22, not started) as its one remaining feature. `/orient`'s next
+run should re-run milestone/next-task discovery from scratch rather than assume FEAT-013 is
+automatically next — same discipline the previous session's own breadcrumb already established for
+FEAT-012 itself.
+
+---
+
 # Status — 2026-08-03 (session 12)
 
 Last commit on main: 5ae10f9 — "docs: FEAT-011 close-out -- breadcrumb refresh, plan doc marked

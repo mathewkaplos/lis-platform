@@ -9,6 +9,7 @@ import { PatientModule } from './patient/patient.module';
 import { OrderModule } from './order/order.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { SpecimenModule } from './specimen/specimen.module';
+import { ObservationModule } from './observation/observation.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
 @Module({
@@ -19,6 +20,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     OrderModule,
     CatalogModule,
     SpecimenModule,
+    ObservationModule,
   ],
   controllers: [AppController],
   providers: [

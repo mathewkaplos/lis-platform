@@ -3,3 +3,4 @@ export * from "./patient";
 export * from "./order";
 export * from "./catalog";
 export * from "./specimen";
+export * from "./observation";

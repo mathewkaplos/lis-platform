@@ -443,3 +443,231 @@ tests needing no DB access at all — `no_range` returns `[]`, and a critical ma
 normal range still flags `HH`/`LL`); the full existing 85-test `apps/api` e2e suite green (101/101
 total, zero regression); repo-wide `typecheck`/`lint`/`build` green (including a real `next build`/
 `nest build`).
+
+---
+
+# Revision: TASK-051 — Result entry API (draft/submit, typed values)
+Status: **APPROVED** — both §10 questions resolved 2026-08-06 via the native options-prompt,
+recommended option chosen for each. Implementation begins now.
+Date: 2026-08-06    Backlog ID: FEAT-014 (#23) / TASK-051 (#110)
+
+## 1. Goal
+
+TASK-050 (flagging) is merged (PR #311, `5a24d83`). TASK-051's own issue: "Result entry API
+(draft/submit, typed values)." Its one dependency, TASK-050, is satisfied. Its one AC: "Numeric,
+coded, and text results all persist correctly per value_type."
+
+**This revision's scope is TASK-051 only.** `TASK-052` (result entry UI) and `TASK-053` (calculated
+fields) remain open, to be specified as revisions to this same file once this task's real output
+exists. This is the first task in this feature — and the first task in this repo — that actually
+writes to `observation`, the schema every prior FEAT-014 task (and much of the KB) treats as the
+system's central table.
+
+**Real, load-bearing finding #1:** an `enter_result` capability already exists
+(`apps/api/src/auth/capabilities.ts`), granted to both `technologist` and `verifier`, and is already
+exercised by a demo-only route in `capability-check.controller.ts` (TASK-032, proving the guard
+mechanism ahead of any real feature needing it). **No new capability or ADR is needed for
+authorization** — this task is that capability's first real consumer.
+
+**Real, load-bearing finding #2:** `observation.status`'s existing two pre-verification values —
+`'registered'` ("an Observation slot exists... value may be empty," KB-14) and `'preliminary'` ("a
+value exists but is not released," KB-14) — map directly onto this task's own "draft"/"submit"
+language with **no schema change and no new status value needed**: a draft save is `'registered'`
+(a value already exists, just not yet the technologist's asserted result); a submit/finalize is
+`'preliminary'` (asserted, not yet verified — TASK-055's own job). Constitution invariant #2
+("Verified clinical data is append-only") scopes append-only *to verified data specifically* — a
+`'registered'` or `'preliminary'` observation is real clinical data but not yet *verified* clinical
+data, so in-place `UPDATE`s before verification (redrafting, or re-finalizing a `'preliminary'`
+value before it's ever verified) do not violate this invariant. This reading is load-bearing for
+this task's whole write model and is stated here explicitly, not assumed silently.
+
+**Real, load-bearing finding #3:** `observation.specimenId` is `NOT NULL` with no FK yet (#260,
+already-known pre-existing gap) — this task is the first to need a real value for it. It's resolved
+via `specimen_fulfillment` (TASK-023: `orderedTestId → specimenId`, created by TASK-047's reception
+flow) — the same join TASK-047 itself already relies on in the other direction. An `orderedTest`
+with no `specimen_fulfillment` row (never received) cannot have a result entered — this is also
+exactly the "specimen received" precondition KB-03's own state machine requires before result entry,
+so the guard is a real workflow rule, not just a NOT NULL workaround.
+
+**Real, load-bearing finding #4:** `test_analyte` (FEAT-004) is genuinely many-to-many, but every
+seeded chemistry `test_definition` maps to exactly one `analyte` (confirmed: 14 `test_definition`
+rows, 14 `test_analyte` rows, no sharing). This task's own code queries `test_analyte` generically
+(never assumes 1:1) — the current data's simplicity doesn't change the schema's real shape, matching
+`domain/specimen-lifecycle` entry #3's identical caution about `specimenFulfillment`.
+
+## 2. Affected files
+
+- `packages/domain/src/observation.ts` (new): `observationDataTypeSchema` (restricted to `'quantity'
+  | 'coded' | 'text'` — §10 Q2), `resultEntrySchema` (a `z.discriminatedUnion('dataType', ...)` over
+  those three, each carrying its own typed value field — `valueNum`/`valueCode`/`valueText`), and
+  `observationSchema` (the response shape: id, orderedTestId, analyteId, dataType, the typed value,
+  unit, `refLow`/`refHigh`/`refCondition`/`refSource`, `flags`, `status`, timestamps). Single source
+  of truth for validation + OpenAPI, matching every prior domain file's own stated convention.
+- `apps/api/src/observation/observation.controller.ts` (new), `@Controller('v1/ordered-tests/:id')`:
+  - `PUT 'results/:analyteId'` — draft save. `@RequireCapability('enter_result')`, **no `@Audit`**
+    (§10 Q1). Upserts one `observation` row (`status: 'registered'`), resolves the range and
+    computes flags immediately (live-flag support for TASK-052's own AC), and — on the *first* draft
+    for this `orderedTest` — advances `orderedTest.status` `'received' → 'in_process'`.
+  - `POST 'results/:analyteId/finalize'` — finalize. `@RequireCapability('enter_result')`,
+    **`@Audit({ action: 'observation.finalize', resourceType: 'observation' })`** (§10 Q1). Accepts
+    the same typed-value body as draft (so a keyboard-only flow can type-and-finalize in one round
+    trip without a separate draft call first — FEAT-014's own AC: "entered without touching the
+    mouse"); upserts with `status: 'preliminary'`. After writing, checks whether every `analyteId`
+    named by this `orderedTest`'s `test_analyte` rows now has a `'preliminary'`-or-later observation
+    — if so, advances `orderedTest.status → 'resulted'`.
+  - `GET 'results'` — lists this `orderedTest`'s current observations (draft and final), for
+    TASK-052's UI to render the grid's current state. No capability required beyond `JwtAuthGuard`
+    (read, matching `OrderController.search()`/`getById()`'s own unguarded-read precedent).
+  - Both write routes reject (`409`) unless `orderedTest.status` is `'received'` or `'in_process'`
+    (specimen received, not yet finalized) — matching KB-03's own state ordering, and reject (`400`)
+    if the submitted `dataType` doesn't match the analyte's own catalog `dataType`
+    (Constitution invariant #1: never let a value be stored under the wrong structural shape).
+- `packages/db/src/index.ts` — no new export needed (this task is the first *caller* of
+  `resolveObservationRange`/`computeFlags`, both already exported).
+- `apps/api/test/observation.e2e-spec.ts` (new): real Keycloak/Postgres, full HTTP stack — this
+  task's own AC needs a real order → receive → enter-result chain, matching `specimen.e2e-spec.ts`'s
+  own precedent of building on `order.e2e-spec.ts`'s helpers rather than re-deriving fixtures.
+- `apps/api/openapi.json` / `packages/sdk/src/schema.ts` — regenerated (`generate-openapi`), per the
+  already-known "don't let this silently fall a task behind" gap (#292).
+
+## 3. Architecture consulted
+
+- KB-14 Result Engine (Observation lifecycle: `registered → preliminary → verified`; "one
+  Observation per analyte" design decision).
+- KB-15 Reference Ranges / KB-20 Clinical Chemistry (already consumed via TASK-049/050's own
+  services — this task is their first caller, not new research).
+- KB-03 Business Workflows (`OrderedTest` state ordering: `received → in_process → resulted`).
+- `domain/reference-ranges` Skill (entries #6-#10 — `sex='U'`/null-`birthDate` handling, the
+  critical-field inversion — directly relevant to how this task calls `resolveObservationRange`).
+- `docs/plans/feat-013-accessioning-labels-reception.md` (TASK-047 revision) — `specimen_fulfillment`
+  usage precedent.
+
+## 4. Skills loaded
+
+- `domain/reference-ranges` (this task is the real integration point for TASK-049/050's services —
+  every entry is directly relevant, especially #6/#7/#10).
+- `domain/clinical-chemistry` (entry #6: every seeded analyte is `dataType: 'quantity'` — the
+  `'coded'`/`'text'` paths in this task's own scope are real per KB-14 but untestable against real
+  seeded data beyond `'quantity'`; covered by synthetic fixtures instead, same pattern TASK-049
+  already used for age/method).
+- `domain/specimen-lifecycle` (entry #3: `specimenFulfillment`'s real many-to-many shape).
+- `engineering/api-design` (action-sub-resource convention, `ZodValidationPipe` explicit-instantiation
+  requirement, RLS-makes-cross-tenant-invisible precedent).
+
+## 5. Assumptions & autonomous decisions
+
+- **`observation.status` mapping (§1 finding #2) decided directly, not raised as a question** — it
+  follows from KB-14's own existing state definitions with zero ambiguity once read carefully.
+- **Draft upserts are a plain `UPDATE` of the existing `'registered'`/`'preliminary'` row, not a new
+  row per save** — matches §1 finding #2's append-only reading (only *verified* data is append-only)
+  and avoids `observation`'s composite-PK/partitioning machinery (ADR-0008) generating a new
+  partition row on every autosave keystroke, which the schema was never designed for at that write
+  frequency.
+- **`orderedTest.status` auto-advances; no separate "start" or whole-order "submit" action exists.**
+  `'received' → 'in_process'` on first draft, `'in_process' → 'resulted'` on the last analyte's
+  finalize — both are side effects of the per-analyte write, not separate endpoints, since KB-03
+  names no distinct "start entering" or "submit the whole panel" action.
+- **`resolveObservationRange`/`computeFlags` are called on every draft save, not deferred to
+  finalize** — TASK-052's own AC names "live flags," and re-running already-tested, pure/near-pure
+  services on every save is cheap and correct; finalize does not re-run them a second time (it
+  reuses the values already snapshotted by the most recent draft, and computes fresh if this is a
+  direct finalize-without-a-prior-draft).
+- **`'coded'`/`'text'` dataTypes get no range/flag computation** — `flags` stays `[]`,
+  `refLow`/`refHigh`/etc. stay `null`. KB-15's whole model is numeric; there's no reference-range
+  concept for a coded or free-text result value.
+
+## 6. Risks
+
+- **Skipping audit on draft autosaves (§10 Q1) is the one place this task's own design departs from
+  the Constitution's literally emphatic "every clinically significant action is audited."** The
+  recommended reading — a draft isn't yet the technologist's asserted result, only finalize is — is
+  reasonable but genuinely debatable, and this is the first task in the repo to draw that line at
+  all; raised explicitly rather than assumed.
+- **High write frequency**: a full 14-analyte CMP entered via autosave is up to 14 draft writes plus
+  14 finalize writes per panel. Not a performance risk at this milestone's real scale, but worth
+  noting since it's a new write-volume pattern this schema hasn't seen before (`observation`'s
+  partitioning, per ADR-0008, was sized with analyzer-feed volumes in mind, not keystroke-level
+  autosave — still comfortably within bounds, just newly exercised).
+- **`observation.specimenId`'s still-missing FK (#260)** — this task adds the first real writer that
+  depends on getting that value right from `specimen_fulfillment` at write time; a wrong or stale
+  join here is not caught by any database-level constraint, only by this task's own tests.
+
+## 7. Acceptance criteria
+
+TASK-051's literal AC:
+- [ ] Numeric, coded, and text results all persist correctly per value_type — proven for each of the
+  three `dataType`s (quantity against real seeded chemistry analytes; coded/text against synthetic
+  fixtures, per §4), draft and finalize, including the `dataType`-mismatch rejection.
+
+## 8. Testing plan
+
+1. `pnpm --filter @lis/domain typecheck`/build with the new `observation.ts` schema.
+2. `apps/api/test/observation.e2e-spec.ts`, real Keycloak/Postgres/compiled-adapter-shaped HTTP:
+   - Full chain: create order → receive specimen (real endpoints, not fixtures) → draft a `quantity`
+     result → confirm live flags/snapshot returned → finalize → confirm `orderedTest.status →
+     'resulted'` once every analyte is finalized, `'in_process'` while partial.
+   - Synthetic `coded`/`text` analyte + `test_definition` (this task's own fixtures, not the shared
+     seed) proving both dataTypes persist and round-trip correctly.
+   - `dataType` mismatch (e.g. `text` value against a `quantity` analyte) → `400`.
+   - Draft/finalize attempted before specimen reception (`orderedTest.status = 'ordered'`) → `409`.
+   - Draft/finalize attempted after the `orderedTest` is already `'resulted'` → `409`.
+   - Finalize with no prior draft (direct type-and-finalize) succeeds in one call.
+   - Audit: finalize produces one `audit_event` row (`observation.finalize`); draft produces none —
+     proven by an exact before/after `tenant-audit-count` delta, matching every prior audited-action
+     test's own verification style, not assumed from the route's own code.
+3. The full existing `apps/api` e2e suite re-run and confirmed still green.
+4. `pnpm typecheck`/`pnpm lint`/`pnpm build` at the repo root, including a real compiled-server boot
+   (`engineering/api-design` entry #10's own discipline — this repo's real Fastify adapter has broken
+   silently on a new route before, TASK-040).
+
+## 9. Rollback plan
+
+Additive: one new domain schema file, one new controller (new route prefix, no existing route
+touched), one new e2e spec. `orderedTest.status`'s two new real values (`'in_process'`/`'resulted'`)
+are already in the existing CHECK constraint (TASK-042) — no migration. Rollback is reverting the
+PR; no other feature depends on this yet.
+
+## 10. Questions requiring human approval
+
+1. **Endpoint shape and audit scope.** **Recommended:** two routes per analyte (`PUT .../results/
+   :analyteId` draft, unaudited; `POST .../results/:analyteId/finalize`, audited) as designed in §2,
+   with `orderedTest.status` auto-advancing as a side effect of each — not a single endpoint with a
+   `status` body field (which can't cleanly vary `@Audit` per call within one NestJS route handler
+   without a novel manual-`writeAuditEvent` pattern this repo has never used), and not a separate
+   whole-panel "submit" action (KB-03 names no such action; the UI can finalize each analyte as the
+   user tabs through them).
+2. **`dataType` scope: `quantity`/`coded`/`text` only, the other 7 KB-14 dataTypes deferred.**
+   **Recommended,** matching the AC's own literal wording exactly ("Numeric, coded, and text") — no
+   seeded analyte is `ordinal`/`boolean`/`ratio`/`datetime`/`table`/`structured`/`attachment` today,
+   and KB-14 itself treats them as genuinely separate concerns (e.g. `table`/`attachment` need
+   object-store/file handling this task has no reason to build yet).
+
+**RESOLVED 2026-08-06 — both as recommended.** Implementation begins now.
+
+## 11. Real findings during implementation
+
+**Real finding, caught by this task's own e2e test failing correctly, not assumed:** `resultEntrySchema`
+(§2) has no field to submit clinical context (KB-15's `condition` dimension — fasting, pregnancy
+trimester, etc.). Glucose's real seeded `normal` row requires `condition: 'fasting'` exactly (`db/
+seed/chemistry-catalog.sql`) — a Glucose draft/finalize call through this API can therefore never
+resolve a `normal` range (only its condition-wildcard `critical` rows can match), correctly
+returning `no_range` rather than a fabricated match. This is a real, KB-15-consistent scope boundary
+— nothing anywhere in this repo (this task included) has a mechanism to capture "this specimen was
+drawn fasting," so building `condition` submission into this task would be speculative. The e2e
+suite's own "drafts a quantity result" case uses Sodium (no `condition` dimension on its real range)
+instead of Glucose for this reason; Glucose is still used for the critical-value case, since KB-15's
+critical thresholds for it are condition-wildcard. Future work needing fasting-aware Glucose
+resolution will need a real condition-capture mechanism first, not just a resolver-side fix.
+
+Verified end-to-end against real Keycloak/Postgres/the full HTTP stack, including the real compiled
+Fastify server (booted directly, confirming the new nested `:id`/`:analyteId` routes register and
+bind params correctly — `engineering/api-design` entry #10's own discipline, given this repo's prior
+real Express-vs-Fastify param-binding divergence on a differently-shaped route): draft save with
+live flags/snapshot and the `'received' → 'in_process'` transition; a critical value flagging `HH`
+live on draft; finalize-without-a-prior-draft in one call, audited, `'in_process' → 'resulted'` once
+the one required analyte is finalized, and rejected once already `'resulted'`; rejection before
+specimen reception (`409`); `dataType` mismatch rejection (`400`); synthetic `coded`/`text` fixtures
+persisting and round-tripping correctly (the literal AC); the results-list read endpoint. Draft
+produces zero new `audit_event` rows, finalize produces exactly one, both proven by an exact
+before/after count delta. The full existing 101-test `apps/api` e2e suite green (zero regression);
+repo-wide `typecheck`/`lint`/`build` green.

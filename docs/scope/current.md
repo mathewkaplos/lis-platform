@@ -112,10 +112,71 @@ regression); repo-wide `typecheck`/`lint`/`build` green (including a real `next 
 build`). `#109` auto-closed via PR #311's bare `Closes #109` line. `Deploy to Staging` (run
 31045730460, triggered by the merge) completed successfully.
 
-**FEAT-014 remaining**: TASK-051 (result entry API, draft/submit, typed values) is the next task —
-its own dependency is TASK-049/050, now both satisfied. TASK-052 (result entry UI), TASK-053
-(calculated fields, eGFR/LDL) remain after it. `/orient`'s next run should specify TASK-051 as a
-revision to `docs/plans/feat-014-result-entry-engine.md`, not start a new proposal file.
+## TASK-051 (FEAT-014's third task) merged this same session, via PR #313 (`8739c7f`), closing #110
+— the largest task in this feature so far: the first real writer to `observation` and the first
+real caller of TASK-049/050's own services
+
+`docs/plans/feat-014-result-entry-engine.md` gained its second revision (TASK-051's own AC:
+"Numeric, coded, and text results all persist correctly per value_type"). Two open questions
+resolved via the native options-prompt, recommended option chosen for each: (1) endpoint shape —
+two routes per analyte (`PUT .../results/:analyteId` draft, unaudited; `POST .../results/
+:analyteId/finalize`, audited), not one route with a `status` field, since NestJS's `@Audit()`
+decorator applies per method and this repo has never used a manual `writeAuditEvent()` call inside
+a handler; (2) `dataType` scope — `quantity`/`coded`/`text` only, matching the AC's literal wording
+exactly, the other 7 KB-14 dataTypes deferred.
+
+**Real, load-bearing findings from this revision's own research:** the already-existing
+`enter_result` capability (TASK-032, granted to both roles, previously only exercised by a demo
+route) needed no new capability or ADR — this task is its first real consumer.
+`observation.status`'s existing `'registered'`/`'preliminary'` values map directly onto "draft"/
+"submit" with zero schema change; Constitution invariant #2 ("Verified clinical data is
+append-only") scopes append-only specifically to *verified* data, so in-place updates of a draft or
+un-verified-preliminary observation don't violate it — a load-bearing reading stated explicitly,
+not assumed. `observation.specimenId` (still no FK, #260) is resolved via `specimen_fulfillment`,
+the same join TASK-047 itself relies on in the other direction.
+
+**Real finding during implementation, caught by the e2e suite's own first failure, not assumed
+correct:** `resultEntrySchema` has no field for KB-15's `condition` dimension (fasting, pregnancy
+trimester, etc.) — Glucose's real seeded `normal` range requires `condition: 'fasting'` exactly, so
+a Glucose draft/finalize call through this API can never resolve a `normal` range (only its
+condition-wildcard `critical` rows can match) — correctly returning `no_range`, not a fabricated
+match. Nothing anywhere in this repo has a mechanism to capture "this specimen was drawn fasting"
+yet, so building `condition` submission into this task would have been speculative; the e2e suite's
+own "in-range value flags N" case uses Sodium instead. Real future work if fasting-aware Glucose
+result entry is ever needed, not a bug in TASK-049/050's own resolver.
+
+Delivered: `PUT /v1/ordered-tests/:id/results/:analyteId` (draft — resolves the range and computes
+flags live on every save, snapshots them, advances `ordered_test` `'received' → 'in_process'` on
+the first draft), `POST /v1/ordered-tests/:id/results/:analyteId/finalize` (audited, accepts the
+same body as draft so a keyboard-only flow can type-and-finalize in one call, advances `'in_process'
+→ 'resulted'` once every analyte named by the ordered test's own `test_analyte` rows has finalized),
+`GET /v1/ordered-tests/:id/results` (read, for TASK-052's future grid UI). Real-compiled-Fastify-
+server boot confirmed the new nested `:id`/`:analyteId` routes register and bind params correctly
+(`engineering/api-design` entry #10's own discipline, given this repo's prior real Express-vs-
+Fastify divergence on a differently-shaped route).
+
+Verified end-to-end against real Keycloak/Postgres/the full HTTP stack: draft with live flags/
+snapshot; a critical value flagging `HH` live on draft, before any finalize; finalize-without-a-
+prior-draft in one call; `ordered_test` status transitions in both directions; rejection before
+specimen reception and once already `'resulted'` (`409` both); `dataType`-mismatch rejection
+(`400`); synthetic `coded`/`text` catalog fixtures (no admin endpoint exists to create these — a
+find-or-create pattern matching the seed's own idempotent-insert convention, so repeated local runs
+don't accumulate garbage) persisting and round-tripping correctly, the literal AC; the results-list
+read endpoint; draft produces zero new `audit_event` rows, finalize produces exactly one, both
+proven by an exact before/after count delta, not assumed from the route's own code. The full
+existing 101-test `apps/api` e2e suite green (108/108 total, zero regression); repo-wide
+`typecheck`/`lint`/`build` green (including a real `next build`/`nest build`); `openapi.json`/
+`packages/sdk/src/schema.ts` regenerated in the same PR (the already-known #292 drift gap avoided
+proactively). `#110` auto-closed via PR #313's bare `Closes #110` line. `Deploy to Staging` (run
+31049083620, triggered by the merge) completed successfully.
+
+**FEAT-014 remaining**: TASK-052 (result entry UI: analyte grid, live flags, autosave) is the next
+task — its own dependency is TASK-051, now satisfied, and it's the first real consumer of the
+`GET .../results` read endpoint this task delivered. TASK-053 (calculated fields, eGFR/LDL) remains
+after it — `domain/clinical-chemistry` entry #3's own finding that no calculated-analyte mechanism
+exists anywhere yet is still true, unaffected by this task. `/orient`'s next run should specify
+TASK-052 as a revision to `docs/plans/feat-014-result-entry-engine.md`, not start a new proposal
+file.
 
 ---
 

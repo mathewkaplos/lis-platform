@@ -12,3 +12,4 @@ export {
   type ObservationRangeParams,
   type ObservationRangeResult,
 } from "./reference-range";
+export { computeFlags } from "./flagging";

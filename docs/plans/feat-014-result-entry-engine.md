@@ -267,3 +267,178 @@ critical one-sided-merge case above) passes; the full existing 62-test `apps/api
 and confirmed still green (85/85 total, zero regression — this task reads existing tables and writes
 none); repo-wide `typecheck`/`lint`/`build` (all `packages/*` and both `apps/*`, including a real
 `next build`/`nest build`) all green.
+
+---
+
+# Revision: TASK-050 — Flagging service (N/H/L/HH/LL) with boundary correctness
+Status: **APPROVED** — §10 Q1 resolved 2026-08-05 via the native options-prompt, recommended option
+(inclusive both ways) chosen. Implementation begins now.
+Date: 2026-08-05    Backlog ID: FEAT-014 (#23) / TASK-050 (#109)
+
+## 1. Goal
+
+TASK-049 (range resolution) is merged (PR #309, `93ed635`). TASK-050's own issue: "Flagging service
+(N/H/L/HH/LL) with boundary correctness." Its one dependency, TASK-049, is satisfied. Its one AC:
+"Exactly-at-threshold boundary cases flag correctly per the golden dataset."
+
+**This revision's scope is TASK-050 only** — same narrowing precedent as every prior task in this
+feature/repo. `A` (abnormal summary), `D` (delta check), `R` (reflex) — the other three members of
+`observation.flags`'s vocabulary (KB-14) — are explicitly out of scope: `TASK-050`'s own issue title
+names only N/H/L/HH/LL, `D` is KB-14's separate delta-check pipeline step (no prior-Observation
+lookup exists anywhere in this repo yet), and `R` is a workflow-engine concept (FEAT-029, not
+started). `A` has no stated purpose beyond what N/H/L/HH/LL already convey and no task names it.
+
+**Real, load-bearing finding from this revision's own research, not present in TASK-050's issue
+text:** `reference_range`'s `critical` rangeType rows do **not** use the same low/high convention as
+`normal` rows. `db/seed/chemistry-catalog.sql`'s own header comment (lines 124-127) states this
+explicitly: *"a critical-low row sets `high` (below it is critical), a critical-high row sets `low`
+(above it is critical)"* — confirmed against all four critical-having analytes (Glucose 40/500,
+Sodium 120/160, Potassium 2.5/6.5, Calcium 6.0/13.0 — all real, standard panic thresholds). After
+TASK-049's `resolveObservationRange` merges the critical-low and critical-high rows into one
+`ResolvedRange` (proposal §1 finding #3, §11), the merged result's own `low` field holds the
+**critical-high threshold** (value ≥ this → `HH`) and `high` holds the **critical-low threshold**
+(value ≤ this → `LL`) — inverted from `normal`'s low/high, which is genuinely easy to get backwards
+if not read carefully. This is the revision's central design point (§5), not an open question — the
+seed file's own comment settles it unambiguously, no plausible alternative reading survives checking
+it against all four analytes' real threshold values.
+
+## 2. Affected files
+
+- `packages/db/src/flagging.ts` (new), co-located with `reference-range.ts` (same "shared,
+  cross-cutting, no controller of its own yet" precedent as `accession.ts`/`reference-range.ts`) —
+  a single pure export, `computeFlags(value: number, normal: ResolvedRange | NoRangeResult,
+  critical: ResolvedRange | NoRangeResult): string[]`. Pure (no DB access) despite living in
+  `packages/db` rather than `packages/domain`: `packages/domain` is exclusively Zod request/OpenAPI
+  schemas in this repo today (every existing file there — `patient.ts`, `order.ts`, `specimen.ts`,
+  `catalog.ts` — confirmed by inspection, zero business-logic exports), and this function's only
+  real collaborator is `reference-range.ts`'s own exported types — co-locating avoids introducing a
+  second, inconsistent "business logic" location for a one-function task.
+- `packages/db/src/index.ts` — export `computeFlags`.
+- `apps/api/test/flagging.e2e-spec.ts` (new) — real Postgres, same direct-`@lis/db` pattern as
+  `reference-range-resolution.e2e-spec.ts`: resolves real ranges via `resolveObservationRange`
+  against the golden dataset, then asserts `computeFlags` on values exactly at, and one unit either
+  side of, every real boundary (the AC's own literal "exactly-at-threshold" wording) — a unit-test
+  shape, but living under `apps/api/test/` for the same CI-wiring reason as its two predecessors.
+- No migration, no controller, no domain Zod schema, no new capability — same "no HTTP surface by
+  design" shape as TASK-045/049 (no caller yet; TASK-051 is the first real consumer).
+
+## 3. Architecture consulted
+
+- KB-15 Reference Ranges (`flagFor`: "below low → L (or LL if below critical-low); above high → H
+  (or HH if above critical-high); within → N").
+- KB-14 Result Engine (`flags[]` vocabulary: N,H,L,HH,LL,A,D,R; validation-pipeline step ordering).
+- `db/seed/chemistry-catalog.sql` (the critical-row low/high convention, §1).
+- `docs/plans/feat-014-result-entry-engine.md`'s own TASK-049 revision (`ResolvedRange`'s shape,
+  the critical-row merge behavior this task's input directly depends on).
+
+## 4. Skills loaded
+
+- `domain/reference-ranges` (entries #3, #9 — critical rows as separate/merged rows — directly
+  load-bearing for this task's central finding).
+- `domain/clinical-chemistry` (confirms real critical thresholds exist only for 4 of 14 seeded
+  analytes — most analytes will only ever produce N/L/H, never HH/LL, and that's expected, not a
+  gap).
+- `engineering/testing` (golden-dataset e2e precedent).
+
+## 5. Assumptions & autonomous decisions
+
+- **A single severity flag, not multiple simultaneous ones.** `computeFlags` returns exactly one of
+  `N | L | LL | H | HH` (as a one-element array, since `observation.flags` is `text[]` and future
+  tasks may append `A`/`D`/`R` alongside it) — never both `L` and `LL` for the same value. KB-14
+  lists them as members of one severity axis, not independent booleans; a report showing both `L`
+  and `LL` for the same result would be redundant and confusing. Tier precedence (most to least
+  severe): `LL` (value ≤ critical-low threshold) → `L` (value < normal low) → `HH` (value ≥
+  critical-high threshold) → `H` (value > normal high) → `N`.
+- **No `normal` match (`no_range`) produces an empty flags array, not a fabricated `N`.** Matches
+  KB-15's "no_range... never silently treated as normal" discipline directly — `computeFlags`
+  returns `[]` when `normal.matched` is `false`, regardless of whether `critical` matched (a value
+  can still be flagged `HH`/`LL` from critical thresholds alone even with no normal range on file,
+  per real lab practice — critical alerting shouldn't be gated on having a normal range too).
+- **`critical.low`/`critical.high` are read per §1's confirmed convention**, not `normal`'s
+  convention — this is the one place in the codebase this inversion must be handled correctly; the
+  function's own internal naming (`criticalHighThreshold = critical.low`,
+  `criticalLowThreshold = critical.high`) makes the inversion explicit in code, not just in a
+  comment, so a future reader can't miss it by skimming variable names.
+- **String→number conversion happens once, at the top of `computeFlags`**, matching
+  `reference-range-resolution.e2e-spec.ts`'s own `Number(resolved.low)` pattern — `ResolvedRange`'s
+  `low`/`high` are `string | null` (drizzle's numeric-column convention, preserving precision);
+  `computeFlags`'s own `value` parameter is a plain `number` (the caller's already-parsed measured
+  value — TASK-051's own scope, not this task's).
+
+## 6. Risks
+
+- **The critical-field-inversion (§1) is the single easiest place to introduce a real patient-safety
+  bug in this entire feature** — swapping which field drives HH vs LL would silently misclassify a
+  genuinely critical result as merely high/low (or vice versa), directly touching Constitution
+  invariant #3 ("Critical values never auto-verify... blocks report finalization until
+  acknowledged" — a value that should be `HH`/`LL` but isn't correctly flagged never enters that
+  workflow at all). §8's testing plan tests every real critical threshold from the golden dataset
+  explicitly, both sides of the boundary, specifically to make this hard to get wrong silently.
+- **Boundary inclusivity (`==` cases) has no explicit precedent anywhere in KB-15/KB-14 or this
+  repo** — raised as §10 Q1 rather than assumed, given the AC's own literal emphasis on
+  "exactly-at-threshold" correctness.
+- **Only 4 of 14 seeded chemistry analytes have any critical rows at all** (`domain/
+  clinical-chemistry` entry #2-adjacent finding) — `computeFlags`'s HH/LL paths are only provable
+  against real data for Glucose/Sodium/Potassium/Calcium; the other 10 analytes' tests only exercise
+  N/L/H. Not a gap in this task's own correctness, just a real limit on what "golden dataset
+  coverage" can prove given the seeded catalog's own real scope.
+
+## 7. Acceptance criteria
+
+TASK-050's literal AC:
+- [ ] Exactly-at-threshold boundary cases flag correctly per the golden dataset — proven for every
+  real `normal` low/high bound (14 analytes) and every real `critical` threshold (4 analytes) in
+  `db/golden/chemistry-ranges-criticals.json`, at the boundary value itself and one unit to either
+  side.
+
+## 8. Testing plan
+
+1. `pnpm --filter @lis/db typecheck`/build with the new `flagging.ts` module.
+2. `apps/api/test/flagging.e2e-spec.ts`, real Postgres:
+   - For every analyte with a `normal` row: value exactly at `low` → `N`; one unit below `low` →
+     `L`; value exactly at `high` → `N`; one unit above `high` → `H`; a mid-range value → `N`.
+   - For the four analytes with `critical` rows: value exactly at the critical-low threshold
+     (`critical.high`, per §1) → `LL`; one unit above it (still below `normal.low`) → `L`; value
+     exactly at the critical-high threshold (`critical.low`, per §1) → `HH`; one unit below it
+     (still above `normal.high`) → `H`.
+   - A `no_range` case (synthetic, no candidate row): `computeFlags` returns `[]`, not `['N']` or a
+     thrown error.
+   - A value critically low/high with no matching `normal` range at all (synthetic): still returns
+     `['LL']`/`['HH']`, proving critical alerting isn't gated on a normal range existing.
+3. The full existing `apps/api` e2e suite re-run and confirmed still green.
+4. `pnpm typecheck`/`pnpm lint` at the repo root.
+
+## 9. Rollback plan
+
+Additive: one new `packages/db` module (pure function, no schema/migration), one new export, one
+new e2e spec. Rollback is reverting the PR. No caller depends on this yet.
+
+## 10. Questions requiring human approval
+
+1. **Boundary inclusivity: is a value exactly at a threshold "in bounds" (the milder/no flag) or
+   "past it" (the stricter flag)?** Neither KB-14 nor KB-15 states this explicitly, and TASK-050's
+   own AC specifically calls out boundary correctness as something to get right rather than assume.
+   **Recommended:** inclusive reference ranges (value == `low` or `high` → `N`, matching the
+   universal CLSI/lab convention that a reference interval's own published bounds are themselves
+   normal) and inclusive critical thresholds (value == the critical-low/critical-high threshold →
+   `LL`/`HH`, matching the same "the threshold itself is already the emergency, not one unit past
+   it" convention every real panic-value protocol uses — waiting for a value to exceed 500 before
+   treating it as a Glucose panic, rather than treating 500 itself as the panic value, would delay a
+   real clinical alert).
+
+**RESOLVED 2026-08-05 — inclusive both ways, as recommended.** Implementation begins now.
+
+## 11. Real findings during implementation
+
+None beyond §1's own finding, confirmed unchanged during implementation — the critical-field
+inversion was correctly handled from the start (variables named `criticalHighThreshold`/
+`criticalLowThreshold` in `computeFlags` to make the inversion explicit in code, per §5).
+
+Verified end-to-end against real Postgres: 16 new e2e tests (14 analytes' real golden-dataset
+boundaries — exactly-at-`low`/`high`/critical-threshold values, plus one value strictly on each
+side, inclusive-boundary semantics confirmed for every one of them; 4 of the 14 additionally proving
+`LL`/`HH` since only Glucose/Sodium/Potassium/Calcium have real critical rows; 2 pure edge-case
+tests needing no DB access at all — `no_range` returns `[]`, and a critical match with no matching
+normal range still flags `HH`/`LL`); the full existing 85-test `apps/api` e2e suite green (101/101
+total, zero regression); repo-wide `typecheck`/`lint`/`build` green (including a real `next build`/
+`nest build`).

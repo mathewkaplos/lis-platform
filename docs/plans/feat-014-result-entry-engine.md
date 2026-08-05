@@ -1,7 +1,7 @@
 # Implementation Proposal: FEAT-014 Result entry engine
-Status: TASK-049 **IMPLEMENTED** — merged PR #309 (`93ed635`), closing #108. Both §10 questions
-resolved 2026-08-05 via the native options-prompt, recommended option chosen for each. TASK-050
-(flagging service) is FEAT-014's next task, to be specified as a revision to this same file.
+Status: TASK-049 **IMPLEMENTED** — merged PR #309 (`93ed635`), closing #108. TASK-050
+**IMPLEMENTED** — merged PR #311 (`5a24d83`), closing #109. TASK-051 (result entry API) is
+FEAT-014's next task, to be specified as a revision to this same file.
 ADR: none — the resolution algorithm itself is a direct implementation of KB-15's already-canonical
 design, not a new cross-cutting architectural decision; §10's two open questions are implementation
 choices within that design, written up as new `domain/reference-ranges` Skill entries once resolved,
@@ -271,8 +271,9 @@ none); repo-wide `typecheck`/`lint`/`build` (all `packages/*` and both `apps/*`,
 ---
 
 # Revision: TASK-050 — Flagging service (N/H/L/HH/LL) with boundary correctness
-Status: **APPROVED** — §10 Q1 resolved 2026-08-05 via the native options-prompt, recommended option
-(inclusive both ways) chosen. Implementation begins now.
+Status: **IMPLEMENTED** — merged PR #311 (`5a24d83`), closing #109. §10 Q1 resolved 2026-08-05 via
+the native options-prompt, recommended option (inclusive both ways) chosen. TASK-051 (result entry
+API) is FEAT-014's next task, to be specified as a revision to this same file.
 Date: 2026-08-05    Backlog ID: FEAT-014 (#23) / TASK-050 (#109)
 
 ## 1. Goal

@@ -58,7 +58,7 @@ remain, don't just trust the kill command ran:
 ```bash
 kill $(lsof -ti:4000 -sTCP:LISTEN) $(lsof -ti:3000 -sTCP:LISTEN) 2>/dev/null
 sleep 1
-ps aux | grep -iE "node.*(dist/main|nest|main\.js|next)" | grep -v grep
+ps aux | grep -iE "next-server|next dev|node.*(dist/main|nest|main\.js|next)" | grep -v grep
 lsof -i -P -n 2>/dev/null | grep LISTEN | grep -E ":4000|:3000"
 # both commands above should print nothing -- if either does, kill -9 the
 # listed PID(s) directly (a piped `lsof -ti | xargs kill` can silently fail
@@ -152,15 +152,23 @@ Set it as a cookie named `lis_session` (domain `localhost`, path `/`,
 `context.addCookies(...)`, or a `curl -H "Cookie: lis_session=<token>"` for
 a quick SSR-only structural check without a browser at all).
 
-**Gotcha:** re-using one minted session cookie across two separate
-Playwright script invocations several minutes apart failed the second
-time (a page that should have loaded showed an API-driven "not found"
-state instead, with no thrown error) -- re-minting a fresh token
-immediately before each run fixed it. Not root-caused (plausibly Keycloak
-refresh-token rotation invalidating the earlier token once a new
-password-grant login happened for the same user in between), but mint a
-fresh cookie per verification run rather than reusing a saved one from
-earlier in the session.
+**Gotcha, now root-caused (2026-08-05, TASK-046/048 verification): any password-grant
+login for the same user -- including one made only to seed test fixtures via the API,
+not to open a second browser session -- rotates the refresh token an already-minted
+session cookie relies on, and `apps/api` then rejects that cookie's `accessToken` with a
+real `401` the moment `getValidAccessToken()` tries to refresh it.** This surfaces with
+no thrown error: a page that should load instead shows its own ordinary "not found"/empty
+state, indistinguishable from a real 404 without checking `apps/api`'s own request log.
+Confirmed directly this session, not just inferred: `apps/api`'s structured request log
+showed real `401` responses immediately after a cookie mint that was followed by further
+password-grant calls, and zero `401`s once the seeding order below was followed instead.
+
+**Follow this exact order, every time a verification run also needs seeded test data:**
+1. Seed all test data first (patients, orders, etc.), using its own password-grant call(s).
+2. Mint the session cookie last, immediately before opening the browser -- the exact
+   recipe above.
+3. Make no further Keycloak calls (no more seeding, no second mint) until that browser
+   run is completely done.
 
 If `SESSION_SECRET`, the audience (`lis:session`), or `SessionPayload`'s
 own fields ever change again in `apps/web/auth/session.ts`, diff this

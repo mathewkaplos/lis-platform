@@ -1,3 +1,96 @@
+# Status — 2026-08-05 (session 15)
+
+Last commit on main: `8081c2f` — "feat(api,web): specimen reception -- scan-to-receive, coded
+rejection, closing TASK-047 (FEAT-013)" (PR #300). PR #301 (web-verify Skill corrections) also
+open this session, CI pending at write-time — see below.
+
+## TASK-047 (FEAT-013's second task) merged this session, via PR #300 (`8081c2f`), closing #106 —
+FEAT-013 now half done (2 of 4 tasks)
+
+`/orient` re-ran milestone/next-task discovery from scratch per session 14's own instruction.
+FEAT-013 (#22) names four tasks; both TASK-046 (label rendering) and TASK-047 (reception) were
+unblocked (each depends only on TASK-045, merged session 14) — TASK-047 chosen over TASK-046
+because its own AC is fully verifiable in this sandbox (no physical printer dependency TASK-046's
+AC has), it closes the three-times-flagged "specimen table exists, unused" gap, and it unlocks
+TASK-048 (which TASK-046 does not). Implementation Proposal revision (`docs/plans/feat-013-
+accessioning-labels-reception.md`) drafted with three open questions, all resolved via the native
+options-prompt same-session: scan resolves to an Order UUID with `/orders`-search fallback, a new
+`manage_specimens` capability (technologist/verifier, same broad-grant precedent as
+`manage_patients`/`manage_orders`), and a single combined create action (see below).
+
+**Real, load-bearing finding from the proposal's own research, not present in TASK-047's issue
+text:** `specimen.accession_number` is `NOT NULL`, yet `rejected` is a state reachable only from
+`received` (already-accessioned) per the schema's own header comment — read together with KB-03's
+stage-3 name ("**Receive & Accession**," one combined stage, not two), this resolves that an
+accession number is assigned unconditionally at receipt, before condition is judged; rejection is
+an outcome of an already-accessioned specimen, never a pre-accessioning state. `POST /v1/specimens`
+is therefore one combined action, not two — `rejectionReason`'s presence/absence in the body is the
+accept/reject branch. This also means the schema-valid `'collected'`/`'received'` intermediate
+Specimen states, and `'collected'` on `OrderedTest`, are never written by this task: no separate
+"record collection" task exists anywhere in FEAT-013, so this task is necessarily the point where
+collection+receipt+accessioning are all first represented in the system at once, combined
+deliberately — the same "narrower than the full KB-22/23/24 model" precedent every prior feature in
+this repo has used. Full custody-event tracking (KB-23), a bedside PPID collection step (KB-24),
+and the `rejected → recollect → ordered` loop are real, deliberately out of scope, not oversights.
+
+Delivered: `POST /v1/specimens` (default-fulfils every currently-`'ordered'` `OrderedTest` on the
+given order, or an explicit `orderedTestIds` subset for the multi-tube case — no catalog-driven
+auto-split exists yet, KB-22's own unresolved "Specimen-requirement resolution" question), `GET
+/v1/specimens` (by `orderId`), `GET /v1/specimens/:id`. `apps/web` gained `/reception` (order
+lookup by UUID with a `/orders`-search fallback; accept/reject form, coded rejection reasons
+rendered straight from the same Zod enum the server validates against) and a "Receive at reception"
+link on the order detail page. Sidebar gained "Reception."
+
+**Two real, non-blocking findings during implementation, not part of the approved proposal's own
+text:**
+1. No join precedent existed anywhere in this repo (every prior multi-table read resolves via
+   separate queries + an in-memory `Map`, e.g. `order.controller.ts`'s own `search()`) —
+   `search()`'s first draft used `.innerJoin()`, rewritten to match established convention before
+   shipping rather than become the first, untested call site relying on drizzle's join-result-key
+   behavior.
+2. `nest build`/`tsc` silently producing an empty `dist/` under this sandbox's WSL2 filesystem — the
+   exact symptom sessions 10/13 both hit and left as "not chased further" — was traced this time to
+   a stale `apps/api/tsconfig.build.tsbuildinfo` combined with `nest-cli.json`'s `deleteOutDir:
+   true`. Deleting the buildinfo file before rebuilding fixed it. Written up as
+   `engineering/docker-pnpm-monorepo-deploy` Skill entry #24 (pushed to `lis-engineering`) — the
+   first session to leave a concrete fix instead of just the symptom.
+
+Verified end-to-end: 11 new e2e tests + the full existing 59-test suite green, repo-wide
+`typecheck`/`lint`/`build` (both `apps/api` and `apps/web`) green, and a real headless-Chromium
+session (`web-verify` Skill, this sandbox's own missing-`libnss3.so` workaround) driving both the
+accept and reject flows against real Keycloak/Postgres/the compiled `apps/api` server — plus, in
+this same session's own `/close`-driven manual-verification follow-up, **dark mode** (every
+reception-screen state and the order detail page's new button, all correctly themed — one
+apparently-white-card frame during the very first request after a fresh dev-server restart turned
+out to be a one-off Turbopack first-compile flash, not reproducible on every later screenshot of
+the identical route) and **keyboard-only navigation** (Tab/type/Tab/Enter submitted the reception
+form successfully with zero mouse interaction) — both explicitly confirmed, not assumed from the
+underlying native-element types. `#106` auto-closed via PR #300's bare `Closes #106` line.
+
+**Two real, stale `web-verify` Skill recipes found and fixed during that same manual-verification
+pass, via PR #301:** (1) step 2's session-cookie recipe minted a token missing `accessToken`/
+`refreshToken`/`accessTokenExpiresAt` — required by `SessionPayload` since ADR-0014, silently
+rejected by `verifySession()`, meaning the documented recipe would fail authentication the moment a
+verification session reached any page (most of them) that calls `apps/api`; fixed to obtain a real
+Keycloak password-grant token pair first. (2) step 3's hardcoded Chromium `executablePath`
+(`chromium-1148/chrome-linux`) no longer matched this session's real cached build
+(`chromium-1234/chrome-linux64` — both the revision and the internal directory name had drifted);
+replaced with a `find`-based dynamic lookup so it survives the next `playwright` version bump too.
+
+**FEAT-013 remaining**: TASK-046 (label rendering, #105, depends on TASK-045 — unblocked, still
+needs a real printer for full AC verification per session 14's own risk note) and TASK-048
+(collection queue, #107, depends on TASK-047 — now unblocked) both open. `engineering/
+barcode-printing` Skill still doesn't exist (needed for TASK-046); `domain/specimen-lifecycle` was
+drafted this session from TASK-047's own real decisions (pushed to `lis-engineering`) — both named
+as "Required Skills" by FEAT-013's own issue (#22). TASK-048's own AC ("required tubes") needs
+catalog-driven specimen-type-requirement data that doesn't exist anywhere in this repo yet — flagged
+in TASK-047's own proposal §6, not solved there; TASK-048's revision will need to either resolve
+that gap or narrow its own scope around it. `/orient`'s next run should specify TASK-046 or
+TASK-048 as a revision to `docs/plans/feat-013-accessioning-labels-reception.md`, not start a new
+proposal file.
+
+---
+
 # Status — 2026-08-05 (session 14)
 
 Last commit on main: `3b82056` — "docs: TASK-045 close-out -- plan doc status updated with merge

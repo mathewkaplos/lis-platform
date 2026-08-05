@@ -1,8 +1,7 @@
 # Implementation Proposal: FEAT-013 Accessioning, labels & reception
-Status: TASK-045 IMPLEMENTED — merged PR #297 (`792e373`), closing #104. TASK-047 revision drafted
-below — Status: DRAFT, three open questions (§10) awaiting approval. TASK-046/048 remain open and
-will be specified as revisions to this same file once their own real output exists, same precedent
-as FEAT-011/FEAT-012.
+Status: TASK-045 IMPLEMENTED — merged PR #297 (`792e373`), closing #104. TASK-047 IMPLEMENTED —
+merged PR #300 (`8081c2f`), closing #106. TASK-046/048 remain open and will be specified as
+revisions to this same file once their own real output exists, same precedent as FEAT-011/FEAT-012.
 ADR: none — §10 Q1's resolution (a SEQUENCE-based generator, diverging from `engineering/api-design`
 entry #9) is written up as a new Skill entry (§10), not an ADR: it's a documented technique choice
 with a stated rationale and a real precedent already in this schema (`audit_event.sequence`), not a
@@ -265,9 +264,10 @@ feature depends on this yet (`specimen` has zero real rows in any persistent env
 ---
 
 # Revision: TASK-047 — Reception screen: scan-to-receive, coded rejection
-Status: IMPLEMENTED (not yet merged) — all three questions (§10) resolved via the native
-options-prompt 2026-08-05; implementation complete and fully verified the same session (§11).
-No PR opened yet.
+Status: IMPLEMENTED — merged PR #300 (`8081c2f`), closing #106. All three questions (§10) resolved
+via the native options-prompt 2026-08-05; implementation complete and fully verified the same
+session (§11), including a follow-up manual-verification pass (dark mode, keyboard-only
+navigation) during this session's own `/close`.
 Date: 2026-08-05    Backlog ID: FEAT-013 (#22) / TASK-047 (#106)
 
 ## 1. Goal

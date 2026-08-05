@@ -260,6 +260,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/specimens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SpecimenController_search"];
+        put?: never;
+        post: operations["SpecimenController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/specimens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SpecimenController_getById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -346,6 +378,43 @@ export interface components {
                 displayName: string;
                 testDefinitionIds: string[];
             }[];
+        };
+        SpecimenCreateDto: {
+            /** Format: uuid */
+            orderId: string;
+            specimenType: string;
+            orderedTestIds?: string[];
+            /** Format: date-time */
+            collectedAt?: string;
+            collectionContext?: {
+                [key: string]: unknown;
+            };
+            /** @enum {string} */
+            rejectionReason?: "haemolysed" | "clotted" | "insufficient_volume" | "mislabelled" | "wrong_container" | "improper_temperature" | "expired";
+        };
+        SpecimenDto_Output: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenantId: string;
+            accessionNumber: string;
+            specimenType: string;
+            /** Format: uuid */
+            parentSpecimenId: string | null;
+            /** @enum {string} */
+            status: "collected" | "received" | "accessioned" | "in_process" | "completed" | "archived" | "disposed" | "rejected";
+            /** @enum {string|null} */
+            rejectionReason: "haemolysed" | "clotted" | "insufficient_volume" | "mislabelled" | "wrong_container" | "improper_temperature" | "expired" | null;
+            collectionContext: {
+                [key: string]: unknown;
+            } | null;
+            /** Format: date-time */
+            collectedAt: string | null;
+            /** Format: date-time */
+            receivedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            fulfilledOrderedTestIds?: string[];
         };
     };
     responses: never;
@@ -695,6 +764,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CatalogDto_Output"];
+                };
+            };
+        };
+    };
+    SpecimenController_search: {
+        parameters: {
+            query?: {
+                orderId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecimenDto_Output"][];
+                };
+            };
+        };
+    };
+    SpecimenController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpecimenCreateDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SpecimenController_getById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecimenDto_Output"];
                 };
             };
         };

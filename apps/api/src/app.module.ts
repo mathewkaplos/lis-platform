@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { PatientModule } from './patient/patient.module';
 import { OrderModule } from './order/order.module';
 import { CatalogModule } from './catalog/catalog.module';
+import { SpecimenModule } from './specimen/specimen.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
 @Module({
@@ -17,6 +18,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     PatientModule,
     OrderModule,
     CatalogModule,
+    SpecimenModule,
   ],
   controllers: [AppController],
   providers: [

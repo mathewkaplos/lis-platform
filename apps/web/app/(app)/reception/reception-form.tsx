@@ -54,6 +54,21 @@ export function ReceptionForm({ order }: { order: OrderSummary }) {
               Reason: <span className="text-foreground">{state.createdRejectionReason}</span>
             </p>
           ) : null}
+          {state.createdSpecimenId ? (
+            // A plain <a>, not next/link's <Link> -- forces a full page
+            // navigation rather than client-side routing. This page's own
+            // reception form fetched the order's patient name/MRN into its
+            // RSC payload; Next's client-side nav leaves that payload's
+            // inline <script> content in the DOM even after navigating
+            // away (a real finding: `document.body.textContent` on the
+            // label page still contained it). The printed/rendered label
+            // itself was already PHI-free (revision §5/§10 Q3), but a hard
+            // navigation here means the label page's own document never
+            // carries the prior page's patient data at all.
+            <Button asChild variant="outline" size="sm" className="w-fit">
+              <a href={`/specimens/${state.createdSpecimenId}/label`}>Print label</a>
+            </Button>
+          ) : null}
         </CardContent>
       </Card>
     );

@@ -19,7 +19,7 @@ export function Sidebar() {
   return (
     <nav
       aria-label="Main"
-      className="hidden w-56 shrink-0 flex-col gap-1 border-r border-border bg-surface p-4 sm:flex"
+      className="hidden w-56 shrink-0 flex-col gap-1 border-r border-border bg-surface p-4 sm:flex print:hidden"
     >
       <div className="mb-4 px-2 text-sm font-semibold text-foreground">LIS Platform</div>
       {NAV_ITEMS.map(({ href, label, icon: Icon }) => (

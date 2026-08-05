@@ -5,6 +5,7 @@
 export interface ReceptionState {
   status: 'idle' | 'error' | 'received';
   formError?: string;
+  createdSpecimenId?: string;
   createdAccessionNumber?: string;
   createdStatus?: string;
   createdRejectionReason?: string;

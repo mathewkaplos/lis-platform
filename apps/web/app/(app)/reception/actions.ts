@@ -73,10 +73,16 @@ export async function receiveSpecimen(
   // is {resourceId, before, after}, matching patient/order's own create()
   // convention).
   const created = data as unknown as {
-    after: { accessionNumber: string; status: string; rejectionReason: string | null };
+    after: {
+      id: string;
+      accessionNumber: string;
+      status: string;
+      rejectionReason: string | null;
+    };
   };
   return {
     status: 'received',
+    createdSpecimenId: created.after.id,
     createdAccessionNumber: created.after.accessionNumber,
     createdStatus: created.after.status,
     createdRejectionReason: created.after.rejectionReason ?? undefined,

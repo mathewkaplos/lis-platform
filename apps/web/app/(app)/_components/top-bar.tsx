@@ -20,7 +20,7 @@ export function TopBar({
   theme: Theme | undefined;
 }) {
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-surface px-4">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-surface px-4 print:hidden">
       <CommandPalette />
       <div className="flex items-center gap-2">
         {/* Static per the approved TASK-036 proposal (§10): no org/branch data model exists

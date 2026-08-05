@@ -385,4 +385,134 @@ describe('Specimen API (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(404);
   });
+
+  /**
+   * TASK-046 (FEAT-013 revision): `GET .../label` and `POST .../print`.
+   * Both barcode SVGs encode the accession number alone (revision §5); the
+   * print action is audited identically for first print and every reprint
+   * (§10 Q2, human-resolved), no separate reprint-reason code.
+   */
+  it("GET .../label renders both barcodes for the specimen's own accession number", async () => {
+    const { orderId } = await createOrder(tokenA);
+    const created = await request(app.getHttpServer())
+      .post('/v1/specimens')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ orderId, specimenType: 'whole_blood' })
+      .expect(201);
+    const { resourceId: specimenId, after } = created.body as {
+      resourceId: string;
+      after: { accessionNumber: string; specimenType: string };
+    };
+
+    const labelRes = await request(app.getHttpServer())
+      .get(`/v1/specimens/${specimenId}/label`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const label = labelRes.body as {
+      accessionNumber: string;
+      specimenType: string;
+      code128Svg: string;
+      dataMatrixSvg: string;
+    };
+    if (
+      label.accessionNumber !== after.accessionNumber ||
+      label.specimenType !== after.specimenType
+    ) {
+      throw new Error(
+        `expected label fields to match the specimen row, got ${JSON.stringify(label)}`,
+      );
+    }
+    // Well-formedness only here -- `bwip-js`'s SVG output renders
+    // `includetext` as vector glyph paths, not a literal <text> element, so
+    // string-matching the accession number inside SVG markup doesn't work
+    // for either symbology (a real finding, not assumed). The actual
+    // payload-correctness proof (different accession number -> different
+    // rendered output) lives in label-render.spec.ts's differential test,
+    // which doesn't depend on any particular SVG serialization detail.
+    for (const svg of [label.code128Svg, label.dataMatrixSvg]) {
+      if (!svg.startsWith('<svg') || !svg.trim().endsWith('</svg>')) {
+        throw new Error(`expected a well-formed SVG, got ${svg.slice(0, 120)}`);
+      }
+    }
+  });
+
+  it('GET .../label returns 404 for a nonexistent or cross-tenant specimen id', async () => {
+    await request(app.getHttpServer())
+      .get(`/v1/specimens/${randomUUID()}/label`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(404);
+
+    const { orderId } = await createOrder(tokenA);
+    const created = await request(app.getHttpServer())
+      .post('/v1/specimens')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ orderId, specimenType: 'whole_blood' })
+      .expect(201);
+    const specimenId = (created.body as { resourceId: string }).resourceId;
+
+    await request(app.getHttpServer())
+      .get(`/v1/specimens/${specimenId}/label`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .expect(404);
+  });
+
+  it('POST .../print writes an audited specimen.label_print event, twice on repeat prints, and denies a caller with no manage_specimens-granting role', async () => {
+    const { orderId } = await createOrder(tokenA);
+    const created = await request(app.getHttpServer())
+      .post('/v1/specimens')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ orderId, specimenType: 'whole_blood' })
+      .expect(201);
+    const specimenId = (created.body as { resourceId: string }).resourceId;
+
+    const before = await auditCount(tokenA);
+
+    const firstPrint = await request(app.getHttpServer())
+      .post(`/v1/specimens/${specimenId}/print`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const firstBody = firstPrint.body as {
+      resourceId: string;
+      after: { accessionNumber: string };
+    };
+    if (
+      firstBody.resourceId !== specimenId ||
+      !firstBody.after.accessionNumber
+    ) {
+      throw new Error(
+        `expected the print response to echo the specimen id and label, got ${JSON.stringify(firstBody)}`,
+      );
+    }
+
+    const afterFirst = await auditCount(tokenA);
+    if (afterFirst !== before + 1) {
+      throw new Error(
+        `expected exactly one new audit_event row after the first print, before=${before} after=${afterFirst}`,
+      );
+    }
+
+    // A reprint is allowed and audited identically -- no reprint-reason code,
+    // no conflict on a repeat call (§10 Q2).
+    await request(app.getHttpServer())
+      .post(`/v1/specimens/${specimenId}/print`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const afterReprint = await auditCount(tokenA);
+    if (afterReprint !== before + 2) {
+      throw new Error(
+        `expected a second independent audit_event row on reprint, before=${before} after=${afterReprint}`,
+      );
+    }
+
+    await request(app.getHttpServer())
+      .post(`/v1/specimens/${specimenId}/print`)
+      .set('Authorization', `Bearer ${noRoleToken}`)
+      .expect(403);
+    const afterDenied = await auditCount(tokenA);
+    if (afterDenied !== before + 2) {
+      throw new Error(
+        `expected no audit_event row on a 403, before+2=${before + 2} after=${afterDenied}`,
+      );
+    }
+  });
 });

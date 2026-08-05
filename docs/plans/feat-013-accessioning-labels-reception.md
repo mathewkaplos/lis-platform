@@ -1,7 +1,8 @@
 # Implementation Proposal: FEAT-013 Accessioning, labels & reception
 Status: TASK-045 IMPLEMENTED — merged PR #297 (`792e373`), closing #104. TASK-047 IMPLEMENTED —
-merged PR #300 (`8081c2f`), closing #106. TASK-046/048 remain open and will be specified as
-revisions to this same file once their own real output exists, same precedent as FEAT-011/FEAT-012.
+merged PR #300 (`8081c2f`), closing #106. TASK-046 IMPLEMENTED (pending merge) — implementation
+complete and verified 2026-08-05, PR not yet opened. TASK-048 remains open, to be specified as its
+own revision once TASK-046 merges, same precedent as FEAT-011/FEAT-012.
 ADR: none — §10 Q1's resolution (a SEQUENCE-based generator, diverging from `engineering/api-design`
 entry #9) is written up as a new Skill entry (§10), not an ADR: it's a documented technique choice
 with a stated rationale and a real precedent already in this schema (`audit_event.sequence`), not a
@@ -588,3 +589,366 @@ confirmed in TASK-045's own proposal and re-confirmed here).
   before a specimen is ever created; nothing in TASK-047's own AC needs it duplicated onto the
   specimen resource itself. Noted here as a real, small divergence from the written proposal, not
   a silent one.
+
+---
+
+# Revision: TASK-046 — Label rendering (Code128+DataMatrix) + print pipeline
+Status: IMPLEMENTED (pending merge) — all four questions (§10) resolved via the native
+options-prompt 2026-08-05; implementation complete and fully verified the same session (§11).
+Merge PR/SHA to be recorded on close-out.
+Date: 2026-08-05    Backlog ID: FEAT-013 (#22) / TASK-046 (#105)
+
+## 1. Goal
+
+TASK-045 (accession-number generation) and TASK-047 (reception: the first real `specimen` writer)
+are both merged. Every specimen now carries a non-null `accessionNumber` (TASK-045's format,
+`YYMMDD-NNNNNN`) the moment it's created via `POST /v1/specimens` (TASK-047). TASK-046's own issue
+(#105) AC is narrow and literal: "A label prints correctly on the design partner's actual printer."
+Its dependency is TASK-045 only (merged). Its expected output: "Label template + print pipeline."
+FEAT-013's own parent AC additionally specifies the two symbologies: "Code128 + DataMatrix."
+
+**This is the first physical-output feature in this repo** — every prior task produced only
+structured data and screens; nothing before this has needed to render an image, embed it in a
+print-formatted view, or reason about a browser print pipeline at all. There is no internal
+precedent to reuse the way TASK-047 reused `order.controller.ts`'s shape — this proposal's design
+choices are new, not adapted, and are flagged as open questions accordingly (§10) rather than
+silently decided the way a task with real precedent would be.
+
+**Real, load-bearing constraint found during this proposal's own research, not present in
+TASK-046's issue text:** there is no physical label printer, printer driver, or printer SDK
+available in this sandbox — confirmed by the complete absence of any printer-related dependency,
+script, or infra config anywhere in this repo. The literal AC ("prints correctly on the design
+partner's actual printer") is therefore **not verifiable end-to-end in this environment**, the same
+class of hardware-verification gap session 14's own risk note already anticipated for this task.
+What this proposal scopes to instead: everything software-verifiable — correct barcode content,
+a correctly styled print-formatted view, and a real, audited print *action* — with the final
+physical-print AC line explicitly left open pending a design-partner demo, not silently claimed.
+
+## 2. Affected files
+
+- `apps/api/package.json` — new dependency `bwip-js` (§5 Q4). Confirmed via Context7
+  (`/metafloor/bwip-js`, source reputation High) to support both required symbologies (`bcid:
+  'code128'` and `bcid: 'datamatrix'`) through one pure-JS API (`bwipjs.toSVG(options)`), with no
+  native/canvas build step — this repo has hit real native-dependency/WSL2 build pain twice already
+  (`engineering/docker-pnpm-monorepo-deploy` entries #23/#24), so a pure-JS renderer avoids adding a
+  third instance of that failure class.
+- `packages/domain/src/specimen.ts` — new `specimenLabelSchema` (`accessionNumber`, `specimenType`,
+  `receivedAt`, `code128Svg`, `dataMatrixSvg`), following the same single-Zod-source-of-truth
+  pattern as `specimenSchema` (`engineering/api-design` entry #1). No new CHECK-mirroring needed —
+  every field already exists on `specimen` except the two rendered SVG strings.
+- `apps/api/src/specimen/label-render.ts` (new) — `renderSpecimenLabel(specimen): { code128Svg,
+  dataMatrixSvg }`, the only file in this task that imports `bwip-js`. Both symbologies encode the
+  **same payload — the accession number alone**, matching KB-24's own identifier decision
+  ("Accession-based... opaque, privacy-friendly, stable handle") and its "minimise PHI" default; no
+  patient identifier, order id, or test name is encoded into either barcode. Lives under
+  `apps/api/src/specimen/`, not `packages/db`, because it's presentation/rendering logic, not
+  data-layer code — `packages/db` holds only schema and DB-adjacent writers (`accession.ts`,
+  `audit.ts`), never rendering.
+- `apps/api/src/specimen/specimen.controller.ts` — two new routes on the existing controller:
+  - `GET /v1/specimens/:id/label` — renders and returns `specimenLabelSchema` (accession number,
+    specimen type, `receivedAt`, both barcode SVGs as inline strings). **Not audited** — a pure read
+    with no side effect, matching `engineering/api-design` entry #6 ("only mutating,
+    operationally significant actions are audited... no existing GET route carries `@Audit()`").
+    This lets a receiving user preview a label (e.g. to check it looks right) without that preview
+    itself being logged as a print.
+  - `POST /v1/specimens/:id/print` — action sub-resource on the existing resource, matching
+    `order.controller.ts`'s own `POST /:id/cancel` precedent exactly: slash syntax (entry #11, not
+    KB-08's literal colon-suffix, which is confirmed broken under this repo's real Fastify adapter),
+    same `manage_specimens` capability gate TASK-047 already uses (no new capability), audited via
+    `@Audit({ action: 'specimen.label_print', resourceType: 'specimen' })` — reusing the existing
+    `audit_event` mechanism directly (TASK-025) rather than inventing a parallel print-log table.
+    "Who printed what and when" (KB-24's own literal requirement) is answered by querying
+    `audit_event` for `action = 'specimen.label_print'`, `resource_id = <specimen id>` — no new
+    table needed. Mutates nothing on the `specimen` row itself (§5); its only effect is the audit
+    write. Returns the same `specimenLabelSchema` payload as `GET .../label` so the frontend can
+    call it once, immediately before invoking the browser's print dialog, without a second render
+    round-trip.
+- `apps/web/app/(app)/specimens/[id]/label/page.tsx` (new, Server Component) — fetches `GET
+  /v1/specimens/:id/label`, renders a print-formatted view: both barcode SVGs, accession number and
+  specimen type in human-readable text, sized via `@media print` CSS to a small label footprint (no
+  patient name/MRN/order id on the page — same PHI-minimization default as the encoded payload).
+  Reached only via a link from the reception success state (§2 next item) — no new top-level nav
+  entry, matching how order-detail's "Receive at reception" link needed none either.
+- `apps/web/app/(app)/specimens/[id]/label/print-button.tsx` (new, client component) — calls a
+  Server Action wrapping `POST /v1/specimens/:id/print`, then `window.print()` on success. The
+  audit write and the print trigger happen together, not print-then-audit or audit-with-no-print
+  confirmation — if the audited call fails, the print dialog never opens.
+- `apps/web/app/(app)/specimens/[id]/label/actions.ts` (new) — the Server Action above, following
+  `apps/web/app/(app)/reception/actions.ts`'s own shape (a single `'use server'` async function
+  calling the typed SDK client).
+- `apps/web/app/(app)/reception/reception-form.tsx` — the existing "Specimen received"/"Specimen
+  rejected" success card (lines ~40–60) gains a "Print label" link to `/specimens/{id}/label`, using
+  the newly-available `state.resourceId` — the natural point in the existing flow where a freshly
+  accessioned specimen's id first becomes available client-side. Shown for both accepted and
+  rejected outcomes (a rejected specimen still has a real, non-null accession number per TASK-047 §1
+  finding #2 and may still need a label for tracking/disposal documentation — KB-22 does not say
+  rejected specimens go unlabelled).
+- **No new migration.** Every field the label needs (`accessionNumber`, `specimenType`,
+  `receivedAt`) already exists on `specimen` (TASK-023/047). No new column for a print counter or
+  reprint flag — see §10 Q2 for why that's raised as an open question rather than built by default.
+- **No new capability.** Reuses `manage_specimens` (TASK-047) for both new routes.
+
+## 3. Architecture consulted
+
+- **TASK-046 issue (#105) AC**: "A label prints correctly on the design partner's actual printer."
+  Dependency: TASK-045 (merged). Expected output: "Label template + print pipeline."
+- **FEAT-013 issue (#22) AC** (parent, cited for the symbology requirement not in TASK-046's own
+  issue text): "A label prints correctly (Code128 + DataMatrix) on the design partner's actual
+  printer."
+- **KB-24 Barcoding** (read in full, `24-barcoding.md`) — symbology-to-surface mapping ("1D Code 128
+  for tubes and standard containers; 2D Data Matrix... for space-constrained surfaces," lines 30-33,
+  directly answers why this task renders both, not one); identifier choice ("Container labels are
+  keyed on the accession identifier," line 25, directly shapes §2's single-payload decision); PHI
+  minimization ("lean on the opaque accession ID rather than print patient identifiers," lines
+  35-39); "Printing is metadata-driven and audited... Reprints are controlled and audited... who
+  reprinted what and when is on the record" (lines 41-44, the literal source of §2's audited
+  `POST .../print` route and §10 Q2's open question about whether first-print and reprint need to be
+  distinguished).
+- **KB-22 Sample Management** (re-checked, `22-sample-management.md`) — confirms accessioning (not a
+  separate "labeling" state) is where the identifier a label encodes originates; no new specimen
+  lifecycle state is implicated by this task (label rendering/printing is not itself a state
+  transition, consistent with §5's "mutates nothing on `specimen`" decision).
+- **KB-23 Specimen Tracking** (re-checked, `23-specimen-tracking.md`) — the append-only custody-event
+  stream this document describes is **explicitly out of scope here**, same as TASK-047's own
+  exclusion (`domain/specimen-lifecycle` Skill entry #6): a "printed" custody event is not built;
+  `audit_event` (§2) is the only record of a print action this task creates.
+- **`packages/db/src/schema/specimen.ts`** (re-read) — confirms `accessionNumber`, `specimenType`,
+  `receivedAt` are all already-populated, non-derived columns; no schema change needed.
+- **`apps/api/src/order/order.controller.ts`** (`cancel()`, re-read) — the direct precedent for
+  `POST /:id/print`'s action-sub-resource shape, capability gate placement, and `@Audit()` wiring.
+- **`apps/api/src/specimen/specimen.controller.ts`** (TASK-047, read in full) — direct precedent for
+  `ZodValidationPipe` explicit instantiation (entry #8), the `specimenIdParamSchema`/`SpecimenIdParamDto`
+  pattern this task's two new routes reuse verbatim (same `:id` param shape as `getById()`).
+  RLS-as-404 (entry #7) applies identically: an unknown/cross-tenant specimen id on either new route
+  returns `404`, not a leaked existence signal.
+  **not** to `GET .../label` (§2) — the general "only mutating actions are audited" rule, re-applied
+  here as a positive case, not just cited.
+- **`apps/web/app/(app)/reception/`** (TASK-047, read in full: `page.tsx`, `reception-form.tsx`,
+  `actions.ts`, `types.ts`) — direct precedent for the Server-Component-fetch + client-form-action
+  split this task's new `specimens/[id]/label/` route reuses.
+- **Context7 `/metafloor/bwip-js`** (queried live, not assumed from training data per this session's
+  own standing rule for library research) — confirmed `bcid: 'code128'`/`bcid: 'datamatrix'`,
+  `bwipjs.toSVG(options)` for synchronous, dependency-free SVG string output suitable for embedding
+  directly in a JSON response and rendering in HTML with no data-URI conversion needed.
+- **`engineering/api-design` Skill** — entries #1 (single Zod source of truth), #6 (only mutating
+  actions audited), #7 (RLS-as-404), #8 (explicit `ZodValidationPipe` instantiation), #11 (slash, not
+  colon, for action sub-resources) all directly applied, not re-litigated.
+- **`domain/specimen-lifecycle` Skill** — entry #7, written during TASK-047, explicitly flagged that
+  `engineering/barcode-printing` (still missing) would be needed once this task starts. This
+  proposal's own implementation is the real source that Skill should now be drafted from (§4).
+
+## 4. Skills loaded
+
+- `engineering/api-design` — in full, see §3.
+- `domain/specimen-lifecycle` — in full, see §3; entry #7 directly anticipated this task.
+- `testing` — re-checked; shapes §8's insistence on verifying actual barcode *payload* correctness
+  and a real headless-browser check of the rendered print view, not a mocked render.
+- `engineering/docker-pnpm-monorepo-deploy` — re-checked; entries #23/#24 (native-dependency and
+  WSL2 build pain) directly motivate §2's pure-JS library choice and §10 Q4.
+- `engineering/frontend-design` — re-checked; entry #4 (`transpilePackages` needed the first time a
+  `packages/ui` primitive renders in a real Next.js page) is not directly implicated (this task adds
+  no new `packages/ui` primitive), but its general "the first real render is the actual proof, not a
+  component-level check" discipline shapes §8's insistence on a real headless-browser check of the
+  print-preview page, not just a typecheck-passes claim.
+- `engineering/barcode-printing` — **still does not exist.** Named as "Required" by FEAT-013's own
+  issue (#22), flagged twice already (TASK-045 §4, TASK-047 §4) as genuinely needed once this task
+  starts. **This proposal's own real decisions (§2's rendering-library choice and its native-
+  dependency rationale, §5's payload/audit/print-pipeline design, §10's four open questions) are the
+  first real content to draft it from** — listed as autonomous prep in §5 of the cover message for
+  this revision, to be written once this proposal is approved and implemented, not deferred a third
+  time.
+
+## 5. Assumptions & autonomous decisions
+
+- **Both barcodes encode the accession number alone — no composite/multi-field payload.** KB-24's own
+  identifier decision (§3) is unambiguous on this; a GS1-structured payload (`bwip-js`'s
+  `gs1datamatrix` mode, which needs parenthesized Application Identifiers) is not used, since no GS1
+  compliance requirement is named anywhere in this repo's KB or issues — using plain `datamatrix`
+  with a bare accession-number string is the minimal choice that satisfies the literal AC without
+  inventing an unrequired standard.
+- **Rendering happens server-side (`apps/api`), not client-side.** Keeps `bwip-js` a single
+  dependency in one place (not duplicated into `apps/web`), keeps the barcode-rendering payload out
+  of the browser bundle, and lets `POST /v1/specimens/:id/print` render-and-audit as one atomic
+  server action — matching TASK-047's own "the mutation and its audit write happen in the same
+  request" discipline, not a separate client-side render plus a fire-and-forget audit call.
+- **No PDF generation, no printer-SDK/ZPL integration.** Neither exists anywhere in this repo, and no
+  physical printer is available in this sandbox to build or test against. The "print pipeline" is:
+  server renders barcode SVGs → browser renders a print-formatted HTML page → the browser's native
+  print dialog → the OS's own print driver → (in the design partner's real environment) a thermal
+  label printer installed as a standard OS printer. This is the realistic MVP shape for a web app
+  with no dedicated hardware integration yet — raised as §10 Q1 rather than silently assumed, since
+  it's a real, first-of-its-kind architectural choice for this repo.
+- **The print action mutates nothing on `specimen` itself** — no `printedAt`/`printCount` column is
+  added. `audit_event` already records every print with actor/timestamp; a receiving user or auditor
+  answers "has this been printed, and how many times" by querying audit history, not a denormalized
+  counter on the specimen row. Avoids adding a column this task's own AC doesn't require — raised as
+  §10 Q2 in case the human wants a persisted, at-a-glance reprint flag instead.
+- **First print and every reprint are audited identically** (`specimen.label_print`, no distinct
+  action name or reason code for a reprint). KB-24 says "reprints are controlled and audited" but,
+  unlike specimen rejection, names no reprint-reason vocabulary anywhere — inventing one now would be
+  building a coded list ahead of a real, KB-stated need, the same discipline `domain/specimen-
+  lifecycle` Skill entry #5 already applied to rejection reasons in the other direction (use the
+  KB's real list, don't invent one where none exists). Raised as §10 Q2.
+
+## 6. Risks
+
+- **The literal AC ("prints correctly on the design partner's actual printer") cannot be verified
+  end-to-end in this sandbox** — no physical printer, driver, or printer SDK is available here. This
+  proposal's own testing plan (§8) verifies everything short of that: barcode payload correctness,
+  print-preview rendering, and the audited print action firing. The final physical-print
+  confirmation is explicitly deferred to a design-partner demo, per session 14's own precedent for
+  this exact task, not silently claimed done.
+- **`bwip-js` is a new third-party dependency added for the first time to render a clinically-
+  adjacent identifier (the accession number) into an image.** Confirmed via live Context7 docs
+  (§3) to be pure-JS with a High source-reputation rating and 317 indexed code snippets, but this is
+  still the first barcode-rendering dependency in this repo — worth the human's explicit awareness,
+  not just a footnote (§10 Q4).
+- **No reprint-reason/print-count tracking is built** (§5) — if the design partner's real workflow
+  needs "how many times has this label been reprinted" surfaced directly on the specimen (not just
+  derivable from an audit-log query), that's a real, small follow-up this proposal doesn't build
+  (§10 Q2).
+- **The print-preview page's exact physical label dimensions are a guess, not validated against the
+  design partner's real label stock or printer** — no label size is specified anywhere in this
+  repo's KB or issues. CSS `@media print` sizing will target a plausible small-label footprint (e.g.
+  ~1" × 2", the common thermal specimen-label size), but this is explicitly a placeholder pending
+  real hardware/paper-stock information, not a confirmed spec.
+
+## 7. Acceptance criteria
+
+TASK-046's literal AC, with the sandbox limitation stated plainly rather than silently reinterpreted:
+- [ ] **Not independently verifiable in this sandbox**: "A label prints correctly (Code128 +
+  DataMatrix) on the design partner's actual printer." No physical printer exists here (§1/§6).
+  What this proposal verifies instead, as the closest software-provable substitute:
+  - [ ] `GET /v1/specimens/:id/label` returns both a Code128 and a DataMatrix rendering whose
+    encoded payload is the specimen's own `accessionNumber`, judged by asserting the exact
+    `text` value passed into `bwip-js` at render time matches the row's `accessionNumber`, plus a
+    basic well-formed-SVG shape check on both returned strings.
+  - [ ] `POST /v1/specimens/:id/print` writes a real `audit_event` row (`action:
+    'specimen.label_print'`), verified by a real e2e assertion against the audit table (matching
+    this repo's own established audit-verification standard, not inferred from the decorator's
+    presence alone).
+  - [ ] The print-preview page renders correctly (both barcodes visible, correct accession
+    number/specimen type text, no patient-identifying fields present), verified by a real
+    headless-Chromium check (`web-verify` Skill), including dark mode and keyboard-only navigation
+    to the "Print" button, matching TASK-047's own verification depth.
+
+## 8. Testing plan
+
+1. `pnpm --filter @lis/domain typecheck`/build with the new `specimenLabelSchema`; `pnpm --filter
+   api typecheck`/build with the new `label-render.ts` and controller routes.
+2. A real e2e spec extension (`apps/api/test/specimen.e2e-spec.ts`), real Postgres, real
+   Keycloak-issued tokens:
+   - `GET .../label` on an existing accessioned specimen → `200`, both SVG fields present and
+     non-empty, `accessionNumber`/`specimenType`/`receivedAt` match the specimen row;
+   - `GET .../label` on an unknown/cross-tenant id → `404` (RLS-as-404, entry #7);
+   - `POST .../print` → `200`, same payload shape as `GET .../label`, and a follow-up query
+     confirms a new `audit_event` row (`action: 'specimen.label_print'`, correct `resource_id`,
+     correct `actor`/`tenant_id`);
+   - `POST .../print` with a token lacking `manage_specimens` → `403`, matching every other guarded
+     route's own test;
+   - `POST .../print` called twice on the same specimen → two independent `audit_event` rows, no
+     rejection/conflict on the second call (§5: reprints are allowed, just also audited).
+3. The full existing `apps/api` e2e suite re-run and confirmed still green — this task adds no
+   migration and touches no existing table's constraints or data.
+4. Real headless-Chromium browser check (`web-verify` Skill, this sandbox's own missing-
+   `libnss3.so` workaround): receive a specimen at `/reception` → follow the new "Print label" link
+   → confirm both barcodes render visibly, accession number and specimen type are correct and no
+   patient name/MRN/order id appears anywhere on the page → click "Print" → confirm the print
+   action succeeds (a real `window.print()` call can be intercepted/confirmed in headless Playwright
+   even though no physical page is produced) and a new audit row exists afterward. Repeat for a
+   rejected specimen's label. Confirm dark mode and keyboard-only navigation to the "Print" button,
+   matching TASK-047's own verification depth (§7 of that revision).
+5. `pnpm typecheck`/`pnpm lint` at the repo root.
+6. **Explicitly not attempted**: printing to a real physical thermal printer. No such device exists
+   in this sandbox (§1/§6). Flagged as an open item for a design-partner demo, not silently skipped
+   without mention.
+
+## 9. Rollback plan
+
+Additive throughout: one new `apps/api` dependency (`bwip-js`), new `packages/domain`/`apps/api`/
+`apps/web` code, two new routes on an existing controller, no migration, no new capability. Rollback
+is reverting the PR — `specimen` itself is untouched structurally (no new column), `manage_specimens`
+is unchanged (reused, not modified), and no production data or deployed feature depends on this yet
+(`specimen` has zero real rows in any persistent environment, per TASK-045/047's own confirmed
+state, unchanged since).
+
+## 10. Questions requiring human approval
+
+1. **RESOLVED 2026-08-05 — browser print dialog, no PDF, no printer-SDK/ZPL integration.** Server
+   renders barcode SVGs (`bwip-js`); `apps/web` renders a print-formatted HTML page; a "Print"
+   button triggers the native print dialog (`window.print()`), handing off to the OS's own print
+   driver — the same path a real thermal label printer would receive as a standard OS printer on
+   the design partner's machine.
+2. **RESOLVED 2026-08-05 — no reprint distinction.** Every print (first or repeat) is audited
+   identically as `specimen.label_print`; no `printedAt`/`printCount` column is added to `specimen`.
+   KB-24's "reprints are controlled and audited" is satisfied by the existing `manage_specimens`
+   capability gate plus the audit write; audit history already answers "who printed what and when"
+   without a denormalized counter.
+3. **RESOLVED 2026-08-05 — label content is accession number (both symbologies), specimen type, and
+   received/accessioned timestamp only.** No patient name, MRN, order id, or test names anywhere on
+   the label, per KB-24's PHI-minimization default.
+4. **RESOLVED 2026-08-05 — use `bwip-js`.** Confirmed via live Context7 documentation to support
+   both required symbologies through one pure-JS dependency with no native/canvas build step,
+   avoiding this repo's two prior native-dependency/WSL2 build failures (`docker-pnpm-monorepo-
+   deploy` entries #23/#24).
+
+**All four questions resolved — implementation begins now.**
+
+## 11. Real bugs found and fixed during implementation
+
+- **`bwip-js`'s SVG output cannot be verified by string-matching the encoded payload, for either
+  symbology** — `includetext: true` renders the human-readable text as vector `<path>` glyph
+  outlines, not a literal `<text>` DOM element, and Data Matrix has no text-overlay option at all.
+  The e2e test's first draft asserted `svg.includes(accessionNumber)`; it failed for both
+  symbologies even though the renderer was working correctly. Fixed by replacing that assertion
+  with well-formedness checks in the e2e suite (`specimen.e2e-spec.ts`) plus a new unit-level
+  differential test (`apps/api/src/specimen/label-render.spec.ts`): different accession numbers
+  produce different SVG output, the same accession number produces identical output twice — real
+  proof the renderer's output depends on its input, without a barcode-decode dependency (never
+  added, §5/§8). Also found in the same pass: `toSVG()`'s output has a trailing newline after
+  `</svg>`, so `.endsWith('</svg>')` needs `.trim()` first. Written up as `engineering/
+  barcode-printing` Skill entry #2.
+- **Dark mode: the barcode was nearly invisible** — `bwip-js` renders black bars/modules only
+  (`label-render.ts` passes no color option), and the label card originally used this repo's normal
+  `bg-surface` token (dark in dark mode), producing near-invisible black-on-near-black bars.
+  Screenshot-confirmed during this task's own `web-verify` dark-mode pass, not assumed correct from
+  the light-mode screenshot alone. Fixed by forcing the label card to an unconditional white/black
+  appearance (`bg-white text-black`), independent of the app's dark-mode tokens — also the correct
+  design regardless of the bug, since a physical label prints black-on-white no matter the viewer's
+  theme. Written up as `engineering/barcode-printing` Skill entry #3.
+- **Real, more significant finding: Next.js client-side navigation left the reception page's patient
+  data (name, MRN) in the label page's own DOM**, even though the label page's rendered content and
+  its own data fetch never touch patient data at all. Root cause: the "Print label" link used
+  `next/link`'s `<Link>`, and Next.js App Router's client-side navigation never replaces `document` —
+  each visited route's RSC ("flight") payload stays behind as inline `<script>` content, so the
+  reception page's own patient-including payload was still present in `document.body.textContent`
+  after navigating to the label page. Caught only by a real headless-browser check reading
+  `body.textContent` (`web-verify` Skill) — invisible to typecheck/lint/build, to the rendered
+  screenshot, and to every other check in this task's own testing plan. Fixed by changing the
+  "Print label" link from `<Link>` to a plain `<a>` tag (`reception-form.tsx`), forcing a full page
+  navigation — confirmed fixed by re-running the same check against a freshly-created specimen.
+  Written up as `engineering/frontend-design` Skill entry #5 (the general Next.js App Router
+  mechanism) and `engineering/barcode-printing` entry #6 (this task's own framing, since KB-24
+  frames a printed label as literally "leaving the access-controlled system").
+- **Sandbox-only friction, not a code bug**: verifying this required repeatedly minting a session
+  cookie carrying a real Keycloak access/refresh token pair (`web-verify` Skill's own recipe).
+  Reusing one minted cookie across several browser runs interleaved with unrelated password-grant
+  logins (creating test fixtures via the API) caused `apps/api` to reject the session's access token
+  with real `401`s partway through — matching a gotcha the `web-verify` Skill already documents
+  (Keycloak refresh-token rotation invalidating an earlier token once a new login happens for the
+  same user). Resolved by minting the cookie immediately before each browser run with zero
+  intervening Keycloak calls, per that Skill's own existing guidance — not a new finding, a
+  reproduction confirming the documented one.
+- No other real bugs. Every AC (§7) verified directly: the full existing 62-test `apps/api` e2e
+  suite plus 5 new tests (`GET .../label` payload/404s, `POST .../print` audited once and again on
+  reprint, 403 for a missing capability) green; 3 new unit tests (`label-render.spec.ts`) green;
+  repo-wide `typecheck`/`lint`/`build` (all four `packages/*` and both `apps/*`) green; the real
+  compiled `apps/api` server booted successfully with both new routes mapped (`engineering/
+  api-design` entry #10's own discipline, re-applied); a real headless-Chromium session
+  (`web-verify` Skill) drove the actual UI end-to-end against real Keycloak/Postgres/the compiled
+  `apps/api` server: reception → accept → "Print label" → label page (accession number, specimen
+  type, timestamp, both barcodes, zero PHI in the rendered page) → keyboard-only Tab/Enter to both
+  the "Print label" link and the "Print" button → a real `window.print()` call confirmed firing —
+  in both light and dark mode, zero console/page errors throughout. The one AC line genuinely not
+  verifiable here — "prints correctly on the design partner's actual printer" — is explicitly left
+  open pending a design-partner demo (§1/§6/§7), not silently claimed done.

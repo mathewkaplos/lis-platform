@@ -33,7 +33,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           userSub={session.sub}
           theme={isTheme(themeCookie) ? themeCookie : undefined}
         />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto p-6 print:p-0">{children}</main>
       </div>
     </div>
   );

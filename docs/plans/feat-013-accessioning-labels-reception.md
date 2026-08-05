@@ -1,8 +1,11 @@
 # Implementation Proposal: FEAT-013 Accessioning, labels & reception
-Status: TASK-045 IMPLEMENTED — merged PR #297 (`792e373`), closing #104. TASK-047 IMPLEMENTED —
-merged PR #300 (`8081c2f`), closing #106. TASK-046 IMPLEMENTED — merged PR #303 (`d3a20af`),
-closing #105. TASK-048 IMPLEMENTED (pending merge) — implementation complete and verified
-2026-08-05, PR not yet opened. This is FEAT-013's fourth and final task.
+Status: **FEAT-013 FULLY IMPLEMENTED — all four tasks merged.** TASK-045 IMPLEMENTED — merged PR
+#297 (`792e373`), closing #104. TASK-047 IMPLEMENTED — merged PR #300 (`8081c2f`), closing #106.
+TASK-046 IMPLEMENTED — merged PR #303 (`d3a20af`), closing #105. TASK-048 IMPLEMENTED — merged PR
+#305 (`27857e9`), closing #107. All four tasks' AC met, modulo TASK-046's own already-flagged,
+still-open physical-printer verification gap (pending a design-partner demo) and TASK-048's own
+deliberate "required tubes" → "tests pending collection" narrowing (§10 of that revision) — both
+real, explicitly-documented scope boundaries, not oversights.
 ADR: none — §10 Q1's resolution (a SEQUENCE-based generator, diverging from `engineering/api-design`
 entry #9) is written up as a new Skill entry (§10), not an ADR: it's a documented technique choice
 with a stated rationale and a real precedent already in this schema (`audit_event.sequence`), not a
@@ -958,9 +961,10 @@ state, unchanged since).
 ---
 
 # Revision: TASK-048 — Collection queue screen
-Status: IMPLEMENTED (pending merge) — the one open question (§10) resolved via the native
-options-prompt 2026-08-05; implementation complete and fully verified the same session (§11).
-Merge PR/SHA to be recorded on close-out.
+Status: IMPLEMENTED — merged PR #305 (`27857e9`), closing #107. The one open question (§10)
+resolved via the native options-prompt 2026-08-05; implementation complete and fully verified the
+same session (§11), including a real confirmation of the §6-flagged `ORDER_SEARCH_RESULT_LIMIT`
+truncation risk. This was FEAT-013's fourth and final task — the feature is now fully implemented.
 Date: 2026-08-05    Backlog ID: FEAT-013 (#22) / TASK-048 (#107)
 
 ## 1. Goal

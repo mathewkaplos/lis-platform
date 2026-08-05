@@ -1,6 +1,6 @@
 # Implementation Proposal: FEAT-013 Accessioning, labels & reception
-Status: APPROVED — both §10 questions resolved 2026-08-05 (SEQUENCE-based generator; YYMMDD-NNNNNN
-format). Implementation begins now.
+Status: TASK-045 IMPLEMENTED — merged PR #297 (`792e373`), closing #104. TASK-046/047/048 remain
+open and will be specified as revisions to this same file, same precedent as FEAT-011/FEAT-012.
 ADR: none — §10 Q1's resolution (a SEQUENCE-based generator, diverging from `engineering/api-design`
 entry #9) is written up as a new Skill entry (§10), not an ADR: it's a documented technique choice
 with a stated rationale and a real precedent already in this schema (`audit_event.sequence`), not a

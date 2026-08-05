@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   NotFoundException,
   Param,
   Post,
@@ -12,9 +13,11 @@ import {
 } from '@nestjs/common';
 import {
   specimenCreateSchema,
+  specimenLabelSchema,
   specimenSchema,
   specimenSearchQuerySchema,
   type Specimen,
+  type SpecimenLabel,
 } from '@lis/domain';
 import {
   generateAccessionNumber,
@@ -36,6 +39,7 @@ import { RequireCapability } from '../auth/require-capability.decorator';
 import type { RequestContext } from '../auth/request-context';
 import type { RequestWithTx } from '../auth/tenant-context.interceptor';
 import { TenantContextInterceptor } from '../auth/tenant-context.interceptor';
+import { renderSpecimenLabel } from './label-render';
 
 const specimenIdParamSchema = z.object({ id: z.uuid() });
 
@@ -43,6 +47,7 @@ class SpecimenCreateDto extends createZodDto(specimenCreateSchema) {}
 class SpecimenDto extends createZodDto(specimenSchema) {}
 class SpecimenSearchQueryDto extends createZodDto(specimenSearchQuerySchema) {}
 class SpecimenIdParamDto extends createZodDto(specimenIdParamSchema) {}
+class SpecimenLabelDto extends createZodDto(specimenLabelSchema) {}
 
 function toSpecimenDto(
   row: typeof specimen.$inferSelect,
@@ -65,6 +70,21 @@ function toSpecimenDto(
     // packages/db/src/audit.ts's header — the exact same class of bug,
     // avoided here proactively rather than rediscovered).
     ...(fulfilledOrderedTestIds ? { fulfilledOrderedTestIds } : {}),
+  };
+}
+
+/** TASK-046 revision §2/§5: renders both barcode SVGs from the specimen's
+ * own accession number — no other field is ever passed to `bwip-js`. */
+function toSpecimenLabelDto(row: typeof specimen.$inferSelect): SpecimenLabel {
+  const { code128Svg, dataMatrixSvg } = renderSpecimenLabel(
+    row.accessionNumber,
+  );
+  return {
+    accessionNumber: row.accessionNumber,
+    specimenType: row.specimenType,
+    receivedAt: row.receivedAt ? row.receivedAt.toISOString() : null,
+    code128Svg,
+    dataMatrixSvg,
   };
 }
 
@@ -267,5 +287,74 @@ export class SpecimenController {
       row,
       fulfillmentRows.map((r) => r.orderedTestId),
     );
+  }
+
+  /**
+   * TASK-046 revision §2: unaudited preview — a pure read with no side
+   * effect (`engineering/api-design` entry #6: only mutating, operationally
+   * significant actions are audited; no existing GET route carries
+   * `@Audit()`). Lets a receiving user check a label looks right without
+   * that preview itself being logged as a print.
+   */
+  @Get(':id/label')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(TenantContextInterceptor)
+  @ZodResponse({ type: SpecimenLabelDto, status: 200 })
+  async label(
+    @Param(new ZodValidationPipe(specimenIdParamSchema))
+    { id }: SpecimenIdParamDto,
+    @DbTx() tx: RequestWithTx['tx'],
+  ): Promise<SpecimenLabel> {
+    const [row] = await tx
+      .select()
+      .from(specimen)
+      .where(eq(specimen.id, id))
+      .limit(1);
+    // RLS makes a cross-tenant row structurally invisible (engineering/api-design entry #7).
+    if (!row) {
+      throw new NotFoundException('Specimen not found');
+    }
+    return toSpecimenLabelDto(row);
+  }
+
+  /**
+   * TASK-046 revision §2/§10 Q1/Q2. Action sub-resource matching
+   * order.controller.ts's own `POST /:id/cancel` shape exactly: slash, not
+   * KB-08's literal colon-suffix (entry #11 — confirmed broken under this
+   * repo's real Fastify adapter). Same `manage_specimens` capability gate
+   * TASK-047 already uses — no new capability. Audited via the existing
+   * `audit_event` mechanism (`specimen.label_print`) rather than a new
+   * print-log table; "who printed what and when" (KB-24) is answered by
+   * querying `audit_event`. Every print — first or repeat — is audited
+   * identically (§10 Q2, human-resolved 2026-08-05: no reprint-reason code,
+   * no `printedAt`/`printCount` column). Mutates nothing on `specimen`
+   * itself, so `before`/`after` are the same label snapshot, not a
+   * null-before (which would imply creation).
+   */
+  @Post(':id/print')
+  @HttpCode(200) // an action on an existing resource, not a creation
+  @UseGuards(JwtAuthGuard, CapabilityGuard)
+  @RequireCapability('manage_specimens')
+  @UseInterceptors(TenantContextInterceptor, AuditInterceptor)
+  @Audit({ action: 'specimen.label_print', resourceType: 'specimen' })
+  async print(
+    @Param(new ZodValidationPipe(specimenIdParamSchema))
+    { id }: SpecimenIdParamDto,
+    @DbTx() tx: RequestWithTx['tx'],
+  ) {
+    const [row] = await tx
+      .select()
+      .from(specimen)
+      .where(eq(specimen.id, id))
+      .limit(1);
+    if (!row) {
+      throw new NotFoundException('Specimen not found');
+    }
+    const label = toSpecimenLabelDto(row);
+    return {
+      resourceId: row.id,
+      before: label,
+      after: label,
+    };
   }
 }

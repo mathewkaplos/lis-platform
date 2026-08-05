@@ -102,3 +102,20 @@ export const specimenSearchQuerySchema = z.object({
   orderId: z.uuid().optional(),
 });
 export type SpecimenSearchQuery = z.infer<typeof specimenSearchQuerySchema>;
+
+/**
+ * TASK-046 revision §2/§5: both barcodes encode the accession number alone
+ * (KB-24 "minimise PHI... lean on the opaque accession ID") — no patient
+ * name, MRN, order id, or test name anywhere in this response. Returned by
+ * both `GET /v1/specimens/:id/label` (unaudited preview) and
+ * `POST /v1/specimens/:id/print` (audited, §10 Q2 resolved: no reprint
+ * distinction beyond the audit_event write).
+ */
+export const specimenLabelSchema = z.object({
+  accessionNumber: z.string(),
+  specimenType: specimenTypeSchema,
+  receivedAt: z.iso.datetime().nullable(),
+  code128Svg: z.string(),
+  dataMatrixSvg: z.string(),
+});
+export type SpecimenLabel = z.infer<typeof specimenLabelSchema>;

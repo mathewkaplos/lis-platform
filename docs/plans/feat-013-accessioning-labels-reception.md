@@ -1,8 +1,8 @@
 # Implementation Proposal: FEAT-013 Accessioning, labels & reception
 Status: TASK-045 IMPLEMENTED — merged PR #297 (`792e373`), closing #104. TASK-047 IMPLEMENTED —
-merged PR #300 (`8081c2f`), closing #106. TASK-046 IMPLEMENTED (pending merge) — implementation
-complete and verified 2026-08-05, PR not yet opened. TASK-048 remains open, to be specified as its
-own revision once TASK-046 merges, same precedent as FEAT-011/FEAT-012.
+merged PR #300 (`8081c2f`), closing #106. TASK-046 IMPLEMENTED — merged PR #303 (`d3a20af`),
+closing #105. TASK-048 remains open, to be specified as its own revision once TASK-046's real
+output exists, same precedent as FEAT-011/FEAT-012.
 ADR: none — §10 Q1's resolution (a SEQUENCE-based generator, diverging from `engineering/api-design`
 entry #9) is written up as a new Skill entry (§10), not an ADR: it's a documented technique choice
 with a stated rationale and a real precedent already in this schema (`audit_event.sequence`), not a
@@ -593,9 +593,11 @@ confirmed in TASK-045's own proposal and re-confirmed here).
 ---
 
 # Revision: TASK-046 — Label rendering (Code128+DataMatrix) + print pipeline
-Status: IMPLEMENTED (pending merge) — all four questions (§10) resolved via the native
-options-prompt 2026-08-05; implementation complete and fully verified the same session (§11).
-Merge PR/SHA to be recorded on close-out.
+Status: IMPLEMENTED — merged PR #303 (`d3a20af`), closing #105. All four questions (§10) resolved
+via the native options-prompt 2026-08-05; implementation complete and fully verified the same
+session (§11), including three real findings (SVG payload-verification, dark-mode barcode
+visibility, and a Next.js RSC-payload PHI leak) fixed the same session. "Deploy to Staging" run
+31029673042 (triggered by this PR's merge) completed successfully.
 Date: 2026-08-05    Backlog ID: FEAT-013 (#22) / TASK-046 (#105)
 
 ## 1. Goal

@@ -1,0 +1,66 @@
+import { z } from "zod";
+
+/**
+ * TASK-051 (FEAT-014 revision, docs/plans/feat-014-result-entry-engine.md):
+ * single source of truth for both request validation and OpenAPI generation
+ * (engineering/api-design Skill entry #1), same as every other domain file.
+ *
+ * `observation.data_type` (packages/db/src/schema/observation.ts) is a
+ * native Postgres enum with 10 values (KB-14) — this schema deliberately
+ * covers only 3 of them (proposal §10 Q2, resolved 2026-08-06), matching
+ * the AC's own literal "Numeric, coded, and text" wording. The other 7
+ * (ordinal, boolean, ratio, datetime, table, structured, attachment) are
+ * real, described in KB-14, and genuinely out of scope until a task needs
+ * them — not representable through this endpoint today.
+ */
+export const resultEntryDataTypeSchema = z.enum(["quantity", "coded", "text"]);
+export type ResultEntryDataType = z.infer<typeof resultEntryDataTypeSchema>;
+
+/**
+ * The request body shared by both the draft (`PUT .../results/:analyteId`)
+ * and finalize (`POST .../results/:analyteId/finalize`) routes — a
+ * discriminated union so exactly one typed value field is required and no
+ * other is accepted, per `dataType` (proposal §2). The server independently
+ * checks the submitted `dataType` matches the target analyte's own catalog
+ * `dataType` — this schema alone cannot know that, it only shapes the body.
+ */
+export const resultEntrySchema = z.discriminatedUnion("dataType", [
+  z.object({ dataType: z.literal("quantity"), valueNum: z.number() }),
+  z.object({ dataType: z.literal("coded"), valueCode: z.string().min(1) }),
+  z.object({ dataType: z.literal("text"), valueText: z.string().min(1) }),
+]);
+export type ResultEntryInput = z.infer<typeof resultEntrySchema>;
+
+/**
+ * `observation.status`'s two pre-verification values this task ever writes
+ * (proposal §1 finding #2) — `'verified'`/`'reported'`/etc. are TASK-055+'s
+ * own scope, never written here.
+ */
+export const observationStatusSchema = z.enum(["registered", "preliminary"]);
+export type ObservationStatus = z.infer<typeof observationStatusSchema>;
+
+/**
+ * Response shape — a flat object (like `Order`/`Specimen`, not a
+ * discriminated union) since callers (TASK-052's grid UI) need the
+ * flagging/range fields regardless of `dataType`; only the one value field
+ * matching `dataType` is ever non-null.
+ */
+export const observationSchema = z.object({
+  id: z.uuid(),
+  orderedTestId: z.uuid(),
+  analyteId: z.uuid(),
+  dataType: resultEntryDataTypeSchema,
+  valueNum: z.number().nullable(),
+  valueCode: z.string().nullable(),
+  valueText: z.string().nullable(),
+  unit: z.string().nullable(),
+  refLow: z.number().nullable(),
+  refHigh: z.number().nullable(),
+  refCondition: z.string().nullable(),
+  refSource: z.string().nullable(),
+  flags: z.array(z.string()),
+  status: observationStatusSchema,
+  producedAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+});
+export type ObservationResult = z.infer<typeof observationSchema>;

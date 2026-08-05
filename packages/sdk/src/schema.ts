@@ -324,6 +324,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ordered-tests/{id}/results/{analyteId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["ObservationController_draft"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ordered-tests/{id}/results/{analyteId}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ObservationController_finalize"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ordered-tests/{id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ObservationController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -455,6 +503,31 @@ export interface components {
             receivedAt: string | null;
             code128Svg: string;
             dataMatrixSvg: string;
+        };
+        ObservationDto_Output: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            orderedTestId: string;
+            /** Format: uuid */
+            analyteId: string;
+            /** @enum {string} */
+            dataType: "quantity" | "coded" | "text";
+            valueNum: number | null;
+            valueCode: string | null;
+            valueText: string | null;
+            unit: string | null;
+            refLow: number | null;
+            refHigh: number | null;
+            refCondition: string | null;
+            refSource: string | null;
+            flags: string[];
+            /** @enum {string} */
+            status: "registered" | "preliminary";
+            /** Format: date-time */
+            producedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
         };
     };
     responses: never;
@@ -908,6 +981,69 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    ObservationController_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                analyteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationDto_Output"];
+                };
+            };
+        };
+    };
+    ObservationController_finalize: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                analyteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ObservationController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationDto_Output"][];
+                };
             };
         };
     };

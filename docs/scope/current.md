@@ -1,3 +1,88 @@
+# Status — 2026-08-05 (session 14)
+
+Last commit on main: `3b82056` — "docs: TASK-045 close-out -- plan doc status updated with merge
+SHA" (PR #298).
+
+## TASK-045 (FEAT-013's first task) merged this session, via PR #297 (`792e373`) — EPIC-003's third
+feature has started
+
+`/orient` re-ran milestone discovery from scratch per session 13's own instruction rather than
+assuming FEAT-013 was automatically next — all three signals (GitHub Milestones, breadcrumb,
+FEAT-013's own issue #22) agreed cleanly. FEAT-013 (#22) names four tasks; TASK-045 (#104,
+accession-number generation) is the only one with no unmet dependency (TASK-042, already merged).
+Implementation Proposal `docs/plans/feat-013-accessioning-labels-reception.md` drafted and approved
+2026-08-05, deliberately scoped to TASK-045 only — same narrowing precedent as every prior feature
+in this repo (FEAT-010/011/012). TASK-046/047/048 remain open, to be specified as revisions to the
+same file once their own real output exists.
+
+**Real, load-bearing finding from the proposal's own research, not present in TASK-045's issue
+text:** `packages/db/src/schema/specimen.ts` already existed (TASK-023/FEAT-006,
+`0009_order_specimen.sql`) with `accessionNumber: text NOT NULL` and a per-tenant unique index — but
+no code anywhere had ever inserted into `specimen`, the same "table exists, unused" pattern already
+hit twice before (`order`/`ordered_test` before TASK-042, the catalog tables before TASK-043). Per
+KB-03 ("Receive & Accession. Lab receipt confirms condition and assigns the accession identifier"),
+the actual `specimen` row insert belongs to TASK-047 (reception), not TASK-045 — this task delivers
+only the generation mechanism, consumed later.
+
+**Two real, human-approved decisions, both resolved via the native options-prompt (proposal §10),
+not silently assumed:**
+1. **Generator mechanism: a Postgres `SEQUENCE` (`nextval()`), not the MRN's retry-on-unique-
+   violation pattern (`engineering/api-design` entry #9).** A pre-existing code comment in
+   `patient.controller.ts` (written during TASK-039, before FEAT-013 was ever scoped) had already
+   anticipated this task by name and number, flagging retry-on-violation as insufficient for
+   "concurrent analyzer writes." `nextval()` is lock-free and doesn't degrade under concurrent
+   callers; proven directly, not just argued — 200 concurrent calls against real Postgres produced
+   200 unique values (the literal AC). Reuses `audit_event.sequence`'s own already-shipped precedent
+   (global sequence, not per-tenant — a global-unique value trivially satisfies per-tenant
+   uniqueness) and its documented `GRANT USAGE, SELECT ON SEQUENCE` gotcha, applied proactively this
+   time rather than rediscovered. Written up as a new `engineering/api-design` Skill entry #13.
+2. **Format: `YYMMDD-NNNNNN`** (UTC date generated + 6-digit zero-padded global sequence, e.g.
+   `260805-000123`) — no existing convention named one anywhere in this repo or the KB.
+
+No controller, no domain Zod schema, no new capability — TASK-045 exposes no HTTP surface by design
+(proposal §5); nothing to regenerate in `apps/api/openapi.json`/`packages/sdk/src/schema.ts`.
+
+**One real gotcha caught during implementation, not part of the approved proposal's own text:**
+`db.execute(sql\`...\`)` on the `node-postgres` driver returns the raw `pg` `QueryResult`
+(`{ rows: [...] }`), not a bare destructurable array — the first call site in this repo to read a
+scalar value back from `db.execute()` rather than discard it (every prior call site was a discarded
+`SELECT set_config(...)`). Confirmed by reading `drizzle-orm`'s own `node-postgres/session.js`
+source directly, not assumed. Missed in the same-day Skill write-up during implementation itself —
+caught by `/close`'s own review of the session's work, not by a human catching it later. Written up
+as `database-design` Skill entry #7.
+
+Verified end-to-end against real Postgres: migration `0014_accession_sequence.sql` (hand-written,
+per `database-design` entry #5's precedent for objects outside drizzle's schema vocabulary) applies
+cleanly on top of the existing 13; a fresh `drizzle-kit generate` afterward confirms zero pending
+diff; the `GRANT` independently re-verified by connecting as the real `lis_app` role (not the
+migration/superuser role) and calling `nextval()` directly; the new e2e spec and the full existing
+48-test `apps/api` suite both green; repo-wide `typecheck`/`lint` green. CI green on both PRs
+(`#297` the implementation, `#298` the plan-doc close-out); the `Deploy to Staging` run #297's merge
+auto-triggered completed successfully; #298 (docs-only) correctly did not trigger a second deploy
+(`paths-ignore` working as intended).
+
+**Also found this session, real Docker-availability friction, not a code bug:** `docker` was not
+found in PATH at all at session start (WSL integration inactive) — a third, distinct flavor of
+"Docker unavailable at session start" this project has now hit (session 10: daemon crashed under
+memory pressure; session 12: WSL2 backend hung 10+ minutes with no daemon socket; this session:
+`docker` absent entirely). Resolved by locating the real `Docker Desktop.exe` path directly
+(`find`, since a first guessed path silently failed) and launching it from WSL, then polling
+`docker info` until ready (~10s once launched). Written up as `engineering/docker-pnpm-monorepo-
+deploy` Skill entry #23, approved and pushed via this session's own `/close` Pre-Close Report.
+
+`#104` auto-closed via PR #297's bare `Closes #104` line — correct on the first try this time, no
+repeat of the recurring PR-body-prose gotcha (`#99`/`#265`/`#74`/`#93`/`#94` before it).
+
+**FEAT-013 remaining**: TASK-046 (label rendering, #105, depends on TASK-045 — now unblocked),
+TASK-047 (reception screen, #106, depends on TASK-045 — now unblocked), TASK-048 (collection queue,
+#107, depends on TASK-047). `engineering/barcode-printing` and `domain/specimen-lifecycle` Skills,
+named as "Required Skills" by FEAT-013's own issue (#22), still don't exist — not drafted this
+session since neither was load-bearing for TASK-045's own narrow scope (proposal §4); genuinely
+needed once TASK-046/047 actually start. `/orient`'s next run should specify TASK-046 or TASK-047 as
+a revision to `docs/plans/feat-013-accessioning-labels-reception.md`, not start a new proposal file.
+
+---
+
 # Status — 2026-08-04 (session 13)
 
 Last commit on main: 2f567e3 — "fix(audit): hash undefined-valued keys the way jsonb storage

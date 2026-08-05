@@ -1,8 +1,8 @@
 # Implementation Proposal: FEAT-013 Accessioning, labels & reception
 Status: TASK-045 IMPLEMENTED — merged PR #297 (`792e373`), closing #104. TASK-047 IMPLEMENTED —
 merged PR #300 (`8081c2f`), closing #106. TASK-046 IMPLEMENTED — merged PR #303 (`d3a20af`),
-closing #105. TASK-048 remains open, to be specified as its own revision once TASK-046's real
-output exists, same precedent as FEAT-011/FEAT-012.
+closing #105. TASK-048 IMPLEMENTED (pending merge) — implementation complete and verified
+2026-08-05, PR not yet opened. This is FEAT-013's fourth and final task.
 ADR: none — §10 Q1's resolution (a SEQUENCE-based generator, diverging from `engineering/api-design`
 entry #9) is written up as a new Skill entry (§10), not an ADR: it's a documented technique choice
 with a stated rationale and a real precedent already in this schema (`audit_event.sequence`), not a
@@ -954,3 +954,233 @@ state, unchanged since).
   in both light and dark mode, zero console/page errors throughout. The one AC line genuinely not
   verifiable here — "prints correctly on the design partner's actual printer" — is explicitly left
   open pending a design-partner demo (§1/§6/§7), not silently claimed done.
+
+---
+
+# Revision: TASK-048 — Collection queue screen
+Status: IMPLEMENTED (pending merge) — the one open question (§10) resolved via the native
+options-prompt 2026-08-05; implementation complete and fully verified the same session (§11).
+Merge PR/SHA to be recorded on close-out.
+Date: 2026-08-05    Backlog ID: FEAT-013 (#22) / TASK-048 (#107)
+
+## 1. Goal
+
+TASK-047 (reception) is merged and is this task's own stated dependency. TASK-048's own issue
+(#107) AC is narrow and literal: "Pending collections list correctly with priority and required
+tubes." Its labels (`area:frontend`, `size:m`) signal a frontend-only, one-day screen — no new
+migration or backend resource implied.
+
+**This is FEAT-013's fourth and final task.** Merging it closes the feature entirely (all four
+tasks' AC met, modulo TASK-046's own already-flagged, still-open physical-printer verification
+gap, unrelated to this task).
+
+**Real, load-bearing finding from this proposal's own research, not present in TASK-048's issue
+text:** the AC's literal phrase "required tubes" implies a specimen-type/container requirement per
+test — but no such data exists anywhere in this repo's schema. `test_definition`
+(`packages/db/src/schema/test-catalog.ts`) has no specimen-type, container, or tube column; KB-22's
+own "Specimen-requirement resolution" open question (`22-sample-management.md:121`) is still
+unresolved. This exact gap was flagged twice already, anticipating this task by name: TASK-047's
+own revision §6 ("TASK-048's own AC... needs 'required tubes' data this task does not produce... its
+revision will need to either resolve that gap or narrow its own scope around it") and
+`domain/specimen-lifecycle` Skill entry #3. **This proposal narrows "required tubes" to mean "which
+tests/panels are still pending collection"** (each pending `OrderedTest`'s own catalog display
+name) rather than a literal container/tube vocabulary — the same class of narrowing every prior
+task in this feature has used for KB-22/23/24's fuller model — raised explicitly as §10's one open
+question rather than silently decided, since it's a real, visible divergence from the AC's own
+literal wording.
+
+**Second real finding**: "pending collection" has no existing derivation anywhere in this repo.
+`order.status` only ever transitions `'ordered' → 'cancelled'` (never a "completed"/"fulfilled"
+value, per `order.ts`'s own header comment) — an order whose every test has already been received
+still shows `status: 'ordered'`, so filtering on order-level status alone is not sufficient and
+would incorrectly include fully-collected orders. The correct predicate is per-`OrderedTest`:
+"has at least one `orderedTest` row with `status: 'ordered'`" (i.e., not yet collected, received,
+cancelled, or rejected) — resolvable entirely from data `GET /v1/orders` already returns, needing
+no backend change (§2).
+
+## 2. Affected files
+
+- `apps/web/app/(app)/collection-queue/page.tsx` (new, Server Component) — fetches `GET
+  /v1/orders?status=ordered` (the existing filter, narrowing to non-cancelled orders — matches
+  `orders/page.tsx`'s own precedent) and `GET /v1/catalog` (for test display names, matching
+  `orders/page.tsx`/`reception/page.tsx`'s own identical `testNameById` resolution pattern) in
+  parallel. Filters the result **client(server-component)-side** to orders having at least one
+  `orderedTest` with `status === 'ordered'` (§1 finding #2), and further reduces each order's own
+  `orderedTests` array to just the pending ones for display — no backend change, no new endpoint
+  (§10 is about display wording, not this mechanism, which isn't in question). Sorts STAT-priority
+  first, then oldest-`createdAt` first within each priority tier (oldest-pending-first is the
+  natural "what to collect next" ordering; no AC or KB text specifies a different one, and this is
+  low-stakes enough not to raise as its own question).
+- `apps/web/app/(app)/collection-queue/collection-queue-table.tsx` (new, client component) —
+  `DataTable`/`Badge` primitives, `orders-table.tsx`'s own structure as the direct template
+  (columns: Patient, Priority via the same `PRIORITY_VARIANT` Badge styling, Tests pending
+  collection, Ordered at) plus one new column this task's own AC needs that `orders-table.tsx`
+  doesn't have: a "Receive" quick-action linking to `/reception?orderId=` (reusing
+  `orders/[id]/page.tsx`'s own "Receive at reception" link precedent directly — zero new
+  server-side code, since `reception/page.tsx` already accepts `?orderId=`).
+- `apps/web/app/(app)/_components/sidebar.tsx` — new "Collection queue" nav entry, matching every
+  prior FEAT-01x screen's own precedent (Patients, Orders, Reception each gained one at their own
+  task).
+- **No backend change.** `GET /v1/orders` (TASK-042/044), its existing `status` filter, and its
+  existing `orderedTests[]`/patient-summary response shape already carry everything this screen
+  needs. **No new migration, no new capability, no new controller route.**
+
+## 3. Architecture consulted
+
+- **TASK-048 issue (#107) AC**: "Pending collections list correctly with priority and required
+  tubes." Dependency: TASK-047 (merged). Expected output: "Collection queue screen."
+- **FEAT-013 issue (#22) AC** (parent, cited for context): "Collection queue correctly lists
+  pending collections with priority and required tubes" — identical wording, no additional detail.
+- **Google Stitch Prompt Library §7.8 "Collection Queue"** (read in full,
+  `Google-Stitch-Prompt-Library.md:164`) — describes a much fuller "Pattern E work queue": tabs
+  (Awaiting/Scheduled/Difficult/Completed today), wait time, location/room, assigned phlebotomist,
+  quick actions collect/print/defer. **Deliberately narrower than this mockup**, same precedent as
+  every prior feature (FEAT-011 §1, FEAT-012 §1, TASK-047 §1): no tabs, no location/phlebotomist
+  assignment, no wait-time tracking — none of that data exists anywhere in this repo's schema, and
+  this task's own literal AC names only priority and (narrowed, §1) required tubes.
+- **KB-22 Sample Management** (re-checked, `22-sample-management.md:121`) — "Specimen-requirement
+  resolution" open question, the direct source of §1's core finding; still unresolved.
+- **KB-03 Business Workflows** (re-checked) — no order-level "fulfilled"/"completed" state exists;
+  confirms §1 finding #2's per-`OrderedTest` predicate is the correct one, not an order-level filter.
+- **`packages/db/src/schema/order.ts`** (re-read) — `order.status` CHECK is `('ordered','cancelled')`
+  only (§1 finding #2); `orderedTest.status` CHECK includes the full KB-03 lifecycle, confirming
+  `'ordered'` is the correct "still pending collection" value to filter on.
+- **`apps/web/app/(app)/orders/page.tsx` + `orders-table.tsx`** (read in full) — direct precedent
+  for the `GET /v1/orders` + `GET /v1/catalog` parallel-fetch/`testNameById` pattern, and for the
+  `DataTable`/`Badge`/`PRIORITY_VARIANT` table shape this task's own table reuses almost verbatim.
+- **`apps/web/app/(app)/reception/page.tsx`** (re-read) — confirms `?orderId=` is already the
+  established no-scanner entry point into reception from another screen (already used by
+  `orders/[id]/page.tsx`'s "Receive at reception" link) — this task's own "Receive" action reuses
+  the identical mechanism a third time, not inventing a new one.
+- **`engineering/api-design` Skill** — entry #4 (defer building ahead of a real need) directly
+  supports §1's "no new endpoint" decision — the existing `GET /v1/orders` already carries
+  sufficient data; entry #6 (reads aren't capability-gated) confirms no new capability is needed
+  since no new route is added at all.
+- **`domain/specimen-lifecycle` Skill** — entry #3 (no catalog-driven tube/container data exists,
+  already flagged as the reason TASK-047 couldn't auto-split specimens) is the exact same gap this
+  task's own AC runs into from a different angle; entry #7 (barcode-printing is a separate concern)
+  re-checked, not implicated here.
+- **`engineering/frontend-design` Skill** — entry #1 (`StatusPill` reserved for clinical result
+  flags, not general resource status) re-confirms `orders-table.tsx`'s own choice of `Badge` for
+  priority, reused here for consistency, not `StatusPill`.
+
+## 4. Skills loaded
+
+- `engineering/api-design` — re-checked, see §3. No new route in this task, so most entries are not
+  directly implicated; entry #4's "don't build ahead of a real need" is the one doing real work here.
+- `domain/specimen-lifecycle` — re-checked, see §3. Entry #3 is the direct precedent for this task's
+  own "required tubes" narrowing (§1/§10).
+- `engineering/frontend-design` — re-checked, see §3.
+- `testing` — re-checked; shapes §8's insistence on real e2e coverage of the underlying data (via
+  the existing `order.e2e-spec.ts` suite, unchanged by this task) plus a real headless-browser check
+  of the new screen, not a mocked table.
+- `engineering/barcode-printing` — re-checked; not implicated (this task shows test names, not
+  barcodes or printing).
+
+## 5. Assumptions & autonomous decisions
+
+- **No backend change at all** — `GET /v1/orders?status=ordered` plus a client(server-component)-
+  side filter to orders with ≥1 pending `orderedTest` is sufficient, reusing 100% existing API
+  surface. A dedicated `pendingCollection` query-filter or a new endpoint was considered and
+  rejected as unnecessary scope for what this task's own AC needs (§6 notes the one real trade-off
+  this choice accepts).
+- **Sort order: STAT priority first, then oldest-`createdAt` first within each tier.** No AC or KB
+  text specifies an ordering; this is the natural "most urgent, longest-waiting first" default a
+  real collection queue would want. Low-stakes and reversible (a client-side sort), not raised as
+  an open question.
+- **"Tests pending collection" replaces the literal "required tubes" AC wording** (§1) — raised as
+  §10's one open question, not silently decided, since it's a genuine, visible divergence from the
+  AC's own text.
+- **A "Receive" quick action per row**, linking to `/reception?orderId=`, reusing the existing
+  no-scanner entry point verbatim. Not named in TASK-048's own AC, but a collection queue with no
+  path to actually act on a row would be substantially less useful, and this costs zero new backend
+  code or risk (§2) — matching TASK-047's own "one deliberate exception to strict AC-only scope, since
+  the API already fully supported it" precedent (`docs/plans/feat-012-order-entry.md`'s "Cancel
+  order" link, cited there for the identical reasoning shape).
+
+## 6. Risks
+
+- **`GET /v1/orders`'s existing `ORDER_SEARCH_RESULT_LIMIT` (100) is applied before this task's own
+  client-side pending-collection filter runs** — if a tenant ever has more than 100 non-cancelled
+  orders outstanding at once, some genuinely-pending-collection orders could be silently excluded
+  from the queue (truncated before the filter sees them). Not a realistic concern at this
+  milestone's real data volumes (matching this repo's own stated deferred-pagination precedent,
+  `engineering/api-design` entry #4), but a real, known limitation worth stating plainly rather than
+  leaving implicit. A dedicated backend `pendingCollection` filter (considered and rejected in §5)
+  would have avoided this specific edge case at the cost of a new backend surface for a 1-day
+  frontend-labeled task — revisit if real order volume ever approaches the limit.
+- **"Required tubes" is displayed as pending test/panel names, not real container/tube data** (§1) —
+  a genuine, visible narrowing from the AC's literal wording, not an oversight. If the design
+  partner's real workflow needs actual container/tube information on this screen, that requires
+  KB-22's own still-open "Specimen-requirement resolution" question to be answered first (a real
+  catalog schema addition), not something this task can derive from data that doesn't exist.
+
+## 7. Acceptance criteria
+
+TASK-048's literal AC, with §1's narrowing stated plainly:
+- [ ] Pending collections list correctly with priority. Judged by: the collection queue screen
+  shows exactly the orders with ≥1 `orderedTest` still `status: 'ordered'`, each with its real
+  `order.priority`, verified against a real seeded order set (§8).
+- [ ] **"Required tubes," narrowed to "tests/panels pending collection"** (§1/§10): each row shows
+  the display names of that order's own still-pending tests, resolved from the real catalog, not a
+  literal container/tube vocabulary (which no data anywhere in this repo could support).
+
+## 8. Testing plan
+
+1. `pnpm --filter web typecheck`/`lint`/`build` with the new route and table component.
+2. No new e2e spec needed at the API layer — this task adds no backend code; the existing
+   `order.e2e-spec.ts` suite (unchanged) already proves the underlying data this screen reads is
+   correct. Re-run the full existing `apps/api` e2e suite anyway to confirm zero regression from
+   touching nothing there.
+3. Real headless-Chromium browser check (`web-verify` Skill): seed a real mix of orders (STAT and
+   routine, some fully received, some partially received via an explicit `orderedTestIds` subset,
+   some untouched) via the real API, then confirm the collection-queue screen shows only the
+   genuinely-pending ones, with the correct pending-test names and priority badges, STAT sorted
+   first; click "Receive" on a row and confirm it lands on the correct pre-filled reception lookup;
+   confirm dark mode and keyboard-only navigation to a row's "Receive" action, matching TASK-046/047's
+   own verification depth.
+4. `pnpm typecheck`/`pnpm lint`/`pnpm build` at the repo root.
+
+## 9. Rollback plan
+
+Purely additive, frontend-only: one new route, one new table component, one new sidebar entry.
+Rollback is reverting the PR — no migration, no capability, no backend route exists to unwind.
+
+## 10. Questions requiring human approval
+
+1. **RESOLVED 2026-08-05 — "required tubes" narrowed to "tests/panels pending collection".** Each
+   pending `OrderedTest`'s catalog display name, not a literal container/tube vocabulary — no
+   specimen-type/container/tube data exists anywhere in this repo's catalog schema (§1, KB-22's own
+   still-open "Specimen-requirement resolution" question remains unresolved, not addressed by this
+   task).
+
+**Question resolved — implementation begins now.**
+
+## 11. Real findings during implementation
+
+- **§6's `ORDER_SEARCH_RESULT_LIMIT` risk confirmed live, not just theoretical**: this repo's own
+  accumulated e2e/manual-verification runs across TASK-042 through TASK-048 have left well over 100
+  real, still-`'ordered'`-status orders in `TENANT_A`. A freshly-seeded verification order was
+  confirmed (via a direct, unfiltered `GET /v1/orders?status=ordered` call) to fall outside the
+  100-row cap and not appear in the collection queue at all — the exact truncation §6 flagged as a
+  known, accepted limitation, now observed for real, this early, specifically *because of* how much
+  verification data this repo's own workflow accumulates per task, not because of genuine production
+  order volume. Confirmed the underlying logic itself is correct anyway, without relying on rows the
+  UI couldn't show: a direct `GET /v1/orders/:id` call on a deliberately-partially-received seeded
+  order confirmed exactly one `orderedTest` still `status: 'ordered'` (the other `'received'`) —
+  proving the page's `.filter(t => t.status === 'ordered')` transform would correctly reduce that
+  order's "Tests pending collection" to just the one real pending test. Real, correctly-populated
+  existing rows (spanning many prior sessions' fixtures) supplied the rest of the UI-level proof: STAT
+  rows sorted before all routine rows, chronological order within each tier, varying per-row pending-
+  test lists, and zero fully-received orders visible anywhere in the list. Not fixed here (§6 already
+  scoped a dedicated backend filter as the real fix, rejected for this task's own size); flagged
+  explicitly in the breadcrumb as a heads-up that this repo's own test-data accumulation, not just
+  hypothetical future production scale, is what will hit this limit next.
+- No other real bugs. Every AC (§7) verified directly: repo-wide `typecheck`/`lint`/`build` (all
+  four `packages/*` and both `apps/*`) green; the full existing 62-test `apps/api` e2e suite green
+  (unchanged, confirming zero regression from a task that touches no backend code); a real
+  headless-Chromium session (`web-verify` Skill) confirmed the collection queue's priority-sort and
+  pending-test filtering (via the direct-API cross-check above, since the UI itself couldn't surface
+  the newest synthetic rows past the 100-row cap), the "Receive" quick action landing on the correct
+  pre-filled reception screen, dark mode, and keyboard-only Tab/Enter navigation to a row's "Receive"
+  button — zero console/page errors throughout.

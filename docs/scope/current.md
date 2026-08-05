@@ -1,8 +1,67 @@
 # Status — 2026-08-05 (session 16)
 
-Last commit on main: `d3a20af` — "feat(api,web): specimen label rendering (Code128+DataMatrix) +
-print pipeline, TASK-046 (FEAT-013)" (PR #303). PR #304 (docs close-out, merge SHA recorded) also
-this session.
+Last commit on main: `27857e9` — "feat(web): collection queue screen, closing FEAT-013 -- TASK-048"
+(PR #305). PR #303 (TASK-046, `d3a20af`) and its docs close-out (PR #304) also this session — see
+below.
+
+## FEAT-013 fully implemented this session — all four tasks now merged; TASK-048 (PR #305,
+`27857e9`, closing #107) was the last one
+
+Continuing directly from this same session's own TASK-046 work (no new `/orient` cycle — the human
+asked for TASK-048 by name mid-session), the same plan doc
+(`docs/plans/feat-013-accessioning-labels-reception.md`) gained its fourth and final revision.
+TASK-048's own issue (#107) AC: "Pending collections list correctly with priority and required
+tubes." Labels (`area:frontend`, `size:m`) signalled a frontend-only, one-day screen.
+
+**Real, load-bearing finding from this revision's own research**: the AC's literal "required
+tubes" has no supporting data anywhere in this repo's schema — `test_definition` has no
+specimen-type/container/tube column, and KB-22's own "Specimen-requirement resolution" open
+question (flagged twice already by TASK-047) is still unresolved. Raised as the revision's one open
+question, resolved via the native options-prompt (recommended option): "required tubes" narrowed to
+"tests/panels pending collection" (each pending `OrderedTest`'s own catalog display name), not a
+literal container/tube vocabulary.
+
+**Second real finding**: "pending collection" has no order-level status of its own —
+`order.status` only ever transitions `'ordered' → 'cancelled'`, never a "completed"/"fulfilled"
+value — so the correct predicate is per-`OrderedTest` (`status: 'ordered'`), not an order-level
+filter. This meant **no backend change was needed at all**: `GET /v1/orders?status=ordered` (the
+existing filter) plus `GET /v1/catalog`, filtered/reduced server-component-side to orders with ≥1
+still-pending test, was sufficient — reusing 100% existing API surface, matching the task's own
+`area:frontend` label.
+
+Delivered: `/collection-queue` (STAT-priority first, then oldest-first; Patient/Priority/"Tests
+pending collection"/Ordered-at columns, `orders-table.tsx`'s own `DataTable`/`Badge` shape reused
+almost verbatim) plus a "Receive" quick action per row reusing the existing
+`/reception?orderId=` entry point. Sidebar gained "Collection queue."
+
+**Real finding confirmed during this session's own verification, not fixed (already flagged as an
+accepted risk in the approved proposal's own §6)**: `GET /v1/orders`'s `ORDER_SEARCH_RESULT_LIMIT`
+(100) truncation was observed live, not just theoretically — this repo's own accumulated
+e2e/manual-verification data across TASK-042 through TASK-048 already exceeds 100 real pending
+orders in the dev tenant, so a freshly-seeded verification order fell outside the cap and never
+appeared in the collection-queue UI. Worked around for verification purposes by cross-checking the
+underlying filter logic directly via the API (confirmed a deliberately-partially-received seeded
+order correctly showed exactly one still-pending test) rather than relying on rows the UI couldn't
+surface, plus using the large pool of already-visible real rows as UI-level proof (correct
+STAT/routine grouping, chronological sort, varying per-row pending-test lists, zero fully-received
+orders visible). **Worth knowing for future sessions**: this repo's own verification workload, not
+production scale, is what will hit list-endpoint caps like this first — a heads-up, not yet a task.
+
+Verified end-to-end: repo-wide `typecheck`/`lint`/`build` green; the full existing 62-test
+`apps/api` e2e suite green (unchanged — this task touches no backend code, confirming zero
+regression); a real headless-Chromium session confirmed priority-sort/pending-test filtering (via
+the direct-API cross-check above), the "Receive" action landing on the correct pre-filled reception
+screen, dark mode, and keyboard-only Tab/Enter navigation to a row's "Receive" button — zero
+console/page errors. `#107` auto-closed via PR #305's bare `Closes #107` line.
+
+**FEAT-013 (#22) itself and its remaining child-task tracking are ready to close** — all four tasks
+merged, the plan doc's own top-level status updated to "FULLY IMPLEMENTED," pending only the
+standard manual-comment close (bare `Closes` lines don't auto-close a parent feature/epic issue,
+the same recurring gotcha as `#99`/`#265`/`#74`/`#93`/`#94` before it). EPIC-003 (Pre-Analytical
+Workflow, #3) has no other open feature named — `/orient`'s next run should re-check whether EPIC-003
+itself is now closeable or whether M3's own exit criteria still name unclosed work.
+
+---
 
 ## TASK-046 (FEAT-013's third task) merged this session, via PR #303 (`d3a20af`), closing #105 —
 FEAT-013 now 3 of 4 tasks done; only TASK-048 remains

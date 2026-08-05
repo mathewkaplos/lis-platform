@@ -11,10 +11,15 @@ on:
     # timeout and took real staging down (api/web stopped, never
     # restarted) until a human noticed and a rerun fixed it. Root-scoped
     # *.md (not **/*.md) so a PR touching both code and a nested package
-    # README still triggers normally.
+    # README still triggers normally. .claude/** added 2026-08-05: a
+    # Skill-file-only change (PR #307, zero application-code diff)
+    # triggered the exact same unnecessary redeploy this filter exists to
+    # avoid -- harmless that time, but real wasted CI/deploy time, and this
+    # project's own standing rule requires same-day Skill updates routinely.
     paths-ignore:
       - 'docs/**'
       - '*.md'
+      - '.claude/**'
   workflow_dispatch: {}
 
 jobs:

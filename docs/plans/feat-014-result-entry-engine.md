@@ -247,6 +247,17 @@ result'` e2e case, and by the golden-dataset test's own group-then-merge logic (
 entries by dimensional key before comparing, since a single key can legitimately have more than one
 golden-file entry). Written up as `domain/reference-ranges` Skill entry #9.
 
+**Second real finding, caught only by CI, not local testing:** the golden-dataset test's first draft
+hardcoded `at: new Date('2026-08-05T12:00:00Z')`. `db/golden/chemistry-ranges-criticals.json`'s
+underlying `reference_range` rows default `effectiveFrom` to whenever `db/seed/chemistry-catalog.sql`
+actually ran (real insert time), which varies by environment — the local dev Postgres had been seeded
+earlier in the day, so its rows' `effectiveFrom` fell before the hardcoded cutoff by coincidence, but
+CI seeds fresh at CI run time (~20:06 UTC), landing *after* the hardcoded noon cutoff and excluding
+every row via the effective-window check — 14 of 14 analytes failed in CI with `no_range` while all
+85 tests passed locally. This is exactly the class of environment-dependent gap only a real CI run
+(not local-only testing) catches — fixed by using call-time `new Date()` instead of a hardcoded date,
+since seeding always precedes the test run regardless of environment.
+
 Verified end-to-end against real Postgres: the new `reference-range-resolution.e2e-spec.ts` (23
 tests: golden-dataset sex/condition/critical coverage for all 14 seeded chemistry analytes, plus
 synthetic-fixture coverage for age boundaries, method specificity, priority/effectiveFrom tie-break,

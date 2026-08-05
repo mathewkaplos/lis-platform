@@ -122,7 +122,15 @@ describe('Reference-range resolution (e2e)', () => {
             patientSex: (sample.sex as 'M' | 'F' | null) ?? 'M',
             patientBirthDate: new Date('1990-01-01T00:00:00Z'),
             condition: sample.condition,
-            at: new Date('2026-08-05T12:00:00Z'),
+            // Call-time "now", not a hardcoded date: db/seed/chemistry-catalog.sql's
+            // reference_range rows default effectiveFrom to whenever the seed
+            // actually ran (real insert time), which varies by environment (a
+            // long-lived local Postgres seeded in the past vs. CI seeding fresh
+            // at CI run time). A hardcoded cutoff can land before that real
+            // effectiveFrom and wrongly exclude every row -- caught by a real
+            // CI run failing where this same spec passed locally, exactly
+            // because CI's fresh seed timestamp landed after the hardcoded date.
+            at: new Date(),
           });
 
           const resolved =

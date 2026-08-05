@@ -1,3 +1,90 @@
+# Status — 2026-08-05 (session 16)
+
+Last commit on main: `d3a20af` — "feat(api,web): specimen label rendering (Code128+DataMatrix) +
+print pipeline, TASK-046 (FEAT-013)" (PR #303). PR #304 (docs close-out, merge SHA recorded) also
+this session.
+
+## TASK-046 (FEAT-013's third task) merged this session, via PR #303 (`d3a20af`), closing #105 —
+FEAT-013 now 3 of 4 tasks done; only TASK-048 remains
+
+`/orient` re-ran milestone/next-task discovery from scratch per session 15's own instruction.
+TASK-046 (label rendering) and TASK-048 (collection queue) were the two remaining FEAT-013 tasks,
+both unblocked. TASK-046 chosen over TASK-048 because it carries `priority:critical` (TASK-048 is
+only `priority:high`), it's the AC item most directly tied to the epic's own stated purpose
+("without a printed label there is no usable lab workflow"), and its blocking factor (no physical
+printer in this sandbox) affects only the final hardware-verification step of its AC — not
+implementation — whereas TASK-048's own blocker (no catalog-driven specimen-type-requirement data
+anywhere in the schema, flagged in TASK-047's own proposal §6) is a real, unresolved data-modeling
+gap that would need its own dedicated decision, not one squeezed under a smaller task. Implementation
+Proposal revision (`docs/plans/feat-013-accessioning-labels-reception.md`) drafted with four open
+questions (print pipeline shape, reprint-tracking scope, label content, library choice), all
+resolved via the native options-prompt same-session, all with the recommended option chosen.
+
+**This is FEAT-013's first physical-output feature and its first route built specifically to
+guarantee zero PHI in the document — both genuinely novel, no prior precedent existed anywhere in
+this repo.** `bwip-js` (confirmed via live Context7 docs, pure-JS, no native/canvas build step)
+renders both Code128 and Data Matrix from the specimen's own accession number alone, matching
+KB-24's PHI-minimization default. `POST /v1/specimens/:id/print` reuses the existing `audit_event`
+mechanism (no new print-log table) — every print, first or repeat, audited identically as
+`specimen.label_print`, no reprint-reason code (KB-24 names none). `GET /v1/specimens/:id/label` is
+an unaudited pure-read preview. `apps/web` gained `/specimens/[id]/label` (print preview + browser
+`window.print()` trigger — no PDF/printer-SDK/ZPL integration exists or was built, the realistic MVP
+shape given no printer hardware anywhere) and a "Print label" link on the reception success card.
+
+**Three real, non-blocking-to-merge findings during implementation, not part of the approved
+proposal's own text, all fixed the same session:**
+1. `bwip-js`'s SVG output can't be verified by string-matching the encoded payload for either
+   symbology (`includetext` renders vector glyph paths, not a literal `<text>` element; Data Matrix
+   has no text overlay at all) — the e2e test's first draft asserted this and failed correctly-working
+   code. Fixed by adding a new unit-level differential test (`label-render.spec.ts`: different input
+   → different output, same input → identical output) instead of string-matching rendered SVG.
+2. **Dark mode: the barcode was nearly invisible** (black bars on this repo's dark `bg-surface` card)
+   — screenshot-confirmed during this task's own `web-verify` pass. Fixed by forcing the label card
+   to an unconditional white/black appearance, independent of the app's dark-mode tokens — also the
+   correct design regardless of the bug, since a physical label always prints black-on-white.
+3. **The most significant: Next.js client-side navigation (`next/link`) left the reception page's
+   patient name/MRN in the label page's own DOM**, even though the label page's own rendered content
+   and its own data fetch never touch patient data — App Router's client-side nav never replaces
+   `document`; a previously-visited route's RSC payload stays behind as inline `<script>` content.
+   Caught only by a real headless-browser check reading `document.body.textContent` (invisible to
+   typecheck/lint/build, to the screenshot, and to every other check in the testing plan). Fixed by
+   changing the "Print label" link to a plain `<a>` tag, forcing a full page navigation.
+
+Both findings #2 and #3 written up as new `lis-engineering` Skill entries: `engineering/
+barcode-printing` (drafted this session — named as a Required Skill by FEAT-013's own issue,
+flagged-but-not-drafted twice by TASK-045/047, this task's own real output is the first genuine
+source for it) and `engineering/frontend-design` entry #5 (the general Next.js RSC-payload-retention
+mechanism, cross-referenced from barcode-printing #6).
+
+**Real sandbox friction, not a code bug, reproducing an already-documented `web-verify` gotcha**:
+reusing one minted session cookie across several browser verification runs interleaved with
+unrelated password-grant logins (creating test fixtures via the API) caused real `401`s from
+`apps/api` partway through — the exact Keycloak refresh-token-rotation gotcha the Skill already
+documents. Resolved by minting a fresh cookie immediately before each run, per the Skill's own
+existing guidance.
+
+Verified end-to-end: 5 new e2e tests + 3 new unit tests + the full existing 62-test `apps/api` e2e
+suite green; repo-wide `typecheck`/`lint`/`build` (all four `packages/*` and both `apps/*`) green;
+the real compiled `apps/api` server booted successfully with both new routes mapped
+(`engineering/api-design` entry #10's own discipline); a real headless-Chromium session drove the
+actual UI end-to-end against real Keycloak/Postgres/the compiled `apps/api` server in both light and
+dark mode, with keyboard-only Tab/Enter navigation to both the "Print label" link and the "Print"
+button, a real `window.print()` call confirmed firing, and zero console/page errors throughout.
+`#105` auto-closed via PR #303's bare `Closes #105` line. The literal AC line "prints correctly...
+on the design partner's actual printer" is explicitly left open pending a design-partner demo — no
+physical printer exists anywhere in this repo or sandbox — not silently claimed done.
+
+**FEAT-013 remaining**: only TASK-048 (collection queue, #107, depends on TASK-047 — merged, so
+unblocked) is left. Its own AC ("required tubes") still needs catalog-driven specimen-type-requirement
+data that doesn't exist anywhere in this repo yet — flagged in TASK-047's own proposal §6, not solved
+by TASK-046 either; TASK-048's revision will need to either resolve that gap or narrow its own scope
+around it, the same "deliberately narrower than the full model" precedent every prior task in this
+feature has used. `/orient`'s next run should specify TASK-048 as a revision to `docs/plans/
+feat-013-accessioning-labels-reception.md`, not start a new proposal file — this will be the fourth
+and final revision closing out FEAT-013 entirely.
+
+---
+
 # Status — 2026-08-05 (session 15)
 
 Last commit on main: `8081c2f` — "feat(api,web): specimen reception -- scan-to-receive, coded

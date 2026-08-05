@@ -1,3 +1,88 @@
+# Status — 2026-08-05 (session 17)
+
+Last commit on main: `93ed635` — "feat(db): reference-range resolution service, closing TASK-049
+(FEAT-014)" (PR #309), closing #108.
+
+## `/orient` confirmed FEAT-013/#22 already closed; EPIC-002/EPIC-003 and TASK-027's sign-off
+(#171) all remain open on the same non-code blocker — a real, recurring, business-level gap, not
+actionable by engineering work
+
+Re-running milestone/next-task discovery per session 16's own instruction: FEAT-013 (#22) was
+already closed via comment (found closed, not needing action). EPIC-003 (#3), EPIC-002 (#2), and
+TASK-027's own sign-off follow-up (#171) are each blocked on the identical, real cause — no
+design-partner lab relationship exists yet anywhere in this project — confirmed independently
+across all three issues this session, not just carried forward from memory. This is a
+business-relationship blocker, not something a future `/orient` should keep re-diagnosing as if it
+might have changed; treat as a standing, human-owned item until a design partner exists.
+
+With M2/M3's code genuinely done and M1 down to the same non-code blocker, **M4 ("Chemistry Result
+Loop," the thesis milestone) was recommended and approved as the next real engineering surface**,
+starting at FEAT-014's first task, TASK-049 (range resolution) — its one dependency (TASK-018) was
+already closed.
+
+## TASK-049 (FEAT-014's first task) merged this session, via PR #309 (`93ed635`), closing #108 —
+M4 has genuinely started
+
+Drafted the two Skills FEAT-014's own issue (#23) names as required
+(`domain/reference-ranges`, `domain/clinical-chemistry`, both pushed to `lis-engineering`), then a
+new Implementation Proposal (`docs/plans/feat-014-result-entry-engine.md`) scoped to TASK-049 only
+— same narrowing precedent every prior feature in this repo has used. Two open questions (§10)
+resolved via the native options-prompt, recommended option chosen for each: specificity-scoring
+weights (a weighted sum where `method` alone outranks any lower-tier combination, matching KB-15's
+qualitative example) and how to prove the literal AC ("passes for all sex/age/method dimensions")
+given the golden dataset only ever exercises sex/condition — resolved as: prove sex/condition/
+criticals against the real golden dataset, prove age/method/edge-cases against new synthetic,
+explicitly non-clinical e2e fixtures, the same "state the gap plainly" precedent TASK-027 itself
+already set for this exact file.
+
+**Real, load-bearing finding from this proposal's own research:** `reference_range` (TASK-018, M1)
+and `observation`'s snapshot fields (TASK-020) already implement KB-15's full model end-to-end —
+**no schema change was needed**. No code anywhere had ever queried `reference_range` for resolution
+or written to any of `observation`'s snapshot fields — the same "table exists, unused" pattern
+already found three times before in this repo.
+
+**Real finding during implementation, not anticipated when the proposal was drafted:** the golden
+dataset's critical thresholds are pairs of one-sided rows sharing identical dimensional keys (e.g.
+Glucose: `{low: null, high: 40}` + `{low: 500, high: null}`), not one two-sided row — KB-15's own
+schema comment sanctions this ("either bound optional -> one-sided"). A resolver that picks a
+single "best match" row per `rangeType` would silently drop one threshold; fixed by merging tied
+rows instead of picking one (`ResolvedRange.rangeRowIds` is a `string[]`, reflecting that honestly).
+Written up as `domain/reference-ranges` Skill entry #9.
+
+**Real bug caught by CI, not local testing — the reason this PR needed two pushes:** the
+golden-dataset e2e test's first draft hardcoded `at: new Date('2026-08-05T12:00:00Z')`. The
+underlying `reference_range` rows' `effectiveFrom` defaults to real seed-insert time, which varies
+by environment — local dev Postgres had been seeded earlier in the day (passed by coincidence, 85/85
+green locally), but CI seeds fresh at CI run time (~20:06 UTC that same day), landing *after* the
+hardcoded cutoff and excluding every row (14/14 analytes failed in CI with `no_range`). Fixed by
+using call-time `new Date()` instead — always safe, since seeding precedes the test run in any
+environment. **Worth remembering: this class of environment-timing bug is invisible to any amount
+of local-only e2e testing** — only a real CI run against a genuinely fresh database catches it.
+
+Delivered: `packages/db/src/reference-range.ts` (`resolveReferenceRange`, the pure KB-15
+specificity-scoring/tie-break algorithm; `resolveObservationRange`, the DB-querying wrapper
+resolving both `normal` and `critical` `rangeType` independently). No HTTP surface by design —
+TASK-051 will be the first real caller, matching TASK-045's own "service first, consumer later"
+precedent. `patient.sex = 'U'` and a null `patient.birthDate` are both handled as real, explicit
+"unknown" states that match only wildcard rows, never a specific-dimension row.
+
+Verified end-to-end: 23 new e2e tests (golden-dataset sex/condition/critical coverage for all 14
+seeded chemistry analytes, plus synthetic-fixture coverage for age boundaries, method specificity,
+priority/`effectiveFrom` tie-break, `sex='U'`, null `birthDate`, unit mismatch, no-candidate,
+effective-window exclusion, and the critical one-sided-merge case); the full existing 62-test
+`apps/api` e2e suite green (85/85 total, zero regression — this task reads existing tables, writes
+none); repo-wide `typecheck`/`lint`/`build` green (all `packages/*`, both `apps/*`, including a real
+`next build`/`nest build`). `#108` auto-closed via PR #309's bare `Closes #108` line. `Deploy to
+Staging` (run 31043047078, triggered by the merge) completed successfully.
+
+**FEAT-014 remaining**: TASK-050 (flagging service, N/H/L/HH/LL with boundary correctness) is the
+next task — its own dependency is TASK-049, now satisfied. TASK-051 (result entry API), TASK-052
+(result entry UI), TASK-053 (calculated fields, eGFR/LDL) remain after it. `/orient`'s next run
+should specify TASK-050 as a revision to `docs/plans/feat-014-result-entry-engine.md`, not start a
+new proposal file.
+
+---
+
 # Status — 2026-08-05 (session 16)
 
 Last commit on main: `27857e9` — "feat(web): collection queue screen, closing FEAT-013 -- TASK-048"

@@ -1,6 +1,7 @@
 # Implementation Proposal: FEAT-014 Result entry engine
-Status: TASK-049 **IMPLEMENTED** — pending PR merge SHA (added at close-out). Both §10 questions
-resolved 2026-08-05 via the native options-prompt, recommended option chosen for each.
+Status: TASK-049 **IMPLEMENTED** — merged PR #309 (`93ed635`), closing #108. Both §10 questions
+resolved 2026-08-05 via the native options-prompt, recommended option chosen for each. TASK-050
+(flagging service) is FEAT-014's next task, to be specified as a revision to this same file.
 ADR: none — the resolution algorithm itself is a direct implementation of KB-15's already-canonical
 design, not a new cross-cutting architectural decision; §10's two open questions are implementation
 choices within that design, written up as new `domain/reference-ranges` Skill entries once resolved,

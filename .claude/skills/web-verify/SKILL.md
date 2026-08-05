@@ -94,25 +94,56 @@ using the exact same signing shape `apps/web/auth/session.ts`'s
 as if it came from a real login, since it's signed with the same secret and
 shape.
 
+**Gotcha (2026-08-05, TASK-047 verification): the recipe below must carry
+real Keycloak-issued `accessToken`/`refreshToken`/`accessTokenExpiresAt`,
+not placeholders.** Since ADR-0014, `SessionPayload`
+(`apps/web/auth/session.ts`) requires non-empty `accessToken`/
+`refreshToken` and a numeric `accessTokenExpiresAt` in addition to
+`sub`/`tenantId`/`roles`/`idToken` -- `verifySession()` explicitly returns
+`undefined` (silent auth failure, no error surfaced) if any are missing.
+A cookie minted with only `sub`/`tenantId`/`roles`/`idToken` (this
+recipe's own previous version) authenticates for a purely static page but
+fails the moment the page calls `apps/api` via `getValidAccessToken()` --
+which is most real screens in this app. Get a real token pair from
+Keycloak first (same password-grant `get-keycloak-token.ts` uses), then
+sign the session around it:
+
 Run this **from inside `apps/web`** (needs to resolve the workspace's own
-`jose` dependency):
+`jose` dependency; requires local Keycloak up on `:8080`, same as any e2e
+run):
 
 ```bash
 cd ~/work/lis-platform/apps/web && node --input-type=module -e '
 import { SignJWT } from "jose";
+
+const tokenRes = await fetch("http://localhost:8080/realms/lis/protocol/openid-connect/token", {
+  method: "POST",
+  headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  body: new URLSearchParams({
+    grant_type: "password",
+    client_id: "lis-web",
+    username: "test-user",       // technologist, TENANT_A -- see order.e2e-spec.ts
+    password: "test-password",
+  }),
+});
+const tokenBody = await tokenRes.json();
+
 const secret = new TextEncoder().encode("dev-only-session-secret-change-in-production");
-const token = await new SignJWT({
-  sub: "test-user-1",
-  tenantId: "acme-labs",
-  roles: ["lab-tech"],
-  idToken: "fake-id-token-for-local-verification-only",
+const session = await new SignJWT({
+  sub: "test-user",
+  tenantId: "00000000-0000-0000-0000-000000000001",
+  roles: ["technologist"],
+  idToken: tokenBody.id_token ?? "fake-id-token-for-local-verification-only",
+  accessToken: tokenBody.access_token,
+  refreshToken: tokenBody.refresh_token,
+  accessTokenExpiresAt: Date.now() + tokenBody.expires_in * 1000,
 })
   .setProtectedHeader({ alg: "HS256" })
   .setIssuedAt()
   .setExpirationTime("30m")
   .setAudience("lis:session")
   .sign(secret);
-console.log(token);
+console.log(session);
 '
 ```
 
@@ -121,9 +152,22 @@ Set it as a cookie named `lis_session` (domain `localhost`, path `/`,
 `context.addCookies(...)`, or a `curl -H "Cookie: lis_session=<token>"` for
 a quick SSR-only structural check without a browser at all).
 
-If `SESSION_SECRET`, the audience (`lis:session`), or the payload shape
-ever change in `apps/web/auth/session.ts`, update this recipe to match --
-it will otherwise mint a token `verifySession` silently rejects.
+**Gotcha:** re-using one minted session cookie across two separate
+Playwright script invocations several minutes apart failed the second
+time (a page that should have loaded showed an API-driven "not found"
+state instead, with no thrown error) -- re-minting a fresh token
+immediately before each run fixed it. Not root-caused (plausibly Keycloak
+refresh-token rotation invalidating the earlier token once a new
+password-grant login happened for the same user in between), but mint a
+fresh cookie per verification run rather than reusing a saved one from
+earlier in the session.
+
+If `SESSION_SECRET`, the audience (`lis:session`), or `SessionPayload`'s
+own fields ever change again in `apps/web/auth/session.ts`, diff this
+recipe against the real interface before trusting it -- a stale recipe
+fails silently (a rejected cookie looks identical to "not logged in" or,
+worse, to the target page's own unrelated not-found state), not with an
+error pointing back here.
 
 ## 3. Real headless Chromium in this sandbox
 
@@ -164,13 +208,30 @@ Also pin `executablePath` explicitly to the cached build -- this repo's
 resolved `playwright` version can expect a different internal browser
 revision (`chromium_headless_shell-XXXX`) than what's actually cached
 (`chromium-XXXX`), producing a spurious "Please run `npx playwright
-install`" error even though a perfectly good Chromium build already exists:
+install`" error even though a perfectly good Chromium build already exists.
+
+**Gotcha (2026-08-05, TASK-047 verification): don't hardcode the revision
+number or the internal directory name -- both drift as `playwright`'s
+pinned version moves, and both had already changed since this Skill was
+first captured.** A previous version of this doc hardcoded
+`chromium-1148/chrome-linux/chrome`; the real cached build this session
+was `chromium-1234/chrome-linux64/chrome` -- a newer revision *and* a
+different directory suffix (`chrome-linux64`, not `chrome-linux`).
+Following the stale hardcoded path failed with "executable doesn't exist"
+even though a perfectly good cached build was present one `find` away.
+Resolve it dynamically instead:
+
+```bash
+CHROME_DIR=$(find ~/.cache/ms-playwright -maxdepth 1 -iname "chromium-*" -type d | sort -V | tail -1)
+export CHROME_BIN=$(find "$CHROME_DIR" -maxdepth 2 -iname "chrome" -type f | head -1)
+echo "$CHROME_BIN"
+```
 
 ```js
 import { chromium } from '/home/mat/work/lis-platform/node_modules/.pnpm/playwright@1.62.1/node_modules/playwright/index.mjs';
 const browser = await chromium.launch({
   args: ['--no-sandbox'],
-  executablePath: '/home/mat/.cache/ms-playwright/chromium-1148/chrome-linux/chrome', // match the real cached build dir
+  executablePath: process.env.CHROME_BIN, // resolved via the `find` above, not hardcoded
 });
 ```
 

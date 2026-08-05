@@ -1,7 +1,8 @@
 # Implementation Proposal: FEAT-014 Result entry engine
 Status: TASK-049 **IMPLEMENTED** — merged PR #309 (`93ed635`), closing #108. TASK-050
-**IMPLEMENTED** — merged PR #311 (`5a24d83`), closing #109. TASK-051 (result entry API) is
-FEAT-014's next task, to be specified as a revision to this same file.
+**IMPLEMENTED** — merged PR #311 (`5a24d83`), closing #109. TASK-051 **IMPLEMENTED** — merged PR
+#313 (`8739c7f`), closing #110. TASK-052 (result entry UI) is FEAT-014's next task, to be specified
+as a revision to this same file.
 ADR: none — the resolution algorithm itself is a direct implementation of KB-15's already-canonical
 design, not a new cross-cutting architectural decision; §10's two open questions are implementation
 choices within that design, written up as new `domain/reference-ranges` Skill entries once resolved,
@@ -447,8 +448,9 @@ total, zero regression); repo-wide `typecheck`/`lint`/`build` green (including a
 ---
 
 # Revision: TASK-051 — Result entry API (draft/submit, typed values)
-Status: **APPROVED** — both §10 questions resolved 2026-08-06 via the native options-prompt,
-recommended option chosen for each. Implementation begins now.
+Status: **IMPLEMENTED** — merged PR #313 (`8739c7f`), closing #110. Both §10 questions resolved
+2026-08-06 via the native options-prompt, recommended option chosen for each. TASK-052 (result
+entry UI) is FEAT-014's next task, to be specified as a revision to this same file.
 Date: 2026-08-06    Backlog ID: FEAT-014 (#23) / TASK-051 (#110)
 
 ## 1. Goal
@@ -671,3 +673,172 @@ persisting and round-tripping correctly (the literal AC); the results-list read 
 produces zero new `audit_event` rows, finalize produces exactly one, both proven by an exact
 before/after count delta. The full existing 101-test `apps/api` e2e suite green (zero regression);
 repo-wide `typecheck`/`lint`/`build` green.
+
+---
+
+# Revision: TASK-052 — Result entry UI (analyte grid, live flags, autosave)
+Status: **APPROVED** — §10 Q1 resolved 2026-08-06 via the native options-prompt, recommended option
+(extend `GET /v1/catalog`) chosen. Implementation begins now.
+Date: 2026-08-06    Backlog ID: FEAT-014 (#23) / TASK-052 (#111)
+
+## 1. Goal
+
+TASK-051 (result entry API) is merged (PR #313, `8739c7f`). TASK-052's own issue: "Result entry UI
+(analyte grid, live flags, autosave)." Its one dependency, TASK-051, is satisfied. Its one AC: "A
+full chemistry panel is enterable without using the mouse."
+
+**This revision's scope is TASK-052 only.** `TASK-053` (calculated fields) remains open, to be
+specified as a revision to this same file once this task's real output exists.
+
+**Real, load-bearing finding #1:** the frontend has no way to learn, for a given `orderedTest`,
+*which* `analyteId` to submit results against, or that analyte's `dataType`/unit for rendering —
+`GET /v1/orders/:id` returns only `testDefinitionId` per ordered test, and `GET /v1/catalog`
+(already fetched by the order detail page) returns only `id`/`code`/`displayName` per test, no
+analyte information at all. This is a real, small gap TASK-051 didn't need to close (it takes
+`analyteId` as a URL param, supplied by whatever calls it) but this screen does. **Resolved via §10
+Q1** — extending `GET /v1/catalog`'s response, not adding a new endpoint.
+
+**Real, load-bearing finding #2:** this is the first screen in this repo needing per-field autosave
+(save-as-you-type-and-tab-away) rather than a single whole-form submission — every prior form
+(`reception-form.tsx`, `order-builder-form.tsx`, registration) uses `useActionState` bound to one
+`<form>`. A Next.js Server Action is a plain async function, callable directly from a Client
+Component's own event handler (not only via `<form action={fn}>`) — this screen calls
+`draftResult`/`finalizeResult` imperatively `onBlur`/on Enter, with per-row local state for the
+pending/value/flags, never exposing `getValidAccessToken()`'s token to the browser (ADR-0014's own
+server-side-only token boundary is preserved exactly the same way every prior screen preserves it —
+this is a new *interaction* pattern, not a new *auth* pattern).
+
+**Real, load-bearing finding #3:** `packages/ui`'s `StatusPill` component (TASK-035/036, `Badge`'s
+clinical-flag sibling) already models exactly `N | H | L | HH | LL | A` with the correct
+icon+color+"never color alone" treatment (Stitch Prompt Library §0) — built two milestones ago, with
+**zero consumers until this task**, since no screen has had real flag data before now. This is the
+"table exists, unused" pattern's UI-side equivalent, not a new component to design.
+
+## 2. Affected files
+
+- `apps/api/src/catalog/catalog.controller.ts` / `packages/domain/src/catalog.ts` — `CatalogTest`
+  gains an `analytes: CatalogAnalyte[]` array (`id`, `display`, `dataType`, `unit` display string),
+  populated via `test_analyte` (§10 Q1). Additive to an already-shipped, already-fetched-everywhere
+  response shape — no breaking change to any existing consumer (`orders/new`, `orders/[id]`).
+- `apps/web/app/(app)/orders/[id]/results/page.tsx` (new) — Server Component: fetches the order,
+  catalog (now with analytes), and — per `orderedTest` in `'received'`/`'in_process'` status — its
+  current results (`GET /v1/ordered-tests/:id/results`, `Promise.all` across the panel's own
+  ordered tests, matching `orders/[id]/page.tsx`'s existing `Promise.all` shape; bounded by a real
+  panel's real size, not paginated — same "don't build ahead of a real need" call as
+  `ORDER_SEARCH_RESULT_LIMIT`).
+- `apps/web/app/(app)/orders/[id]/results/results-grid.tsx` (new), `'use client'` — the actual
+  interactive grid: `packages/ui`'s `DataTable` (cell renderer hosts the input + `StatusPill`,
+  `engineering/frontend-design`'s own "compose from existing primitives" precedent) with columns
+  Analyte / Reference range / Result / Flag. Local state per row (value, pending, flags, finalized);
+  `onBlur` calls the draft Server Action, `Enter` calls finalize then moves focus to the next
+  not-yet-finalized row's input (native DOM `tabIndex`/`focus()`, no drag-drop or virtual-focus
+  library — a native `<table>`'s row order is already the Tab order).
+- `apps/web/app/(app)/orders/[id]/results/actions.ts` (new) — `draftResult`/`finalizeResult` Server
+  Actions, plain typed async functions (not `useActionState`-bound — finding #2), calling
+  `PUT`/`POST .../results/:analyteId` via the existing `createLisApiClient` pattern.
+- `apps/web/app/(app)/orders/[id]/results/loading.tsx`, `error.tsx` (new) — matching every existing
+  route's four-state convention (populated/empty/loading/error).
+- `apps/web/app/(app)/orders/[id]/page.tsx` — gains a "Enter results" link (mirroring the existing
+  "Receive at reception" link's own conditional-visibility pattern) when any `orderedTest` is
+  `'received'`/`'in_process'`.
+
+## 3. Architecture consulted
+
+- FEAT-014's own AC ("entered without touching the mouse") and KB-14 (Observation lifecycle —
+  already consumed via TASK-049/050/051, not new research here).
+- `Google-Stitch-Prompt-Library.md` §0 (never color-alone for clinical flags — `StatusPill` already
+  encodes this).
+- `docs/plans/feat-014-result-entry-engine.md`'s own TASK-051 revision — the exact request/response
+  shapes this screen calls.
+- ADR-0014 (session token bridge) — reaffirmed, not revisited: this screen's new *interaction*
+  pattern (imperative Server Action calls) doesn't touch the token-refresh boundary at all.
+
+## 4. Skills loaded
+
+- `domain/reference-ranges` (entries #6/#7/#10 — what a returned `no_range`/inverted-critical-field
+  result means for how the UI should render it, e.g. a `no_range` result shows no reference range,
+  not a blank-as-if-zero).
+- `domain/clinical-chemistry` (entry #6 — real seeded data is 14/14 `quantity`; §5 scopes the UI to
+  `quantity` input rendering only, `coded`/`text` input types deferred).
+- `engineering/frontend-design` (compose-from-primitives discipline, the RSC-payload-retention
+  gotcha from FEAT-013 — this task's route is a fresh page under `/orders/[id]/`, not reached via a
+  patient-data-bearing intermediate route, so that specific gotcha's precondition doesn't recur, but
+  checked explicitly rather than assumed).
+- `engineering/google-stitch-integration` (if a §7 prompt exists for "Dynamic Result Entry" —
+  FEAT-014's own issue names §9.1; consulted for layout, not literally implemented pixel-for-pixel
+  where it exceeds this task's real backend scope, same "deliberately narrower than the mockups"
+  precedent every prior frontend task in this repo has used).
+
+## 5. Assumptions & autonomous decisions
+
+- **UI renders `quantity` input only.** `domain/clinical-chemistry` entry #6: 14/14 seeded chemistry
+  analytes are `quantity`; no catalog-driven vocabulary exists for what a `coded` value's valid
+  options even are. Building `coded`/`text` input rendering now would be speculative UI for a shape
+  with no real catalog backing — deferred until a real `coded`/`text` analyte exists.
+- **Autosave triggers on blur, not on every keystroke.** Matches "autosave" as used by every other
+  system with this pattern (save on losing focus, not per-character network calls) and is the
+  natural moment in a keyboard-only Tab-driven flow — no debounce timer needed.
+- **`Enter` finalizes the current field and advances focus; it does not also require a prior
+  draft.** `finalizeResult` accepts the same value as draft (TASK-051's own design) — a user typing
+  a value and immediately pressing Enter (never blurring first) still works correctly in one call.
+- **Rows for `orderedTest.status === 'ordered'` (not yet received) are shown, disabled, with a
+  "Not yet received" state** — matching KB-03's own ordering (result entry requires reception
+  first, TASK-051's own `409` guard) — not hidden entirely, so the full panel's shape is still
+  visible.
+- **No new capability, no ADR** — `enter_result` already exists and is already used by TASK-051's
+  own endpoints; this screen is a pure consumer.
+
+## 6. Risks
+
+- **Where the analyte metadata should live is a real API-shape decision, not just a UI concern** —
+  raised as §10 Q1 rather than silently extending the catalog response, since it changes an
+  already-shipped, multi-consumer endpoint's shape.
+- **Focus management on Enter-to-advance is exactly the kind of interaction that's easy to get
+  subtly wrong** (skipping an already-finalized row, or a row still mid-flight from a prior save) —
+  §8's testing plan includes a real keyboard-driven `web-verify` pass specifically exercising this,
+  not just a unit test of the advance-logic in isolation.
+- **This is the first screen where a network call's *result* (live flags) must render back into the
+  same row a user might have already tabbed away from** — a slow draft response arriving after the
+  user has moved on (and possibly already started editing the next field) needs to update the
+  correct row without disturbing focus or an in-progress edit elsewhere. Handled by keying all state
+  updates by `orderedTestId`/`analyteId`, never by "the currently focused row."
+
+## 7. Acceptance criteria
+
+TASK-052's literal AC:
+- [ ] A full chemistry panel is enterable without using the mouse — proven via a real, keyboard-only
+  `web-verify` pass: Tab into the first field, type a value, Enter, repeat through every analyte in
+  a real CMP order, confirm every row finalizes and the order's own `orderedTest` statuses reach
+  `'resulted'`, with zero mouse interaction anywhere in the flow.
+
+## 8. Testing plan
+
+1. `pnpm --filter @lis/domain typecheck`/build with the extended `CatalogTest` schema.
+2. `apps/api/test/catalog.e2e-spec.ts` — extended to assert the real seeded CMP tests' `analytes`
+   arrays are populated and correctly shaped (real Postgres, not mocked).
+3. The full existing `apps/api` e2e suite re-run and confirmed still green (an additive response
+   field, no existing consumer's assertions should break — verified, not assumed).
+4. `web-verify` (real headless Chromium, this sandbox's own missing-`libnss3.so` workaround): a real
+   order → receive → results flow, keyboard-only, both light and dark mode; live flag rendering for
+   an in-range, an out-of-range, and a critical value (a real Glucose/Sodium/Potassium/Calcium
+   value, not synthetic); the "not yet received" disabled-row state; zero console/page errors.
+5. `pnpm typecheck`/`pnpm lint`/`pnpm build` at the repo root, including Storybook's `a11y` check
+   (this repo's CI-enforced a11y gate, TASK-037) for any new/changed `packages/ui` usage.
+
+## 9. Rollback plan
+
+Additive: one new route (`/orders/[id]/results`), one new Server Actions file, one extended
+response field (`CatalogTest.analytes`, ignorable by every existing consumer). Rollback is
+reverting the PR; no existing screen depends on the new field.
+
+## 10. Questions requiring human approval
+
+1. **How should the frontend learn each ordered test's required analyte(s) and their
+   dataType/unit?** **Recommended:** extend `GET /v1/catalog`'s `CatalogTest` with an `analytes`
+   array (`id`, `display`, `dataType`, `unit`) populated via `test_analyte` — reuses the endpoint
+   every order-adjacent screen already fetches, rather than a new per-`orderedTest` call (which
+   would mean up to 14 extra round trips just for metadata on a full-panel screen). The alternative
+   (a new `GET /v1/ordered-tests/:id` endpoint) is a real option but adds a second read path for
+   information the catalog already conceptually owns (which analytes a test definition produces).
+
+**RESOLVED 2026-08-06 — extend `GET /v1/catalog`, as recommended.** Implementation begins now.

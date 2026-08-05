@@ -1,5 +1,6 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { Badge, Card, CardContent, CardHeader, CardTitle } from '@lis/ui';
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@lis/ui';
 import { getValidAccessToken } from '@/auth/access-token';
 import { createLisApiClient } from '@/lib/api-client';
 import { CancelOrderButton } from './cancel-order-button';
@@ -70,6 +71,11 @@ export default async function OrderDetailPage({
                 {order.status}
               </Badge>
             </div>
+            {order.orderedTests.some((t) => t.status === 'ordered') ? (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/reception?orderId=${order.id}`}>Receive at reception</Link>
+              </Button>
+            ) : null}
             {order.status === 'ordered' ? <CancelOrderButton orderId={order.id} /> : null}
           </div>
         </CardHeader>

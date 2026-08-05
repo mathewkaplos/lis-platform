@@ -1,6 +1,8 @@
 # Implementation Proposal: FEAT-013 Accessioning, labels & reception
-Status: TASK-045 IMPLEMENTED — merged PR #297 (`792e373`), closing #104. TASK-046/047/048 remain
-open and will be specified as revisions to this same file, same precedent as FEAT-011/FEAT-012.
+Status: TASK-045 IMPLEMENTED — merged PR #297 (`792e373`), closing #104. TASK-047 revision drafted
+below — Status: DRAFT, three open questions (§10) awaiting approval. TASK-046/048 remain open and
+will be specified as revisions to this same file once their own real output exists, same precedent
+as FEAT-011/FEAT-012.
 ADR: none — §10 Q1's resolution (a SEQUENCE-based generator, diverging from `engineering/api-design`
 entry #9) is written up as a new Skill entry (§10), not an ADR: it's a documented technique choice
 with a stated rationale and a real precedent already in this schema (`audit_event.sequence`), not a
@@ -259,3 +261,330 @@ feature depends on this yet (`specimen` has zero real rows in any persistent env
    width is the only thing that would need revisiting — noted here, not built ahead of that need.
 
 **Both questions resolved — see Status header. Implementation begins now.**
+
+---
+
+# Revision: TASK-047 — Reception screen: scan-to-receive, coded rejection
+Status: IMPLEMENTED (not yet merged) — all three questions (§10) resolved via the native
+options-prompt 2026-08-05; implementation complete and fully verified the same session (§11).
+No PR opened yet.
+Date: 2026-08-05    Backlog ID: FEAT-013 (#22) / TASK-047 (#106)
+
+## 1. Goal
+
+TASK-045 (accession-number generation) merged (PR #297) and is directly consumable. TASK-045's own
+proposal §1 already established, from real research, that **this task — not TASK-045 — owns the
+first actual `specimen` row insert in this repo**: `packages/db/src/schema/specimen.ts` (TASK-023)
+has carried a `NOT NULL accessionNumber` column and full RLS coverage since FEAT-006 with zero
+writers. TASK-047 gives that table its first real behavior.
+
+TASK-047's own issue (#106) AC is narrow and literal: "Rejection requires a coded reason and is
+fully audited." Its dependency is TASK-045 only (merged). Its expected output is "Sample reception
+screen."
+
+**Real, load-bearing finding from this proposal's own research, not present in TASK-047's issue
+text:** FEAT-013 lists exactly four tasks (TASK-045/046/047/048) and none of them is "record
+collection." KB-03's canonical Specimen state machine (`03-business-workflows.md:76-79`) names
+`collected → received → accessioned → in_process → ...` as three distinct pre-analytical states
+before analysis, and KB-24's scan-event table (`24-barcoding.md:49-57`) lists "Collection,"
+"Receipt," and "Accessioning" as three separate scan-driven steps — but with no task in this feature
+(or any prior one) that creates a specimen row at collection time, **TASK-047 is necessarily the
+point where collection, receipt, and accessioning are all first represented in this system**, in one
+combined action. This is a real, deliberate narrowing against the full KB-22/23/24 model (custody
+event streams, scan-driven location tracking, a separate bedside PPID collection step) — the same
+class of "deliberately narrower than the full model" scoping every prior feature in this repo has
+used (FEAT-011 §1, FEAT-012 §1) — not an oversight. Full custody-event tracking (KB-23) and a
+dedicated collection/PPID step (KB-24, KB-41 mobile) are real future work, not this task's AC.
+
+**Real, load-bearing finding #2 — resolves an apparent schema contradiction, not silently assumed:**
+`specimen.accessionNumber` is `NOT NULL` (`specimen.ts:26`), yet the same file's own header comment
+states `rejected` is "reachable from receipt" — i.e. from the `received` state, which by definition
+already has a non-null `accessionNumber`. Read together, the schema's own design already answers
+the question KB-03's stage title ("**Receive & Accession**," one combined name, not two) suggests:
+**an accession number is assigned unconditionally at receipt, before condition is judged** — rejection
+is a possible *outcome* of an already-accessioned specimen, not a state that exists prior to
+accessioning. §5 designs TASK-047's single create action directly from this evidence, not as an open
+question.
+
+## 2. Affected files
+
+- `packages/domain/src/specimen.ts` (new) — `specimenTypeSchema` (`z.string().min(1)` — no catalog-
+  driven container/volume vocabulary exists yet, KB-22's own "Specimen-requirement resolution" open
+  question, `22-sample-management.md:121`; not invented here), `specimenRejectionReasonSchema`
+  (`z.enum([...])`, the exact seven values already CHECK-constrained in `specimen.ts:41-44`:
+  `haemolysed`, `clotted`, `insufficient_volume`, `mislabelled`, `wrong_container`,
+  `improper_temperature`, `expired` — matching this repo's established discipline that a Zod schema
+  must mirror an existing DB CHECK, never invent a parallel list), `specimenCreateSchema`
+  (`orderId`, `specimenType`, `orderedTestIds` optional, `collectedAt` optional,
+  `collectionContext` optional, `rejectionReason` optional — presence/absence is the accept/reject
+  branch, §5), `specimenSchema` (response shape), following `packages/domain/src/order.ts`'s exact
+  pattern (single source of truth for both `ZodValidationPipe` and OpenAPI generation,
+  `engineering/api-design` entry #1).
+- `packages/domain/src/index.ts` — new exports, matching the existing `order`/`patient` barrel
+  pattern.
+- `apps/api/src/specimen/specimen.controller.ts` (new), `specimen.module.ts` (new) — `SpecimenController`
+  at `/v1/specimens` per ADR-0013 §3. One creation endpoint (§5) plus a search/get-by-id pair
+  matching `OrderController`'s own shape (`PatientController`/`OrderController` are the direct
+  precedent for every guard/interceptor/DTO-instantiation convention below).
+- `apps/api/src/auth/capabilities.ts` — new `manage_specimens` capability (`Capability` union,
+  `ROLE_CAPABILITIES`), granted to both `technologist` and `verifier`, identical reasoning to
+  `manage_patients`/`manage_orders` (`capabilities.ts:1-19`): no dedicated reception/accessioning
+  role exists in Keycloak yet, and inventing one is a separate infra decision, not this task's scope.
+- `apps/api/src/app.module.ts` — register `SpecimenModule`, matching `OrderModule`'s own registration.
+- `apps/api/test/specimen.e2e-spec.ts` (new) — real-Postgres e2e suite, `order.e2e-spec.ts`'s own
+  structure as the direct template (§8).
+- `apps/web/app/(app)/reception/page.tsx` (new), `apps/web/app/(app)/reception/_actions.ts` (new) —
+  Server Component + Server Action, `apps/web/app/(app)/orders/new`'s own structure as the direct
+  template (a single-object create form, not a list/detail pair). New "Reception" sidebar entry,
+  matching how "Orders"/"Patients" each gained one (FEAT-011/012).
+- **No new migration.** `specimen`/`specimen_fulfillment` (TASK-023) already carry full RLS coverage
+  and every CHECK constraint this task needs — confirmed by reading `specimen.ts` in full (§1). This
+  is the first task in this repo to write application code against a table whose migration predates
+  it by multiple features, a lower-risk shape than every prior task in this feature.
+- **No Keycloak/infra change.** `manage_specimens` is resolved entirely in `capabilities.ts` against
+  the two realm roles that already exist — identical to how `manage_orders` needed none (FEAT-012
+  §2).
+
+## 3. Architecture consulted
+
+- **TASK-047 issue (#106) AC**: "Rejection requires a coded reason and is fully audited." Dependency:
+  TASK-045 (merged). Expected output: "Sample reception screen."
+- **KB-22 Sample Management** (read in full, `22-sample-management.md`) — Specimen state machine;
+  "Accessioning assigns the accession identifier... At accessioning, the specimen is linked to the
+  OrderedTests it will fulfil" (line 36-38, directly shapes §5's single combined action); coded
+  rejection reasons and their rationale (line 61-66, already implemented as `specimen.ts`'s CHECK
+  constraint — this task is the first to actually exercise it); specimen↔test M:N fulfilment model
+  (line 40-44, `specimenFulfillment` table, already exists from TASK-023).
+- **KB-23 Specimen Tracking** (read in full, `23-specimen-tracking.md`) — append-only custody event
+  stream, scan-driven location hierarchy (lines 24-53). **Explicitly out of scope for this task** —
+  no custody-event table exists, and TASK-047's own AC does not require location/chain-of-custody
+  tracking. Flagged as real future work (§6), not silently dropped.
+- **KB-24 Barcoding** (read in full, `24-barcoding.md`) — scan-event table (lines 49-57: Collection /
+  Receipt / Accessioning as three distinct scans); directly informs §1 finding #1 (this task
+  necessarily combines what the full model treats as three steps) and §5's "no physical scanner
+  hardware assumed" decision (§10 Q1).
+- **KB-03 Business Workflows** (`03-business-workflows.md:76-79,100-103`) — canonical Specimen state
+  machine and stage-3 narrative ("Receive & Accession... assigns the accession identifier... If
+  condition is unacceptable... rejected with a coded reason"), the direct source for §1 finding #2.
+- **`packages/db/src/schema/specimen.ts`** (read in full, TASK-023) — `accessionNumber NOT NULL`,
+  `status` CHECK (`ck_specimen_status`, 8 values), `rejectionReason` CHECK
+  (`ck_specimen_rejection_reason`, 7 values), `specimenFulfillment` M:N join table, both RLS-enabled.
+  Grepped for existing writers: none (confirmed by TASK-045's own proposal §1, re-confirmed here).
+- **`packages/db/src/accession.ts`** (read in full, TASK-045) — `generateAccessionNumber(db: DbOrTx):
+  Promise<string>`, takes the caller's transaction per its own header comment ("so a caller... can
+  generate the number and insert the specimen row as one unit") — this task is that caller.
+- **`packages/domain/src/order.ts`** (read in full) — `orderedTestStatusSchema` already includes
+  `received` and `rejected` (line 22-29, written during TASK-042 "reserved for FEAT-013+") — this
+  task is the first to actually write those two values.
+- **`apps/api/src/order/order.controller.ts`** (read in full) — direct precedent for: DTO
+  instantiation via explicit `new ZodValidationPipe(schema)` at each `@Body()`/`@Query()`/`@Param()`
+  (entry #8, vitest esbuild `design:paramtypes` gap); RLS-invisibility-as-404 pattern (line 319,
+  entry #7); the `{resourceId, before, after}` audited-response shape; batch-resolving a display
+  projection in one extra query rather than N+1 (`search()`'s patient-resolution, directly reused
+  here for order/patient display fields on the reception screen).
+- **`apps/api/src/auth/capabilities.ts`** (read in full) — `manage_patients`/`manage_orders` grant
+  precedent directly reused for `manage_specimens` (§2).
+- **`engineering/api-design` Skill** — entries #1 (single Zod source of truth), #7 (RLS-as-404),
+  #8 (explicit ZodValidationPipe instantiation), #9 (TASK-045's own divergence, not re-litigated
+  here — this task only *calls* `generateAccessionNumber`, it does not generate identifiers itself),
+  #13 (the new SEQUENCE-based-identifier entry TASK-045 wrote) all re-checked and applicable.
+- **`database-design` Skill** — entry #4 (grep every insert site before trusting a new constraint) —
+  re-run for this task: `specimen`/`specimen_fulfillment` have zero existing rows in any environment,
+  so no pre-existing-data conflict is possible.
+- **`rls-multi-tenancy` Skill** — re-checked; `specimen`/`specimen_fulfillment`'s RLS policies already
+  exist (TASK-023) and require no change; this task's own e2e suite (§8) adds a cross-tenant
+  RLS-invisibility test, matching `order`/`patient`'s own precedent, since this is the first real
+  write path through those policies.
+
+## 4. Skills loaded
+
+- `engineering/api-design` — in full, see §3.
+- `database-design` — in full, see §3. No migration needed (§2), but entry #4's insert-site check
+  still applies and was re-run.
+- `rls-multi-tenancy` — re-checked, see §3.
+- `testing` — re-checked; shapes §8's insistence on a real-Postgres e2e suite plus a real
+  headless-browser check (`web-verify` Skill), not a mocked reception flow.
+- `engineering/barcode-printing` — **still does not exist.** Named as "Required" by FEAT-013's own
+  issue (#22). Not drafted as part of this proposal: TASK-047's own scope (§5, §10 Q1) deliberately
+  assumes no physical scanner/printer hardware, so nothing in this task is actually load-bearing for
+  that Skill's content. Genuinely needed for TASK-046 (label rendering + print pipeline) — flagged
+  again so TASK-046's own revision doesn't silently skip drafting it, same flag TASK-045's proposal
+  already carried forward once.
+- `domain/specimen-lifecycle` — **still does not exist**, also named as "Required" by issue #22.
+  **This task is the first one with real, load-bearing decisions to draft it from** (§1's
+  three-scans-into-one finding, §5's accession-at-receipt design, the deliberate KB-23
+  custody-tracking exclusion) — drafting it is listed as autonomous prep in this revision's own
+  cover message, not deferred a second time.
+
+## 5. Assumptions & autonomous decisions
+
+- **One combined create action, not three separate collect/receive/accession steps.** Per §1 finding
+  #1/#2: `POST /v1/specimens` always calls `generateAccessionNumber` (satisfying the `NOT NULL`
+  constraint unconditionally, matching the schema's own evidenced design) and, depending on whether
+  `rejectionReason` is present in the request body, sets `status: 'accessioned'` (absent — the
+  specimen is also immediately linked to its fulfilled `OrderedTest`(s) via `specimenFulfillment`
+  rows, matching KB-22's "at accessioning, linked to the OrderedTests it will fulfil") or
+  `status: 'rejected'` with the coded reason (present). `receivedAt` is always set to now;
+  `collectedAt` is accepted optionally in the request body (if the physical collection time is known
+  and worth recording) but is never required or defaulted — matching `specimen.ts`'s own nullable
+  column. The literal intermediate `'received'` state (schema-valid, KB-03-named) is never written by
+  this task — nothing in this feature consumes it as a distinct state from `'accessioned'`, and
+  inventing a second follow-up "accession" action with no AC requiring it would be building ahead of
+  a real need (same discipline TASK-045 §5 already applied to daily sequence resets). Raised as §10
+  Q3 rather than silently decided, since it's a real, visible divergence from KB-03's literal
+  four-state list.
+- **`orderedTest.status` transitions with the specimen.** On accept: every `orderedTestId` the new
+  specimen fulfills transitions `'ordered' → 'received'` (skipping the schema-valid `'collected'`
+  state for the same reason as above). On reject: transitions to `'rejected'`. The
+  `'rejected' → (recollect → 'ordered')` loop KB-03 names is **not built** — no recollection
+  endpoint exists in this task or feature; a rejected `orderedTest` stays `'rejected'` until a future
+  task adds recollection. Flagged as a real, deliberate scope gap (§6), not an oversight.
+- **One specimen per reception submission, fulfilling every currently-`'ordered'` `orderedTest` on
+  the selected order by default**, with an optional `orderedTestIds` override for the (real, but
+  not catalog-verifiable yet) case where an order needs more than one tube. This is a genuine
+  narrowing against KB-22's full M:N model (line 40-44: "some tests require multiple specimens") —
+  the catalog has no container/volume-per-test data to auto-split against (KB-22's own "Specimen-
+  requirement resolution" open question, `22-sample-management.md:121`, still unresolved anywhere in
+  this repo), so auto-splitting would be invented, not derived. The `orderedTestIds` override exists
+  so a receiving user can still model a multi-tube order manually, one submission per tube.
+- **`specimenType` is free text (`z.string().min(1)`), not a fixed enum.** `specimen.ts`'s own column
+  is plain `text`, not CHECK-constrained (unlike `status`/`rejectionReason`) — mirroring that at the
+  domain layer is the same "don't invent a stricter constraint than the schema already chose"
+  discipline `database-design` entry #1 states. A curated specimen-type vocabulary is real future
+  work once the catalog actually drives container/volume requirements (KB-22's open question, again).
+- **No barcode/scanner hardware assumed.** "Scan-to-receive" is implemented as a single text input
+  (order lookup) that accepts a pasted/scanned/typed identifier identically — a keyboard-wedge
+  barcode scanner emits keystrokes into a focused text field, so no scanner-specific integration code
+  is needed either way. What that identifier resolves *to* (an Order id vs. a broader search) is
+  raised as §10 Q1, not assumed.
+
+## 6. Risks
+
+- **This task deliberately does not build KB-23's custody-event tracking, KB-24's bedside PPID
+  collection step, or KB-03's `rejected → recollect → ordered` loop.** Each is real, described in
+  detail in its own KB document, and genuinely absent from this task's own AC (§1). Flagged explicitly
+  so it is not mistaken for an oversight when a future feature needs one of them.
+- **`specimenType` has no catalog-driven validation** (§5) — a receiving user can type anything.
+  Acceptable for this task's own AC (which does not mention specimen-type correctness), but a real
+  latent data-quality gap until KB-22's "Specimen-requirement resolution" question is answered.
+- **`orderedTest.status` skips the schema-valid `'collected'` state** (§5) — anything that later
+  queries specifically for `'collected'` (as opposed to `'ordered'` or `'received'`) will find it
+  never occurs via this code path. No current code makes that query (confirmed by grep), but this is
+  worth knowing before TASK-048 (collection queue) is scoped, since "pending collection" may need to
+  mean "still `'ordered'`," not "`'collected'` but not yet `'received'`."
+- **TASK-048 (Collection queue, #107) depends on TASK-047** per its own issue text, but its own AC
+  ("lists pending collections with priority and required tubes") needs "required tubes" data this
+  task does not produce (no catalog-driven specimen-type requirement exists, per §5). Flagged here,
+  not solved here — TASK-048's own revision will need to either resolve that gap or narrow its own
+  scope around it, the same way this task narrowed around KB-22/23's fuller model.
+- **A rejected specimen still consumes a real accession number** (§1 finding #2, `NOT NULL`
+  constraint) — this is schema-forced, not a design choice this task could avoid, but worth stating
+  plainly: the accession sequence is not "reserved for accepted specimens only," so a lab with a high
+  rejection rate will see non-contiguous-looking accession numbers on accepted specimens. No AC is
+  affected (TASK-045's own AC was collision-safety, not contiguity), but worth knowing.
+
+## 7. Acceptance criteria
+
+TASK-047's literal AC (the only AC this proposal covers):
+- [ ] Specimen rejection requires a coded reason. Judged by: `POST /v1/specimens` with a
+  `rejectionReason` outside the seven CHECK-constrained values returns `400` (Zod validation); a
+  request with a valid coded reason succeeds and sets `status: 'rejected'`.
+- [ ] Specimen rejection is fully audited. Judged by: every `POST /v1/specimens` call (accept or
+  reject) writes an `audit_event` row (`@Audit({ action: 'specimen.receive', resourceType:
+  'specimen' })`), verified by a real e2e assertion against the audit table, not inferred from the
+  decorator's presence alone (matching this repo's own established audit-verification standard).
+
+## 8. Testing plan
+
+1. `pnpm --filter @lis/domain typecheck`/build with the new `specimen.ts` domain module;
+   `pnpm --filter api typecheck`/build with the new controller/module.
+2. A real e2e spec (`apps/api/test/specimen.e2e-spec.ts`), `order.e2e-spec.ts`'s structure as the
+   direct template, real Postgres, real Keycloak-issued tokens:
+   - accept path: valid `orderId` + `specimenType`, no `rejectionReason` → `201`, response has a
+     well-formed accession number (TASK-045's format), `status: 'accessioned'`; a follow-up query
+     confirms `specimenFulfillment` rows exist for every fulfilled `orderedTestId` and each
+     transitioned to `'received'`;
+   - reject path: same request plus a valid coded `rejectionReason` → `201`, `status: 'rejected'`,
+     `rejectionReason` echoed, accession number still present (§1 finding #2); fulfilled
+     `orderedTest`(s) transition to `'rejected'`;
+   - invalid `rejectionReason` (not in the seven-value list, or a free-text string) → `400`, no
+     specimen row written;
+   - unknown/cross-tenant `orderId` → `400`/`404` per `order.controller.ts`'s own established
+     pattern (RLS makes it structurally invisible, not a leaked-existence signal);
+   - both accept and reject paths independently confirmed to write a real `audit_event` row (§7);
+   - missing `manage_specimens` capability → `403` (`CapabilityGuard`, matching every existing
+     guarded endpoint's own test).
+3. The full existing `apps/api` e2e suite re-run and confirmed still green — this task adds no
+   migration and touches no existing table's constraints, so no regression is expected, but this
+   repo's own standing rule (verify, don't assume) applies regardless.
+4. Real headless-Chromium browser check (`web-verify` Skill, this sandbox's own missing-`libnss3.so`
+   workaround): look up a real order, submit an accept → confirm accession number displayed; submit a
+   reject with a coded reason on a second order → confirm rejected state displayed; attempt a
+   free-text rejection reason client-side → confirm it's blocked/coerced to the coded list, not sent
+   as free text.
+5. `pnpm typecheck`/`pnpm lint` at the repo root.
+
+## 9. Rollback plan
+
+Additive throughout: new `packages/domain`/`apps/api`/`apps/web` code, one new capability string, no
+migration. Rollback is reverting the PR — `specimen`/`specimen_fulfillment` (TASK-023) are
+unaffected structurally (this task only starts writing to already-existing, already-RLS'd tables);
+`manage_specimens`'s removal from `capabilities.ts` un-grants it with no Keycloak-side change needed.
+No production data depends on this yet (`specimen` has zero real rows in any persistent environment,
+confirmed in TASK-045's own proposal and re-confirmed here).
+
+## 10. Questions requiring human approval
+
+1. **RESOLVED 2026-08-05 — Order UUID + fallback search.** The reception screen's lookup field
+   accepts a scanned/pasted/typed Order UUID and falls back to reusing the existing `/orders` search
+   (`GET /v1/orders`) if the input doesn't parse as a UUID or isn't found — so a receiving user with
+   no scanner at all can still find the right order by patient/date/status, exactly as the existing
+   Orders screen already allows.
+2. **RESOLVED 2026-08-05 — `manage_specimens`, granted to both `technologist` and `verifier`.** Same
+   reasoning and precedent as `manage_patients`/`manage_orders` (§2/§3): no dedicated
+   reception/accessioning role exists in Keycloak yet; narrowing later is a small follow-up.
+3. **RESOLVED 2026-08-05 — combined collect+receive+accession in one action.** `POST /v1/specimens`
+   goes straight to `'accessioned'` (or `'rejected'`), skipping the schema-valid `'received'`
+   specimen state and `'collected'` `orderedTest` state — matches KB-03's own combined "Receive &
+   Accession" stage name and the `NOT NULL accessionNumber` evidence (§1 finding #2); nothing
+   downstream reads or writes those intermediate states today.
+
+**All three questions resolved — implementation begins now.**
+
+## 11. Real bugs found and fixed during implementation
+
+- **No join precedent existed anywhere in this repo** (`order.controller.ts`'s own `search()`
+  resolves multi-table data via separate queries + an in-memory `Map`, never `.innerJoin()`).
+  `search()`'s first draft used `.innerJoin()` to resolve `specimenFulfillment` → `orderedTest` in
+  one query; rewritten to the same separate-queries-plus-map shape as every other controller
+  before it shipped, rather than introduce a first, untested join-result-key convention
+  (drizzle keys joined rows by the imported table variable name, not the SQL table name — never
+  actually exercised in this codebase, so not worth being the first call site to rely on it).
+- **`nest build`/`tsc` silently produced an empty `dist/`** (exit 0, no output) when starting the
+  real compiled `apps/api` server for browser verification — the exact WSL2 incremental-build-cache
+  symptom sessions 10/13 both hit and left as "not chased further." Traced this time: a stale
+  `apps/api/tsconfig.build.tsbuildinfo` combined with `nest-cli.json`'s `deleteOutDir: true`.
+  Fixed by deleting the buildinfo file before rebuilding. Written up as `engineering/docker-pnpm-
+  monorepo-deploy` Skill entry #24 — the first session to leave a concrete fix instead of just the
+  symptom.
+- No other real bugs. Every AC (§7) verified directly: 11 new e2e tests (accept default-fulfil-all,
+  accept explicit subset, reject with coded reason + accession number still assigned, invalid
+  rejection reason 400, unknown orderId 400, cross-order orderedTestIds 400, zero-eligible-tests
+  400, missing-capability 403, search()/getById() fulfilled-ids, cross-tenant 404, nonexistent-id
+  404) plus the full existing 59-test suite, all green; repo-wide `typecheck`/`lint`/`build` (both
+  `apps/api` and `apps/web`) green; a real headless-Chromium session (`web-verify` Skill, this
+  sandbox's own missing-`libnss3.so` workaround) drove the actual UI end-to-end against real
+  Keycloak/Postgres/the compiled `apps/api` server: patient → order → "Receive at reception" →
+  accept (real accession number assigned, e.g. `260805-000625`) and, on a second order, reject
+  (coded reason `haemolysed`, accession number still assigned per §1 finding #2) — plus the
+  "nothing to receive" and lookup-not-found fallback states — all screenshotted, styled correctly,
+  zero console/page errors. `apps/api/openapi.json` and `packages/sdk/src/schema.ts` regenerated
+  (the recurring drift class `#292` tracks) so `apps/web` calls the new routes fully typed.
+- **One minor, deliberate implementation-time simplification versus this revision's own §2/§3
+  text**: `search()`/`getById()` do not resolve an order/patient display projection onto the
+  specimen response (§3 had cited `order.controller.ts`'s own patient-batch-resolution as
+  precedent) — dropped as unnecessary once actually building the reception screen, since the
+  screen already has the order's patient identity from the existing `GET /v1/orders/:id` call
+  before a specimen is ever created; nothing in TASK-047's own AC needs it duplicated onto the
+  specimen resource itself. Noted here as a real, small divergence from the written proposal, not
+  a silent one.

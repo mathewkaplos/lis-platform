@@ -17,13 +17,32 @@
  * `manage_orders` (TASK-042, FEAT-012 proposal §5): identical reasoning and
  * grant as `manage_patients` — order entry is the same front-desk-adjacent
  * action with no dedicated role yet.
+ *
+ * `manage_specimens` (TASK-047, FEAT-013 revision §2/§10 Q2): identical
+ * reasoning and grant as `manage_patients`/`manage_orders` — no dedicated
+ * reception/accessioning role exists in Keycloak yet.
  */
 export type Capability =
-  'enter_result' | 'verify' | 'manage_patients' | 'manage_orders';
+  | 'enter_result'
+  | 'verify'
+  | 'manage_patients'
+  | 'manage_orders'
+  | 'manage_specimens';
 
 const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
-  technologist: ['enter_result', 'manage_patients', 'manage_orders'],
-  verifier: ['enter_result', 'verify', 'manage_patients', 'manage_orders'],
+  technologist: [
+    'enter_result',
+    'manage_patients',
+    'manage_orders',
+    'manage_specimens',
+  ],
+  verifier: [
+    'enter_result',
+    'verify',
+    'manage_patients',
+    'manage_orders',
+    'manage_specimens',
+  ],
 };
 
 /**

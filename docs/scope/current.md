@@ -75,11 +75,47 @@ none); repo-wide `typecheck`/`lint`/`build` green (all `packages/*`, both `apps/
 `next build`/`nest build`). `#108` auto-closed via PR #309's bare `Closes #108` line. `Deploy to
 Staging` (run 31043047078, triggered by the merge) completed successfully.
 
-**FEAT-014 remaining**: TASK-050 (flagging service, N/H/L/HH/LL with boundary correctness) is the
-next task — its own dependency is TASK-049, now satisfied. TASK-051 (result entry API), TASK-052
-(result entry UI), TASK-053 (calculated fields, eGFR/LDL) remain after it. `/orient`'s next run
-should specify TASK-050 as a revision to `docs/plans/feat-014-result-entry-engine.md`, not start a
-new proposal file.
+## TASK-050 (FEAT-014's second task) merged this same session, via PR #311 (`5a24d83`), closing
+#109 — continuing directly from TASK-049 (no new `/orient` cycle — the human asked for TASK-050 by
+name)
+
+`docs/plans/feat-014-result-entry-engine.md` gained its first revision (TASK-050's own AC:
+"Exactly-at-threshold boundary cases flag correctly per the golden dataset"). One open question
+(§10 Q1: boundary inclusivity — neither KB-14 nor KB-15 states whether a value exactly at a
+threshold is the milder or stricter flag) resolved via the native options-prompt, recommended
+option chosen: inclusive both ways (reference-range bounds and critical thresholds alike).
+
+**Real, load-bearing finding, settled directly from the seed file's own documented convention, not
+raised as a question:** a merged `critical` `ResolvedRange` (TASK-049's own output)'s `low`/`high`
+fields are **inverted** relative to `normal`'s — `db/seed/chemistry-catalog.sql`'s own header
+comment states "a critical-low row sets `high` (below it is critical), a critical-high row sets
+`low` (above it is critical)," confirmed against all four real critical-having analytes' actual
+panic thresholds (Glucose 40/500, Sodium 120/160, Potassium 2.5/6.5, Calcium 6.0/13.0). This is the
+single easiest place to introduce a real patient-safety bug in this feature — a value that should
+flag `HH`/`LL` could be silently misclassified if the inversion is missed — so `computeFlags` names
+its own local variables (`criticalHighThreshold = critical.low`, `criticalLowThreshold =
+critical.high`) to make it explicit in code, not just a comment. Written up as `domain/
+reference-ranges` Skill entry #10 (pushed to `lis-engineering`).
+
+Delivered: `packages/db/src/flagging.ts`'s `computeFlags(value, normal, critical)` — a single
+severity flag from `N|L|LL|H|HH` (never both `L` and `LL` for the same value), `no_range` returns
+`[]` rather than a fabricated `N` (KB-15's own discipline), and a critical match alone still flags
+`HH`/`LL` even with no matching normal range (real lab practice — critical alerting isn't gated on a
+normal range existing). No HTTP surface by design — same "service first, consumer later" precedent
+as TASK-045/049; TASK-051 will be the first real caller.
+
+Verified end-to-end: 16 new e2e tests (every real golden-dataset boundary — exactly at, and one
+value strictly either side of, every `low`/`high`/critical-threshold across all 14 chemistry
+analytes, inclusive-boundary semantics confirmed for each; 2 pure edge-case tests needing no DB
+access at all); the full existing 85-test `apps/api` e2e suite green (101/101 total, zero
+regression); repo-wide `typecheck`/`lint`/`build` green (including a real `next build`/`nest
+build`). `#109` auto-closed via PR #311's bare `Closes #109` line. `Deploy to Staging` (run
+31045730460, triggered by the merge) completed successfully.
+
+**FEAT-014 remaining**: TASK-051 (result entry API, draft/submit, typed values) is the next task —
+its own dependency is TASK-049/050, now both satisfied. TASK-052 (result entry UI), TASK-053
+(calculated fields, eGFR/LDL) remain after it. `/orient`'s next run should specify TASK-051 as a
+revision to `docs/plans/feat-014-result-entry-engine.md`, not start a new proposal file.
 
 ---
 

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ClipboardList, FlaskConical, LayoutDashboard, Users } from 'lucide-react';
+import { ClipboardList, FlaskConical, LayoutDashboard, ListChecks, Users } from 'lucide-react';
 
 // Nav grows as later features add routes -- not invented ahead of them.
 // TASK-041: "Register patient" -> "Patients" (search list owns the
@@ -7,12 +7,15 @@ import { ClipboardList, FlaskConical, LayoutDashboard, Users } from 'lucide-reac
 // reachable from /patients. TASK-044: "Orders" added, closing FEAT-012 --
 // a global, cross-patient list (proposal §5), same standing as "Patients".
 // TASK-047: "Reception" added -- the scan/lookup entry point for receiving
-// specimens (revision §2), same standing as "Orders"/"Patients".
+// specimens (revision §2), same standing as "Orders"/"Patients". TASK-048:
+// "Collection queue" added -- pending-collection worklist (revision §2),
+// same standing as the others.
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/patients', label: 'Patients', icon: Users },
   { href: '/orders', label: 'Orders', icon: ClipboardList },
   { href: '/reception', label: 'Reception', icon: FlaskConical },
+  { href: '/collection-queue', label: 'Collection queue', icon: ListChecks },
 ];
 
 export function Sidebar() {

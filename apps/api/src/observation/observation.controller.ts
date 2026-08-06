@@ -704,6 +704,16 @@ export class ObservationController {
     // whether or not this call actually cascaded, so the audit trail (and
     // this route's one caller, apps/web's `finalizeResult`) never has to
     // branch on whether a dependent computation happened.
+    //
+    // TASK-054 (FEAT-015 proposal §10 Q1/Q2): `criticalDetected` folds a
+    // documented critical-detection signal into this SAME already-audited
+    // event, rather than a second `writeAuditEvent()` call site -- same
+    // "fold into the existing event" precedent TASK-053 set for
+    // `calculatedDependent` immediately above. Reflects only the
+    // just-finalized observation's own flags (`row`, the analyte this call
+    // actually finalized) -- not `calculated`'s (a dependent computed
+    // value's own criticality is that dependent's own finalize event, once
+    // it's finalized itself, not this one's).
     return {
       resourceId: row.id,
       before: {
@@ -715,6 +725,7 @@ export class ObservationController {
         calculatedDependent: calculated
           ? toObservationDto(calculated.after)
           : null,
+        criticalDetected: row.flags.includes('HH') || row.flags.includes('LL'),
       },
     };
   }

@@ -4,12 +4,13 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import {
   analyte,
+  auditEvent,
   codeSystemValue,
   createDb,
   testAnalyte,
   testDefinition,
 } from '@lis/db';
-import { sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { AppModule } from './../src/app.module';
 import { getKeycloakToken } from './get-keycloak-token';
 
@@ -87,6 +88,36 @@ describe('Result entry API (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(200);
     return (res.body as { count: number }).count;
+  }
+
+  /**
+   * TASK-054 (FEAT-015 proposal §7/§8): reads the real, persisted
+   * `audit_event.after` jsonb payload for the most recent
+   * `observation.finalize` event on a given observation id -- not just the
+   * HTTP response body, which (per audit.interceptor.ts) happens to be the
+   * exact same object `writeAuditEvent` was called with, but proving the
+   * new `criticalDetected` field against the actual audited row is the
+   * stronger, direct claim TASK-054's own AC asks for.
+   */
+  async function latestFinalizeAuditAfter(
+    resourceId: string,
+  ): Promise<{ criticalDetected?: boolean } | null> {
+    const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+    await db.execute(
+      sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+    );
+    const [row] = await db
+      .select({ after: auditEvent.after })
+      .from(auditEvent)
+      .where(
+        and(
+          eq(auditEvent.action, 'observation.finalize'),
+          eq(auditEvent.resourceId, resourceId),
+        ),
+      )
+      .orderBy(desc(auditEvent.sequence))
+      .limit(1);
+    return (row?.after as { criticalDetected?: boolean } | null) ?? null;
   }
 
   async function orderedTestStatus(
@@ -348,6 +379,111 @@ describe('Result entry API (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .send({ dataType: 'quantity', valueNum: 16 })
       .expect(409);
+  });
+
+  /**
+   * TASK-054 (FEAT-015, #113): the new field on `observation.finalize`'s
+   * existing audit event (proposal §10 Q1/Q2) -- a real golden-dataset
+   * critical value (Sodium, real critical-low threshold 120 per
+   * db/golden/chemistry-ranges-criticals.json, `domain/critical-values`
+   * entry #3), finalized at 115. Proves both the HTTP response's own
+   * `after.criticalDetected` and the actual persisted `audit_event.after`
+   * payload agree, and that the audit-row *count* delta stays exactly the
+   * same "one row per finalize" TASK-051 already proved -- only the
+   * payload shape gained a field.
+   */
+  it('finalizing a real critical (LL) value sets criticalDetected:true on the finalize audit event, count delta unchanged', async () => {
+    const { orderId, orderedTestIds } = await createOrder([SODIUM_CODE]);
+    await receive(orderId);
+    const [orderedTestId] = orderedTestIds;
+    const sodiumAnalyteId = await analyteIdForTestCode(SODIUM_CODE);
+
+    const before = await auditCount();
+
+    const res = await request(app.getHttpServer())
+      .post(
+        `/v1/ordered-tests/${orderedTestId}/results/${sodiumAnalyteId}/finalize`,
+      )
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ dataType: 'quantity', valueNum: 115 }) // real Sodium critical-low threshold is 120
+      .expect(200);
+    const body = res.body as {
+      resourceId: string;
+      after: {
+        observation: { flags: string[] };
+        criticalDetected: boolean;
+      };
+    };
+    if (
+      JSON.stringify(body.after.observation.flags) !== JSON.stringify(['LL'])
+    ) {
+      throw new Error(
+        `expected ['LL'] for 115 (below the real 120 critical-low threshold), got ${JSON.stringify(body.after.observation.flags)}`,
+      );
+    }
+    if (body.after.criticalDetected !== true) {
+      throw new Error(
+        `expected after.criticalDetected === true on the HTTP response, got ${JSON.stringify(body.after)}`,
+      );
+    }
+
+    const after = await auditCount();
+    if (after !== before + 1) {
+      throw new Error(
+        `expected exactly one new audit_event row for finalize (TASK-051's own already-proven behavior, unchanged by this task), before=${before} after=${after}`,
+      );
+    }
+
+    const auditAfter = await latestFinalizeAuditAfter(body.resourceId);
+    if (auditAfter?.criticalDetected !== true) {
+      throw new Error(
+        `expected the persisted audit_event.after payload to carry criticalDetected: true, got ${JSON.stringify(auditAfter)}`,
+      );
+    }
+  });
+
+  /**
+   * TASK-054 negative case: a non-critical finalize must not report
+   * `criticalDetected: true` -- proves the field is a real, conditional
+   * signal, not one that's always true regardless of the observation's
+   * own flags.
+   */
+  it('finalizing a normal (non-critical) value sets criticalDetected:false on the finalize audit event', async () => {
+    const { orderId, orderedTestIds } = await createOrder([SODIUM_CODE]);
+    await receive(orderId);
+    const [orderedTestId] = orderedTestIds;
+    const sodiumAnalyteId = await analyteIdForTestCode(SODIUM_CODE);
+
+    const res = await request(app.getHttpServer())
+      .post(
+        `/v1/ordered-tests/${orderedTestId}/results/${sodiumAnalyteId}/finalize`,
+      )
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ dataType: 'quantity', valueNum: 140 }) // within the real 136/145 normal range
+      .expect(200);
+    const body = res.body as {
+      resourceId: string;
+      after: { observation: { flags: string[] }; criticalDetected: boolean };
+    };
+    if (
+      JSON.stringify(body.after.observation.flags) !== JSON.stringify(['N'])
+    ) {
+      throw new Error(
+        `expected ['N'] for an in-range value, got ${JSON.stringify(body.after.observation.flags)}`,
+      );
+    }
+    if (body.after.criticalDetected !== false) {
+      throw new Error(
+        `expected after.criticalDetected === false on the HTTP response, got ${JSON.stringify(body.after)}`,
+      );
+    }
+
+    const auditAfter = await latestFinalizeAuditAfter(body.resourceId);
+    if (auditAfter?.criticalDetected !== false) {
+      throw new Error(
+        `expected the persisted audit_event.after payload to carry criticalDetected: false, got ${JSON.stringify(auditAfter)}`,
+      );
+    }
   });
 
   it("rejects result entry before specimen reception (ordered_test still 'ordered')", async () => {

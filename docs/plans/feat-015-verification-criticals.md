@@ -1,7 +1,9 @@
 # Implementation Proposal: FEAT-015 Verification & criticals
 Status: **IMPLEMENTED** — merged PR #320 (`f311a2e`), closing #113 (TASK-054); merged PR #322
-(`9fb5f42`), closing #114 (TASK-055, verification action + append-only versioning). TASK-056
-(finalization block) is FEAT-015's next task, not yet specified.
+(`9fb5f42`), closing #114 (TASK-055, verification action + append-only versioning); merged PR #324
+(`6b9488f`), closing #115 (TASK-056, finalization block on unacknowledged critical). TASK-057
+(verification UI) is FEAT-015's last remaining task, APPROVED as a revision below, not yet
+implemented.
 §10's open questions were resolved by the human as follows:
 Q1: **Option B** (persist a documented critical-detection audit signal). Q2: the signal is a new
 field on the existing `observation.finalize` audit event's `after` payload, not a second
@@ -955,3 +957,240 @@ downstream dependency worth naming even though TASK-057 has not begun.
    in the existing `detail` string** (e.g., naming how many criticals are pending, not which specific
    analyte) — no change to `ProblemDetailsFilter`/`ProblemDetails`. A richer, structured shape
    (naming specific blocking analytes) is deferred until TASK-057's own UI genuinely needs one.
+
+---
+
+# Revision: TASK-057 — Verification UI (delta/QC/prior context, verify+next)
+
+Status: **APPROVED** (2026-08-06) — §10's open questions resolved by the human as follows:
+Q1: **prior result only, no computed delta** — show the patient's previous result for the same
+analyte during verification (a small new backend query); no delta computation, since nothing like
+that exists anywhere in this repo yet. "QC" context is not a decision point — it is fully unbuildable
+today (finding #2: zero QC data model exists anywhere, a separate unstarted M5 feature) and is out of
+this task's scope unconditionally. Q2: **additive to the existing TASK-052 results grid**, not a
+standalone cross-patient queue — needs zero new backend query surface beyond the small prior-result
+lookup from Q1, and matches this feature's own shipped, per-order shape so far. Q3: **hide the
+"Verify" control from technologist-roled sessions** — this repo's first frontend role-visibility
+check, avoiding a control that always fails for the wrong-roled user. Q4: **yes, show verifier
+identity and timestamp** — widen `observationSchema` to expose the already-existing
+`verifierUserId`/`verifiedAt` columns. Q5 (timing verification for the "under 30 seconds" AC): an
+informal, manual timing check during this task's own `web-verify` pass, not a new scripted/automated
+timing harness — matches this repo's existing "boot the real thing" verification discipline rather
+than inventing new test infrastructure for a single UX claim.
+Date: 2026-08-06    Backlog ID: FEAT-015 (#24) / TASK-057 (#116)
+
+## 1. Goal
+
+TASK-056 (finalization block) is merged (PR #324/#325, `6b9488f`/`832e39b`), closing #115. FEAT-015's
+next and final named task is **TASK-057 — verification UI** (#116). Its one dependency, TASK-055
+(verification action), is merged. Its literal AC: "A verifier can review and release a panel in under
+30 seconds." Its "Expected output": "Verification screen."
+
+The task's own title names three context ingredients ("delta," "QC," "prior context") plus a UX
+shape ("verify+next"). This proposal's research (conducted in parallel with TASK-056's own
+implementation) checked each directly against what exists in this codebase today, not assumed from
+the title.
+
+**Real, load-bearing finding #1 — "delta" has no supporting computation anywhere in this codebase.**
+A repo-wide grep for delta/percent-change/trend-comparison logic in `packages/db`, `packages/domain`,
+and `apps/api` returns zero hits outside test-harness prose and the schema comment describing the
+column itself. `observation.previousObservationId` (`packages/db/src/schema/observation.ts:91`,
+"delta/trend chain") exists as a real, migrated column — but is **never set by any INSERT or UPDATE
+in any business code path**, confirmed by grep. `domain/result-verification` Skill entry #6's "not
+yet built by any task" is independently reconfirmed here, unchanged by TASK-054/055/056 shipping
+since that entry was written.
+
+**Real, load-bearing finding #2 — "QC" has no supporting data model anywhere in this codebase; it
+names a separate, unstarted, two-features-away milestone of work.** `github/issues/features/
+FEAT-018-qc-materials-results-as-observations.md` ("QC materials & results as Observations," M5,
+`status: Not Started`, `dependencies: [FEAT-016]` — itself Not Started) is the feature that would
+create a QC data model at all. Its own Required Skill, `domain/qc-westgard`, does not exist. A
+repo-wide grep for `qc`/`quality control`/`control material`/`controlLot` across `packages/db`,
+`packages/domain`, and `apps/api` returns **zero hits**. "QC context" cannot be literally built into
+this screen today under any reading — there is nothing to query. This finding is not a decision
+point; it is unconditionally out of scope.
+
+**Real, load-bearing finding #3 — "prior context," read narrowly as "the patient's previous result
+for this analyte, no comparison computed," is a genuinely distinct, smaller gap than delta/QC, and
+was the human's chosen scope (§10 Q1).** `GET /v1/ordered-tests/:id/results` (TASK-051's `list()`) is
+scoped strictly to one ordered test's own observations; `GET /v1/orders` (TASK-040's `search()`)
+never joins into `observation`. No route anywhere in `apps/api` joins by `(patientId, analyteId)`
+ordered by time across a patient's multiple orders. This is real, small, new backend work: a query
+joining `order` → `ordered_test` → `observation`, filtered by the current observation's own
+`analyteId` and the order's `patientId`, ordered by `producedAt`/`createdAt` descending, capped at a
+small N (e.g. 1-3 most recent prior results) — technically a single indexed join, not a large lift.
+
+**Real, load-bearing finding #4 — TASK-052's results grid already built the exact "verify+next" UX
+shape this task's title names, for finalize; the pattern transfers but is not a copy-paste.**
+`results-grid.tsx`'s `handleKeyDown` (Enter key) calls `finalizeResult()`, then `focusNextEnterable()`
+scans forward for the next enterable row and focuses it via the `inputRefs` ref map. A verify+next
+flow needs an analogous `isVerifiable(row)` predicate (`observationStatus === 'preliminary'` and the
+caller holding the `verify` capability) and a new `verifyResult()` Server Action calling TASK-055's
+already-shipped `POST .../verify`, then a `focusNextVerifiable` scan reusing the same index-walk. The
+row-cell markup itself needs new UI (a verify action is a button/keyboard shortcut, not a text field)
+— only the focus-management *mechanism* transfers directly.
+
+**Real, load-bearing finding #5 — no existing endpoint could support a standalone cross-patient
+verification queue; the additive-to-existing-grid reading (the human's chosen scope, §10 Q2) needs no
+new backend query surface beyond finding #3's small prior-result lookup.** `GET /v1/orders`'s
+`search()` has no filter on `ordered_test.status` and no join to `observation.status`/
+`observation.flags` at all — there is no way today to ask the API "which panels, across which
+patients, have a finalized-but-unverified analyte." Building that would be real, non-trivial new
+backend scope, well beyond a 1-day task. By contrast, `GET /v1/ordered-tests/:id/results` already
+returns every observation's current `status`, including `'preliminary'` — exactly what a verify
+affordance needs to decide visibility, with zero new backend surface beyond the prior-result query.
+This also matches TASK-055/056's own shipped shape (both per-analyte/per-ordered-test, never
+cross-patient), and `results-grid.tsx`'s own existing code comment (`// No new UI treatment for
+'verified' is added here -- that's TASK-057's own scope`) already anticipates the verified-row
+treatment landing inside this same grid.
+
+**Real, load-bearing finding #6 — `apps/web` already carries the session data a role-gated UI would
+need, but has never once used it for a UI-visibility decision; TASK-057 (per the human's chosen scope,
+§10 Q3) is the first frontend consumer of role/capability.** `apps/web/auth/session.ts`'s
+`SessionPayload` already includes `roles: string[]` (raw Keycloak realm roles), populated at
+callback time and readable server-side. A repo-wide grep confirms **zero existing usage** of
+`session.roles` anywhere in `apps/web` for a UI-gating decision — every write path built so far
+(`enter_result`) is granted to both seeded roles, so no screen has ever needed to branch UI by role
+before. `verify` is verifier-only (TASK-055), making this the first case that needs it. Separately,
+`observationSchema` (`packages/domain/src/observation.ts`) still does not expose
+`verifierUserId`/`verifiedAt` (`domain/result-verification` Skill entry #7) — the human's chosen scope
+(§10 Q4) widens it to show who verified a result and when.
+
+## 2. Affected files
+
+- `apps/web/app/(app)/orders/[id]/results/results-grid.tsx` (extend) — a "Verify" affordance per row
+  where `observationStatus === 'preliminary'` AND the session holds the `verifier` role (§10 Q3); a
+  `'verified'` status treatment in the existing status column (currently renders nothing for
+  `'verified'`, per the file's own TASK-055 comment); an `isVerifiable`/`focusNextVerifiable` pair
+  mirroring `isEnterable`/`focusNextEnterable` (finding #4); a small prior-result display per row
+  (finding #3, §10 Q1); a verifier/timestamp display once available (§10 Q4).
+- `apps/web/app/(app)/orders/[id]/results/actions.ts` (extend) — a new `verifyResult()` Server Action
+  calling `POST /v1/ordered-tests/{id}/results/{analyteId}/verify` (already shipped, TASK-055), same
+  shape as `finalizeResult()`.
+- `apps/web/app/(app)/orders/[id]/results/page.tsx` (extend) — read the caller's session role and pass
+  it down to the grid (§10 Q3), and fetch the new prior-result data alongside the existing results
+  fetch (§10 Q1).
+- `apps/web/auth/*` — a new, small frontend capability-mapping helper (this repo's first) exposing
+  whether the current session holds the `verifier` role, per §10 Q3.
+- `packages/domain/src/observation.ts` — `observationSchema` widens to add `verifierUserId`/
+  `verifiedAt` (§10 Q4) — both already-existing, nullable DB columns, additive, not a migration.
+- `apps/api/src/observation/observation.controller.ts` — a new small read path (or an extension of the
+  existing `list()`) for the prior-result query (§10 Q1/finding #3): join `order` → `ordered_test` →
+  `observation` by `(patientId, analyteId)`, ordered by time, capped at a small N.
+- `apps/api/openapi.json` / `packages/sdk/src/schema.ts` — regenerate for the widened domain schema and
+  the new/extended read path.
+
+**Not affected under this scope:**
+- `apps/api/src/observation/observation.controller.ts`'s `verify()` handler itself — this task's
+  dependency to *call*, not to modify.
+- Any QC-related table, route, or Skill — finding #2 confirms none exists to touch; unconditionally
+  out of scope.
+- Any delta/percent-change computation — finding #1, §10 Q1 explicitly excludes it.
+- A standalone cross-patient verification queue endpoint — §10 Q2 explicitly excludes it.
+- `db/migrations/*` — no reading of this task's approved scope requires a new migration.
+
+## 3. Architecture consulted
+
+- KB-14 Result Engine and Constitution Law #3/Law #5 — re-cited from the TASK-054/055/056 revisions;
+  this screen is where a technologist/verifier will actually see TASK-056's 409 guard in practice,
+  though rendering that error usefully is not itself required by this task's own narrow AC.
+- `docs/plans/feat-015-verification-criticals.md`'s TASK-054/055/056 revisions (this file) — direct
+  precedent for structure, and for TASK-056's real shipped 409 `detail` string shape, now available
+  (TASK-056 merged after this proposal's own research began).
+- `apps/web/app/(app)/orders/[id]/results/results-grid.tsx` and `actions.ts` (TASK-052) — direct
+  precedent for finding #4's verify+next mechanics and finding #5's "additive to an existing grid"
+  reading.
+- `apps/api/src/order/order.controller.ts`'s `search()` and `apps/api/src/observation/
+  observation.controller.ts`'s `list()` — read for finding #3/#5's "no existing route supports this
+  query" confirmations.
+- `apps/web/auth/session.ts`, `get-session.ts` and `apps/api/src/auth/capabilities.ts` — read for
+  finding #6's session-shape and `ROLE_CAPABILITIES` confirmations.
+- `github/issues/features/FEAT-018-qc-materials-results-as-observations.md` and
+  `FEAT-020-qc-gating-of-result-release.md` — read for finding #2's status/dependency confirmation.
+
+## 4. Skills loaded
+
+- `domain/result-verification` — entry #6 (delta/trend vs. amendment distinction, finding #1) and
+  entry #7 (verifier identity not exposed by any read route, finding #6/§10 Q4).
+- `domain/critical-values` — entry #6 (TASK-056's own dependency chain, context for what this screen
+  may render once a technologist hits TASK-056's 409).
+- `engineering/frontend-design` — entry #1 (`StatusPill`/`FLAG_META`, relevant to the new `'verified'`
+  status treatment) and entry #5 (RSC-payload-retention gotcha — not obviously triggered by this
+  additive, single-patient-page reading, since this screen already shows this patient's own data).
+- `engineering/api-design` — entry #6 (only mutating actions are audited — `verifyResult()` is already
+  audited server-side by TASK-055) and entry #11 (slash-verb convention, relevant to the new
+  prior-result read path if it becomes its own route rather than a query param on `list()`).
+
+## 5. Assumptions & autonomous decisions
+
+- **The prior-result query returns only the same analyte's own most recent prior result(s), capped at
+  a small N** — exact N (e.g. 1 vs. 3) is an implementation detail, not elevated to a §10 question.
+- **The frontend capability-mapping helper (§10 Q3) checks `session.roles.includes('verifier')`
+  directly** — this repo's `apps/api` capability model (`ROLE_CAPABILITIES`) is not duplicated
+  frontend-side as a general system; this task adds only the one specific check it needs, following
+  the same "don't build ahead of a real need" precedent as every prior task in this feature.
+- **`amendmentOf`/`previousObservationId` are not conflated** (per `domain/result-verification` entry
+  #6) — the prior-result query joins `observation` by `(patientId, analyteId)` directly, never via the
+  unused `previousObservationId` column.
+
+## 6. Risks
+
+- **The AC's own 30-second target is verified only informally** (§10 Q5) — a real manual timing check
+  during this task's own `web-verify` pass, not a scripted/repeatable test. If this ever regresses,
+  nothing in CI would catch it; acceptable for now, matching this repo's existing verification
+  discipline for UX-shape claims elsewhere (e.g. TASK-052's own "without touching the mouse" AC).
+- **The new frontend role-visibility helper (§10 Q3) is this repo's first of its kind** — a reviewer
+  should confirm it fails closed (hides the control) rather than open if `session.roles` is ever
+  malformed or missing, matching this repo's general security posture.
+- **Only 4 of 14 seeded chemistry analytes have any critical row** (re-cited from `domain/
+  critical-values` entry #3) — this task's own manual/e2e verification of the TASK-056 interaction
+  (a verifier resolving a 409-blocking critical) is bounded by the same real data limit as TASK-054's.
+
+## 7. Acceptance criteria
+
+- [ ] A `verifier`-roled caller sees and can act on a "Verify" affordance for a `'preliminary'`
+  observation in the existing `/orders/[id]/results` grid; a `technologist`-roled caller does not see
+  the control at all (§10 Q3).
+- [ ] Calling verify from the UI transitions the row to a `'verified'` state, showing verifier identity
+  and timestamp (§10 Q4), without a full page reload.
+- [ ] After verifying one row, focus moves to the next verifiable row without a mouse action
+  (verify+next, finding #4).
+- [ ] The patient's prior result for the same analyte is visible during verification (§10 Q1) — no
+  computed delta, no QC context (both out of scope).
+- [ ] A real, informal manual timing check (§10 Q5) supports the "under 30 seconds" claim for a
+  small multi-analyte panel.
+
+## 8. Testing plan
+
+1. `pnpm --filter api test:e2e` full suite re-run before any change, confirming the current 138-test
+   baseline (per TASK-056's own revision) is the correct starting point.
+2. New e2e case(s) for the prior-result read path (finding #3): a patient with two orders for the same
+   analyte, asserting the second order's result correctly surfaces the first as "prior."
+3. `pnpm --filter @lis/domain typecheck`/build for the `observationSchema` widening (§10 Q4); confirm
+   `apps/api/test/observation.e2e-spec.ts`'s existing assertions are unaffected (additive field).
+4. Frontend: a real headless-browser check (`web-verify` Skill) exercising the actual verify+next flow
+   as both a `verifier` and a `technologist` session, confirming the control's visibility differs
+   correctly between them, and performing the informal timing check (§10 Q5).
+5. `pnpm typecheck`/`pnpm lint`/`pnpm build` at the repo root.
+
+## 9. Rollback plan
+
+Additive under this approved scope: new grid cells/status treatment, one new Server Action, one new
+small backend read path (prior-result query), one small domain-schema widening, one new frontend
+role-visibility helper — no migration. Rollback is reverting the PR. This is FEAT-015's last named
+task; once merged, FEAT-015 (#24) itself is ready for its own manual-comment close (bare `Closes`
+lines don't auto-close a parent feature issue, the same recurring gotcha as `#99`/`#265`/`#74`/`#93`/
+`#94`/`#105`/`#107`/`#112` before it).
+
+## 10. Open questions — resolved 2026-08-06 via the native options-prompt
+
+1. **Delta/prior-context scope.** **Resolved: prior result only, no computed delta.** "QC" is not a
+   decision point — unconditionally out of scope (finding #2).
+2. **Screen surface.** **Resolved: additive to the existing TASK-052 results grid**, not a standalone
+   cross-patient verification queue.
+3. **Role visibility.** **Resolved: hide the "Verify" control from technologist-roled sessions** —
+   this repo's first frontend role-visibility check.
+4. **Verifier identity display.** **Resolved: yes** — widen `observationSchema` to expose
+   `verifierUserId`/`verifiedAt`.
+5. **Timing verification for the "under 30 seconds" AC.** **Resolved: an informal, manual timing
+   check during this task's own `web-verify` pass**, not a new scripted/automated timing harness.

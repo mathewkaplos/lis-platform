@@ -1,7 +1,64 @@
-# Status — 2026-08-05 (session 17)
+# Status — 2026-08-06 (session 18)
 
-Last commit on main: `1293fad` — "docs: TASK-053 close-out -- FEAT-014 fully implemented,
-breadcrumb refresh" (PR #318), closing #112.
+Last commit on main: `f311a2e` — "feat(api): critical detection audit signal, closing TASK-054
+(FEAT-015)" (PR #320), closing #113.
+
+## TASK-054 (FEAT-015's first task) merged this session, via PR #320 (`f311a2e`), closing #113 —
+FEAT-015 (Verification & criticals, M4, EPIC-004) has started, immediately after FEAT-014's full
+close-out last session
+
+A new Implementation Proposal (`docs/plans/feat-015-verification-criticals.md`) scoped to TASK-054
+only, same narrowing precedent every prior feature in this repo has used — TASK-055 (verification
+action + versioning), TASK-056 (finalization block), TASK-057 (verification UI) remain to be
+specified as revisions to this same file.
+
+**Real, load-bearing finding from this proposal's own research: critical detection, in the literal
+sense of TASK-054's own AC, already existed and was already merged before this task started.**
+`packages/db/src/flagging.ts`'s `computeFlags` (TASK-050) and `apps/api/src/observation/
+observation.controller.ts`'s `draft()`/`finalize()` (TASK-051) already compute and persist HH/LL
+into `observation.flags` on every write, already proven against all four real golden-dataset
+critical analytes (Glucose, Sodium, Potassium, Calcium). The only genuinely new AC ingredient was
+"unit-conversion cases" — read plainly (no UCUM conversion engine exists anywhere in this repo,
+`domain/reference-ranges` entry #5) as "critical detection must never fabricate a match across an
+incompatible unit," not as a request to build real cross-unit numeric conversion.
+
+Two open questions (§10) resolved via the native options-prompt, recommended option chosen for
+each: (1) what "CriticalValueDetected event" concretely means with no event bus anywhere in this
+repo (FEAT-028 is unbuilt, M6) — a documented, audited signal (Option B), not a bare read of
+`observation.flags`, giving FEAT-021 (M5, critical notification/escalation) something concrete to
+key a future subscriber against; (2) exact shape — a new field on the existing `observation.finalize`
+audit event's `after` payload, not a second `writeAuditEvent()` call site, matching TASK-053's own
+"fold into the same event" precedent for `calculatedDependent` exactly. No ADR — extends an
+already-approved audit mechanism (FEAT-009) with one field, not new infrastructure.
+
+Delivered: `criticalDetected: boolean` on `finalize()`'s `after` payload, set whenever the
+just-finalized observation's own flags include `HH` or `LL` — folded into the same already-audited
+transaction, zero new `writeAuditEvent()` call sites. Two new e2e cases proving the previously-
+unproven "unit-conversion" half of the AC: a `critical`-rangeType candidate row with a mismatched
+`unitId` resolves to `critical.matched === false` (`reference-range-resolution.e2e-spec.ts`,
+mirroring the existing `normal`-only case at the same file), and the downstream consequence that
+`computeFlags` therefore never fabricates `HH`/`LL` for a value that would be critical under the
+matching unit (`flagging.e2e-spec.ts`) — both against synthetic, explicitly non-clinical fixtures
+(proposal §10 Q4), since the golden dataset's four real critical analytes have no incompatible-unit
+row to test against.
+
+Verified end-to-end: the existing 123-test `apps/api` e2e suite re-confirmed green (proving the
+"boundary" half of the AC is unchanged) plus 4 new tests — the two unit-mismatch cases above, and
+two new `observation.e2e-spec.ts` cases finalizing a real golden-dataset critical (Sodium at 115,
+below the real 120 critical-low threshold) and a real normal value, each checked against both the
+HTTP response's own `after.criticalDetected` and the actual persisted `audit_event.after` payload
+(queried directly, not just trusted from the response mirroring it) — 127/127 total, zero
+regression. Repo-wide `typecheck`/`lint`/`build` green (all `packages/*`, both `apps/*`, including a
+real `next build`/`nest build`). `generate-openapi` re-run and diffed empty against the committed
+`apps/api/openapi.json` — `finalize()` has no `@ZodResponse`, so the new field needed no SDK/schema
+regeneration, confirming the proposal's own "confirm during implementation" note. `#113` auto-closed
+via PR #320's bare `Closes #113` line.
+
+**FEAT-015 is not yet fully implemented** — only its first of four named tasks is done. TASK-055
+(verification action + append-only versioning) is FEAT-015's next task; TASK-056 (the finalization
+block, Constitution Law #3's "block report finalization until acknowledged" becoming real code) and
+TASK-057 (verification UI) follow it. `/orient`'s next run should treat FEAT-015 as in-progress, not
+re-diagnose milestone/next-task discovery from scratch the way a fresh-feature session would.
 
 ## `/orient` confirmed FEAT-013/#22 already closed; EPIC-002/EPIC-003 and TASK-027's sign-off
 (#171) all remain open on the same non-code blocker — a real, recurring, business-level gap, not

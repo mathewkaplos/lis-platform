@@ -1,5 +1,7 @@
 # Implementation Proposal: FEAT-015 Verification & criticals
-Status: **APPROVED** (2026-08-06) — §10's open questions resolved by the human as follows:
+Status: **IMPLEMENTED** — merged PR #320 (`f311a2e`), closing #113. TASK-055 (verification action +
+append-only versioning) is FEAT-015's next task, to be specified as a revision to this same file.
+§10's open questions were resolved by the human as follows:
 Q1: **Option B** (persist a documented critical-detection audit signal). Q2: the signal is a new
 field on the existing `observation.finalize` audit event's `after` payload, not a second
 `writeAuditEvent()` call site — matches TASK-053's own "fold into the same event" precedent. Q3:

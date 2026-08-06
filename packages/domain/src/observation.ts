@@ -24,11 +24,13 @@ export type ResultEntryDataType = z.infer<typeof resultEntryDataTypeSchema>;
  * checks the submitted `dataType` matches the target analyte's own catalog
  * `dataType` — this schema alone cannot know that, it only shapes the body.
  */
-export const resultEntrySchema = z.discriminatedUnion("dataType", [
-  z.object({ dataType: z.literal("quantity"), valueNum: z.number() }),
-  z.object({ dataType: z.literal("coded"), valueCode: z.string().min(1) }),
-  z.object({ dataType: z.literal("text"), valueText: z.string().min(1) }),
-]);
+export const resultEntrySchema = z
+  .discriminatedUnion("dataType", [
+    z.object({ dataType: z.literal("quantity"), valueNum: z.number() }),
+    z.object({ dataType: z.literal("coded"), valueCode: z.string().min(1) }),
+    z.object({ dataType: z.literal("text"), valueText: z.string().min(1) }),
+  ])
+  .meta({ id: "ResultEntryDto" }); // nestjs-zod docs: names the OpenAPI/SDK schema -- otherwise a generic "AugmentedZodDto"
 export type ResultEntryInput = z.infer<typeof resultEntrySchema>;
 
 /**

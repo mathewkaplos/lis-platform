@@ -450,6 +450,13 @@ export interface components {
                 id: string;
                 code: string;
                 displayName: string;
+                analytes: {
+                    /** Format: uuid */
+                    id: string;
+                    display: string;
+                    dataType: string;
+                    unit: string | null;
+                }[];
             }[];
             panels: {
                 /** Format: uuid */
@@ -503,6 +510,19 @@ export interface components {
             receivedAt: string | null;
             code128Svg: string;
             dataMatrixSvg: string;
+        };
+        ResultEntryDto: {
+            /** @enum {string} */
+            dataType: "quantity";
+            valueNum: number;
+        } | {
+            /** @enum {string} */
+            dataType: "coded";
+            valueCode: string;
+        } | {
+            /** @enum {string} */
+            dataType: "text";
+            valueText: string;
         };
         ObservationDto_Output: {
             /** Format: uuid */
@@ -994,7 +1014,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResultEntryDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -1016,7 +1040,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResultEntryDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {

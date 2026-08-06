@@ -625,6 +625,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResultEntryDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "",
@@ -667,6 +677,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResultEntryDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -1007,12 +1027,43 @@
                 },
                 "displayName": {
                   "type": "string"
+                },
+                "analytes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      "display": {
+                        "type": "string"
+                      },
+                      "dataType": {
+                        "type": "string"
+                      },
+                      "unit": {
+                        "type": "string",
+                        "nullable": true
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "display",
+                      "dataType",
+                      "unit"
+                    ],
+                    "additionalProperties": false
+                  }
                 }
               },
               "required": [
                 "id",
                 "code",
-                "displayName"
+                "displayName",
+                "analytes"
               ],
               "additionalProperties": false
             }
@@ -1239,6 +1290,66 @@
           "dataMatrixSvg"
         ],
         "additionalProperties": false
+      },
+      "ResultEntryDto": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "dataType": {
+                "type": "string",
+                "enum": [
+                  "quantity"
+                ]
+              },
+              "valueNum": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "dataType",
+              "valueNum"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "dataType": {
+                "type": "string",
+                "enum": [
+                  "coded"
+                ]
+              },
+              "valueCode": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "dataType",
+              "valueCode"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "dataType": {
+                "type": "string",
+                "enum": [
+                  "text"
+                ]
+              },
+              "valueText": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "dataType",
+              "valueText"
+            ]
+          }
+        ]
       },
       "ObservationDto_Output": {
         "type": "object",

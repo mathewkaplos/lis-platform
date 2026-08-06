@@ -8,10 +8,26 @@ import { z } from "zod";
  * source of truth for both request validation and OpenAPI generation
  * (engineering/api-design Skill entry #1), same as patient.ts/order.ts.
  */
+/**
+ * TASK-052 (FEAT-014 revision, §10 Q1, resolved 2026-08-06): the result-
+ * entry grid's own prerequisite -- no earlier task exposed `test_analyte`
+ * via the API. `dataType` is `observation`'s own full 10-value vocabulary
+ * (KB-14), not TASK-051's narrower 3-value request-side restriction -- this
+ * describes what the catalog *has*, not what any one write path accepts.
+ */
+export const catalogAnalyteSchema = z.object({
+  id: z.uuid(),
+  display: z.string(),
+  dataType: z.string(),
+  unit: z.string().nullable(),
+});
+export type CatalogAnalyte = z.infer<typeof catalogAnalyteSchema>;
+
 export const catalogTestSchema = z.object({
   id: z.uuid(),
   code: z.string(),
   displayName: z.string(),
+  analytes: z.array(catalogAnalyteSchema),
 });
 export type CatalogTest = z.infer<typeof catalogTestSchema>;
 

@@ -41,7 +41,15 @@ describe('Catalog API (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(200);
     const body = res.body as {
-      tests: { code: string }[];
+      tests: {
+        code: string;
+        analytes: {
+          id: string;
+          display: string;
+          dataType: string;
+          unit: string | null;
+        }[];
+      }[];
       panels: { code: string; testDefinitionIds: string[] }[];
     };
 
@@ -79,6 +87,44 @@ describe('Catalog API (e2e)', () => {
           `expected seeded test code ${code} in the catalog, got ${JSON.stringify([...testCodes])}`,
         );
       }
+    }
+  });
+
+  it('TASK-052: each seeded chemistry test has exactly one quantity analyte with a real unit', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/v1/catalog')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const body = res.body as {
+      tests: {
+        code: string;
+        analytes: {
+          id: string;
+          display: string;
+          dataType: string;
+          unit: string | null;
+        }[];
+      }[];
+    };
+    const glucose = body.tests.find((t) => t.code === 'GLU');
+    if (!glucose) {
+      throw new Error(
+        `expected the seeded GLU test, got ${JSON.stringify(body.tests)}`,
+      );
+    }
+    if (glucose.analytes.length !== 1) {
+      throw new Error(
+        `expected exactly one analyte for GLU, got ${JSON.stringify(glucose.analytes)}`,
+      );
+    }
+    const [glucoseAnalyte] = glucose.analytes;
+    if (
+      glucoseAnalyte.dataType !== 'quantity' ||
+      glucoseAnalyte.unit !== 'mg/dL'
+    ) {
+      throw new Error(
+        `unexpected GLU analyte: ${JSON.stringify(glucoseAnalyte)}`,
+      );
     }
   });
 

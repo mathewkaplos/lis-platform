@@ -29,6 +29,9 @@ const SODIUM_CODE = 'NA';
 // otherwise also produce a 409 once every analyte is finalized.
 const LIPID_CODE = 'LIPID';
 const TOTAL_CHOLESTEROL_LOINC = '2093-3';
+// TASK-056: synthetic test_definition code for the Sodium+BUN two-analyte
+// panel created in beforeAll below (see its own comment there for why).
+const SODIUM_BUN_SYNTH_PANEL_CODE = 'TASK-056-SYNTH-PANEL';
 
 /**
  * TASK-051 (FEAT-014 revision): first real writer to `observation`, first
@@ -256,6 +259,57 @@ describe('Result entry API (e2e)', () => {
         })
         .onConflictDoNothing();
     }
+
+    // TASK-056 (FEAT-015 revision, #115): a synthetic two-analyte panel
+    // wrapping two ALREADY-SEEDED analytes -- Sodium (one of only 4
+    // golden-dataset analytes with a real critical row, `domain/
+    // critical-values` entry #3) and BUN (ordinary, no critical row) --
+    // under one new test_definition. Needed because every seeded
+    // single-analyte chemistry test_definition makes its own analyte
+    // trivially "the panel's last remaining analyte" the instant it's
+    // finalized at all (no room for a distinct, earlier finalize of a
+    // *different* analyte first), and LIPID (the only seeded multi-analyte
+    // test_definition) has no analyte with a critical row at all -- neither
+    // existing shape can exercise "verify a critical analyte, then finalize
+    // a later, different analyte on the same panel," which this task's own
+    // positive-path test needs. Synthetic test_definition/test_analyte rows
+    // only; no new analyte/code_system_value rows (both already exist).
+    await db
+      .insert(testDefinition)
+      .values({
+        tenantId: TENANT_A,
+        code: SODIUM_BUN_SYNTH_PANEL_CODE,
+        displayName:
+          'TASK-056 Synthetic Sodium+BUN Panel (non-clinical composition of two real, already-seeded analytes)',
+      })
+      .onConflictDoNothing();
+    const [synthPanelDef] = await db
+      .select({ id: testDefinition.id })
+      .from(testDefinition)
+      .where(
+        sql`${testDefinition.tenantId} = ${TENANT_A} AND ${testDefinition.code} = ${SODIUM_BUN_SYNTH_PANEL_CODE}`,
+      )
+      .limit(1);
+
+    for (const testCode of [SODIUM_CODE, BUN_CODE]) {
+      const [linkedAnalyte] = await db
+        .select({ analyteId: testAnalyte.analyteId })
+        .from(testAnalyte)
+        .innerJoin(
+          testDefinition,
+          sql`${testAnalyte.testDefinitionId} = ${testDefinition.id}`,
+        )
+        .where(sql`${testDefinition.code} = ${testCode}`)
+        .limit(1);
+      await db
+        .insert(testAnalyte)
+        .values({
+          tenantId: TENANT_A,
+          testDefinitionId: synthPanelDef.id,
+          analyteId: linkedAnalyte.analyteId,
+        })
+        .onConflictDoNothing();
+    }
   });
 
   afterAll(async () => {
@@ -401,17 +455,21 @@ describe('Result entry API (e2e)', () => {
   });
 
   /**
-   * TASK-054 (FEAT-015, #113): the new field on `observation.finalize`'s
-   * existing audit event (proposal §10 Q1/Q2) -- a real golden-dataset
-   * critical value (Sodium, real critical-low threshold 120 per
-   * db/golden/chemistry-ranges-criticals.json, `domain/critical-values`
-   * entry #3), finalized at 115. Proves both the HTTP response's own
-   * `after.criticalDetected` and the actual persisted `audit_event.after`
-   * payload agree, and that the audit-row *count* delta stays exactly the
-   * same "one row per finalize" TASK-051 already proved -- only the
-   * payload shape gained a field.
+   * TASK-054 (FEAT-015, #113) originally, updated by TASK-056 (#115): Sodium
+   * is a single-analyte panel (its own test_definition has exactly one
+   * test_analyte link), so finalizing it at all is *also* always "the
+   * panel's last remaining analyte" -- meaning this exact call is now the
+   * literal scenario TASK-056's own finalization-block guard exists to
+   * catch (no prior `verify()` call on a real critical value). The response
+   * is therefore now 409, not 200 (`FinalizationRollupInterceptor`), while
+   * the observation write and its `observation.finalize` audit event
+   * (including `criticalDetected: true`) still commit normally underneath
+   * it -- proposal §10 Q1's resolved transactional sub-question, proven here
+   * directly against the database, not just inferred from the HTTP status.
+   * See the dedicated "Finalization block on unacknowledged critical (409)"
+   * describe block below for the full positive/negative TASK-056 coverage.
    */
-  it('finalizing a real critical (LL) value sets criticalDetected:true on the finalize audit event, count delta unchanged', async () => {
+  it("finalizing a real critical (LL) value as a panel's last remaining analyte, unverified, is rejected 409 -- but the observation write and its audit event still commit", async () => {
     const { orderId, orderedTestIds } = await createOrder([SODIUM_CODE]);
     await receive(orderId);
     const [orderedTestId] = orderedTestIds;
@@ -425,38 +483,67 @@ describe('Result entry API (e2e)', () => {
       )
       .set('Authorization', `Bearer ${tokenA}`)
       .send({ dataType: 'quantity', valueNum: 115 }) // real Sodium critical-low threshold is 120
-      .expect(200);
-    const body = res.body as {
-      resourceId: string;
-      after: {
-        observation: { flags: string[] };
-        criticalDetected: boolean;
-      };
-    };
-    if (
-      JSON.stringify(body.after.observation.flags) !== JSON.stringify(['LL'])
-    ) {
+      .expect(409);
+    const problem = res.body as { detail: string };
+    if (!/critical/i.test(problem.detail) || !/1\b/.test(problem.detail)) {
       throw new Error(
-        `expected ['LL'] for 115 (below the real 120 critical-low threshold), got ${JSON.stringify(body.after.observation.flags)}`,
-      );
-    }
-    if (body.after.criticalDetected !== true) {
-      throw new Error(
-        `expected after.criticalDetected === true on the HTTP response, got ${JSON.stringify(body.after)}`,
+        `expected a generic 409 detail naming 1 pending critical, got ${JSON.stringify(problem.detail)}`,
       );
     }
 
+    // The audit_event row for this finalize still commits -- only the
+    // ordered_test roll-up is blocked, not the whole request's transaction.
     const after = await auditCount();
     if (after !== before + 1) {
       throw new Error(
-        `expected exactly one new audit_event row for finalize (TASK-051's own already-proven behavior, unchanged by this task), before=${before} after=${after}`,
+        `expected exactly one new audit_event row for finalize even though the call itself 409s, before=${before} after=${after}`,
       );
     }
 
-    const auditAfter = await latestFinalizeAuditAfter(body.resourceId);
+    // Look the observation up directly (the 409 response carries no
+    // resourceId) to prove the write itself was persisted, per this task's
+    // own resolved decision.
+    const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+    await db.execute(
+      sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+    );
+    const [row] = await db
+      .select({
+        id: observation.id,
+        status: observation.status,
+        flags: observation.flags,
+      })
+      .from(observation)
+      .where(
+        and(
+          eq(observation.orderedTestId, orderedTestId),
+          eq(observation.analyteId, sodiumAnalyteId),
+        ),
+      )
+      .limit(1);
+    if (!row || row.status !== 'preliminary') {
+      throw new Error(
+        `expected the observation write to persist as 'preliminary' despite the 409, got ${JSON.stringify(row)}`,
+      );
+    }
+    if (JSON.stringify(row.flags) !== JSON.stringify(['LL'])) {
+      throw new Error(
+        `expected ['LL'] for 115 (below the real 120 critical-low threshold), got ${JSON.stringify(row.flags)}`,
+      );
+    }
+
+    const auditAfter = await latestFinalizeAuditAfter(row.id);
     if (auditAfter?.criticalDetected !== true) {
       throw new Error(
-        `expected the persisted audit_event.after payload to carry criticalDetected: true, got ${JSON.stringify(auditAfter)}`,
+        `expected the persisted audit_event.after payload to still carry criticalDetected: true, got ${JSON.stringify(auditAfter)}`,
+      );
+    }
+
+    // Only the ordered_test roll-up itself is blocked.
+    const status = await orderedTestStatus(orderId, orderedTestId);
+    if (status === 'resulted') {
+      throw new Error(
+        `expected ordered_test NOT to advance to 'resulted' while the critical is unacknowledged, got '${status}'`,
       );
     }
   });
@@ -503,6 +590,178 @@ describe('Result entry API (e2e)', () => {
         `expected the persisted audit_event.after payload to carry criticalDetected: false, got ${JSON.stringify(auditAfter)}`,
       );
     }
+  });
+
+  /**
+   * TASK-056 (FEAT-015, #115): Constitution Law #3's finalization block made
+   * real. The guard lives in `FinalizationRollupInterceptor`, not inside
+   * `finalize()`'s own request transaction (see that interceptor's own doc
+   * comment) -- proposal §10 Q1's resolved reading: the `finalize()` call
+   * that would complete a panel returns 409 itself while any critical on the
+   * panel remains unverified, but the analyte's own observation write (and
+   * its audit event) still commits regardless. Acknowledgement is exactly
+   * TASK-055's `observation.status = 'verified'` (§10 Q2) -- no new column,
+   * no new endpoint.
+   */
+  describe('Finalization block on unacknowledged critical (409) (TASK-056)', () => {
+    /**
+     * Positive path (proposal §7/§8): the SAME real critical (Sodium at 115,
+     * real critical-low threshold 120) that 409s unverified above completes
+     * normally once verified first -- proves the guard is not permanently
+     * stuck, only conditional on acknowledgement. Uses the synthetic
+     * Sodium+BUN panel (see beforeAll) so Sodium can be finalized and
+     * verified WHILE the panel still has a second, unfinalized analyte
+     * (BUN) -- i.e. verification happens strictly before the call that
+     * completes the panel, the one ordering TASK-055's own `verify()` never
+     * gated against and this task's own testing plan calls for directly.
+     */
+    it('a verified critical no longer blocks the roll-up: the panel completes (200, resulted) once the critical analyte is verified before the last analyte finalizes', async () => {
+      const { orderId, orderedTestIds } = await createOrder([
+        SODIUM_BUN_SYNTH_PANEL_CODE,
+      ]);
+      await receive(orderId);
+      const [orderedTestId] = orderedTestIds;
+      const sodiumAnalyteId = await analyteIdForTestCode(SODIUM_CODE);
+      const bunAnalyteId = await analyteIdForTestCode(BUN_CODE);
+
+      // Sodium finalizes first, critical (LL) -- NOT the panel's last
+      // remaining analyte yet (BUN is still unfinalized), so this call is
+      // unaffected by the guard (allFinalized is false) and succeeds 200.
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${sodiumAnalyteId}/finalize`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 115 })
+        .expect(200);
+
+      const midStatus = await orderedTestStatus(orderId, orderedTestId);
+      if (midStatus === 'resulted') {
+        throw new Error(
+          `expected the panel NOT yet 'resulted' with BUN still unfinalized, got '${midStatus}'`,
+        );
+      }
+
+      // Acknowledge the critical before the panel is complete.
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${sodiumAnalyteId}/verify`,
+        )
+        .set('Authorization', `Bearer ${verifierToken}`)
+        .expect(200);
+
+      // BUN is now the panel's last remaining analyte -- the roll-up runs,
+      // finds Sodium's critical already verified, and completes normally.
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${bunAnalyteId}/finalize`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 15 })
+        .expect(200);
+
+      const finalStatus = await orderedTestStatus(orderId, orderedTestId);
+      if (finalStatus !== 'resulted') {
+        throw new Error(
+          `expected ordered_test 'resulted' once BUN finalizes with Sodium's critical already verified, got '${finalStatus}'`,
+        );
+      }
+    });
+
+    /**
+     * Negative path, same synthetic panel: BUN finalizes last exactly as
+     * above, but Sodium's critical is never verified first -- the last
+     * analyte's own finalize call is rejected 409, and (same proof as the
+     * inline Sodium-alone test above) the write persists and the panel does
+     * not advance.
+     */
+    it("an unverified critical elsewhere on the panel blocks the last analyte's own finalize call with 409, panel stays not-resulted", async () => {
+      const { orderId, orderedTestIds } = await createOrder([
+        SODIUM_BUN_SYNTH_PANEL_CODE,
+      ]);
+      await receive(orderId);
+      const [orderedTestId] = orderedTestIds;
+      const sodiumAnalyteId = await analyteIdForTestCode(SODIUM_CODE);
+      const bunAnalyteId = await analyteIdForTestCode(BUN_CODE);
+
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${sodiumAnalyteId}/finalize`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 115 })
+        .expect(200);
+      // No verify() call on Sodium.
+
+      const res = await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${bunAnalyteId}/finalize`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 15 })
+        .expect(409);
+      const problem = res.body as { detail: string };
+      if (!/critical/i.test(problem.detail)) {
+        throw new Error(
+          `expected a generic critical-pending 409 detail, got ${JSON.stringify(problem.detail)}`,
+        );
+      }
+
+      const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+      const [bunRow] = await db
+        .select({ status: observation.status })
+        .from(observation)
+        .where(
+          and(
+            eq(observation.orderedTestId, orderedTestId),
+            eq(observation.analyteId, bunAnalyteId),
+          ),
+        )
+        .limit(1);
+      if (!bunRow || bunRow.status !== 'preliminary') {
+        throw new Error(
+          `expected BUN's own observation write to persist as 'preliminary' despite the 409, got ${JSON.stringify(bunRow)}`,
+        );
+      }
+
+      const status = await orderedTestStatus(orderId, orderedTestId);
+      if (status === 'resulted') {
+        throw new Error(
+          `expected ordered_test NOT to advance to 'resulted', got '${status}'`,
+        );
+      }
+    });
+
+    /**
+     * Regression case (proposal §7/§8's third bullet): a panel with no
+     * critical analyte at all completes exactly as before this task --
+     * zero behavior change for the overwhelming majority (10 of 14) of
+     * golden-dataset analytes, per `domain/critical-values` entry #3.
+     */
+    it('a panel with no critical analyte at all is unaffected: completes 200/resulted exactly as before this task', async () => {
+      const { orderId, orderedTestIds } = await createOrder([GLUCOSE_CODE]);
+      await receive(orderId);
+      const [orderedTestId] = orderedTestIds;
+      const glucoseId = await glucoseAnalyteId();
+
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${glucoseId}/finalize`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 90 }) // ordinary, in-range
+        .expect(200);
+
+      const status = await orderedTestStatus(orderId, orderedTestId);
+      if (status !== 'resulted') {
+        throw new Error(
+          `expected ordered_test 'resulted' for a non-critical panel, unaffected by this task's guard, got '${status}'`,
+        );
+      }
+    });
   });
 
   it("rejects result entry before specimen reception (ordered_test still 'ordered')", async () => {

@@ -170,13 +170,64 @@ existing 101-test `apps/api` e2e suite green (108/108 total, zero regression); r
 proactively). `#110` auto-closed via PR #313's bare `Closes #110` line. `Deploy to Staging` (run
 31049083620, triggered by the merge) completed successfully.
 
-**FEAT-014 remaining**: TASK-052 (result entry UI: analyte grid, live flags, autosave) is the next
-task — its own dependency is TASK-051, now satisfied, and it's the first real consumer of the
-`GET .../results` read endpoint this task delivered. TASK-053 (calculated fields, eGFR/LDL) remains
-after it — `domain/clinical-chemistry` entry #3's own finding that no calculated-analyte mechanism
-exists anywhere yet is still true, unaffected by this task. `/orient`'s next run should specify
-TASK-052 as a revision to `docs/plans/feat-014-result-entry-engine.md`, not start a new proposal
-file.
+## TASK-052 (FEAT-014's fourth task) merged this same session, via PR #315 (`89ecb1d`), closing
+#111 — the first real consumer of TASK-051's own `GET .../results` read endpoint, and the first UI
+surface anywhere in this repo for the reference-range/flagging work TASK-049/050 delivered
+
+`docs/plans/feat-014-result-entry-engine.md` gained its third revision (TASK-052's own AC: entry
+"without touching the mouse," live flags rendered as the value is typed). One open question (§10
+Q1: where does the grid get per-analyte metadata — dataType, unit) resolved via the native
+options-prompt, recommended option chosen: extend the already-everywhere-consumed `GET /v1/catalog`
+with each test's `analytes` array, rather than a new per-orderedTest endpoint.
+
+**Real, load-bearing finding from this revision's own research, not part of the approved proposal's
+own text — a genuine bug in TASK-051's already-merged code, found and fixed proactively:**
+`ResultEntryDto`'s `extends createZodDto(resultEntrySchema) {}` compiled and validated correctly at
+runtime, but `resultEntrySchema` is a Zod `discriminatedUnion`, and `nestjs-zod`'s `extends` pattern
+silently produces `requestBody?: never` in the generated OpenAPI spec — Swagger's automatic
+request-body generation was broken for both the draft and finalize routes since TASK-051 merged, and
+nothing caught it because runtime validation goes through an explicitly-instantiated
+`ZodValidationPipe`, not the DTO class. Found only because TASK-052's own SDK regeneration showed the
+gap. Fixed via nestjs-zod's own documented pattern (confirmed live via Context7 docs): bind as a
+value and type-alias via `InstanceType` (`const X = createZodDto(schema); type X = InstanceType<typeof
+X>;`), not `extends`; also added `.meta({ id: "ResultEntryDto" })` for a clean OpenAPI schema name
+(was auto-named `AugmentedZodDto`). Not a new Skill entry on its own — folded into `engineering/
+api-design`'s existing nestjs-zod guidance as a "don't do this" addendum, since the working pattern
+was already documented, just not this specific failure mode.
+
+Delivered: `GET /v1/catalog`'s `tests[]` extended with `analytes[]` (id/display/dataType/unit),
+resolved via separate queries + in-memory `Map`s (matching `order.controller.ts`'s/
+`specimen.controller.ts`'s own no-join convention, not a new pattern). `apps/web` gained
+`/orders/[id]/results` — a `DataTable`-hosted analyte grid, one custom cell renderer per column, using
+`StatusPill` (TASK-035/036, built but never consumed until this task) to render the live flag with
+both icon and color. Autosave-on-blur calls the draft Server Action; `Enter` calls finalize and
+advances focus to the next enterable row via a `ref` map keyed by `orderedTestId:analyteId` — pure
+keyboard interaction end to end, the literal AC. Quantity-only rendering (proposal §5) — `coded`/
+`text` rows are filtered out before reaching the grid, since no real catalog data backs either shape
+yet (the same gap TASK-051's own proposal already named). Order detail page gained an "Enter results"
+link, visible once any ordered test is `received` or `in_process`.
+
+Verified end-to-end: a new `apps/api/test/catalog.e2e-spec.ts` case (every seeded chemistry test has
+exactly one `quantity` analyte with a real unit); the full existing 108-test `apps/api` e2e suite
+green (109/109 total, zero regression); repo-wide `typecheck`/`lint`/`build` green (all `packages/*`,
+both `apps/*`, including a real `next build`/`nest build`); `openapi.json`/`packages/sdk/src/
+schema.ts` regenerated twice in the same PR (once for the `analytes` field, once for the DTO fix —
+the #292 drift gap avoided proactively, same discipline as TASK-051). A real headless-Chromium
+session (`web-verify` Skill) drove the actual UI against real Keycloak/Postgres/the compiled
+`apps/api` server: all 14 CMP analytes entered and finalized keyboard-only (Tab → type → Enter,
+repeated), the auto-advance-to-next-row focus logic proven correct (a broken advance would have
+halted the loop after row 1, since each finalized row's input becomes `disabled`), live flags
+rendered across the full N/H/L/HH/LL severity spectrum confirming `computeFlags` end-to-end through
+the real UI, dark mode legible, state persisted correctly across a page reload, zero console/page
+errors throughout. `#111` auto-closed via PR #315's bare `Closes #111` line. `Deploy to Staging` (run
+31076152110, triggered by the merge) completed successfully.
+
+**FEAT-014 remaining**: TASK-053 (calculated fields, eGFR/LDL) is the feature's last task —
+`domain/clinical-chemistry` entry #3's own finding that no calculated-analyte mechanism exists
+anywhere yet is still true, unaffected by TASK-052. `/orient`'s next run should specify TASK-053 as a
+revision to `docs/plans/feat-014-result-entry-engine.md`, not start a new proposal file — once done,
+FEAT-014 (#23) itself will need its own manual-comment close, the same recurring bare-`Closes`-line
+gotcha every prior feature in this repo has hit.
 
 ---
 

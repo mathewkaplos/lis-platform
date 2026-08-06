@@ -1,8 +1,9 @@
 # Implementation Proposal: FEAT-014 Result entry engine
 Status: TASK-049 **IMPLEMENTED** — merged PR #309 (`93ed635`), closing #108. TASK-050
 **IMPLEMENTED** — merged PR #311 (`5a24d83`), closing #109. TASK-051 **IMPLEMENTED** — merged PR
-#313 (`8739c7f`), closing #110. TASK-052 (result entry UI) is FEAT-014's next task, to be specified
-as a revision to this same file.
+#313 (`8739c7f`), closing #110. TASK-052 **IMPLEMENTED** — merged PR #315 (`89ecb1d`), closing #111.
+TASK-053 (calculated fields, eGFR/LDL) is FEAT-014's next task, to be specified as a revision to
+this same file.
 ADR: none — the resolution algorithm itself is a direct implementation of KB-15's already-canonical
 design, not a new cross-cutting architectural decision; §10's two open questions are implementation
 choices within that design, written up as new `domain/reference-ranges` Skill entries once resolved,
@@ -677,8 +678,8 @@ repo-wide `typecheck`/`lint`/`build` green.
 ---
 
 # Revision: TASK-052 — Result entry UI (analyte grid, live flags, autosave)
-Status: **APPROVED** — §10 Q1 resolved 2026-08-06 via the native options-prompt, recommended option
-(extend `GET /v1/catalog`) chosen. Implementation begins now.
+Status: **IMPLEMENTED** — merged PR #315 (`89ecb1d`), closing #111. §10 Q1 resolved 2026-08-06 via
+the native options-prompt, recommended option (extend `GET /v1/catalog`) chosen.
 Date: 2026-08-06    Backlog ID: FEAT-014 (#23) / TASK-052 (#111)
 
 ## 1. Goal

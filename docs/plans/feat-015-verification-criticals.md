@@ -1,6 +1,7 @@
 # Implementation Proposal: FEAT-015 Verification & criticals
-Status: **IMPLEMENTED** — merged PR #320 (`f311a2e`), closing #113. TASK-055 (verification action +
-append-only versioning) is FEAT-015's next task, to be specified as a revision to this same file.
+Status: **IMPLEMENTED** — merged PR #320 (`f311a2e`), closing #113 (TASK-054); merged PR #322
+(`9fb5f42`), closing #114 (TASK-055, verification action + append-only versioning). TASK-056
+(finalization block) is FEAT-015's next task, not yet specified.
 §10's open questions were resolved by the human as follows:
 Q1: **Option B** (persist a documented critical-detection audit signal). Q2: the signal is a new
 field on the existing `observation.finalize` audit event's `after` payload, not a second
@@ -264,7 +265,22 @@ tasks, not yet started).
 
 # Revision: TASK-055 — Verification action + append-only versioning
 
-Status: **APPROVED** (2026-08-06) — §10's open questions resolved by the human as follows:
+Status: **IMPLEMENTED** — merged PR #322 (`9fb5f42`), closing #114. Shipped exactly per this
+revision's own resolved §10: `POST /v1/ordered-tests/:id/results/:analyteId/verify` (bare, no
+body), gated by the existing `verify` capability, audited (`observation.verify`); `verify()`
+transitions `'preliminary'` → `'verified'` and sets `verifierUserId`/`verifiedAt`; any other
+current status is rejected 409; `upsertObservation` gained a pre-check turning a would-be
+append-only-trigger `500` into a proper 409 for `draft()`/`finalize()`/the calculated-dependent
+write alike; `observationStatusSchema` widened to include `'verified'`; no public amendment
+endpoint was built (Q3) — a new e2e "trigger proof" describe block instead directly inserts an
+`amendment_of`-linked row via `@lis/db` and proves `result_history`/`supersededBy` behave
+correctly. `apps/api/openapi.json`/`packages/sdk/src/schema.ts` regenerated. Full e2e suite: 135
+green (127 pre-existing + 8 new). One real, unplanned finding surfaced only by CI (not this task's
+own local `pnpm typecheck`, which false-passed due to `@lis/sdk`'s stale `dist/` — see `testing`
+Skill entry #9 in `lis-engineering`): the shared status-enum widening flowed through
+`@lis/sdk`'s `ObservationDto` into `apps/web`'s TASK-052 result-entry grid, which hardcoded a
+narrower status union in three files — widened to match, no new UI treatment added (TASK-057's
+own scope). §10's open questions were resolved by the human as follows:
 Q1: bare `POST .../results/:analyteId/verify`, no request body — mirrors `finalize()`'s own
 bare-action shape exactly. Q2: reuse the existing `verify` capability (already granted to
 `verifier`, not `technologist`) — no new capability or ADR. Q3: **trigger-only proof** — no public

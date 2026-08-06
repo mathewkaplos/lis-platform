@@ -17,8 +17,11 @@ import {
   calculatedAnalytesDependingOn,
   isSuppressed,
   observationSchema,
+  priorObservationSchema,
+  PRIOR_OBSERVATION_LIMIT,
   resultEntrySchema,
   type ObservationResult,
+  type PriorObservation,
   type ResultEntryInput,
 } from '@lis/domain';
 import {
@@ -34,7 +37,7 @@ import {
   testAnalyte,
   unit,
 } from '@lis/db';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull, ne } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { Audit } from '../auth/audit.decorator';
@@ -55,6 +58,7 @@ const resultParamSchema = z.object({ id: z.uuid(), analyteId: z.uuid() });
 class OrderedTestIdParamDto extends createZodDto(orderedTestIdParamSchema) {}
 class ResultParamDto extends createZodDto(resultParamSchema) {}
 class ObservationDto extends createZodDto(observationSchema) {}
+class PriorObservationDto extends createZodDto(priorObservationSchema) {}
 
 // `class X extends createZodDto(resultEntrySchema) {}` fails to typecheck
 // for a discriminatedUnion (its inferred type is a union of object types,
@@ -91,6 +95,24 @@ function toObservationDto(row: ObservationRow): ObservationResult {
     flags: row.flags,
     status: row.status as ObservationResult['status'], // TASK-055: now also 'verified', set only by verify() below
     source: row.source,
+    producedAt: row.producedAt ? row.producedAt.toISOString() : null,
+    createdAt: row.createdAt.toISOString(),
+    // TASK-057 (FEAT-015 revision §2/§10 Q4): both already-existing columns,
+    // null on every row draft()/finalize() ever write; only verify() sets them.
+    verifierUserId: row.verifierUserId,
+    verifiedAt: row.verifiedAt ? row.verifiedAt.toISOString() : null,
+  };
+}
+
+function toPriorObservationDto(row: ObservationRow): PriorObservation {
+  return {
+    id: row.id,
+    orderedTestId: row.orderedTestId,
+    valueNum: row.valueNum === null ? null : Number(row.valueNum),
+    valueCode: row.valueCode,
+    valueText: row.valueText,
+    unit: row.unit,
+    flags: row.flags,
     producedAt: row.producedAt ? row.producedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
   };
@@ -809,6 +831,72 @@ export class ObservationController {
       before: { observation: before },
       after: { observation: toObservationDto(updated) },
     };
+  }
+
+  /**
+   * TASK-057 (FEAT-015 revision §1 finding #3/§2, §10 Q1): the patient's own
+   * prior result(s) for this analyte -- not this ordered test's own result,
+   * a *different* ordered test's result for the same (patientId, analyteId)
+   * pair, most recent first, capped at `PRIOR_OBSERVATION_LIMIT`. No delta/
+   * comparison computed (out of scope, §10 Q1); no `@Audit()` -- an
+   * unmutating read (`engineering/api-design` entry #6).
+   *
+   * Two separate queries (`orderedTest` -> `order.patientId`), not a
+   * three-table join -- this repo's established preference for separate
+   * queries over `.innerJoin()` for a multi-table read (mirrors
+   * `loadWriteContext`'s own shape above, and `order.controller.ts`'s
+   * `search()`). Once the *current* ordered test's own `patientId` is known,
+   * the prior lookup itself needs no join at all: `observation.patientId` is
+   * already a real column on every row (set by `upsertObservation` at write
+   * time), and `ix_obs_trend` (`packages/db/src/schema/observation.ts`) is
+   * already a composite index on exactly
+   * `(tenantId, patientId, analyteId, producedAt)` -- built for precisely
+   * this "prior result for this patient/analyte" read, before this task ever
+   * needed it.
+   */
+  @Get('results/:analyteId/prior')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(TenantContextInterceptor)
+  @ZodResponse({ type: [PriorObservationDto], status: 200 })
+  async prior(
+    @Param(new ZodValidationPipe(resultParamSchema))
+    { id, analyteId }: ResultParamDto,
+    @DbTx() tx: Tx,
+  ): Promise<PriorObservation[]> {
+    const [orderedTestRow] = await tx
+      .select({ orderId: orderedTest.orderId })
+      .from(orderedTest)
+      .where(eq(orderedTest.id, id))
+      .limit(1);
+    // RLS makes a cross-tenant row structurally invisible (engineering/api-design entry #7).
+    if (!orderedTestRow) {
+      throw new NotFoundException('Ordered test not found');
+    }
+
+    const [orderRow] = await tx
+      .select({ patientId: order.patientId })
+      .from(order)
+      .where(eq(order.id, orderedTestRow.orderId))
+      .limit(1);
+    if (!orderRow) {
+      throw new ConflictException('Ordered test has no associated order');
+    }
+
+    const rows = await tx
+      .select()
+      .from(observation)
+      .where(
+        and(
+          eq(observation.patientId, orderRow.patientId),
+          eq(observation.analyteId, analyteId),
+          ne(observation.orderedTestId, id),
+          isNull(observation.supersededBy),
+        ),
+      )
+      .orderBy(desc(observation.producedAt), desc(observation.createdAt))
+      .limit(PRIOR_OBSERVATION_LIMIT);
+
+    return rows.map(toPriorObservationDto);
   }
 
   /** Read: current observations (draft and final) for TASK-052's grid UI.

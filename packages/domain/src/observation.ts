@@ -78,5 +78,42 @@ export const observationSchema = z.object({
   source: z.string(),
   producedAt: z.iso.datetime().nullable(),
   createdAt: z.iso.datetime(),
+  // TASK-057 (FEAT-015 revision §2/§10 Q4): both columns already exist on
+  // `observation` (packages/db/src/schema/observation.ts, set by TASK-055's
+  // `verify()`) but were never exposed by any read route before this task
+  // (`domain/result-verification` Skill entry #7) -- additive, no migration.
+  // Non-`'verified'` rows always carry both as `null` (never set by
+  // draft()/finalize()).
+  verifierUserId: z.uuid().nullable(),
+  verifiedAt: z.iso.datetime().nullable(),
 });
 export type ObservationResult = z.infer<typeof observationSchema>;
+
+/**
+ * TASK-057 (FEAT-015 revision §1 finding #3/§2): the patient's own prior
+ * result(s) for the same analyte, surfaced during verification -- no
+ * computed delta (§10 Q1), just the raw prior value(s), capped at a small N
+ * (`PRIOR_OBSERVATION_LIMIT` below) by the read path itself. A small,
+ * deliberately narrower shape than `observationSchema` -- only what a
+ * verifier's "what did this patient result last time" context needs, not
+ * the full observation row.
+ */
+export const priorObservationSchema = z
+  .object({
+    id: z.uuid(),
+    orderedTestId: z.uuid(),
+    valueNum: z.number().nullable(),
+    valueCode: z.string().nullable(),
+    valueText: z.string().nullable(),
+    unit: z.string().nullable(),
+    flags: z.array(z.string()),
+    producedAt: z.iso.datetime().nullable(),
+    createdAt: z.iso.datetime(),
+  })
+  .meta({ id: "PriorObservationDto" });
+export type PriorObservation = z.infer<typeof priorObservationSchema>;
+
+/** Exact cap is an implementation detail (proposal §5, not elevated to a §10
+ * question) -- enough for a verifier to see a short recent trend without
+ * turning this into an unbounded history read. */
+export const PRIOR_OBSERVATION_LIMIT = 3;

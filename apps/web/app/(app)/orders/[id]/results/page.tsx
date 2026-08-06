@@ -1,7 +1,9 @@
 import { notFound } from 'next/navigation';
 import { getValidAccessToken } from '@/auth/access-token';
+import { getSession } from '@/auth/get-session';
+import { hasVerifierRole } from '@/auth/roles';
 import { createLisApiClient } from '@/lib/api-client';
-import { ResultsGrid, type ResultRow } from './results-grid';
+import { ResultsGrid, type PriorResult, type ResultRow } from './results-grid';
 
 const ENTERABLE_OR_DONE = new Set(['received', 'in_process', 'resulted']);
 
@@ -22,6 +24,12 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
     throw new Error('Your session has expired — please log in again.');
   }
   const client = createLisApiClient(accessToken);
+  // TASK-057 (FEAT-015 revision §2/§10 Q3): this repo's first frontend
+  // role-visibility decision -- read once, server-side, and pass down as a
+  // plain boolean prop rather than the whole session (`hasVerifierRole` is
+  // the only thing the grid needs to know about the caller).
+  const session = await getSession();
+  const isVerifier = hasVerifierRole(session);
 
   const [{ data: order, response: orderResponse }, { data: catalog, response: catalogResponse }] =
     await Promise.all([
@@ -44,12 +52,11 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
   const resultsResponses = await Promise.all(
     fetchableTests.map((t) => client.GET('/v1/ordered-tests/{id}/results', { params: { path: { id: t.id } } })),
   );
-  // TASK-055: `status` widened to include 'verified' -- `list()` returns
-  // every current observation for an ordered test regardless of status, and
-  // an analyte can now genuinely be 'verified' by the time this page loads.
-  // No UI branch below handles a verified row specially yet (TASK-057's own
-  // scope); this widening only keeps this page type-checking against
-  // @lis/sdk's shared ObservationDto shape.
+  // TASK-055/057: `status` widened to include 'verified', and the row now
+  // also carries `verifierUserId`/`verifiedAt` (domain schema widening,
+  // proposal §2/§10 Q4) -- `list()` returns every current observation for an
+  // ordered test regardless of status, and an analyte can now genuinely be
+  // 'verified' by the time this page loads.
   const resultsByOrderedTestId = new Map<
     string,
     {
@@ -60,13 +67,15 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
       refHigh: number | null;
       status: 'registered' | 'preliminary' | 'verified';
       source: string;
+      verifierUserId: string | null;
+      verifiedAt: string | null;
     }[]
   >();
   fetchableTests.forEach((t, i) => {
     resultsByOrderedTestId.set(t.id, resultsResponses[i].data ?? []);
   });
 
-  const rows: ResultRow[] = [];
+  const rowsWithoutPrior: Omit<ResultRow, 'priorResults'>[] = [];
   for (const orderedTest of order.orderedTests) {
     const test = testById.get(orderedTest.testDefinitionId);
     if (!test) continue;
@@ -75,7 +84,7 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
       // analyte exists in the seeded catalog to render either shape against.
       if (analyte.dataType !== 'quantity') continue;
       const existing = resultsByOrderedTestId.get(orderedTest.id)?.find((o) => o.analyteId === analyte.id);
-      rows.push({
+      rowsWithoutPrior.push({
         orderedTestId: orderedTest.id,
         orderedTestStatus: orderedTest.status,
         testDisplayName: test.displayName,
@@ -88,9 +97,27 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
         initialRefLow: existing?.refLow ?? null,
         initialRefHigh: existing?.refHigh ?? null,
         initialObservationStatus: existing?.status ?? null,
+        initialVerifierUserId: existing?.verifierUserId ?? null,
+        initialVerifiedAt: existing?.verifiedAt ?? null,
       });
     }
   }
+
+  // TASK-057 (FEAT-015 revision §2/§10 Q1): one small GET per row, bounded by
+  // a real panel's real size (same "not paginated" reasoning already used
+  // above for the per-ordered-test results fetch) -- the patient's own prior
+  // result for this analyte, no delta computed.
+  const priorResponses = await Promise.all(
+    rowsWithoutPrior.map((row) =>
+      client.GET('/v1/ordered-tests/{id}/results/{analyteId}/prior', {
+        params: { path: { id: row.orderedTestId, analyteId: row.analyteId } },
+      }),
+    ),
+  );
+  const rows: ResultRow[] = rowsWithoutPrior.map((row, i) => ({
+    ...row,
+    priorResults: (priorResponses[i].data ?? []) as PriorResult[],
+  }));
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
@@ -103,7 +130,7 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
           </p>
         ) : null}
       </div>
-      <ResultsGrid rows={rows} />
+      <ResultsGrid rows={rows} isVerifier={isVerifier} />
     </div>
   );
 }

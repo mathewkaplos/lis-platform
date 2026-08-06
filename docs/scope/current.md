@@ -1,7 +1,7 @@
 # Status — 2026-08-06 (session 18)
 
-Last commit on main: `6b9488f` — "feat(api): finalization block on unacknowledged critical (409),
-closing TASK-056 (FEAT-015)" (PR #324), closing #115.
+Last commit on main: `832e39b` — "docs: TASK-056 close-out -- plan doc status + breadcrumb refresh"
+(PR #325). Implementation merged as `6b9488f` (PR #324), closing #115.
 
 ## TASK-054 (FEAT-015's first task) merged this session, via PR #320 (`f311a2e`), closing #113 —
 FEAT-015 (Verification & criticals, M4, EPIC-004) has started, immediately after FEAT-014's full

@@ -222,12 +222,98 @@ the real UI, dark mode legible, state persisted correctly across a page reload, 
 errors throughout. `#111` auto-closed via PR #315's bare `Closes #111` line. `Deploy to Staging` (run
 31076152110, triggered by the merge) completed successfully.
 
-**FEAT-014 remaining**: TASK-053 (calculated fields, eGFR/LDL) is the feature's last task —
-`domain/clinical-chemistry` entry #3's own finding that no calculated-analyte mechanism exists
-anywhere yet is still true, unaffected by TASK-052. `/orient`'s next run should specify TASK-053 as a
-revision to `docs/plans/feat-014-result-entry-engine.md`, not start a new proposal file — once done,
-FEAT-014 (#23) itself will need its own manual-comment close, the same recurring bare-`Closes`-line
-gotcha every prior feature in this repo has hit.
+## TASK-053 (FEAT-014's fifth and final task) merged this same session, via PR #317 (`a05ecd6`),
+closing #112 — FEAT-014 (Result entry engine) is now fully implemented, all five tasks done
+
+`docs/plans/feat-014-result-entry-engine.md` gained its fourth revision (TASK-053's own AC: "Formula
+is shown on hover and the value recalculates correctly on dependency change"). Two open questions
+(§10) resolved via the native options-prompt, recommended option chosen for each: (1) scope — both
+eGFR and LDL, not eGFR alone, since the task's own title and both AC layers name both formulas and
+LDL's Friedewald guard is itself worth proving; (2) recompute trigger — `finalize`-only,
+auto-finalized in the same audited transaction as its triggering input, not also live on `draft` (a
+calculated write needs to be audited, and a value computed from a still-provisional draft input would
+need a third, unprecedented grid state this repo has no vocabulary for yet).
+
+**Real, load-bearing finding from this revision's own research:** `domain/clinical-chemistry` entry
+#3's "no calculated-analyte mechanism exists" gap was re-verified firsthand, not assumed still
+accurate from the Skill text — confirmed zero schema support (no formula column, no input-dependency
+list, no calculated flag anywhere) and zero prior-art (`flagging.ts`/`reference-range.ts` only
+annotate or snapshot an already-user-entered value, never derive a *new* one from other analytes).
+KB-14/KB-20's own full vision is a sandboxed metadata-formula engine — explicitly still an
+unresolved architecture question in KB-20 itself, not a 1-day task's scope — so this revision
+implements the two named formulas (CKD-EPI 2021 race-free eGFR, Friedewald LDL) as a small hard-coded
+registry instead, a deliberate, stated deviation, not a silent shortcut.
+
+**Second real, load-bearing finding:** modeling each calculated analyte as an *additional analyte on
+the same `test_definition` as its own input(s)* — extending the already-seeded single-analyte `CREAT`
+test with eGFR, and adding a new standalone `LIPID` test (Total Cholesterol/HDL/Triglycerides inputs
+plus calculated LDL) — keeps the whole dependency-recompute scoped to one `ordered_test`'s own
+`finalize()` call, with zero new cross-order lookup machinery. Real lab practice, not just a
+convenient schema shape (eGFR is commonly reported alongside creatinine; a Lipid Panel conventionally
+yields TC/HDL/TG/LDL as one result set).
+
+**Real, significant bug found in TASK-051's own already-merged code, not part of this task's own
+scope but directly blocking it — fixed here:** `upsertObservation`'s `UPDATE` branch keyed its
+`WHERE` clause on both `id` and `createdAt`; `createdAt` read back as a millisecond-precision JS
+`Date` never round-trips exactly to the real microsecond-precision `timestamptz` Postgres actually
+stored, so re-`draft`ing or re-`finalize`ing the *same* analyte twice (any analyte, completely
+unrelated to calculated fields) silently matched zero rows on the `UPDATE` and crashed with a 500. No
+test anywhere in this repo — TASK-051's own original suite or TASK-052's — had ever exercised calling
+draft/finalize twice on the same `(orderedTestId, analyteId)` pair before this task's own multi-input
+Lipid Panel correction scenario surfaced it. Fixed by keying the `UPDATE` on `id` alone (a random
+UUID, globally unique in practice) — loses `created_at`'s partition-pruning benefit (ADR-0008), an
+efficiency cost only, not a correctness one. A dedicated regression test (unrelated to calculated
+fields) was added to `observation.e2e-spec.ts`.
+
+**Real, structural finding, not anticipated when the proposal was drafted:** for a calculated analyte
+whose test lives *only* with its own input(s) — eGFR's own shape — finalizing the one input both
+cascades the calculated value and completes 100% of that `ordered_test`'s own requirements in the
+same call, immediately flipping it to `'resulted'`; TASK-051's own pre-existing status guard then
+correctly rejects any further correction. The literal "recalculates on dependency change" AC is
+therefore only reachable, through this endpoint, for a multi-input calculated analyte (LDL) corrected
+*before* its last input finalizes — proven by two dedicated e2e tests, not assumed either way.
+
+**Real, minor finding caught only by `web-verify`, not by any e2e assertion:** `computeEgfr`'s raw
+floating-point result first rendered in the grid as `70.97500558720519` — real lab reports show eGFR
+as a whole number, matching every other seeded analyte's own display convention. Fixed by rounding
+both `computeEgfr`'s and `computeLdl`'s return values; confirmed by a second `web-verify` pass showing
+a clean `71`.
+
+Delivered: `packages/domain/src/calculated-fields.ts` (the two pure formula functions plus a small
+registry, shared by `apps/api` and `apps/web`); `catalogAnalyteSchema` gained `code` (LOINC, resolved
+the same way `unit` already was) so the frontend can recognize a calculated row without a new schema
+flag; `observationSchema` gained `source` (already a real DB column, never exposed before);
+`observation.controller.ts`'s `finalize()` gained the cascade-and-audit-together logic; `db/seed/
+chemistry-catalog.sql` extended (not replaced) with eGFR/LDL/Total Cholesterol/HDL/Triglycerides and
+generic placeholder reference ranges for eGFR/LDL, same "not partner-validated" framing as every
+other row in the file. `apps/web`'s results grid renders a calculated row read-only with its computed
+value and the formula available via the native `title` attribute on hover — the literal AC, no new
+`packages/ui` Tooltip primitive built for it (none exists yet, out of this task's real scope).
+
+Verified end-to-end: 14 new e2e tests (pure `computeEgfr`/`computeLdl` coverage including the
+triglyceride-guard boundary; real HTTP integration proving the cascade, the single-input structural
+limit, LDL's only-once-all-three-inputs-present timing, the corrected-input recompute AC, the
+triglyceride guard's real suppression, and the `patient.sex = 'U'` gap) plus 1 regression test for the
+UPDATE fix; the full existing 109-test `apps/api` e2e suite green (123/123 total, zero regression);
+repo-wide `typecheck`/`lint`/`build` green (including a real `next build`/`nest build`); `openapi.json`/
+`packages/sdk/src/schema.ts` regenerated in the same PR (the #292 drift gap avoided proactively). A
+real headless-Chromium `web-verify` pass against real Keycloak/Postgres/the compiled `apps/api`
+server and the real seeded `CREAT`/`LIPID` fixtures: eGFR appearing read-only with the correct
+computed, rounded value and the full CKD-EPI formula in its `title` attribute the moment Creatinine
+was finalized keyboard-only; LDL showing "Pending inputs" through two of three Lipid Panel inputs and
+computing correctly (120) only once the third finalized; dark mode legible; zero console/page errors
+throughout. `#112` auto-closed via PR #317's bare `Closes #112` line. `Deploy to Staging` (run
+31081682860, triggered by the merge) completed successfully.
+
+**FEAT-014 (Result entry engine, #23) is now fully implemented** — all five tasks (TASK-049 through
+TASK-053) merged, `docs/plans/feat-014-result-entry-engine.md`'s own top-level status updated to
+"FULLY IMPLEMENTED" with every task's merge SHA. Pending only the standard manual-comment close
+(bare `Closes` lines don't auto-close a parent feature issue, the same recurring gotcha as `#99`/
+`#265`/`#74`/`#93`/`#94`/`#105`/`#107` before it) — real future work, not done as part of this
+session's own close-out commit. M4 ("Chemistry Result Loop," the thesis milestone) has no other
+feature named yet; `/orient`'s next run should re-run milestone/next-task discovery from scratch
+rather than assume what comes after M4's own first feature, the same discipline every prior
+milestone transition in this repo has used.
 
 ---
 

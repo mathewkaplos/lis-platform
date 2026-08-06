@@ -76,6 +76,15 @@ export default async function OrderDetailPage({
                 <Link href={`/reception?orderId=${order.id}`}>Receive at reception</Link>
               </Button>
             ) : null}
+            {/* TASK-052 (FEAT-014 revision §2): visible once anything has been
+                received -- mirrors "Receive at reception"'s own conditional
+                shape, using 'received'/'in_process' as the entry-eligible
+                statuses observation.controller.ts's own guard requires. */}
+            {order.orderedTests.some((t) => t.status === 'received' || t.status === 'in_process') ? (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/orders/${order.id}/results`}>Enter results</Link>
+              </Button>
+            ) : null}
             {order.status === 'ordered' ? <CancelOrderButton orderId={order.id} /> : null}
           </div>
         </CardHeader>

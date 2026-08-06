@@ -52,10 +52,18 @@ class OrderedTestIdParamDto extends createZodDto(orderedTestIdParamSchema) {}
 class ResultParamDto extends createZodDto(resultParamSchema) {}
 class ObservationDto extends createZodDto(observationSchema) {}
 
-// nestjs-zod's createZodDto requires a ZodObject (for its own class/OpenAPI
-// generation) -- resultEntrySchema is a discriminatedUnion, so it's used
-// directly with ZodValidationPipe below (still full runtime validation),
-// typed via the plain inferred ResultEntryInput rather than a DTO class.
+// `class X extends createZodDto(resultEntrySchema) {}` fails to typecheck
+// for a discriminatedUnion (its inferred type is a union of object types,
+// not one the `extends` clause can resolve to a single base) -- real gap
+// found during TASK-052 (the OpenAPI doc silently had no request body for
+// either write route below, `requestBody?: never` in the generated SDK
+// schema, since `@Body() body: ResultEntryInput`'s plain type alias gives
+// `@nestjs/swagger`'s reflection nothing to introspect). Fixed the same way
+// nestjs-zod's own docs show for non-extendable schemas: bind the DTO as a
+// value, not via `extends`, then alias the type to its instance shape --
+// `@nestjs/swagger` reflects the real runtime class either way.
+const ResultEntryDto = createZodDto(resultEntrySchema);
+type ResultEntryDto = InstanceType<typeof ResultEntryDto>;
 
 type Tx = RequestWithTx['tx'];
 type ObservationRow = typeof observation.$inferSelect;
@@ -367,7 +375,7 @@ export class ObservationController {
   async draft(
     @Param(new ZodValidationPipe(resultParamSchema))
     { id, analyteId }: ResultParamDto,
-    @Body(new ZodValidationPipe(resultEntrySchema)) body: ResultEntryInput,
+    @Body(new ZodValidationPipe(resultEntrySchema)) body: ResultEntryDto,
     @CurrentUser() user: RequestContext,
     @DbTx() tx: Tx,
   ): Promise<ObservationResult> {
@@ -423,7 +431,7 @@ export class ObservationController {
   async finalize(
     @Param(new ZodValidationPipe(resultParamSchema))
     { id, analyteId }: ResultParamDto,
-    @Body(new ZodValidationPipe(resultEntrySchema)) body: ResultEntryInput,
+    @Body(new ZodValidationPipe(resultEntrySchema)) body: ResultEntryDto,
     @CurrentUser() user: RequestContext,
     @DbTx() tx: Tx,
   ) {

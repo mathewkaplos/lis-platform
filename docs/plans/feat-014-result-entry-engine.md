@@ -842,3 +842,35 @@ reverting the PR; no existing screen depends on the new field.
    information the catalog already conceptually owns (which analytes a test definition produces).
 
 **RESOLVED 2026-08-06 — extend `GET /v1/catalog`, as recommended.** Implementation begins now.
+
+## 11. Real findings during implementation
+
+**Real bug found in TASK-051's own already-merged output, fixed here since it directly blocks this
+task:** `observation.controller.ts`'s two write routes declared `@Body() body: ResultEntryInput` —
+a plain type alias, not a `createZodDto`-based class (a discriminated union can't be written as
+`class X extends createZodDto(schema) {}`, since its inferred type is a union of object types, not
+one the `extends` clause resolves to). `@nestjs/swagger`'s reflection had nothing to introspect from
+a plain type alias, so the generated OpenAPI document silently had **no request body at all** for
+either route (`requestBody?: never` in the generated SDK types) — this task's own frontend code
+would have had zero compile-time safety on what it sent. Fixed per `nestjs-zod`'s own documented
+pattern for non-extendable schemas: bind the DTO as a value (`const ResultEntryDto =
+createZodDto(resultEntrySchema)`) and alias the type to its instance shape
+(`type ResultEntryDto = InstanceType<typeof ResultEntryDto>`), rather than `extends` — `@nestjs/
+swagger` reflects the real runtime class either way. Also added `.meta({ id: "ResultEntryDto" })` to
+the schema itself so the generated OpenAPI component has a real name instead of a generic
+`AugmentedZodDto`. Confirmed fixed by inspecting the regenerated `openapi.json`/`packages/sdk/src/
+schema.ts` directly, not assumed from the code change alone — the discriminated union's three
+variants now appear correctly as an OpenAPI `oneOf`.
+
+Verified end-to-end: `apps/api/test/catalog.e2e-spec.ts` extended and green (the real seeded CMP's
+analyte metadata, correctly shaped); the full existing 108-test `apps/api` e2e suite green (109/109
+total, zero regression); repo-wide `typecheck`/`lint`/`build` green (including a real `next build`).
+A real headless-Chromium `web-verify` pass (real Keycloak/Postgres/the compiled `apps/api` server,
+real order → receive → enter-results flow against the seeded 14-test CMP panel): every one of the 14
+analytes entered and finalized **keyboard-only** (Tab to the first field, then type-and-Enter
+through the rest, zero mouse interaction — the auto-advance-to-next-row logic proven directly, since
+a broken advance would have stopped the loop after the first row once that row's input became
+disabled) — the literal AC. Live flags rendered correctly across the full severity range the real
+panel data produced (`N`, `H`, `L`, `HH`, `LL`), `StatusPill`'s icon+color treatment confirmed
+legible in both light and dark mode, and entered values persisted correctly across a fresh page
+load. Zero console/page errors throughout.

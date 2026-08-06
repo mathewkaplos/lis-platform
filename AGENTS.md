@@ -288,3 +288,18 @@ packages/ui (design system) · packages/sdk (generated API client)
   — not file corruption or your own mistake — and verify real state
   (`git log`/`git status`/`git branch --show-current`) before concluding
   anything was lost.
+- **Before resuming or continuing work that an agent claims to have paused
+  on, verify real state (`gh pr view`, `git log origin/main`) rather than
+  trusting the agent's own narrated status.** A background agent's "I'll
+  pause here and wait for the monitor" does not reliably mean its process
+  has actually stopped — this harness's own completion-notification
+  semantics mean an agent can report as "completed" and later resume
+  autonomously, and nothing in its own transcript distinguishes "genuinely
+  idle" from "still computing." Confirmed 2026-08-06: this exact
+  misjudgment (assuming a "paused" agent had stopped, then dispatching a
+  fresh agent or doing the work directly) was the proximate trigger both
+  times this session hit the shared-working-directory hazard above. Prefer
+  messaging the *existing* agent (by id/name, which resumes it with full
+  context) over spawning a new one whenever the original is still known —
+  a fresh agent has no memory of what the original already did and is
+  exactly what produces this kind of race.

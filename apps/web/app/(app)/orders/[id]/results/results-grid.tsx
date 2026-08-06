@@ -1,9 +1,25 @@
 'use client';
 
 import { useRef, useState, useTransition, type KeyboardEvent } from 'react';
-import { DataTable, Input, StatusPill, type ResultFlag } from '@lis/ui';
+import { Button, DataTable, Input, StatusPill, type ResultFlag } from '@lis/ui';
 import { getCalculatedAnalyteDefinition, isCalculatedAnalyteCode } from '@lis/domain';
-import { draftResult, finalizeResult, type CalculatedDependentOutcome } from './actions';
+import { draftResult, finalizeResult, verifyResult, type CalculatedDependentOutcome } from './actions';
+
+/** TASK-057 (FEAT-015 revision §2/§10 Q1): mirrors the API's own
+ * `PriorObservation` shape (`packages/domain/src/observation.ts`) -- the
+ * patient's own prior result(s) for this analyte, most recent first, no
+ * computed delta. */
+export interface PriorResult {
+  id: string;
+  orderedTestId: string;
+  valueNum: number | null;
+  valueCode: string | null;
+  valueText: string | null;
+  unit: string | null;
+  flags: string[];
+  producedAt: string | null;
+  createdAt: string;
+}
 
 export interface ResultRow {
   orderedTestId: string;
@@ -21,12 +37,21 @@ export interface ResultRow {
   initialRefLow: number | null;
   initialRefHigh: number | null;
   // TASK-055: widened to include 'verified' so this grid type-checks against
-  // @lis/sdk's now-wider shared ObservationDto/observationStatusSchema
-  // shape (list() can genuinely return a verified row now). No new UI
-  // treatment for 'verified' is added here -- that's TASK-057's own scope
-  // (verification UI); a verified row currently renders with neither the
-  // "Draft" nor "Finalized" pill below, same as any other unhandled status.
+  // @lis/sdk's now-wider shared ObservationDto/observationStatusSchema shape
+  // (list() can genuinely return a verified row now). TASK-057 adds the
+  // actual 'verified' UI treatment below (status column, Verify column).
   initialObservationStatus: 'registered' | 'preliminary' | 'verified' | null;
+  // TASK-057 (FEAT-015 revision §2/§10 Q4): both null unless this row is
+  // already 'verified' -- widened `observationSchema` fields, set only by
+  // `verify()`.
+  initialVerifierUserId: string | null;
+  initialVerifiedAt: string | null;
+  // TASK-057 (FEAT-015 revision §1 finding #3/§10 Q1): the patient's own
+  // prior result(s) for this analyte -- fetched once by the parent Server
+  // Component alongside this row's own current result, never refetched on
+  // verify (a just-verified row's own prior list is unaffected by verifying
+  // it).
+  priorResults: PriorResult[];
 }
 
 interface RowState {
@@ -35,6 +60,8 @@ interface RowState {
   refLow: number | null;
   refHigh: number | null;
   observationStatus: 'registered' | 'preliminary' | 'verified' | null;
+  verifierUserId: string | null;
+  verifiedAt: string | null;
   pending: boolean;
   error: string | null;
 }
@@ -76,8 +103,19 @@ function referenceRangeText(low: number | null, high: number | null): string {
  * that cascades a calculated dependent (server-side, same transaction)
  * updates that OTHER row's own state too, via `calculatedDependent` in the
  * finalize outcome -- no full-page reload needed to see it appear.
+ *
+ * TASK-057 (FEAT-015 revision §1 finding #4/§2): a "Verify" affordance per
+ * row where `observationStatus === 'preliminary'` AND the caller holds the
+ * `verifier` role (`isVerifier` prop, §10 Q3) -- hidden entirely, not just
+ * disabled, for a technologist-roled session. `isVerifiable`/
+ * `focusNextVerifiable` mirror `isEnterable`/`focusNextEnterable` above
+ * exactly, with their own ref map (`verifyButtonRefs`) since a `<button>`,
+ * not an `<input>`, is what needs focus after each verify -- native button
+ * `keydown` handling means Enter/Space already activates it with no custom
+ * `onKeyDown` needed (keyboard-only, no mouse, matches this grid's existing
+ * AC for finalize).
  */
-export function ResultsGrid({ rows }: { rows: ResultRow[] }) {
+export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifier: boolean }) {
   const [, startTransition] = useTransition();
   const [rowStates, setRowStates] = useState<Record<string, RowState>>(() =>
     Object.fromEntries(
@@ -89,6 +127,8 @@ export function ResultsGrid({ rows }: { rows: ResultRow[] }) {
           refLow: row.initialRefLow,
           refHigh: row.initialRefHigh,
           observationStatus: row.initialObservationStatus,
+          verifierUserId: row.initialVerifierUserId,
+          verifiedAt: row.initialVerifiedAt,
           pending: false,
           error: null,
         } satisfies RowState,
@@ -96,6 +136,7 @@ export function ResultsGrid({ rows }: { rows: ResultRow[] }) {
     ),
   );
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const verifyButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   function isEnterable(row: ResultRow): boolean {
     if (isCalculatedAnalyteCode(row.analyteCode)) return false; // never manually entered
@@ -104,6 +145,13 @@ export function ResultsGrid({ rows }: { rows: ResultRow[] }) {
       (row.orderedTestStatus === 'received' || row.orderedTestStatus === 'in_process') &&
       state.observationStatus !== 'preliminary'
     );
+  }
+
+  // No ordered-test-status condition -- `verify()` itself has no such gate
+  // (`domain/result-verification` Skill entry #6), only `observationStatus`.
+  function isVerifiable(row: ResultRow): boolean {
+    if (!isVerifier) return false;
+    return rowStates[rowKey(row)].observationStatus === 'preliminary';
   }
 
   function updateRow(key: string, patch: Partial<RowState>) {
@@ -117,6 +165,37 @@ export function ResultsGrid({ rows }: { rows: ResultRow[] }) {
         return;
       }
     }
+  }
+
+  function focusNextVerifiable(fromIndex: number) {
+    for (let i = fromIndex + 1; i < rows.length; i++) {
+      if (isVerifiable(rows[i])) {
+        verifyButtonRefs.current[rowKey(rows[i])]?.focus();
+        return;
+      }
+    }
+  }
+
+  function handleVerify(row: ResultRow, index: number) {
+    const key = rowKey(row);
+    updateRow(key, { pending: true, error: null });
+    startTransition(async () => {
+      const outcome = await verifyResult(row.orderedTestId, row.analyteId);
+      if (outcome.status === 'error') {
+        updateRow(key, { pending: false, error: outcome.error ?? 'Something went wrong.' });
+        return;
+      }
+      updateRow(key, {
+        pending: false,
+        flags: outcome.flags,
+        refLow: outcome.refLow,
+        refHigh: outcome.refHigh,
+        observationStatus: outcome.observationStatus,
+        verifierUserId: outcome.verifierUserId ?? null,
+        verifiedAt: outcome.verifiedAt ?? null,
+      });
+      focusNextVerifiable(index);
+    });
   }
 
   function handleBlur(row: ResultRow) {
@@ -209,6 +288,28 @@ export function ResultsGrid({ rows }: { rows: ResultRow[] }) {
           },
         },
         {
+          id: 'prior',
+          header: 'Prior result',
+          // TASK-057 (FEAT-015 revision §1 finding #3/§10 Q1): the patient's
+          // own most recent prior result for this analyte -- raw value only,
+          // no computed delta/percent-change (unconditionally out of scope).
+          cell: (row) => {
+            const [mostRecent] = row.priorResults;
+            if (!mostRecent) {
+              return <span className="text-xs text-text-secondary">No prior result</span>;
+            }
+            const value = mostRecent.valueNum ?? mostRecent.valueCode ?? mostRecent.valueText ?? '—';
+            const when = mostRecent.producedAt ?? mostRecent.createdAt;
+            return (
+              <span className="text-xs text-text-secondary">
+                {value}
+                {row.unit ? ` ${row.unit}` : ''}
+                {when ? ` (${new Date(when).toLocaleDateString()})` : ''}
+              </span>
+            );
+          },
+        },
+        {
           id: 'result',
           header: 'Result',
           cell: (row) => {
@@ -276,9 +377,50 @@ export function ResultsGrid({ rows }: { rows: ResultRow[] }) {
           header: 'Status',
           cell: (row) => {
             const state = rowStates[rowKey(row)];
+            // TASK-057 (FEAT-015 revision §2): 'verified' finally gets its
+            // own treatment -- previously fell through to `null`, per this
+            // file's own now-superseded TASK-055 comment.
+            if (state.observationStatus === 'verified') return <span className="text-sm text-info">Verified</span>;
             if (state.observationStatus === 'preliminary') return <span className="text-sm text-success">Finalized</span>;
             if (state.observationStatus === 'registered') return <span className="text-sm text-text-secondary">Draft</span>;
             return null;
+          },
+        },
+        {
+          id: 'verify',
+          header: 'Verify',
+          // TASK-057 (FEAT-015 revision §2/§10 Q3/Q4): entirely hidden for a
+          // non-verifier session (`isVerifier` gates `isVerifiable` itself),
+          // not merely disabled -- avoids a control that always fails for
+          // the wrong-roled caller.
+          cell: (row) => {
+            const key = rowKey(row);
+            const state = rowStates[key];
+            const index = rows.indexOf(row);
+
+            if (state.observationStatus === 'verified') {
+              return (
+                <span className="text-xs text-text-secondary">
+                  Verified by {state.verifierUserId ? state.verifierUserId.slice(0, 8) : 'unknown'}
+                  {state.verifiedAt ? ` · ${new Date(state.verifiedAt).toLocaleString()}` : ''}
+                </span>
+              );
+            }
+            if (!isVerifiable(row)) return null;
+            return (
+              <Button
+                ref={(el) => {
+                  verifyButtonRefs.current[key] = el;
+                }}
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={state.pending}
+                onClick={() => handleVerify(row, index)}
+              >
+                Verify
+              </Button>
+            );
           },
         },
       ]}

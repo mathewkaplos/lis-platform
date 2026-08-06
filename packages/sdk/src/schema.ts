@@ -372,6 +372,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ordered-tests/{id}/results/{analyteId}/prior": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ObservationController_prior"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ordered-tests/{id}/results": {
         parameters: {
             query?: never;
@@ -562,6 +578,25 @@ export interface components {
             /** @enum {string} */
             status: "registered" | "preliminary" | "verified";
             source: string;
+            /** Format: date-time */
+            producedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            verifierUserId: string | null;
+            /** Format: date-time */
+            verifiedAt: string | null;
+        };
+        PriorObservationDto_Output: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            orderedTestId: string;
+            valueNum: number | null;
+            valueCode: string | null;
+            valueText: string | null;
+            unit: string | null;
+            flags: string[];
             /** Format: date-time */
             producedAt: string | null;
             /** Format: date-time */
@@ -1089,6 +1124,28 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    ObservationController_prior: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                analyteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriorObservationDto_Output"][];
+                };
             };
         };
     };

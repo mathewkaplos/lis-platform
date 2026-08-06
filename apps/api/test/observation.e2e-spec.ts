@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
@@ -1377,6 +1378,137 @@ describe('Result entry API (e2e)', () => {
           'expected a standalone UPDATE against an already-verified row to be rejected by fn_observation_append_only',
         );
       }
+    });
+  });
+
+  describe('Prior result read path (TASK-057)', () => {
+    // A fresh, dedicated patient -- not this file's own shared `patientId`
+    // fixture, which every other `it` block above also writes Glucose/BUN/
+    // Sodium/etc observations against. Reusing it here would make this
+    // test's own prior-list assertions depend on execution order relative to
+    // every other test in this file (`engineering/testing` Skill entry #8's
+    // own caution about order-dependent state), rather than the deliberate,
+    // fully-isolated two-order scenario the proposal's own testing plan (§8)
+    // asks for.
+    let priorPatientId: string;
+    let glucoseTestDefinitionId: string;
+
+    async function createGlucoseOrder(): Promise<{
+      orderId: string;
+      orderedTestId: string;
+    }> {
+      const res = await request(app.getHttpServer())
+        .post('/v1/orders')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          patientId: priorPatientId,
+          testDefinitionIds: [glucoseTestDefinitionId],
+        })
+        .expect(201);
+      const body = res.body as {
+        resourceId: string;
+        after: { orderedTests: { id: string }[] };
+      };
+      return {
+        orderId: body.resourceId,
+        orderedTestId: body.after.orderedTests[0].id,
+      };
+    }
+
+    beforeAll(async () => {
+      const patientRes = await request(app.getHttpServer())
+        .post('/v1/patients')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          firstName: 'Prior',
+          lastName: 'Context',
+          sex: 'F',
+          birthDate: '1990-01-01',
+        })
+        .expect(201);
+      priorPatientId = (patientRes.body as { resourceId: string }).resourceId;
+
+      const catalogRes = await request(app.getHttpServer())
+        .get('/v1/catalog')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const catalog = catalogRes.body as {
+        tests: { id: string; code: string }[];
+      };
+      const found = catalog.tests.find((t) => t.code === GLUCOSE_CODE);
+      if (!found) {
+        throw new Error(`expected catalog fixture '${GLUCOSE_CODE}' in /v1/catalog`);
+      }
+      glucoseTestDefinitionId = found.id;
+    });
+
+    it("a patient with two orders for the same analyte surfaces the first order's finalized result as the second order's own prior result", async () => {
+      const glucoseId = await glucoseAnalyteId();
+
+      const order1 = await createGlucoseOrder();
+      await receive(order1.orderId);
+
+      await request(app.getHttpServer())
+        .post(`/v1/ordered-tests/${order1.orderedTestId}/results/${glucoseId}/finalize`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 88 })
+        .expect(200);
+
+      // Before any earlier order exists for this brand-new, dedicated
+      // patient, this ordered test's own prior list is empty.
+      const priorBeforeRes = await request(app.getHttpServer())
+        .get(`/v1/ordered-tests/${order1.orderedTestId}/results/${glucoseId}/prior`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      if ((priorBeforeRes.body as unknown[]).length !== 0) {
+        throw new Error(
+          `expected an empty prior list before any earlier order exists, got ${JSON.stringify(priorBeforeRes.body)}`,
+        );
+      }
+
+      const order2 = await createGlucoseOrder();
+      await receive(order2.orderId);
+
+      // TASK-055 (uses tokenA, the technologist-roled session that just
+      // finalized order1's own result) -- this read path is a plain,
+      // unmutating read (`engineering/api-design` entry #6), not gated
+      // behind the `verify` capability, so any authenticated caller who can
+      // see this ordered test at all can also see its prior context.
+      const priorRes = await request(app.getHttpServer())
+        .get(`/v1/ordered-tests/${order2.orderedTestId}/results/${glucoseId}/prior`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const prior = priorRes.body as {
+        orderedTestId: string;
+        valueNum: number | null;
+      }[];
+      if (prior.length !== 1 || prior[0].orderedTestId !== order1.orderedTestId || prior[0].valueNum !== 88) {
+        throw new Error(
+          `expected exactly one prior result, from order1 (orderedTestId=${order1.orderedTestId}, valueNum=88), got ${JSON.stringify(prior)}`,
+        );
+      }
+
+      // order2's own current result is never its own "prior" -- a fresh
+      // ordered test with no result of its own yet still returns the same
+      // one prior entry, not itself.
+      const priorForOrder2AgainRes = await request(app.getHttpServer())
+        .get(`/v1/ordered-tests/${order2.orderedTestId}/results/${glucoseId}/prior`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const priorAgain = priorForOrder2AgainRes.body as { orderedTestId: string }[];
+      if (priorAgain.some((p) => p.orderedTestId === order2.orderedTestId)) {
+        throw new Error(
+          `expected order2's own ordered test to never appear in its own prior list, got ${JSON.stringify(priorAgain)}`,
+        );
+      }
+    });
+
+    it('rejects a prior-result lookup against an unknown ordered test id with 404', async () => {
+      const glucoseId = await glucoseAnalyteId();
+      await request(app.getHttpServer())
+        .get(`/v1/ordered-tests/${randomUUID()}/results/${glucoseId}/prior`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(404);
     });
   });
 });

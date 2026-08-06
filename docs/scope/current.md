@@ -1,7 +1,7 @@
 # Status — 2026-08-05 (session 17)
 
-Last commit on main: `93ed635` — "feat(db): reference-range resolution service, closing TASK-049
-(FEAT-014)" (PR #309), closing #108.
+Last commit on main: `1293fad` — "docs: TASK-053 close-out -- FEAT-014 fully implemented,
+breadcrumb refresh" (PR #318), closing #112.
 
 ## `/orient` confirmed FEAT-013/#22 already closed; EPIC-002/EPIC-003 and TASK-027's sign-off
 (#171) all remain open on the same non-code blocker — a real, recurring, business-level gap, not

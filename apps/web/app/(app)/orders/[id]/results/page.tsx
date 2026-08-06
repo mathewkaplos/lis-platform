@@ -44,6 +44,12 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
   const resultsResponses = await Promise.all(
     fetchableTests.map((t) => client.GET('/v1/ordered-tests/{id}/results', { params: { path: { id: t.id } } })),
   );
+  // TASK-055: `status` widened to include 'verified' -- `list()` returns
+  // every current observation for an ordered test regardless of status, and
+  // an analyte can now genuinely be 'verified' by the time this page loads.
+  // No UI branch below handles a verified row specially yet (TASK-057's own
+  // scope); this widening only keeps this page type-checking against
+  // @lis/sdk's shared ObservationDto shape.
   const resultsByOrderedTestId = new Map<
     string,
     {
@@ -52,7 +58,7 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
       flags: string[];
       refLow: number | null;
       refHigh: number | null;
-      status: 'registered' | 'preliminary';
+      status: 'registered' | 'preliminary' | 'verified';
       source: string;
     }[]
   >();

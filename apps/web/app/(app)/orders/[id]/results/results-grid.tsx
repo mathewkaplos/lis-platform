@@ -20,7 +20,13 @@ export interface ResultRow {
   initialFlags: string[];
   initialRefLow: number | null;
   initialRefHigh: number | null;
-  initialObservationStatus: 'registered' | 'preliminary' | null;
+  // TASK-055: widened to include 'verified' so this grid type-checks against
+  // @lis/sdk's now-wider shared ObservationDto/observationStatusSchema
+  // shape (list() can genuinely return a verified row now). No new UI
+  // treatment for 'verified' is added here -- that's TASK-057's own scope
+  // (verification UI); a verified row currently renders with neither the
+  // "Draft" nor "Finalized" pill below, same as any other unhandled status.
+  initialObservationStatus: 'registered' | 'preliminary' | 'verified' | null;
 }
 
 interface RowState {
@@ -28,7 +34,7 @@ interface RowState {
   flags: string[];
   refLow: number | null;
   refHigh: number | null;
-  observationStatus: 'registered' | 'preliminary' | null;
+  observationStatus: 'registered' | 'preliminary' | 'verified' | null;
   pending: boolean;
   error: string | null;
 }

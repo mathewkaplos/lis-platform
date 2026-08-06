@@ -4,3 +4,4 @@ export * from "./order";
 export * from "./catalog";
 export * from "./specimen";
 export * from "./observation";
+export * from "./calculated-fields";

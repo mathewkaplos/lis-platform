@@ -875,3 +875,320 @@ disabled) — the literal AC. Live flags rendered correctly across the full seve
 panel data produced (`N`, `H`, `L`, `HH`, `LL`), `StatusPill`'s icon+color treatment confirmed
 legible in both light and dark mode, and entered values persisted correctly across a fresh page
 load. Zero console/page errors throughout.
+
+---
+
+# Revision: TASK-053 — Calculated fields (eGFR, LDL) server-side
+Status: **APPROVED** — §10 Q1 (both eGFR and LDL) and Q2 (finalize-only, auto-finalized recompute)
+resolved 2026-08-06 via the native options-prompt, recommended option chosen for each. Implementation
+begins now.
+Date: 2026-08-06    Backlog ID: FEAT-014 (#23) / TASK-053 (#112)
+
+## 1. Goal
+
+TASK-052 (result entry UI) is merged (PR #315, `89ecb1d`). TASK-053's own issue (#112): "Calculated
+fields (eGFR, LDL) server-side." Its one dependency, TASK-051, is satisfied. Its literal AC: "Formula
+is shown on hover and the value recalculates correctly on dependency change." FEAT-014's own
+feature-level AC (#23, item 4) narrows the "server-side" half: "Calculated fields (e.g. eGFR, LDL)
+recompute correctly server-side when a dependency changes." **This is FEAT-014's last task** — once
+merged, the feature itself needs its own manual-comment close (bare `Closes` lines don't auto-close a
+parent feature issue, the same recurring gotcha every prior feature in this repo has hit).
+
+**Real, load-bearing finding #1, confirming the gap `domain/clinical-chemistry` entry #3 already
+named:** independently re-verified against the current schema (not just recalled from the Skill) —
+`analyte`/`test_definition`/`test_analyte` have zero columns for a formula, an input-dependency list,
+or a "calculated" flag; `observation.source` accepts `'calculated'` as a free-text value (comment:
+"manual|analyzer|calculated|imported") but nothing has ever set or validated it. No eGFR or LDL
+`analyte` row is seeded; of LDL's three Friedewald inputs (Total Cholesterol, HDL, Triglycerides),
+**none** are seeded either — only Creatinine (eGFR's one input) already exists. There is also no
+existing precedent anywhere in `packages/db`/`apps/api` for one Observation's value being computed
+from *other* Observations' values — `flagging.ts`/`reference-range.ts` are the only "computed"
+precedents, and both only annotate (flag) or snapshot (range) an already-user-entered value; neither
+derives a new numeric result. TASK-053 is the first instance of cross-analyte derived-value
+computation anywhere in this repo.
+
+**Real, load-bearing finding #2, a genuine narrowing of KB-14/KB-20's full model, matching every
+prior task's own "deliberately narrower than the full KB model" precedent:** KB-14/KB-20 describe a
+**sandboxed metadata-formula engine** — formulas stored as data, not code, versioned, re-runnable and
+auditable — with "where the formula engine lives and its sandboxing" and "the shipped
+calculated-analyte library" both named as *still-unresolved open questions in KB-20 itself*. Building
+a general sandboxed expression engine is not a 1-day (`size:m`) task; it is a real, separate
+architectural undertaking KB-20 itself hasn't settled. **This revision implements the two formulas
+the AC names (eGFR via CKD-EPI 2021 race-free, LDL via Friedewald) as hard-coded, unit-tested
+TypeScript functions in a small registry** (analogous to `flagging.ts`'s own pure-function shape),
+not a metadata-driven engine — a real, deliberate deviation from KB-14/KB-20's long-term vision,
+stated plainly rather than silently assumed, and easy to migrate later once the engine question is
+actually resolved (the registry's shape — output code, input codes, a `compute` function, a
+human-readable formula string — is what a metadata row would eventually replace).
+
+**Real, load-bearing finding #3, resolving how a calculated analyte fits the existing panel model
+without any cross-`ordered_test` machinery:** `test_analyte` already allows more than one analyte per
+`test_definition` (nothing enforces "exactly one" — TASK-052's own e2e test only asserts this for the
+seeded `GLU` test specifically, not as a repo-wide invariant). Modeling each calculated analyte as an
+**additional analyte on the same `test_definition` as its input(s)** — extending the existing `CREAT`
+test with a second, calculated `eGFR` analyte; adding a new `LIPID` ("Lipid Panel") test with four
+analytes, three inputs (Total Cholesterol, HDL, Triglycerides) plus the calculated `LDL` — keeps every
+finalize call (and its dependency recompute) scoped to the single `ordered_test` `observation.controller.ts`'s
+`finalize()` already operates on. No new cross-order/cross-`ordered_test` lookup is needed, and
+`finalize()`'s own existing "every `test_analyte` member has a `'preliminary'` observation → flip to
+`'resulted'`" loop (§L474-503) already does the right thing once a calculated analyte's own
+observation exists — it just becomes one more required member. This is also realistic lab practice
+(eGFR is commonly reported alongside creatinine on the same result line; a Lipid Panel conventionally
+yields TC/HDL/TG/LDL as one result set), not merely a convenient schema hack.
+
+**Real, load-bearing finding #4, an audit-completeness decision, not a style choice:** Constitution
+invariant #5 requires every clinically significant write to be audited. A calculated analyte's write
+happens as a side effect *inside* the same `finalize()` transaction that triggers it — not through its
+own HTTP call, so it can't get its own `@Audit()`-decorated route. Two shapes were considered: (a)
+capture it as a second, independent `writeAuditEvent()` call — a genuinely new pattern this repo has
+deliberately avoided so far (TASK-051 proposal: "this repo has never used a manual `writeAuditEvent()`
+call inside a handler"); (b) fold it into the **same** audit event `AuditInterceptor` already writes
+for the triggering `finalize()` call, nesting the calculated observation inside that event's own
+`before`/`after` payload. **(b) is what this revision implements** — `finalize()`'s return shape
+changes from a flat `{ resourceId, before: ObservationResult, after: ObservationResult }` to `{
+resourceId, before: { observation, calculatedDependent }, after: { observation, calculatedDependent }
+}` for **every** call (not just ones that cascade — the shape has to be uniform), so the audit trail
+always fully reflects both writes when one occurred. `finalize()` has no `@ZodResponse` decorator
+(not OpenAPI-typed), so this isn't a generated-SDK break, but it is a real runtime contract change for
+its one existing caller (`apps/web/.../results/actions.ts`'s `finalizeResult`), updated in this same
+PR.
+
+## 2. Affected files
+
+- `packages/domain/src/calculated-fields.ts` (new) — the formula registry (`CALCULATED_ANALYTES`:
+  output LOINC code, input LOINC code(s), a pure `compute()` function, a human-readable `formula`
+  string for the hover AC) plus the two pure functions themselves (`computeEgfr`, `computeLdl`),
+  shared by `apps/api` (to actually compute) and `apps/web` (to know which analyte codes are
+  calculated, and what formula text to show on hover) — zero DB dependency, unit-testable in
+  isolation, same split `flagging.ts` already established.
+- `packages/domain/src/catalog.ts` — `catalogAnalyteSchema` gains a `code: z.string()` field (the
+  analyte's own LOINC code, resolved via `codeSystemValue` exactly like `unit`'s existing resolution
+  in `catalog.controller.ts`) — the frontend's only way to recognize "this row is calculated" without
+  a new schema flag.
+- `packages/domain/src/observation.ts` — `observationSchema` gains a `source: z.string()` field
+  (already a real, non-null DB column; simply never exposed before) — the grid needs it to render a
+  calculated row read-only.
+- `apps/api/src/catalog/catalog.controller.ts` — resolves each `analyte.codeSystemValueId` to its
+  LOINC `code`, same join shape already used for `unit`.
+- `apps/api/src/observation/observation.controller.ts` — `upsertObservation` gains a `source`
+  parameter (was hardcoded `'manual'` on insert); a new private `maybeComputeDependents()` method,
+  called from `finalize()` only (§10 Q2), after its own `upsertObservation` and before the existing
+  `requiredLinks`/`allFinalized` check; `finalize()`'s return shape changes per finding #4.
+- `db/seed/chemistry-catalog.sql` — extended, not replaced (matching its own numbered-section
+  structure, `ON CONFLICT DO NOTHING` throughout): new `code_system_value`/`unit` rows (eGFR's LOINC
+  code + a new `mL/min/{1.73_m2}` UCUM unit; LDL/Total Cholesterol/HDL/Triglycerides LOINC codes,
+  reusing the existing `mg/dL` unit), new `analyte` rows, a `test_analyte` link adding `eGFR` to the
+  existing `CREAT` test, a new `LIPID` test (`Total Cholesterol`/`HDL`/`Triglycerides`/`LDL`) and its
+  own new `Lipid Panel`, and generic placeholder `reference_range` rows for `eGFR`/`LDL` (same
+  "not partner-validated" framing every other row in this file already carries). A new file was
+  considered and rejected — `chemistry-catalog.sql` is referenced by exact filename in three places
+  (`.github/workflows/pr.yml`, `scripts/db-reset.sh`, `.github/workflows/deploy-staging.yml`); a new
+  seed file would need all three updated for zero real benefit over extending the existing one.
+- `apps/web/app/(app)/orders/[id]/results/page.tsx` — passes each row's analyte `code` and `source`
+  through to `ResultsGrid`.
+- `apps/web/app/(app)/orders/[id]/results/results-grid.tsx` — a row whose analyte `code` is in
+  `CALCULATED_ANALYTES` renders read-only (no `<Input>`, not part of the Tab order — nothing to type),
+  showing the computed value (or a "Pending inputs" placeholder before its dependencies are all
+  finalized) with `title={formula}` — the literal "shown on hover" AC, via the native HTML `title`
+  attribute (no `packages/ui` Tooltip primitive exists yet; building one is out of this task's real
+  scope, `title` is the honest, zero-new-infrastructure way to satisfy the AC's literal wording).
+- `apps/web/app/(app)/orders/[id]/results/actions.ts` — `finalizeResult` updated for `finalize()`'s
+  new nested response shape (finding #4).
+
+## 3. Architecture consulted
+
+- KB-14 (Result Engine) §"Calculated observations" — `source: 'calculated'`, formula-from-metadata,
+  recorded inputs, re-runnable/auditable.
+- KB-20 (Clinical Chemistry) — the actual formula-mechanism detail: sandboxed metadata expressions,
+  each calculated Observation records its input Observations and formula version, validity guards
+  (Friedewald LDL suppressed above the triglyceride threshold, a directly-measured LDL preferred where
+  one exists — no directly-measured-LDL entry path exists anywhere in this repo yet, so that
+  preference rule is real but currently vacuous, not implemented against a case that can't occur).
+  Also confirms directly: "a calculated Observation still needs a normal resolved range like any other
+  quantity result, resolved the same way" — `resolveObservationRange`/`computeFlags` (TASK-049/050)
+  are reused unmodified for the calculated write, not special-cased.
+- KB-16 (Laboratory Disciplines) — "custom calculators" named as one of four discipline-pack
+  extension points; not adopted here (no discipline-pack mechanism exists anywhere in this repo yet),
+  noted for future alignment only.
+- `domain/clinical-chemistry` Skill entry #3 — the gap this task closes, re-verified firsthand against
+  the current schema/code (finding #1), not assumed still accurate from the Skill text alone.
+
+## 4. Skills loaded
+
+- `domain/clinical-chemistry` (entry #3, now being resolved; entry #6 — real seeded data is 100%
+  `quantity`, consistent with both new calculated analytes also being `quantity`).
+- `domain/reference-ranges` (entries #6/#7/#9/#10 — the calculated observation's range resolves and
+  snapshots exactly like any other `quantity` write, including the one-sided-critical-row merge
+  behavior if a future critical threshold is ever added for eGFR/LDL).
+- `engineering/api-design` (entry #8 — explicit `ZodValidationPipe` instantiation; the nestjs-zod
+  `extends`-vs-`InstanceType` gotcha TASK-052 already fixed, re-affirmed not re-broken by this
+  revision's `resultEntrySchema` reuse).
+
+## 5. Assumptions & autonomous decisions
+
+- **CKD-EPI 2021 (race-free), not the older race-based CKD-EPI or MDRD equation** — the current
+  standard-of-care formula (2021, removes the race coefficient), and the only one worth implementing
+  new in 2026; no ADR-weight decision, a straightforward "use the current standard" call.
+- **eGFR/LDL's exact LOINC codes are good-faith placeholders, not verified against a live LOINC
+  server** — consistent with `chemistry-catalog.sql`'s own existing "PLACEHOLDER, NOT PARTNER DATA"
+  framing for every other code in the file; this task doesn't hold itself to a higher bar than the
+  file it's extending.
+- **Suppressed/unavailable calculated results write nothing**, rather than a fabricated value or a
+  sentinel — matches KB-15's own "`no_range` never faked as normal" discipline, applied here to
+  calculated *values* the same way. A real, explicit consequence: if a calculated analyte's inputs
+  never become computable (e.g. `patient.sex = 'U'` blocks eGFR's age/sex-dependent formula, or a
+  Friedewald guard trips), its `ordered_test` can never reach `'resulted'` through this mechanism —
+  stated plainly here, proven by a dedicated e2e test (§8), not silently left to be discovered later.
+- **The calculated observation's `operatorUserId` is the triggering user's own id** — the closest real
+  "who caused this write" answer available; there is no system/service-account principal concept
+  anywhere in this repo.
+- **No new capability, no ADR** — `enter_result`'s existing grant already covers `finalize()`, which
+  is the only route this task adds logic to.
+
+## 6. Risks
+
+- **`finalize()`'s response shape change (finding #4) is a real breaking change to an already-shipped
+  runtime contract**, even though it isn't OpenAPI-typed. Its one caller is updated in this same PR;
+  flagged here rather than described as purely additive.
+- **A stuck-forever `ordered_test` when a calculated analyte can never be computed** (assumption
+  above) is a real, user-facing dead end (a Lipid Panel with `patient.sex = 'U'`'s Creatinine sibling
+  is unaffected, but a Lipid Panel whose triglycerides are ≥ 400 mg/dL will never show
+  `'resulted'`) — not fixed in this task (would need a coded/suppressed-result mechanism KB-14's
+  `dataType` vocabulary doesn't cover yet), proven and documented, not silently shipped.
+- **Extending a shared seed file** (`chemistry-catalog.sql`) that CI/`db-reset.sh`/staging deploy all
+  reference by exact filename carries real blast radius if malformed — mitigated by keeping every
+  new statement `ON CONFLICT DO NOTHING`-idempotent, matching the file's own existing convention
+  exactly, and running the full e2e suite (which depends on this file loading cleanly) before merge.
+
+## 7. Acceptance criteria
+
+TASK-053's literal AC: "Formula is shown on hover and the value recalculates correctly on dependency
+change." FEAT-014's feature-level AC (#23, item 4): "Calculated fields (e.g. eGFR, LDL) recompute
+correctly server-side when a dependency changes."
+- [ ] Finalizing Creatinine on a real seeded order computes and finalizes `eGFR` in the same
+  transaction, with a value matching `computeEgfr()` called directly with the same inputs.
+- [ ] Finalizing Total Cholesterol/HDL/Triglycerides (in any order) on a real Lipid Panel order
+  computes and finalizes `LDL` only once all three are present; the `ordered_test` reaches
+  `'resulted'` only at that point.
+- [ ] Re-finalizing Creatinine with a different value recomputes `eGFR` to the new correct value in
+  the same call — the literal "recalculates correctly on dependency change" AC.
+- [ ] Triglycerides ≥ 400 mg/dL suppresses the `LDL` write entirely (no fabricated value) — proven,
+  not assumed.
+- [ ] The results grid renders a calculated row read-only with its computed value and the formula
+  text available via hover (native `title` attribute, confirmed present in the real DOM via
+  `web-verify`, not just visually screenshotted — a hover-triggered OS tooltip isn't itself
+  screenshot-verifiable in headless mode, the same honest limitation TASK-046 already documented for
+  a different unverifiable-in-this-sandbox physical/OS-level behavior).
+
+## 8. Testing plan
+
+1. Unit tests for `computeEgfr`/`computeLdl` (no DB): normal-range values for both sexes, the
+   triglyceride-guard boundary (399 computes, 400 suppresses), unknown-sex/null-birthDate suppression
+   for eGFR.
+2. New e2e coverage in `apps/api/test/`: real order → receive → finalize Creatinine → assert `eGFR`
+   observation exists, correctly computed, correctly flagged/ranged, `CREAT` ordered_test reaches
+   `'resulted'`; a real Lipid Panel order proving the "only once all three inputs are present" AC and
+   the re-finalize-recomputes AC; the triglyceride-guard case proving no `LDL` write and the
+   `ordered_test` staying `'in_process'`; a `patient.sex = 'U'` case proving `eGFR` is never computed
+   and `CREAT`'s `ordered_test` never reaches `'resulted'` (the documented gap, §5/§6, proven not
+   assumed).
+3. The full existing `apps/api` e2e suite re-run and confirmed still green (extending, not replacing,
+   `chemistry-catalog.sql`; `finalize()`'s shape change is exercised by TASK-051's own existing
+   finalize tests too — confirms they still pass against the new nested `after`/`before` shape).
+4. `web-verify` (real headless Chromium): a real Creatinine finalize showing `eGFR` appear read-only
+   with the correct computed value in the same panel; the `title` attribute present and correct in
+   the DOM for both calculated rows; dark mode; zero console/page errors.
+5. `pnpm typecheck`/`pnpm lint`/`pnpm build` at the repo root, including Storybook's `a11y` check.
+
+## 9. Rollback plan
+
+Mostly additive (new files, new seed rows behind `ON CONFLICT DO NOTHING`, new response fields on
+`CatalogAnalyte`/`ObservationResult` ignorable by every existing consumer) with one real non-additive
+change: `finalize()`'s response shape (finding #4), whose one caller is updated in the same PR.
+Rollback is reverting the PR; no other screen or endpoint depends on the new shape or the new seed
+rows.
+
+## 10. Questions requiring human approval
+
+1. **Scope: implement eGFR only, or both eGFR and LDL?** eGFR needs only one new output `analyte`
+   row plus a `test_analyte` link onto the already-seeded `CREAT` test (Creatinine already exists).
+   LDL needs a new `LIPID` test/panel and three new input analytes (Total Cholesterol, HDL,
+   Triglycerides) none of which exist yet — a real, larger increment. **Recommended: both.** The
+   task's own title and both AC layers (task-level and feature-level) name eGFR and LDL together;
+   LDL's Friedewald guard (triglyceride-threshold suppression) is itself a meaningful piece of
+   "calculated fields" behavior worth proving end-to-end, and the extra seed data is the same shape
+   already used for the other 14 CMP analytes, not a new kind of complexity.
+2. **When should a calculated analyte's value (re)compute — on `finalize` of its last-needed input
+   only, or also live on `draft`?** **Recommended: `finalize` only**, auto-finalized in the same
+   transaction as the triggering input's own finalize. Reasons: (a) Constitution invariant #5 — the
+   calculated write needs to be audited, and folding it into the same audited `finalize()` call
+   (finding #4) is far cleaner than inventing an unaudited write path off of `draft`; (b) a calculated
+   value computed from a still-*draft* (unfinalized, provisional) input would itself be provisional in
+   a way this repo has no existing UI/status vocabulary for — TASK-052's grid already distinguishes
+   Draft/Finalized per row, and a calculated row would need a third, unprecedented state ("live
+   preview from someone else's draft") to do this safely. The alternative (recompute live on every
+   input `draft`, matching how flags/ranges already recompute live per TASK-049/050) has real
+   precedent elsewhere in this same screen, but for a *newly written* Observation row (not just an
+   annotation on an existing one), finalize-only is the safer, more defensible default.
+
+Both resolved via the native options-prompt before implementation begins.
+
+## 11. Real findings during implementation
+
+**Real, significant bug found in TASK-051's own already-merged code, not part of this task's own
+scope but directly blocking it — fixed here:** `observation.controller.ts`'s `upsertObservation`
+UPDATE branch keyed its `WHERE` clause on both `id` and `createdAt`
+(`eq(observation.id, existing.id), eq(observation.createdAt, existing.createdAt)`), per ADR-0008's
+own partition-pruning rationale. Re-`draft`ing or re-`finalize`ing the **same** analyte a second time
+(any analyte, completely unrelated to calculated fields) crashed with a 500: `existing.createdAt`,
+read back as a millisecond-precision JS `Date`, never round-trips exactly back to the real
+microsecond-precision `timestamptz` Postgres actually stored (from `defaultNow()`), so the `UPDATE`
+matched zero rows and `.returning()` silently returned `undefined`, crashing the caller on `row.id`.
+No test in TASK-051's own original suite, or TASK-052's, had ever called draft/finalize twice on the
+same `(orderedTestId, analyteId)` pair — this task's own multi-input Lipid Panel correction scenario
+(§7 AC 3) was the first to exercise it, surfacing a real, previously-invisible latent bug rather than
+introducing one. Fixed by keying the `UPDATE` on `id` alone (a random UUID, globally unique in
+practice, zero precision-loss risk) — loses `created_at`'s partition-pruning benefit, an efficiency
+cost only, not a correctness one, and not a real cost at this data scale. A dedicated regression test
+was added directly to `observation.e2e-spec.ts` (general, not calculated-fields-specific) proving
+re-drafting the same analyte twice both succeeds and persists the latest value.
+
+**Real, structural finding, not anticipated when the proposal was drafted:** for a calculated analyte
+whose `test_definition` contains *only* the calculated analyte and its own input(s) — exactly eGFR's
+own shape (§1 finding #3: eGFR added to the existing single-input `CREAT` test) — finalizing the one
+input both cascades the calculated value **and** completes 100% of that `ordered_test`'s own
+`test_analyte` requirements in the very same call, immediately flipping it to `'resulted'`. TASK-051's
+own pre-existing `ENTERABLE_ORDERED_TEST_STATUSES` guard then correctly rejects any further write —
+there is no "still `in_process`, correct it before the panel closes" window for a single-input
+calculated analyte the way there is for LDL's 3-input case. This means the literal "recalculates on
+dependency change" AC is only reachable, through this endpoint, for a multi-input calculated analyte
+(LDL) corrected *before* its last input finalizes — not for a single-input one (eGFR) after its panel
+completes. Proven directly by two dedicated e2e tests, not assumed: one confirms eGFR's own
+`ordered_test` reaching `'resulted'` immediately and correctly rejecting (`409`) a further Creatinine
+correction; the other confirms LDL recomputes from the **latest**, not stale, input values when HDL is
+corrected before Triglycerides (the last input) finalizes.
+
+**Real, minor finding caught by `web-verify`, not by any e2e test (no e2e assertion checked display
+formatting):** `computeEgfr`'s raw floating-point result rendered in the grid as
+`70.97500558720519` — real lab reports show eGFR (and LDL) as whole numbers, matching every other
+seeded chemistry analyte's own display convention. Fixed by rounding both `computeEgfr`'s and
+`computeLdl`'s return values to the nearest integer; confirmed by both packages/domain's own pure
+tests and a second `web-verify` pass showing a clean `71`.
+
+Verified end-to-end: 14 new e2e tests (`apps/api/test/calculated-fields.e2e-spec.ts`: pure-function
+coverage for `computeEgfr`/`computeLdl` including the triglyceride-guard boundary; real HTTP
+integration proving eGFR's cascade-and-auto-finalize, the single-input structural limit above, LDL's
+only-once-all-three-inputs-present timing, the corrected-input recompute AC, the triglyceride guard's
+real suppression with no fabricated value and a permanently-`in_process` ordered_test, and
+`patient.sex = 'U'`'s real, documented eGFR gap) plus 1 new regression test in
+`observation.e2e-spec.ts` (the UPDATE-matched-zero-rows fix); the full existing 109-test `apps/api`
+e2e suite green (123/123 total, zero regression); repo-wide `typecheck`/`lint`/`build` green (all
+`packages/*`, both `apps/*`, including a real `next build`/`nest build`); `openapi.json`/
+`packages/sdk/src/schema.ts` regenerated in the same PR (the `analyte.code`/`observation.source`
+fields, the #292 drift gap avoided proactively). A real headless-Chromium `web-verify` pass against
+real Keycloak/Postgres/the compiled `apps/api` server and the real seeded `CREAT`/`LIPID` catalog
+fixtures: eGFR appearing read-only with the correct computed, rounded value and the full CKD-EPI
+formula in its `title` attribute (the literal "shown on hover" AC) the moment Creatinine was finalized
+keyboard-only; LDL showing "Pending inputs" through two of three Lipid Panel inputs and computing
+correctly (120) only once the third (Triglycerides) finalized; dark mode legible with correct
+flag/status colors; zero console/page errors throughout.

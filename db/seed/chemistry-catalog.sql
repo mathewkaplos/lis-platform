@@ -154,3 +154,96 @@ FROM (VALUES
   ('ALT (SGPT)',             NULL, NULL,      'normal',   7,    56,  1, 'Standard adult reference interval -- placeholder, not partner-validated')
 ) AS r(analyte_display, sex, condition, range_type, low, high, priority, source)
 JOIN analyte a ON a.display = r.analyte_display;
+
+-- TASK-053 (FEAT-014): calculated fields (eGFR, LDL). Same placeholder
+-- framing as the rest of this file -- LOINC codes are good-faith picks, not
+-- verified against a live LOINC server (docs/plans/feat-014-result-entry-
+-- engine.md's TASK-053 revision §5). eGFR is modeled as a SECOND analyte on
+-- the already-seeded CREAT test (extending #3/#4/#5 above), not a new test
+-- -- it's realistic lab practice to report eGFR alongside creatinine on the
+-- same result line, and it keeps the calculated-value recompute scoped to
+-- one ordered_test (revision §1 finding #3). LDL and its three Friedewald
+-- inputs (Total Cholesterol, HDL, Triglycerides) are a new standalone
+-- "Lipid Panel" test -- the order builder already supports ordering a
+-- single test directly (apps/web/.../orders/new/order-builder-form.tsx),
+-- no panel wrapper needed for a test that IS the panel.
+
+-- 8. Code system values: the two calculated analytes' own LOINC codes, plus
+-- the three new Lipid Panel input analytes' LOINC codes, plus a new UCUM
+-- unit for eGFR.
+INSERT INTO code_system_value (system, code, version, display) VALUES
+  ('LOINC', '98979-8', '2.78', 'Estimated glomerular filtration rate/1.73 sq M predicted [Volume Rate/Area] by Creatinine-based formula (CKD-EPI 2021)'),
+  ('LOINC', '13457-7', '2.78', 'Cholesterol in LDL [Mass/volume] in Serum or Plasma by calculation'),
+  ('LOINC', '2093-3',  '2.78', 'Cholesterol [Mass/volume] in Serum or Plasma'),
+  ('LOINC', '2085-9',  '2.78', 'Cholesterol in HDL [Mass/volume] in Serum or Plasma'),
+  ('LOINC', '2571-8',  '2.78', 'Triglyceride [Mass/volume] in Serum or Plasma')
+ON CONFLICT (system, code, version) DO NOTHING;
+
+INSERT INTO code_system_value (system, code, version, display) VALUES
+  ('UCUM', 'mL/min/{1.73_m2}', '2.2', 'milliliter per minute per 1.73 square meter')
+ON CONFLICT (system, code, version) DO NOTHING;
+
+-- 9. Units: the new eGFR unit, keyed off the code_system_value row just
+-- inserted; LDL/Total Cholesterol/HDL/Triglycerides reuse the existing
+-- mg/dL unit already inserted in step 2 above.
+INSERT INTO unit (code_system_value_id)
+SELECT id FROM code_system_value WHERE system = 'UCUM' AND code = 'mL/min/{1.73_m2}'
+ON CONFLICT DO NOTHING;
+
+-- 10. Analytes: eGFR (new unit) and LDL/Total Cholesterol/HDL/Triglycerides
+-- (existing mg/dL unit).
+INSERT INTO analyte (code_system_value_id, display, data_type, default_unit_id)
+SELECT csv.id, a.display, 'quantity', u.id
+FROM (VALUES
+  ('98979-8', 'eGFR (CKD-EPI 2021)',    'mL/min/{1.73_m2}'),
+  ('13457-7', 'LDL Cholesterol',         'mg/dL'),
+  ('2093-3',  'Total Cholesterol',       'mg/dL'),
+  ('2085-9',  'HDL Cholesterol',         'mg/dL'),
+  ('2571-8',  'Triglycerides',           'mg/dL')
+) AS a(loinc_code, display, ucum_code)
+JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.code = a.loinc_code
+JOIN code_system_value ucsv ON ucsv.system = 'UCUM' AND ucsv.code = a.ucum_code
+JOIN unit u ON u.code_system_value_id = ucsv.id
+WHERE NOT EXISTS (SELECT 1 FROM analyte existing WHERE existing.code_system_value_id = csv.id);
+
+-- 11. Link eGFR onto the already-seeded CREAT test (a second analyte on an
+-- existing test_definition, not a new one).
+INSERT INTO test_analyte (tenant_id, test_definition_id, analyte_id)
+SELECT '00000000-0000-0000-0000-000000000001', td.id, a.id
+FROM test_definition td, code_system_value csv, analyte a
+WHERE td.tenant_id = '00000000-0000-0000-0000-000000000001' AND td.code = 'CREAT'
+  AND csv.system = 'LOINC' AND csv.code = '98979-8'
+  AND a.code_system_value_id = csv.id
+ON CONFLICT (test_definition_id, analyte_id) DO NOTHING;
+
+-- 12. The new standalone Lipid Panel test, and its four analytes (three
+-- inputs the user enters, plus the calculated LDL).
+INSERT INTO test_definition (tenant_id, code, display_name)
+VALUES ('00000000-0000-0000-0000-000000000001', 'LIPID', 'Lipid Panel')
+ON CONFLICT (tenant_id, code) DO NOTHING;
+
+INSERT INTO test_analyte (tenant_id, test_definition_id, analyte_id)
+SELECT '00000000-0000-0000-0000-000000000001', td.id, a.id
+FROM (VALUES ('13457-7'), ('2093-3'), ('2085-9'), ('2571-8')) AS m(loinc_code)
+JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.code = m.loinc_code
+JOIN analyte a ON a.code_system_value_id = csv.id
+JOIN test_definition td ON td.tenant_id = '00000000-0000-0000-0000-000000000001' AND td.code = 'LIPID'
+ON CONFLICT (test_definition_id, analyte_id) DO NOTHING;
+
+-- 13. Reference ranges for eGFR/LDL: generic published adult intervals,
+-- same "not partner-validated" placeholder framing as step 7 above. One-
+-- sided per KB-15's own convention: eGFR's normal lower bound only (>= 90
+-- is normal), LDL's normal upper bound only (< 100 is optimal).
+INSERT INTO reference_range (tenant_id, analyte_id, unit_id, sex, condition, range_type, low, high, priority, source)
+SELECT '00000000-0000-0000-0000-000000000001', a.id, a.default_unit_id, r.sex, r.condition, r.range_type, r.low, r.high, r.priority, r.source
+FROM (VALUES
+  ('eGFR (CKD-EPI 2021)', NULL, NULL, 'normal', 90,   NULL, 1, 'Standard adult reference interval (Stage 1, no CKD) -- placeholder, not partner-validated'),
+  ('LDL Cholesterol',     NULL, NULL, 'normal', NULL, 100,  1, 'Standard adult optimal-LDL reference interval -- placeholder, not partner-validated')
+) AS r(analyte_display, sex, condition, range_type, low, high, priority, source)
+JOIN analyte a ON a.display = r.analyte_display
+WHERE NOT EXISTS (
+  SELECT 1 FROM reference_range existing
+  WHERE existing.tenant_id = '00000000-0000-0000-0000-000000000001'
+    AND existing.analyte_id = a.id
+    AND existing.range_type = r.range_type
+);

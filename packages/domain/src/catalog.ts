@@ -15,8 +15,15 @@ import { z } from "zod";
  * (KB-14), not TASK-051's narrower 3-value request-side restriction -- this
  * describes what the catalog *has*, not what any one write path accepts.
  */
+/**
+ * TASK-053 (FEAT-014 revision §2): `code` is the analyte's own LOINC code
+ * (resolved via `codeSystemValue`, same join shape already used for `unit`)
+ * -- the only way the frontend can recognize "this row is calculated"
+ * (`@lis/domain`'s `isCalculatedAnalyteCode`) without a new schema flag.
+ */
 export const catalogAnalyteSchema = z.object({
   id: z.uuid(),
+  code: z.string(),
   display: z.string(),
   dataType: z.string(),
   unit: z.string().nullable(),

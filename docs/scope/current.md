@@ -1,7 +1,7 @@
 # Status — 2026-08-06 (session 18)
 
-Last commit on main: `f311a2e` — "feat(api): critical detection audit signal, closing TASK-054
-(FEAT-015)" (PR #320), closing #113.
+Last commit on main: `9fb5f42` — "feat(api,domain): verification action + append-only versioning,
+closing TASK-055 (FEAT-015)" (PR #322), closing #114.
 
 ## TASK-054 (FEAT-015's first task) merged this session, via PR #320 (`f311a2e`), closing #113 —
 FEAT-015 (Verification & criticals, M4, EPIC-004) has started, immediately after FEAT-014's full
@@ -54,11 +54,72 @@ real `next build`/`nest build`). `generate-openapi` re-run and diffed empty agai
 regeneration, confirming the proposal's own "confirm during implementation" note. `#113` auto-closed
 via PR #320's bare `Closes #113` line.
 
-**FEAT-015 is not yet fully implemented** — only its first of four named tasks is done. TASK-055
-(verification action + append-only versioning) is FEAT-015's next task; TASK-056 (the finalization
-block, Constitution Law #3's "block report finalization until acknowledged" becoming real code) and
-TASK-057 (verification UI) follow it. `/orient`'s next run should treat FEAT-015 as in-progress, not
-re-diagnose milestone/next-task discovery from scratch the way a fresh-feature session would.
+**FEAT-015 was not yet fully implemented after TASK-054** — only its first of four named tasks was
+done at that point. TASK-055 (below) is its second. TASK-056/057 remain.
+
+## TASK-055 (FEAT-015's second task) merged this same session, via PR #322 (`9fb5f42`), closing #114
+— continuing directly from TASK-054 (no new `/orient` cycle — the human asked for TASK-055 by name)
+
+`docs/plans/feat-015-verification-criticals.md` gained its second revision (TASK-055's own AC: "A
+verified row is immutable; amendment correctly creates a new version"). Four open questions (§10)
+resolved via the native options-prompt, recommended option chosen for each: (1) HTTP shape — a bare
+`POST .../results/:analyteId/verify`, no request body, mirroring `finalize()`'s own action-sub-resource
+shape exactly, no verifier free-text comment field; (2) capability — reuse the already-existing
+`verify` capability (already granted only to `verifier`, not `technologist`, proven by a demo route
+since TASK-032/033), no new capability or ADR; (3) amendment scope — **trigger-only proof**, not a
+new public amendment/correction endpoint: a direct-insert e2e test proves `amendmentOf`/
+`result_history`/`supersededBy` behave correctly, leaving a real public amendment endpoint as an
+explicitly separate future task; (4) critical verification — no different from ordinary verification
+for this task's own scope, with TASK-056 explicitly inheriting the open question of whether this
+verify action counts as sufficient acknowledgement for Constitution Law #3.
+
+**Real, load-bearing findings from this revision's own research, several correcting or extending the
+just-drafted `domain/result-verification` Skill:** the append-only trigger (`fn_observation_append_only`,
+TASK-021/ADR-0007) was already fully built and even already exercised once end-to-end outside business
+code (`packages/db/src/rls-isolation-check.ts`'s own amendment fixture) — correcting the Skill's own
+entry #2 ("zero real hits outside schema/migration/comment text"), not just re-confirming it. The
+`verifierUserId`/`verifiedAt` columns already existed on `observation` (TASK-020) with zero migration
+needed. The `verify` capability already existed and was already role-asymmetric (verifier-only) by
+design, the same "prove ahead of a real feature needing it" precedent TASK-032/033 used for
+`enter_result` before TASK-051 became its first real consumer — TASK-055 is `verify`'s first real
+consumer.
+
+Delivered: `POST /v1/ordered-tests/:id/results/:analyteId/verify` (audited as `observation.verify`,
+capability-gated) transitioning `'preliminary'` → `'verified'` and setting `verifierUserId`/
+`verifiedAt`; a new pre-check in `upsertObservation`'s call sites (`draft()`/`finalize()`) turning what
+would have been an unhandled 500 from the append-only trigger into a proper 409 when a caller tries to
+re-draft/re-finalize an already-verified analyte; `observationStatusSchema` (`packages/domain`) widened
+to include `'verified'`, flowing through `@lis/sdk` into `apps/web`'s result-entry grid. No new public
+amendment endpoint (per §10 Q3) — a new "trigger proof" e2e describe block directly inserts an
+`amendmentOf`-linked row via `@lis/db` and proves `result_history` gains a row and the predecessor's
+`supersededBy` is set correctly, without exercising any new HTTP surface.
+
+**Real bug caught only by CI, not by this task's own local `pnpm typecheck` — a false-clean local
+pass:** `packages/sdk`'s `types` field resolves to its committed `dist/`, not freshly-generated `src/`;
+regenerating `openapi.json`/`schema.ts` and running `typecheck` (no emit) left `apps/web` type-checking
+against the OLD, narrower status type the whole time, masking a real regression — two `apps/web` files
+(`orders/[id]/results/actions.ts`, `page.tsx`) hardcoded a `'registered' | 'preliminary'` literal union
+that doesn't accept `'verified'`. Only CI's real `pnpm --filter @lis/sdk build` (not just `typecheck`)
+ahead of its own `pnpm typecheck` step caught it. Fixed by widening both files to match; written up as
+`engineering/testing` Skill entry #9 (pushed to `lis-engineering`) — a general "regenerated schema,
+consumer typecheck still false-passes on stale `dist/`" gotcha, not scoped to this one task.
+
+Verified end-to-end: new e2e cases — verify success as `verifier`, 403 as `technologist` (the first
+real-route proof of `verify`'s existing role asymmetry, not just the demo route), 409 on re-verifying
+an already-verified row and on verifying a non-`'preliminary'` row, the direct-insert trigger-proof
+case, plus confirmation of zero regression to `draft()`/`finalize()`/`list()` from the status-enum
+widening; the full existing 127-test `apps/api` e2e suite green (135/135 total, zero regression);
+repo-wide `typecheck`/`lint`/`build` green (including a real `next build`/`nest build`, and a real
+`@lis/sdk` rebuild this time, not just its own `typecheck`); `openapi.json`/`packages/sdk/src/schema.ts`
+regenerated for the new route and the widened enum. `#114` auto-closed via PR #322's bare
+`Closes #114` line. `Deploy to Staging` (triggered by the merge) completed successfully.
+
+**FEAT-015 remaining**: TASK-056 (finalization block, 409 on unacknowledged critical — Constitution
+Law #3's own "block report finalization until acknowledged" becoming real code, inheriting TASK-055's
+own open question of whether `verify` alone counts as acknowledgement) and TASK-057 (verification UI)
+are both not started. `/orient`'s next run (or a named-task request, as both TASK-054 and TASK-055
+were this session) should specify TASK-056 as the next revision to
+`docs/plans/feat-015-verification-criticals.md`.
 
 ## `/orient` confirmed FEAT-013/#22 already closed; EPIC-002/EPIC-003 and TASK-027's sign-off
 (#171) all remain open on the same non-code blocker — a real, recurring, business-level gap, not

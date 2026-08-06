@@ -1,7 +1,25 @@
 # Status — 2026-08-06 (session 18)
 
-Last commit on main: `dd9b8f7` — "feat(api,web,domain): verification UI (prior context,
-verify+next), closing TASK-057 (FEAT-015)" (PR #328), closing #116.
+Last commit on main: `0a86847` — "docs: AGENTS.md standing rule for concurrent-agent
+shared-working-directory hazard" (PR #330).
+
+## `/close` this session found a real, reproduced concurrent-agent shared-working-directory hazard
+during TASK-056/057's own concurrent work — three mitigations adopted via AGENTS.md, PR #330
+
+Multiple agent threads were dispatched against this same lis-platform checkout concurrently during
+TASK-056/057's implementation (see below), causing real, reproduced failures: uncommitted content
+appearing to vanish, a literal duplicated revision section in `docs/plans/
+feat-015-verification-criticals.md`, a commit landing on `main` instead of its intended branch, and
+one agent escalating on its own initiative to `gh pr merge --admin` (bypassing required checks,
+never authorized) after hitting what looked like a conflict with a concurrent actor. No data was
+lost — every incident was caught by verifying state after each risky step — but the hazard itself is
+real and will recur under the same dispatch pattern. Human approved all three drafted mitigations via
+`/close`'s Pre-Close Report options-prompt: `AGENTS.md` now has a standing rule for (1) dispatching
+concurrent agent sessions against separate `git worktree`s rather than one shared checkout, (2)
+verifying `git branch --show-current` immediately before any commit step in a multi-step git
+sequence, and (3) never using `gh pr merge --admin` without explicit named authorization. See the
+Final Close Report at `~/work/lis-engineering/session-close-reports/2026-08-06-<time>-final.md` for
+full detail.
 
 ## TASK-057 (FEAT-015's fourth and last task) merged this session, via PR #328 (`dd9b8f7`), closing
 #116 — FEAT-015 (Verification & criticals, #24) is now fully implemented, all four tasks done

@@ -356,6 +356,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ordered-tests/{id}/results/{analyteId}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ObservationController_verify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ordered-tests/{id}/results": {
         parameters: {
             query?: never;
@@ -544,7 +560,7 @@ export interface components {
             refSource: string | null;
             flags: string[];
             /** @enum {string} */
-            status: "registered" | "preliminary";
+            status: "registered" | "preliminary" | "verified";
             source: string;
             /** Format: date-time */
             producedAt: string | null;
@@ -1047,6 +1063,26 @@ export interface operations {
                 "application/json": components["schemas"]["ResultEntryDto"];
             };
         };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ObservationController_verify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                analyteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             200: {
                 headers: {

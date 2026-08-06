@@ -259,3 +259,289 @@ tasks, not yet started).
    cases?** **Resolved: synthetic fixtures** — matches TASK-049's own age/method precedent; the
    golden dataset's four real critical analytes are not fabricated a fifth, incompatible-unit
    threshold that doesn't exist in real seed data.
+
+---
+
+# Revision: TASK-055 — Verification action + append-only versioning
+
+Status: **APPROVED** (2026-08-06) — §10's open questions resolved by the human as follows:
+Q1: bare `POST .../results/:analyteId/verify`, no request body — mirrors `finalize()`'s own
+bare-action shape exactly. Q2: reuse the existing `verify` capability (already granted to
+`verifier`, not `technologist`) — no new capability or ADR. Q3: **trigger-only proof** — no public
+amendment/correction endpoint in this task; a direct-insert e2e test proves
+`amendmentOf`/`result_history`/`supersededBy` work correctly, and a real public amendment endpoint
+is deferred as an explicitly separate future task. Q4: verifying a critical observation needs
+nothing different from verifying a non-critical one for this task's own scope — TASK-056 inherits
+the open question of whether this verify action counts as sufficient acknowledgement for
+Constitution Law #3.
+Date: 2026-08-06    Backlog ID: FEAT-015 (#24) / TASK-055 (#114)
+
+## 1. Goal
+
+TASK-054 (critical detection) is merged (PR #320/#321, `f311a2e`/`a310968`), closing #113.
+FEAT-015's next task per its own ordering is **TASK-055 — verification action + append-only
+versioning** (#114). Its one dependency, TASK-051 (Result entry API), is merged. Its literal AC:
+"A verified row is immutable; amendment correctly creates a new version." Its "Expected output":
+"Verification action sub-resource."
+
+**Real, load-bearing finding #1 — the append-only trigger machinery this task depends on is not
+just reviewed DDL; it has already been exercised once, successfully, end-to-end, in a non-business
+context.** `domain/result-verification` Skill entry #2 states "zero real hits outside
+schema/migration/comment text" for `amendment_of` — this is **not fully accurate** and this
+proposal corrects it: `packages/db/src/rls-isolation-check.ts` (lines ~161–171) already inserts a
+second observation with `amendmentOf: obs.id` set, specifically to exercise the real
+`fn_observation_link_created_at` + `fn_observation_supersede` chain "entirely in SQL, at full
+precision, exactly as any real correction would in production" (the file's own comment). This is a
+genuinely useful, real data point: the trigger chain is proven to run correctly under Postgres,
+not just reviewed as SQL text. It does **not** change the core Skill finding — no business code
+anywhere sets `status = 'verified'` or calls `amendment_of` from a real write path — TASK-055 is
+still the first task to make `'verified'` reachable through the API and the first to make
+`amendment_of` a real, user-triggered outcome rather than a one-off isolation-check fixture.
+
+**Real, load-bearing finding #2 — the schema already carries everything "who verified this and
+when" needs; no migration is required under any reading of this task.** `packages/db/src/schema/
+observation.ts` (read in full) already has `verifierUserId: uuid("verifier_user_id")` (line 87,
+"no FK: no user table exists yet (M2)") and `verifiedAt: timestamp("verified_at", { withTimezone:
+true })` (line 89) as real, already-migrated columns — not something TASK-020/021 left as a TODO.
+Confirms `domain/result-verification` Skill entry #5's implicit premise. Following the same
+"additive, no rewrite" precedent as every prior migration in this repo (0007's trigger, 0011's FK
+integrity), no new migration is proposed for verification's own "who/when" — the columns are
+sitting there, unused (same "built, unused" shape as `reference_range` before TASK-049 and the
+append-only trigger before this task). What is genuinely absent, confirmed by the same read: no
+`acknowledgedAt`/`readBackAt` pair exists (Skill entry #5's own finding, re-confirmed here) — that
+remains TASK-056's own open question, not this task's to resolve or build around.
+
+**Real, load-bearing finding #3 — `fn_observation_append_only`'s exact reject condition, read
+directly, confirms entry #3's design point is correct and load-bearing, not a simplification.**
+`db/migrations/0007_observation_append_only_trigger.sql`'s `fn_observation_append_only`: `IF
+OLD.status = 'verified' THEN` — any `UPDATE` to a row already in that status raises unless
+`pg_trigger_depth() > 1 AND OLD.superseded_by IS NULL AND NEW.superseded_by IS NOT NULL AND
+(to_jsonb(NEW) - 'superseded_by') = (to_jsonb(OLD) - 'superseded_by')`, i.e. the *only* legal
+mutation to a verified row, ever, is `fn_observation_supersede`'s own nested `superseded_by`
+backfill — not a top-level UPDATE with any other field changed alongside it. Confirms
+`observation.controller.ts`'s existing `upsertObservation` (its single `UPDATE ... WHERE id =
+existing.id` on `sharedFields`, used unconditionally today by both `draft()` and `finalize()`) must
+never be called again for a row whose current `status` is `'verified'` — calling it would hit this
+exact exception and surface as an unhandled 500 today (`upsertObservation` has no try/catch around
+its `.update()` call). TASK-055 must branch before calling `upsertObservation` at all once a
+prior-verified row is found for the same `(orderedTestId, analyteId)`.
+
+**Real, load-bearing finding #4 — a `verify` capability already exists, already granted to exactly
+one of the two seeded roles, structurally proven by a demo route, never yet used by a real business
+endpoint.** `apps/api/src/auth/capabilities.ts`'s `Capability` union already includes `'verify'`
+(not `'verify_result'`) alongside `'enter_result'`, and `ROLE_CAPABILITIES` grants it only to
+`verifier` — **not** to `technologist`, unlike every other existing capability in that file, all of
+which are granted to both seeded roles. `apps/api/src/auth/capability-check.controller.ts`'s
+`POST /auth/capability-check/verify` route (`@RequireCapability('verify')`, audited) already proves
+the guard mechanism works for this capability, the same "prove ahead of a real feature needing it"
+precedent TASK-032/033 used for `enter_result` before TASK-051 became its first real consumer
+(FEAT-014 proposal's TASK-051 revision, finding #1, cited verbatim: "an `enter_result` capability
+already exists... exercised by a demo-only route... No new capability or ADR is needed for
+authorization — this task is that capability's first real consumer"). The same sentence applies to
+`verify` and TASK-055, with one addition worth a reviewer's attention: `verify`'s grant is already
+role-asymmetric (verifier-only), which is itself a real, already-made separation-of-duties decision
+— nothing in TASK-032/033's own history explains *why* `technologist` was excluded, but the effect
+already matches clinical-lab convention (the person who entered a result should not be the same
+person capability-gated to verify it). This proposal treats that asymmetry as intentional,
+already-approved infrastructure, not a gap to fix.
+
+**Real, load-bearing finding #5 — the domain Zod schema, not just the DB schema, currently hard-
+excludes `'verified'` as a writable/representable status, and will need to widen.**
+`packages/domain/src/observation.ts`'s `observationStatusSchema` is `z.enum(["registered",
+"preliminary"])`, with its own comment: "`'verified'`/`'reported'`/etc. are TASK-055+'s own scope,
+never written here." `observationSchema.status` (the response shape TASK-052's grid UI reads) is
+typed against that same narrow enum. TASK-055 cannot leave this schema as-is — the verify action's
+response (and the grid's subsequent read) needs `'verified'` to type-check, or `ZodResponse`
+validation on the existing `list()`/`draft()`/`finalize()` routes would need a second, divergent
+status type. This is a real, load-bearing implementation detail (which schema file the value lives
+in, and that widening it is shared surface touching three already-shipped routes), not a new
+finding about architecture — flagged here so it isn't missed as "just add a new route."
+
+## 2. Affected files
+
+- `apps/api/src/observation/observation.controller.ts` — a new action sub-resource (exact shape
+  per §10 Q1) alongside `draft()`/`finalize()`; `upsertObservation` gains a pre-check (finding #3)
+  so it is never called against an already-`'verified'` row; a new, separate insert path for the
+  amendment case (per §10 Q3's resolution) if TASK-055 itself exposes one.
+- `packages/db/src/schema/observation.ts` — **no migration** (finding #2); read-only for this task.
+- `packages/domain/src/observation.ts` — `observationStatusSchema` widens to include `'verified'`
+  at minimum (finding #5); whether it also needs `'amended'`/`'corrected'` (both named in
+  `observation.status`'s own DB comment, `packages/db/src/schema/observation.ts:82`) depends on
+  §10 Q3's resolution — an amendment's *new* row is created with status `'preliminary'` or
+  `'verified'` depending how far the amendment flow goes, and its *old* row's status is left alone
+  by the trigger (only `superseded_by` changes) per finding #3's exact read, so `'amended'`/
+  `'corrected'` may turn out not to be needed as literal `observation.status` values at all —
+  confirm during implementation, not prescribed here.
+- `apps/api/src/auth/capabilities.ts` — **no change** under finding #4's reading (reuse `verify`,
+  already granted to `verifier`); would change only if §10 Q2 is resolved toward a new capability.
+- `apps/api/test/observation.e2e-spec.ts` (extend) — new cases: a `verifier`-roled caller can call
+  the new action on a `'preliminary'` observation and the row's `status`/`verifierUserId`/
+  `verifiedAt` are set correctly; a `technologist`-roled caller is rejected (403, exercising
+  finding #4's role asymmetry for the first time against a real business route, not just the demo
+  route); a direct `UPDATE` attempt against an already-verified row (via a raw query in the test,
+  mirroring `rls-isolation-check.ts`'s own "exercise the real trigger" style) is rejected, proving
+  finding #3's negative case end-to-end through this task's own fixtures, not only through the
+  pre-existing isolation-check script.
+- `apps/api/openapi.json` / `packages/sdk/src/schema.ts` — regenerate; the new route and the
+  widened `status` enum are both public response-shape changes.
+- `domain/result-verification` Skill — this proposal's research corrects entry #2 (finding #1) and
+  adds capability/schema-widening findings (#2, #4, #5) not previously captured; updating the Skill
+  file itself is implementation-adjacent housekeeping, not prescribed as a file this proposal edits.
+
+**Not affected under any reading:**
+- `db/migrations/*` — no new migration under finding #2 (verifier/timestamp columns already exist)
+  or under any resolution of §10 Q2 that reuses `verify` (finding #4). Only a resolution that
+  invents a genuinely new column (e.g. a critical-specific acknowledgement field, which finding #2
+  confirms does not exist) would require one — and that is TASK-056's question (Skill entry #5),
+  not this task's.
+- `db/migrations/0007_observation_append_only_trigger.sql` — the trigger itself needs no change
+  (finding #3); this task is a consumer, not a maintainer, of it.
+
+## 3. Architecture consulted
+
+- Constitution Law #2 (append-only verified data) and Law #5 (audit on clinically significant
+  writes) — the two invariants this task's entire AC exists to make real for the first time.
+- `db/migrations/0007_observation_append_only_trigger.sql` (ADR-0007) — read directly, in full,
+  for finding #3's exact reject condition.
+- `packages/db/src/schema/observation.ts` (TASK-020) and `packages/db/src/schema/
+  result-history.ts` (TASK-021) — read directly for findings #2 and the "no new history table"
+  confirmation carried over from `domain/result-verification` Skill entry #4.
+- `apps/api/src/auth/capabilities.ts` / `capability-check.controller.ts` (TASK-032/033) — read
+  directly for finding #4.
+- `packages/domain/src/observation.ts` — read directly for finding #5.
+- `docs/plans/feat-014-result-entry-engine.md`'s TASK-051 revision — direct precedent for (a) how
+  an already-existing-but-unused capability gets treated as a finding, not an open question, once
+  confirmed to already exist and already fit (finding #1's own citation), and (b) the two-route
+  action-sub-resource shape (`PUT` draft / `POST .../finalize`) this proposal's §10 Q1 weighs a
+  third route against.
+- `domain/result-verification` Skill (entries #1–#6) and `domain/critical-values` Skill (entries
+  #2, #6) — both loaded per this revision's own brief; entry #2 corrected by finding #1 above.
+
+## 4. Skills loaded
+
+- `domain/result-verification` (existing, TASK-054's proposal) — all six entries; entry #2 updated
+  by this revision's finding #1 (see §1).
+- `domain/critical-values` (existing) — entry #2 (low/high inversion, relevant if a verifier-facing
+  read ever needs to re-derive criticality rather than trust the already-persisted `flags` column
+  — this proposal does not propose such a re-derivation) and entry #6 (TASK-056 depends on this
+  task's real, shipped output, not a guess — flagged here so this proposal's own resolution of
+  §10 Q3 is written with TASK-056's real future dependency in mind, not just TASK-055's own AC).
+- `engineering/api-design` — action-sub-resource-per-audited-verb precedent (`enter_result`'s two
+  routes), capability-guard/audit-interceptor pairing convention, and the "every `@Body()` gets its
+  own explicit `ZodValidationPipe`" convention this task's new route(s) must also follow.
+- `engineering/testing` — real-Postgres e2e precedent (no mocked trigger behavior) for proving
+  finding #3's negative case.
+
+## 5. Assumptions & autonomous decisions
+
+- **No migration is proposed.** Findings #2 and #4 together mean every column and every capability
+  this task's literal AC needs already exists. This is treated as a finding, following TASK-051's
+  own precedent for `enter_result`, not left open for a human to re-confirm — unless §10 Q2 or Q4
+  is resolved toward inventing something new, in which case this assumption is void for that path
+  only.
+- **`amendment_of`'s target row is looked up by `(orderedTestId, analyteId)` the same way
+  `upsertObservation` already finds "the existing row" today** — an amendment corrects *the*
+  current observation for that analyte on that ordered test, not an arbitrary historical id passed
+  by the caller. No endpoint is assumed to accept an arbitrary `observationId` to amend; the target
+  is always resolved server-side from the same identity `draft`/`finalize` already use.
+- **Verifying a critical (`HH`/`LL`-flagged) observation is assumed, for this task's own narrow AC,
+  to need nothing different from verifying a non-critical one** — same action, same capability,
+  same state transition. This is an explicit assumption, not a finding: `domain/result-verification`
+  Skill entry #5 names the adjacent open question (is TASK-055's verify sufficient acknowledgement
+  for Law #3's purposes) as real and unresolved, and this proposal does not resolve it — it is
+  named again in §10 below specifically so TASK-056's own proposal inherits it explicitly rather
+  than re-discovering it.
+- **This proposal does not choose between "amendment is TASK-055's own new endpoint" and
+  "amendment is proven only via a direct-insert test"** (§10 Q3) — per this task's own instruction
+  to surface, not resolve, scope questions touching a new HTTP surface.
+
+## 6. Risks
+
+- **The central risk is the same shape as TASK-054's own: the AC's second half ("amendment
+  correctly creates a new version") is more expansive to build a full public endpoint for than to
+  prove at the trigger level**, and the issue text alone does not say which reading FEAT-015's
+  authors intended. Building a full amendment endpoint this task does not need yet risks scope
+  creep into what could be a distinct, later task; proving only the trigger risks leaving "verified
+  row is immutable" as the only half with a real public API surface, with "amendment" remaining a
+  capability visible only in the database, not to any real user — worth the reviewer's explicit
+  attention (§10 Q3).
+- **The `verify` capability's existing verifier-only grant (finding #4) has never been tested
+  against a real, non-demo route.** If the intent behind that asymmetry was ever documented
+  somewhere this research didn't find, this task's own e2e test (a `technologist` getting 403 on
+  the new route) is the first real proof either way — a reviewer should treat a first-time failure
+  of that assertion as a signal the intent may differ from what finding #4 assumes, not a bug in
+  the test.
+- **Widening `observationStatusSchema` (finding #5) is shared surface** — `draft()`, `finalize()`,
+  and `list()` all currently type-check against the narrow two-value enum; widening it is a small,
+  additive change in isolation, but touches three already-shipped, already-tested routes' response
+  types. Low risk (additive to a `z.enum`, not a narrowing), but not zero-touch.
+- **No new risk to `result_history` or the partitioning scheme (ADR-0008)** — this task exercises
+  already-built machinery (finding #1), it does not modify it.
+
+## 7. Acceptance criteria
+
+TASK-055's literal AC, read directly, pending §10's resolution:
+- [ ] A `verifier`-roled caller can transition a `'preliminary'` observation to `'verified'` via
+  the new action sub-resource (exact route per §10 Q1), with `verifierUserId`/`verifiedAt` set
+  correctly on the row.
+- [ ] A `technologist`-roled caller (lacking `verify`) is rejected with 403 on the same route,
+  real-route proof of finding #4's existing role asymmetry.
+- [ ] Any direct `UPDATE` attempt against an already-`'verified'` row is rejected by
+  `fn_observation_append_only` (finding #3), proven via this task's own e2e fixtures.
+- [ ] "Amendment correctly creates a new version" is proven per §10 Q3's resolution: either (a) a
+  new amendment endpoint correctly inserts a new row with `amendmentOf` set and the trigger's
+  archival/supersession fires (`result_history` gains a row, the old row's `supersededBy` is set),
+  or (b) a direct-insert test proves the same trigger behavior without a new public endpoint, if
+  Q3 resolves that a public amendment surface is out of this task's own scope.
+- [ ] The verify action is audited (`@Audit`), matching `finalize()`'s own precedent — a bare read
+  of `observation.flags` is not audited (per `engineering/api-design` entry #6), but this is a
+  mutating, clinically significant action and Law #5 applies unambiguously here, unlike TASK-054's
+  own genuinely ambiguous "is a flags-column already sufficient" question.
+
+## 8. Testing plan
+
+1. `pnpm --filter @lis/db typecheck`/build — regression check; finding #2 means no schema file
+   changes are expected here.
+2. `pnpm --filter api test:e2e` full suite re-run, confirming no regression to `draft()`/
+   `finalize()`/`list()` from the `observationStatusSchema` widening (finding #5).
+3. New e2e cases in `apps/api/test/observation.e2e-spec.ts`: verify success (verifier role),
+   verify rejection (technologist role, 403), append-only rejection (direct UPDATE against a
+   verified row), and the amendment case per §10 Q3's resolution.
+4. A `result_history` row-count and `supersededBy`-linkage assertion on the amendment case, the
+   same "exact before/after delta" discipline TASK-051's own audit-count tests already established
+   for `observation.finalize`.
+5. `pnpm typecheck`/`pnpm lint`/`pnpm build` at the repo root.
+
+## 9. Rollback plan
+
+Additive under every reading that reuses the existing `verify` capability and existing
+`verifierUserId`/`verifiedAt` columns (findings #2, #4): a new route (and, per §10 Q3, possibly a
+second new route for amendment), a widened `z.enum`, and new e2e tests — no migration, no trigger
+change. Rollback is reverting the PR. TASK-056 (finalization block) is the first task with a real
+dependency on this one's shipped output (per `domain/critical-values` Skill entry #6) and has not
+started; no other feature or shipped screen depends on this task's output yet.
+
+## 10. Open questions — resolved 2026-08-06 via the native options-prompt
+
+1. **HTTP shape / body.** **Resolved: bare `POST .../results/:analyteId/verify`, no request
+   body** — mirrors `finalize()`'s own bare-action shape exactly. No verifier free-text comment
+   field in this task.
+2. **Capability reuse vs. new capability.** **Resolved: reuse the existing `verify` capability**
+   (already granted to `verifier`, not `technologist`) — same "already-fitting capability" pattern
+   TASK-051 used for `enter_result`. No new capability or ADR.
+3. **Public amendment endpoint vs. trigger-only proof.** **Resolved: trigger-only proof.** No public
+   amendment/correction endpoint is built in this task. A direct-insert e2e test proves
+   `amendmentOf`/`result_history`/`supersededBy` behave correctly, matching this task's own narrow
+   "Expected output: Verification action sub-resource" (singular). A real public amendment endpoint
+   is deferred as an explicitly separate future task, not silently folded into TASK-055.
+4. **Critical-value verification.** **Resolved: no difference from ordinary verification** for this
+   task's own scope. TASK-056's own proposal inherits, explicitly, the open question of whether this
+   verify action is sufficient acknowledgement for Constitution Law #3, or whether a distinct
+   acknowledgement step is needed later.
+
+Note on the schema/column question and the capability question named in this revision's own task
+brief: both were addressed above as **findings (#2, #4), not left open** — real code inspection
+found the verifier/timestamp columns and the `verify` capability already exist and already fit,
+the same way TASK-051's own proposal resolved its equivalent `enter_result` question via a finding
+rather than a human decision.
+either resolution via the options-prompt if this research missed something.

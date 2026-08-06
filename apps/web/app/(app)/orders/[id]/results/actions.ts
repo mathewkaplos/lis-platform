@@ -5,14 +5,21 @@ import { createLisApiClient } from '@/lib/api-client';
 
 /** TASK-053 (FEAT-014 revision §2 finding #4): mirrors `finalize()`'s own
  * `calculatedDependent` -- a calculated analyte (eGFR/LDL) that cascaded off
- * this same finalize call, if any. */
+ * this same finalize call, if any.
+ *
+ * `observationStatus` widened to include `'verified'` (TASK-055,
+ * `packages/domain`'s `observationStatusSchema`) purely to type-check
+ * against `@lis/sdk`'s now-wider shared `ObservationDto.status` -- `draft()`/
+ * `finalize()` themselves never actually return `'verified'` (only the new
+ * `verify()` action does, which this page/action file does not call yet).
+ * No UI branch handles `'verified'` here; that's TASK-057's own scope. */
 export interface CalculatedDependentOutcome {
   analyteId: string;
   valueNum: number | null;
   flags: string[];
   refLow: number | null;
   refHigh: number | null;
-  observationStatus: 'registered' | 'preliminary';
+  observationStatus: 'registered' | 'preliminary' | 'verified';
 }
 
 export interface ResultActionOutcome {
@@ -22,7 +29,7 @@ export interface ResultActionOutcome {
   flags: string[];
   refLow: number | null;
   refHigh: number | null;
-  observationStatus: 'registered' | 'preliminary' | null;
+  observationStatus: 'registered' | 'preliminary' | 'verified' | null;
   calculatedDependent?: CalculatedDependentOutcome | null;
 }
 

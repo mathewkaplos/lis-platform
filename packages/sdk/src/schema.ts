@@ -453,6 +453,7 @@ export interface components {
                 analytes: {
                     /** Format: uuid */
                     id: string;
+                    code: string;
                     display: string;
                     dataType: string;
                     unit: string | null;
@@ -544,6 +545,7 @@ export interface components {
             flags: string[];
             /** @enum {string} */
             status: "registered" | "preliminary";
+            source: string;
             /** Format: date-time */
             producedAt: string | null;
             /** Format: date-time */

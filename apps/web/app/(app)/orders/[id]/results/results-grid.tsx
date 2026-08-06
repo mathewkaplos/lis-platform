@@ -2,13 +2,18 @@
 
 import { useRef, useState, useTransition, type KeyboardEvent } from 'react';
 import { DataTable, Input, StatusPill, type ResultFlag } from '@lis/ui';
-import { draftResult, finalizeResult } from './actions';
+import { getCalculatedAnalyteDefinition, isCalculatedAnalyteCode } from '@lis/domain';
+import { draftResult, finalizeResult, type CalculatedDependentOutcome } from './actions';
 
 export interface ResultRow {
   orderedTestId: string;
   orderedTestStatus: string;
   testDisplayName: string;
   analyteId: string;
+  /** TASK-053 (FEAT-014 revision §2): the analyte's own LOINC code -- the
+   * only signal the grid has for "this row is calculated" (`@lis/domain`'s
+   * `isCalculatedAnalyteCode`), without a new schema flag. */
+  analyteCode: string;
   analyteDisplay: string;
   unit: string | null;
   initialValueNum: number | null;
@@ -55,6 +60,16 @@ function referenceRangeText(low: number | null, high: number | null): string {
  * Quantity-only input rendering (proposal §5) -- `coded`/`text` rows are
  * filtered out by the parent Server Component before reaching this table,
  * since no real catalog data backs either shape yet.
+ *
+ * TASK-053 (FEAT-014 revision §2): a row whose analyte code is calculated
+ * (eGFR/LDL) renders read-only -- no `<Input>`, not part of the Tab order,
+ * nothing to type -- showing its computed value (or "Pending inputs" before
+ * its dependencies are all finalized) with the formula available via the
+ * native `title` attribute on hover (the literal "shown on hover" AC; no
+ * `packages/ui` Tooltip primitive exists yet). Finalizing a manual analyte
+ * that cascades a calculated dependent (server-side, same transaction)
+ * updates that OTHER row's own state too, via `calculatedDependent` in the
+ * finalize outcome -- no full-page reload needed to see it appear.
  */
 export function ResultsGrid({ rows }: { rows: ResultRow[] }) {
   const [, startTransition] = useTransition();
@@ -77,6 +92,7 @@ export function ResultsGrid({ rows }: { rows: ResultRow[] }) {
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   function isEnterable(row: ResultRow): boolean {
+    if (isCalculatedAnalyteCode(row.analyteCode)) return false; // never manually entered
     const state = rowStates[rowKey(row)];
     return (
       (row.orderedTestStatus === 'received' || row.orderedTestStatus === 'in_process') &&
@@ -121,6 +137,20 @@ export function ResultsGrid({ rows }: { rows: ResultRow[] }) {
     });
   }
 
+  function applyCalculatedDependent(orderedTestId: string, dependent: CalculatedDependentOutcome) {
+    const dependentKey = rowKey({ orderedTestId, analyteId: dependent.analyteId });
+    if (!(dependentKey in rowStates)) return; // not one of this order's own rows (shouldn't happen, defensive)
+    updateRow(dependentKey, {
+      text: dependent.valueNum === null ? '' : String(dependent.valueNum),
+      flags: dependent.flags,
+      refLow: dependent.refLow,
+      refHigh: dependent.refHigh,
+      observationStatus: dependent.observationStatus,
+      pending: false,
+      error: null,
+    });
+  }
+
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>, row: ResultRow, index: number) {
     if (event.key !== 'Enter') return;
     event.preventDefault();
@@ -144,6 +174,9 @@ export function ResultsGrid({ rows }: { rows: ResultRow[] }) {
         refHigh: outcome.refHigh,
         observationStatus: outcome.observationStatus,
       });
+      if (outcome.calculatedDependent) {
+        applyCalculatedDependent(row.orderedTestId, outcome.calculatedDependent);
+      }
       focusNextEnterable(index);
     });
   }
@@ -175,6 +208,24 @@ export function ResultsGrid({ rows }: { rows: ResultRow[] }) {
           cell: (row) => {
             const key = rowKey(row);
             const state = rowStates[key];
+
+            if (isCalculatedAnalyteCode(row.analyteCode)) {
+              const formula = getCalculatedAnalyteDefinition(row.analyteCode)?.formula ?? '';
+              return (
+                <span
+                  className="max-w-32 text-foreground"
+                  title={formula}
+                  aria-label={`${row.analyteDisplay} result (calculated): ${formula}`}
+                >
+                  {state.text === '' ? (
+                    <span className="text-text-secondary">Pending inputs</span>
+                  ) : (
+                    state.text
+                  )}
+                </span>
+              );
+            }
+
             const index = rows.indexOf(row);
             const enterable = isEnterable(row);
             return (

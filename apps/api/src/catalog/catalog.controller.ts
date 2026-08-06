@@ -76,6 +76,7 @@ export class CatalogController {
         ? await tx
             .select({
               id: analyte.id,
+              codeSystemValueId: analyte.codeSystemValueId,
               display: analyte.display,
               dataType: analyte.dataType,
               defaultUnitId: analyte.defaultUnitId,
@@ -101,8 +102,14 @@ export class CatalogController {
             .from(unit)
             .where(inArray(unit.id, unitIds))
         : [];
+    // TASK-053 (FEAT-014 revision §2): the analyte's own LOINC code is
+    // resolved the same way as unit's UCUM code below -- combining both id
+    // sets into one codeSystemValue lookup, not two separate round trips.
     const codeSystemValueIds = Array.from(
-      new Set(unitRows.map((row) => row.codeSystemValueId)),
+      new Set([
+        ...unitRows.map((row) => row.codeSystemValueId),
+        ...analyteRows.map((row) => row.codeSystemValueId),
+      ]),
     );
     const codeSystemValueRows =
       codeSystemValueIds.length > 0
@@ -125,6 +132,7 @@ export class CatalogController {
         row.id,
         {
           id: row.id,
+          code: codeById.get(row.codeSystemValueId) ?? '',
           display: row.display,
           dataType: row.dataType,
           unit: row.defaultUnitId

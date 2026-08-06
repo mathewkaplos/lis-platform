@@ -308,17 +308,23 @@ describe('Result entry API (e2e)', () => {
       .expect(200);
     const body = res.body as {
       resourceId: string;
-      before: unknown;
-      after: { status: string; flags: string[] };
+      // TASK-053 (FEAT-014 revision §1 finding #4): finalize()'s before/
+      // after are always { observation, calculatedDependent } now, uniform
+      // whether or not this call cascades a calculated recompute.
+      before: { observation: unknown; calculatedDependent: unknown };
+      after: {
+        observation: { status: string; flags: string[] };
+        calculatedDependent: unknown;
+      };
     };
-    if (body.before !== null) {
+    if (body.before.observation !== null) {
       throw new Error(
-        `expected null before (no prior draft), got ${JSON.stringify(body.before)}`,
+        `expected null before.observation (no prior draft), got ${JSON.stringify(body.before.observation)}`,
       );
     }
-    if (body.after.status !== 'preliminary') {
+    if (body.after.observation.status !== 'preliminary') {
       throw new Error(
-        `expected finalize status 'preliminary', got ${body.after.status}`,
+        `expected finalize status 'preliminary', got ${body.after.observation.status}`,
       );
     }
 
@@ -386,26 +392,28 @@ describe('Result entry API (e2e)', () => {
       .expect(200);
     const codedBody = codedRes.body as {
       after: {
-        dataType: string;
-        valueCode: string;
-        valueNum: number | null;
-        flags: string[];
+        observation: {
+          dataType: string;
+          valueCode: string;
+          valueNum: number | null;
+          flags: string[];
+        };
       };
     };
     if (
-      codedBody.after.dataType !== 'coded' ||
-      codedBody.after.valueCode !== 'detected'
+      codedBody.after.observation.dataType !== 'coded' ||
+      codedBody.after.observation.valueCode !== 'detected'
     ) {
       throw new Error(
-        `unexpected coded result: ${JSON.stringify(codedBody.after)}`,
+        `unexpected coded result: ${JSON.stringify(codedBody.after.observation)}`,
       );
     }
     if (
-      codedBody.after.valueNum !== null ||
-      codedBody.after.flags.length !== 0
+      codedBody.after.observation.valueNum !== null ||
+      codedBody.after.observation.flags.length !== 0
     ) {
       throw new Error(
-        `expected no range/flags for a coded result, got ${JSON.stringify(codedBody.after)}`,
+        `expected no range/flags for a coded result, got ${JSON.stringify(codedBody.after.observation)}`,
       );
     }
 
@@ -424,14 +432,63 @@ describe('Result entry API (e2e)', () => {
       })
       .expect(200);
     const textBody = textRes.body as {
-      after: { dataType: string; valueText: string };
+      after: { observation: { dataType: string; valueText: string } };
     };
     if (
-      textBody.after.dataType !== 'text' ||
-      textBody.after.valueText !== 'Comment: sample slightly haemolysed'
+      textBody.after.observation.dataType !== 'text' ||
+      textBody.after.observation.valueText !==
+        'Comment: sample slightly haemolysed'
     ) {
       throw new Error(
-        `unexpected text result: ${JSON.stringify(textBody.after)}`,
+        `unexpected text result: ${JSON.stringify(textBody.after.observation)}`,
+      );
+    }
+  });
+
+  /**
+   * TASK-053 (FEAT-014 revision) real finding: re-`draft`ing (or
+   * re-`finalize`ing) the SAME analyte twice previously crashed with a 500 --
+   * `upsertObservation`'s UPDATE branch keyed its WHERE clause on both `id`
+   * AND `createdAt`, and `createdAt` (read back as a millisecond-precision
+   * JS `Date`) never round-trips exactly back to the real microsecond-
+   * precision `timestamptz` Postgres actually stored, so the UPDATE matched
+   * zero rows. No test in this file (or TASK-051's own original suite) had
+   * ever called draft/finalize twice on the same (orderedTestId, analyteId)
+   * pair before TASK-053's own testing surfaced it. Fixed by keying the
+   * UPDATE on `id` alone.
+   */
+  it('re-drafting the same analyte twice with a different value both succeeds and persists the latest value (regression: a prior UPDATE-matched-zero-rows bug)', async () => {
+    const { orderId, orderedTestIds } = await createOrder([SODIUM_CODE]);
+    await receive(orderId);
+    const [orderedTestId] = orderedTestIds;
+    const sodiumAnalyteId = await analyteIdForTestCode(SODIUM_CODE);
+
+    await request(app.getHttpServer())
+      .put(`/v1/ordered-tests/${orderedTestId}/results/${sodiumAnalyteId}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ dataType: 'quantity', valueNum: 138 })
+      .expect(200);
+
+    const secondRes = await request(app.getHttpServer())
+      .put(`/v1/ordered-tests/${orderedTestId}/results/${sodiumAnalyteId}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ dataType: 'quantity', valueNum: 142 })
+      .expect(200);
+    const secondBody = secondRes.body as { valueNum: number };
+    if (secondBody.valueNum !== 142) {
+      throw new Error(
+        `expected the second draft's value (142) to persist, got ${secondBody.valueNum}`,
+      );
+    }
+
+    const listRes = await request(app.getHttpServer())
+      .get(`/v1/ordered-tests/${orderedTestId}/results`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const list = listRes.body as { analyteId: string; valueNum: number }[];
+    if (list.length !== 1 || list[0].valueNum !== 142) {
+      throw new Error(
+        `expected exactly one observation row with the latest value, got ${JSON.stringify(list)}`,
       );
     }
   });

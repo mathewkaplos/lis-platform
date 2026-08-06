@@ -13,6 +13,9 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import {
+  ageYearsAt,
+  calculatedAnalytesDependingOn,
+  isSuppressed,
   observationSchema,
   resultEntrySchema,
   type ObservationResult,
@@ -86,6 +89,7 @@ function toObservationDto(row: ObservationRow): ObservationResult {
     refSource: row.refSource,
     flags: row.flags,
     status: row.status as ObservationResult['status'], // this task only ever writes 'registered'/'preliminary'
+    source: row.source,
     producedAt: row.producedAt ? row.producedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
   };
@@ -293,6 +297,13 @@ export class ObservationController {
       refHigh: string | null;
       refCondition: string | null;
       refSource: string | null;
+      /** TASK-053 (FEAT-014 revision §2): was hardcoded 'manual' on insert;
+       * the calculated-dependent write (maybeComputeDependents) passes
+       * 'calculated' instead. Never touched on an UPDATE (sharedFields
+       * doesn't include it), matching the column's own "set once at
+       * creation" nature -- an existing manual observation never becomes
+       * 'calculated' by being re-drafted, and vice versa. */
+      source: 'manual' | 'calculated';
     },
   ): Promise<ObservationRow> {
     const [existing] = await tx
@@ -332,15 +343,27 @@ export class ObservationController {
     };
 
     if (existing) {
+      // TASK-053 (FEAT-014 revision) real finding, not part of this task's
+      // own scope but directly blocking it: re-`draft`ing or re-`finalize`ing
+      // the SAME analyte twice (any analyte, unrelated to calculated fields)
+      // crashed with a 500 -- `existing.createdAt` (read back as a
+      // millisecond-precision JS `Date`) never round-trips exactly back to
+      // the real microsecond-precision `timestamptz` Postgres actually
+      // stored (from `defaultNow()`), so `eq(observation.createdAt,
+      // existing.createdAt)` matched zero rows and `.returning()` returned
+      // `undefined`. No existing TASK-051/052 test ever called draft/finalize
+      // twice on the same (orderedTestId, analyteId) pair, so this was a
+      // real, latent, previously-unexercised bug in already-merged code, not
+      // something this task introduced. Fixed by keying the UPDATE on `id`
+      // alone (a random UUID, globally unique in practice, zero precision-
+      // loss risk) -- loses `created_at`'s partition-pruning benefit
+      // (ADR-0008), an efficiency cost only, not a correctness one, and not
+      // a real cost at this data scale (same "don't build ahead of a real
+      // need" precedent used elsewhere in this repo).
       const [updated] = await tx
         .update(observation)
         .set(sharedFields)
-        .where(
-          and(
-            eq(observation.id, existing.id),
-            eq(observation.createdAt, existing.createdAt),
-          ),
-        )
+        .where(eq(observation.id, existing.id))
         .returning();
       return updated;
     }
@@ -353,11 +376,170 @@ export class ObservationController {
         analyteId: params.analyteId,
         specimenId: params.specimenId,
         patientId: params.patientId,
-        source: 'manual',
+        source: params.source,
         ...sharedFields,
       })
       .returning();
     return inserted;
+  }
+
+  /**
+   * TASK-053 (FEAT-014 revision §1 finding #3/§10 Q2): runs only from
+   * `finalize()` (never `draft`) -- a calculated write derives from
+   * *committed*, audited inputs only, never a speculative draft. Every
+   * calculated analyte in this revision's registry lives on the same
+   * `test_definition` as its own input(s) (revision §1 finding #3), so this
+   * never needs to look outside `ctx.orderedTestRow`'s own ordered test.
+   * Returns `null` whenever nothing should be written: no calculated
+   * analyte depends on the just-finalized one, the calculated analyte isn't
+   * seeded/linked on this ordered test, not every input is finalized yet,
+   * or the formula itself suppresses (e.g. Friedewald's triglyceride
+   * guard) -- every one of these is a real, expected state, not an error.
+   */
+  private async maybeComputeDependents(
+    tx: Tx,
+    ctx: Awaited<ReturnType<ObservationController['loadWriteContext']>>,
+    tenantId: string,
+    operatorUserId: string,
+    at: Date,
+  ): Promise<{
+    before: ObservationResult | null;
+    after: ObservationRow;
+  } | null> {
+    const [triggeringCsv] = await tx
+      .select({ code: codeSystemValue.code })
+      .from(codeSystemValue)
+      .where(eq(codeSystemValue.id, ctx.analyteRow.codeSystemValueId))
+      .limit(1);
+    if (!triggeringCsv) return null;
+
+    const [definition] = calculatedAnalytesDependingOn(triggeringCsv.code);
+    if (!definition) return null;
+
+    const outputAnalyteRow = await this.findAnalyteByLoincCode(
+      tx,
+      definition.outputLoincCode,
+    );
+    if (!outputAnalyteRow) return null; // not seeded -- real gap, not a crash
+
+    const [outputLinkRow] = await tx
+      .select({ id: testAnalyte.id })
+      .from(testAnalyte)
+      .where(
+        and(
+          eq(testAnalyte.testDefinitionId, ctx.orderedTestRow.testDefinitionId),
+          eq(testAnalyte.analyteId, outputAnalyteRow.id),
+        ),
+      )
+      .limit(1);
+    if (!outputLinkRow) return null; // this ordered test's own panel doesn't include this calculated analyte
+
+    const inputsByCode: Record<string, number> = {};
+    for (const inputCode of definition.inputLoincCodes) {
+      const inputAnalyteRow = await this.findAnalyteByLoincCode(tx, inputCode);
+      if (!inputAnalyteRow) return null;
+
+      const [inputObservationRow] = await tx
+        .select({ valueNum: observation.valueNum, status: observation.status })
+        .from(observation)
+        .where(
+          and(
+            eq(observation.orderedTestId, ctx.orderedTestRow.id),
+            eq(observation.analyteId, inputAnalyteRow.id),
+          ),
+        )
+        .limit(1);
+      if (
+        !inputObservationRow ||
+        inputObservationRow.status !== 'preliminary' ||
+        inputObservationRow.valueNum === null
+      ) {
+        return null; // not every input finalized yet -- real, expected state
+      }
+      inputsByCode[inputCode] = Number(inputObservationRow.valueNum);
+    }
+
+    const ageYears = ctx.patientBirthDate
+      ? ageYearsAt(ctx.patientBirthDate, at)
+      : null;
+    const result = definition.compute(inputsByCode, {
+      sex: ctx.patientSex,
+      ageYears,
+    });
+    if (isSuppressed(result)) {
+      return null; // KB-15's "no_range never faked as normal," applied to calculated values (revision §5)
+    }
+
+    const [existingCalculated] = await tx
+      .select()
+      .from(observation)
+      .where(
+        and(
+          eq(observation.orderedTestId, ctx.orderedTestRow.id),
+          eq(observation.analyteId, outputAnalyteRow.id),
+        ),
+      )
+      .limit(1);
+    const before = existingCalculated
+      ? toObservationDto(existingCalculated)
+      : null;
+
+    const syntheticBody: ResultEntryInput = {
+      dataType: 'quantity',
+      valueNum: result.value,
+    };
+    const rangeAndFlags = await this.resolveRangeAndFlags(
+      tx,
+      syntheticBody,
+      outputAnalyteRow,
+      ctx.patientSex,
+      ctx.patientBirthDate,
+      at,
+    );
+
+    const after = await this.upsertObservation(tx, {
+      tenantId,
+      orderedTestId: ctx.orderedTestRow.id,
+      analyteId: outputAnalyteRow.id,
+      patientId: ctx.patientId,
+      specimenId: ctx.specimenId,
+      operatorUserId,
+      status: 'preliminary',
+      body: syntheticBody,
+      source: 'calculated',
+      ...rangeAndFlags,
+    });
+
+    return { before, after };
+  }
+
+  /** TASK-053 (FEAT-014 revision §2): two sequential queries, not a joined
+   * one -- avoids the nested-vs-flat drizzle select-shape ambiguity a join
+   * would introduce here, and this repo's own established preference for
+   * separate queries over `.innerJoin()` for multi-table reads
+   * (`engineering/api-design` entry #7). */
+  private async findAnalyteByLoincCode(
+    tx: Tx,
+    loincCode: string,
+  ): Promise<typeof analyte.$inferSelect | undefined> {
+    const [csv] = await tx
+      .select({ id: codeSystemValue.id })
+      .from(codeSystemValue)
+      .where(
+        and(
+          eq(codeSystemValue.system, 'LOINC'),
+          eq(codeSystemValue.code, loincCode),
+        ),
+      )
+      .limit(1);
+    if (!csv) return undefined;
+
+    const [analyteRow] = await tx
+      .select()
+      .from(analyte)
+      .where(eq(analyte.codeSystemValueId, csv.id))
+      .limit(1);
+    return analyteRow;
   }
 
   /**
@@ -399,6 +581,7 @@ export class ObservationController {
       operatorUserId: user.sub,
       status: 'registered',
       body,
+      source: 'manual',
       ...rangeAndFlags,
     });
 
@@ -468,8 +651,22 @@ export class ObservationController {
       operatorUserId: user.sub,
       status: 'preliminary',
       body,
+      source: 'manual',
       ...rangeAndFlags,
     });
+
+    // TASK-053 (FEAT-014 revision §1 finding #3/§4/§10 Q2): runs only here,
+    // never from draft() -- a calculated write derives from a committed,
+    // audited input. Folded into this SAME audit event (finding #4) rather
+    // than a second, independent `writeAuditEvent()` call, which would be a
+    // genuinely new pattern this repo has deliberately avoided so far.
+    const calculated = await this.maybeComputeDependents(
+      tx,
+      ctx,
+      user.tenantId,
+      user.sub,
+      at,
+    );
 
     const requiredLinks = await tx
       .select({ analyteId: testAnalyte.analyteId })
@@ -502,10 +699,23 @@ export class ObservationController {
         .where(eq(orderedTest.id, id));
     }
 
+    // TASK-053 (FEAT-014 revision §1 finding #4): `before`/`after` are now
+    // always `{ observation, calculatedDependent }` -- a uniform shape
+    // whether or not this call actually cascaded, so the audit trail (and
+    // this route's one caller, apps/web's `finalizeResult`) never has to
+    // branch on whether a dependent computation happened.
     return {
       resourceId: row.id,
-      before,
-      after: toObservationDto(row),
+      before: {
+        observation: before,
+        calculatedDependent: calculated?.before ?? null,
+      },
+      after: {
+        observation: toObservationDto(row),
+        calculatedDependent: calculated
+          ? toObservationDto(calculated.after)
+          : null,
+      },
     };
   }
 

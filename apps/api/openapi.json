@@ -1038,6 +1038,9 @@
                         "format": "uuid",
                         "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                       },
+                      "code": {
+                        "type": "string"
+                      },
                       "display": {
                         "type": "string"
                       },
@@ -1051,6 +1054,7 @@
                     },
                     "required": [
                       "id",
+                      "code",
                       "display",
                       "dataType",
                       "unit"
@@ -1422,6 +1426,9 @@
               "preliminary"
             ]
           },
+          "source": {
+            "type": "string"
+          },
           "producedAt": {
             "type": "string",
             "format": "date-time",
@@ -1449,6 +1456,7 @@
           "refSource",
           "flags",
           "status",
+          "source",
           "producedAt",
           "createdAt"
         ],

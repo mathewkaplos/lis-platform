@@ -44,7 +44,18 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
   const resultsResponses = await Promise.all(
     fetchableTests.map((t) => client.GET('/v1/ordered-tests/{id}/results', { params: { path: { id: t.id } } })),
   );
-  const resultsByOrderedTestId = new Map<string, { analyteId: string; valueNum: number | null; flags: string[]; refLow: number | null; refHigh: number | null; status: 'registered' | 'preliminary' }[]>();
+  const resultsByOrderedTestId = new Map<
+    string,
+    {
+      analyteId: string;
+      valueNum: number | null;
+      flags: string[];
+      refLow: number | null;
+      refHigh: number | null;
+      status: 'registered' | 'preliminary';
+      source: string;
+    }[]
+  >();
   fetchableTests.forEach((t, i) => {
     resultsByOrderedTestId.set(t.id, resultsResponses[i].data ?? []);
   });
@@ -63,6 +74,7 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
         orderedTestStatus: orderedTest.status,
         testDisplayName: test.displayName,
         analyteId: analyte.id,
+        analyteCode: analyte.code,
         analyteDisplay: analyte.display,
         unit: analyte.unit,
         initialValueNum: existing?.valueNum ?? null,

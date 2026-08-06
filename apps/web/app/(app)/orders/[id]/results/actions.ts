@@ -3,6 +3,18 @@
 import { getValidAccessToken } from '@/auth/access-token';
 import { createLisApiClient } from '@/lib/api-client';
 
+/** TASK-053 (FEAT-014 revision §2 finding #4): mirrors `finalize()`'s own
+ * `calculatedDependent` -- a calculated analyte (eGFR/LDL) that cascaded off
+ * this same finalize call, if any. */
+export interface CalculatedDependentOutcome {
+  analyteId: string;
+  valueNum: number | null;
+  flags: string[];
+  refLow: number | null;
+  refHigh: number | null;
+  observationStatus: 'registered' | 'preliminary';
+}
+
 export interface ResultActionOutcome {
   status: 'ok' | 'error';
   error?: string;
@@ -11,6 +23,7 @@ export interface ResultActionOutcome {
   refLow: number | null;
   refHigh: number | null;
   observationStatus: 'registered' | 'preliminary' | null;
+  calculatedDependent?: CalculatedDependentOutcome | null;
 }
 
 const FAILURE: Omit<ResultActionOutcome, 'status' | 'error'> = {
@@ -90,23 +103,45 @@ export async function finalizeResult(
   // Not run through @ZodResponse (same {resourceId, before, after} shape as
   // order/specimen's own create()/cancel() -- observation.controller.ts's
   // own header comment explains why finalize is audited this way).
+  // TASK-053 (FEAT-014 revision §1 finding #4): `after` is now always
+  // `{ observation, calculatedDependent }`, not a flat ObservationResult.
   const after = (
     data as unknown as {
       after: {
-        valueNum: number | null;
-        flags: string[];
-        refLow: number | null;
-        refHigh: number | null;
-        status: 'registered' | 'preliminary';
+        observation: {
+          valueNum: number | null;
+          flags: string[];
+          refLow: number | null;
+          refHigh: number | null;
+          status: 'registered' | 'preliminary';
+        };
+        calculatedDependent: {
+          analyteId: string;
+          valueNum: number | null;
+          flags: string[];
+          refLow: number | null;
+          refHigh: number | null;
+          status: 'registered' | 'preliminary';
+        } | null;
       };
     }
   ).after;
   return {
     status: 'ok',
-    valueNum: after.valueNum,
-    flags: after.flags,
-    refLow: after.refLow,
-    refHigh: after.refHigh,
-    observationStatus: after.status,
+    valueNum: after.observation.valueNum,
+    flags: after.observation.flags,
+    refLow: after.observation.refLow,
+    refHigh: after.observation.refHigh,
+    observationStatus: after.observation.status,
+    calculatedDependent: after.calculatedDependent
+      ? {
+          analyteId: after.calculatedDependent.analyteId,
+          valueNum: after.calculatedDependent.valueNum,
+          flags: after.calculatedDependent.flags,
+          refLow: after.calculatedDependent.refLow,
+          refHigh: after.calculatedDependent.refHigh,
+          observationStatus: after.calculatedDependent.status,
+        }
+      : null,
   };
 }

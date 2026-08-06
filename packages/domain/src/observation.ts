@@ -62,6 +62,11 @@ export const observationSchema = z.object({
   refSource: z.string().nullable(),
   flags: z.array(z.string()),
   status: observationStatusSchema,
+  // TASK-053 (FEAT-014 revision §2): `observation.source` (manual|analyzer|
+  // calculated|imported, packages/db/src/schema/observation.ts) already
+  // exists as a real, non-null column -- simply never exposed before this
+  // task. The grid needs it to render a calculated row read-only.
+  source: z.string(),
   producedAt: z.iso.datetime().nullable(),
   createdAt: z.iso.datetime(),
 });

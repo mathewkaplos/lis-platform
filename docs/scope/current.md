@@ -1,7 +1,75 @@
 # Status — 2026-08-06 (session 18)
 
-Last commit on main: `832e39b` — "docs: TASK-056 close-out -- plan doc status + breadcrumb refresh"
-(PR #325). Implementation merged as `6b9488f` (PR #324), closing #115.
+Last commit on main: `dd9b8f7` — "feat(api,web,domain): verification UI (prior context,
+verify+next), closing TASK-057 (FEAT-015)" (PR #328), closing #116.
+
+## TASK-057 (FEAT-015's fourth and last task) merged this session, via PR #328 (`dd9b8f7`), closing
+#116 — FEAT-015 (Verification & criticals, #24) is now fully implemented, all four tasks done
+
+`docs/plans/feat-015-verification-criticals.md` gained its fourth and final revision (TASK-057's
+own AC: "A verifier can review and release a panel in under 30 seconds"). Five open questions (§10)
+resolved via the native options-prompt: (1) prior-result-only context, no computed delta — "QC"
+context was not a real decision point at all, unconditionally out of scope (zero QC data model
+exists anywhere, a separate unstarted M5 feature); (2) additive to the existing TASK-052 results
+grid, not a standalone cross-patient verification queue; (3) hide the "Verify" control from
+technologist-roled sessions — this repo's first frontend role-visibility check; (4) show verifier
+identity and timestamp, widening `observationSchema` for the already-existing `verifierUserId`/
+`verifiedAt` columns; (5) an informal, manual timing check during this task's own `web-verify` pass,
+not a new scripted timing harness.
+
+**Real, load-bearing finding, smaller than the approved proposal's own framing anticipated:** the
+new prior-result read path (`GET /v1/ordered-tests/:id/results/:analyteId/prior`) needs no join
+through `order`/`ordered_test` for the prior lookup itself. `observation.patientId` is already a
+real column set directly at write time, and `ix_obs_trend` (`packages/db/src/schema/observation.ts`)
+is already a composite index on exactly `(tenantId, patientId, analyteId, producedAt)` — built ahead
+of this task's own need. The two-query join (`orderedTest` -> `order`) is only needed to resolve the
+*current* ordered test's own `patientId` in the first place; the prior-result read itself is a
+single, already-indexed, single-table query.
+
+**A second, unplanned finding, caught only while booting the real compiled `apps/api` server for
+`web-verify` verification, not by any automated check:** a stale
+`apps/api/tsconfig.build.tsbuildinfo` made `nest build` report success while writing zero files to
+`dist/` — `tsc`'s own incremental cache doesn't notice `deleteOutDir` removed the output directory
+it believes is still up to date. Deleting the stray `.tsbuildinfo` fixed it immediately. Written up
+as `engineering/testing` Skill entry #10 and pushed to `lis-engineering`.
+
+Delivered: a "Verify" affordance in the existing results grid (`apps/web/app/(app)/orders/[id]/
+results/results-grid.tsx`), visible only to `verifier`-roled sessions (`apps/web/auth/roles.ts`'s new
+`hasVerifierRole`, fails closed on a missing/malformed session); `isVerifiable`/`focusNextVerifiable`
+mirroring `isEnterable`/`focusNextEnterable` exactly, giving keyboard-only verify+next auto-advance;
+a real `'verified'` status treatment (previously rendered nothing, per the file's own TASK-055
+comment) plus verifier identity/timestamp once verified; a new `verifyResult()` Server Action calling
+TASK-055's already-shipped `POST .../verify`.
+
+**Real timing-check result (§10 Q5, the AC's own literal claim):** a real headless-browser session,
+driven `verifier`-roled and keyboard-only (Tab navigation to reach each row's Verify button, Enter to
+act, with a realistic ~900ms human read-pause per row before acting), reviewed and verified a real
+4-analyte LIPID panel — page load through the last verify — in **5.88 seconds**, well under the AC's
+30-second target. A `technologist`-roled session, same panel, rendered zero Verify controls anywhere
+on the page (the column header stays visible, informational-only, but no button ever renders).
+Prior-result context (e.g. a prior Glucose order's own finalized value, shown as "92 mg/dL
+(8/6/2026)" on a later order for the same patient/analyte) and verifier identity/timestamp
+("Verified by 50e9cb34 · 8/6/2026, 3:17:22 PM") both confirmed rendering correctly; dark mode
+confirmed; zero console/page errors across every session driven.
+
+Verified end-to-end: `pnpm --filter api test:e2e` 140/140 (138 baseline + 2 new: a dedicated-patient,
+two-order prior-result scenario proving the second order correctly surfaces the first order's
+finalized result as its own prior, and a 404 case for an unknown ordered-test id); repo-wide
+`typecheck`/`lint`/`build` green, including a real `next build`/`nest build`;
+`openapi.json`/`packages/sdk/src/schema.ts` regenerated for the widened domain schema and the new
+route. `#116` auto-closed via PR #328's bare `Closes #116` line.
+
+**FEAT-015 (#24) is now fully implemented — all four named tasks merged** (TASK-054 #113/PR #320,
+TASK-055 #114/PR #322, TASK-056 #115/PR #324, TASK-057 #116/PR #328). Closed via a manual comment
+this session (`gh issue close 24 --reason completed`) — bare `Closes` lines never auto-close a
+parent feature issue, the same recurring gotcha as `#99`/`#265`/`#74`/`#93`/`#94`/`#105`/`#107`/
+`#112`/`#115` before it. `docs/plans/feat-015-verification-criticals.md`'s own top-level status line
+updated to **FULLY IMPLEMENTED**, matching `docs/plans/feat-014-result-entry-engine.md`'s own
+precedent style when FEAT-014 completed.
+
+**Next milestone/feature not yet identified this session** — `/orient`'s next run should re-run
+milestone/next-task discovery from scratch now that M4's own thesis feature (FEAT-015) is fully
+closed, rather than assume any particular next direction.
 
 ## TASK-054 (FEAT-015's first task) merged this session, via PR #320 (`f311a2e`), closing #113 —
 FEAT-015 (Verification & criticals, M4, EPIC-004) has started, immediately after FEAT-014's full

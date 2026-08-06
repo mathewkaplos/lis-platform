@@ -1,9 +1,10 @@
 # Implementation Proposal: FEAT-015 Verification & criticals
-Status: **IMPLEMENTED** — merged PR #320 (`f311a2e`), closing #113 (TASK-054); merged PR #322
-(`9fb5f42`), closing #114 (TASK-055, verification action + append-only versioning); merged PR #324
-(`6b9488f`), closing #115 (TASK-056, finalization block on unacknowledged critical). TASK-057
-(verification UI) is FEAT-015's last remaining task, APPROVED as a revision below, not yet
-implemented.
+Status: **FULLY IMPLEMENTED** — all four tasks merged. TASK-054 (PR #320, `f311a2e`, closing #113,
+critical-value detection), TASK-055 (PR #322, `9fb5f42`, closing #114, verification action +
+append-only versioning), TASK-056 (PR #324, `6b9488f`, closing #115, finalization block on
+unacknowledged critical), TASK-057 (PR #328, `dd9b8f7`, closing #116, verification UI). FEAT-015
+(#24) itself still needs its own manual-comment close — bare `Closes` lines don't auto-close a
+parent feature issue, the same recurring gotcha every prior feature in this repo has hit.
 §10's open questions were resolved by the human as follows:
 Q1: **Option B** (persist a documented critical-detection audit signal). Q2: the signal is a new
 field on the existing `observation.finalize` audit event's `after` payload, not a second
@@ -962,7 +963,47 @@ downstream dependency worth naming even though TASK-057 has not begun.
 
 # Revision: TASK-057 — Verification UI (delta/QC/prior context, verify+next)
 
-Status: **APPROVED** (2026-08-06) — §10's open questions resolved by the human as follows:
+Status: **IMPLEMENTED** — merged PR #328 (`dd9b8f7`), closing #116. Shipped exactly per this
+revision's own resolved §10: a "Verify" affordance added to the existing TASK-052 results grid,
+visible only to `verifier`-roled sessions (`apps/web/auth/roles.ts`'s new `hasVerifierRole`, this
+repo's first frontend role-visibility check, fails closed on a missing/malformed session);
+`isVerifiable`/`focusNextVerifiable` mirror `isEnterable`/`focusNextEnterable` exactly, giving
+verify+next auto-advance keyboard-only; a verified row now shows verifier identity/timestamp
+(`observationSchema` widened for the already-existing `verifierUserId`/`verifiedAt` columns); a new
+`GET .../results/:analyteId/prior` read path surfaces the patient's own prior result for the same
+analyte, no computed delta, no QC context.
+
+**Real, load-bearing finding from implementation, smaller than the proposal's own framing
+anticipated:** the prior-result query needs no join through `order`/`ordered_test` at all.
+`observation.patientId` is already a real, non-null column set directly by `upsertObservation` at
+write time (not derived through a join), and `ix_obs_trend` (`packages/db/src/schema/
+observation.ts`) is already a composite index on exactly `(tenantId, patientId, analyteId,
+producedAt)` — built ahead of this task's own need. `prior()` only joins `orderedTest` -> `order` to
+resolve the *current* ordered test's own `patientId`; the actual prior-result lookup is a single,
+already-indexed, single-table `observation` read.
+
+**A second, unplanned finding, caught only by attempting a real compiled-server boot for
+`web-verify` verification, not by any automated check:** a stale `apps/api/tsconfig.build.tsbuildinfo`
+made `nest build` report success while writing zero files to `dist/` — `tsc`'s own incremental cache
+doesn't notice `deleteOutDir` removed the output directory it thinks is already up to date. Deleting
+the stray `.tsbuildinfo` fixed it. Written up as `engineering/testing` Skill entry #10 (pushed to
+`lis-engineering`).
+
+Verified end-to-end: `pnpm --filter api test:e2e` 140/140 (138 baseline + 2: a dedicated-patient
+two-order prior-result scenario proving order2 correctly surfaces order1's finalized result as its
+own prior, and a 404 case for an unknown ordered-test id); repo-wide `typecheck`/`lint`/`build`
+green (including a real `next build`/`nest build`); `openapi.json`/`packages/sdk/src/schema.ts`
+regenerated for the widened domain schema and the new route. Real headless-browser verification
+(`web-verify` Skill): a `verifier`-roled session verified a 4-analyte panel keyboard-only (Tab+Enter,
+a realistic ~900ms human read-pause per row) in **5.88s**, well under the AC's 30-second target; a
+`technologist`-roled session rendered zero Verify controls anywhere on the page; prior-result context
+and verifier identity/timestamp both displayed correctly; dark mode confirmed; zero console/page
+errors across every session driven. `#116` auto-closed via PR #328's bare `Closes #116` line.
+
+**FEAT-015 (#24) is now fully implemented — all four named tasks (TASK-054/055/056/057) merged.**
+See this file's own top-level status line for the feature-level close-out.
+
+§10's open questions were resolved by the human as follows:
 Q1: **prior result only, no computed delta** — show the patient's previous result for the same
 analyte during verification (a small new backend query); no delta computation, since nothing like
 that exists anywhere in this repo yet. "QC" context is not a decision point — it is fully unbuildable

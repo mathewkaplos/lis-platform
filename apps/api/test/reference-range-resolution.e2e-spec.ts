@@ -470,6 +470,37 @@ describe('Reference-range resolution (e2e)', () => {
       expect(mismatchResult.normal.matched).toBe(false);
     });
 
+    // TASK-054 (FEAT-015 proposal §7/§10 Q4): the same unit-exclusion
+    // discipline as the 'normal' case immediately above, proven for
+    // `rangeType = 'critical'` too -- no existing test proved this before
+    // TASK-054 (`domain/reference-ranges` entry #5's "no UCUM conversion"
+    // finding applies identically to either rangeType, but `compatible()`
+    // is exercised once per rangeType by `resolveObservationRange`, so it's
+    // a real, separate code path to prove, not a re-statement of the
+    // 'normal' case above). Synthetic fixture, not real golden-dataset data
+    // (proposal §10 Q4) -- the golden dataset's four real critical analytes
+    // have no incompatible-unit row to test against.
+    it('a unitId mismatch excludes a critical-rangeType candidate row -> critical.matched === false, never silently applied', async () => {
+      await insertRange({
+        condition: 'synth-critical-unit-mismatch',
+        rangeType: 'critical',
+        unitId: mgdlUnitId,
+        low: null,
+        high: '40', // critical-low threshold under mg/dL, per the merge convention (entry #10)
+      });
+
+      const mismatchResult = await resolveObservationRange(db, {
+        analyteId: synthAnalyteId,
+        unitId: mmolUnitId, // a value that would be critical under mg/dL is submitted under a different unit
+        patientSex: 'M',
+        patientBirthDate: new Date('1990-01-01T00:00:00Z'),
+        condition: 'synth-critical-unit-mismatch',
+        at: new Date('2026-08-05T00:00:00Z'),
+      });
+
+      expect(mismatchResult.critical.matched).toBe(false);
+    });
+
     it('no compatible candidate at all -> explicit no_range, never a thrown error or a fabricated match', async () => {
       const noCandidateResult = await resolveObservationRange(db, {
         analyteId: synthAnalyteId,

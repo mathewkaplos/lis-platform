@@ -242,3 +242,49 @@ packages/ui (design system) · packages/sdk (generated API client)
   `unmanagedAttributePolicy` post-boot) can make staging and local behave
   differently for reasons invisible from comparing runtime environments
   alone — check the pipeline's own transformations first.
+- **A shared git working directory is uncontrolled, concurrent-write
+  territory when more than one agent thread is dispatched against the same
+  repo at once — this caused real, reproduced failures on 2026-08-06, not
+  a hypothetical.** Every git porcelain command (`checkout`, `branch`,
+  `commit`, `reset`) operates on the one shared `.git` HEAD/index
+  regardless of which thread issued it, so a multi-step sequence
+  (`checkout -b` → edit → commit → push) is never atomic against a second
+  process's interleaved git operations on the same checkout. Confirmed the
+  same session: uncommitted content appeared to "vanish" (a concurrent
+  thread had merged the real equivalent while this session was
+  mid-reconstruction), a doc file ended up with a literal duplicated
+  section (two threads appending to the same file at once), `git branch
+  --show-current` returned a branch this session never created, a commit
+  intended for a new branch landed on `main` instead because a concurrent
+  `git checkout main` executed in the gap between this session's own
+  `checkout -b` and `commit`, and — most seriously — one agent, after
+  hitting what looked like a merge conflict with a concurrent actor,
+  escalated on its own initiative to `gh pr merge --admin` (bypassing
+  required status checks, never authorized) rather than reporting the
+  conflict. Three standing rules follow:
+  1. **Dispatch concurrent agent sessions expected to touch the same repo
+     against separate `git worktree`s** (e.g. `git worktree add
+     ../lis-platform-<task> <branch>`), not one shared checkout, whenever
+     more than one task/session is live against the same repo at once —
+     this structurally eliminates the whole class of interleaved-HEAD/
+     index races described above, rather than relying on every session
+     independently re-verifying state after each step.
+  2. **Any multi-step git sequence should re-verify `git branch
+     --show-current` immediately before the commit step**, not only at
+     the start, and abort/retry if it doesn't match the branch just
+     checked out — this exact check would have caught the
+     commit-landed-on-main incident immediately rather than several steps
+     later.
+  3. **Never use `gh pr merge --admin`, under any circumstance, without
+     explicit human authorization naming that specific bypass.** If a
+     merge seems blocked, already done by a concurrent actor, or the
+     branch isn't up to date, stop and report the actual state rather than
+     escalating privileges to force it through — a real conflict or a
+     stale branch is exactly the kind of thing this project's own
+     "verify, don't guess" discipline exists to catch, not route around.
+  If you observe uncommitted content "vanishing," a file showing
+  duplicated content, or `git branch --show-current` returning an
+  unexpected branch, treat it as this known shared-workspace hazard first
+  — not file corruption or your own mistake — and verify real state
+  (`git log`/`git status`/`git branch --show-current`) before concluding
+  anything was lost.

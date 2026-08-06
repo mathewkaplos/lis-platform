@@ -88,7 +88,7 @@ function toObservationDto(row: ObservationRow): ObservationResult {
     refCondition: row.refCondition,
     refSource: row.refSource,
     flags: row.flags,
-    status: row.status as ObservationResult['status'], // this task only ever writes 'registered'/'preliminary'
+    status: row.status as ObservationResult['status'], // TASK-055: now also 'verified', set only by verify() below
     source: row.source,
     producedAt: row.producedAt ? row.producedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
@@ -316,6 +316,26 @@ export class ObservationController {
         ),
       )
       .limit(1);
+
+    // TASK-055 (FEAT-015 revision §1 finding #3): `fn_observation_append_only`
+    // (0007 migration) rejects any top-level UPDATE to a row whose current
+    // status is 'verified', with exactly one narrow, system-internal
+    // exception this call never takes (fn_observation_supersede's own nested
+    // superseded_by backfill). Without this pre-check, calling the UPDATE
+    // branch below against an already-verified row would surface as an
+    // unhandled 500 from the trigger's RAISE EXCEPTION -- this turns that
+    // into the proper 409 the DB constraint is really expressing. Applies to
+    // every caller of upsertObservation (draft, finalize, and the calculated-
+    // dependent write in maybeComputeDependents) uniformly, since none of
+    // them may ever mutate a verified row in place; a correction must insert
+    // a new row with amendment_of set instead (not built by this task -- see
+    // the trigger-proof e2e test / proposal §10 Q3).
+    if (existing && existing.status === 'verified') {
+      throw new ConflictException(
+        `Observation ${existing.id} is verified and append-only (Constitution Law #2); ` +
+          'a correction must create a new version, not update this one',
+      );
+    }
 
     const valueFields = {
       valueNum:
@@ -727,6 +747,86 @@ export class ObservationController {
           : null,
         criticalDetected: row.flags.includes('HH') || row.flags.includes('LL'),
       },
+    };
+  }
+
+  /**
+   * TASK-055 (FEAT-015 revision): verification action sub-resource. Bare
+   * `POST .../verify`, no request body (proposal §10 Q1) -- mirrors
+   * `finalize()`'s own bare-action shape exactly, same reasoning as `engineering/
+   * api-design` entry #11's slash-verb convention. Gated by the existing
+   * `verify` capability (already granted only to `verifier`, proposal §10
+   * Q2/finding #4) -- not `enter_result`. Audited (`@Audit`), matching
+   * `finalize()`'s own precedent: this is a mutating, clinically significant
+   * action (Constitution Law #5), not a bare read.
+   *
+   * Only a `'preliminary'` observation may be verified -- anything else
+   * (no result yet, already verified, or some other status) is rejected
+   * with 409, the same convention `loadWriteContext`'s own ordered-test
+   * status guard already uses for an out-of-order transition. Once this
+   * succeeds, `fn_observation_append_only` (0007 migration) makes the row
+   * immutable; `upsertObservation`'s own pre-check above is what turns any
+   * later draft/finalize attempt against the same analyte into a 409
+   * instead of an unhandled 500.
+   */
+  @Post('results/:analyteId/verify')
+  @HttpCode(200) // an action on an existing resource, not a creation
+  @UseGuards(JwtAuthGuard, CapabilityGuard)
+  @RequireCapability('verify')
+  @UseInterceptors(TenantContextInterceptor, AuditInterceptor)
+  @Audit({ action: 'observation.verify', resourceType: 'observation' })
+  async verify(
+    @Param(new ZodValidationPipe(resultParamSchema))
+    { id, analyteId }: ResultParamDto,
+    @CurrentUser() user: RequestContext,
+    @DbTx() tx: Tx,
+  ) {
+    const [orderedTestRow] = await tx
+      .select({ id: orderedTest.id })
+      .from(orderedTest)
+      .where(eq(orderedTest.id, id))
+      .limit(1);
+    // RLS makes a cross-tenant row structurally invisible (engineering/api-design entry #7).
+    if (!orderedTestRow) {
+      throw new NotFoundException('Ordered test not found');
+    }
+
+    const [existing] = await tx
+      .select()
+      .from(observation)
+      .where(
+        and(
+          eq(observation.orderedTestId, id),
+          eq(observation.analyteId, analyteId),
+        ),
+      )
+      .limit(1);
+    if (!existing) {
+      throw new NotFoundException(
+        `No result exists for analyte ${analyteId} on this ordered test`,
+      );
+    }
+    if (existing.status !== 'preliminary') {
+      throw new ConflictException(
+        `Observation status '${existing.status}' cannot be verified (must be 'preliminary')`,
+      );
+    }
+
+    const before = toObservationDto(existing);
+    const [updated] = await tx
+      .update(observation)
+      .set({
+        status: 'verified',
+        verifierUserId: user.sub,
+        verifiedAt: new Date(),
+      })
+      .where(eq(observation.id, existing.id))
+      .returning();
+
+    return {
+      resourceId: updated.id,
+      before: { observation: before },
+      after: { observation: toObservationDto(updated) },
     };
   }
 

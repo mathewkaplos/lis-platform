@@ -7,6 +7,8 @@ import {
   auditEvent,
   codeSystemValue,
   createDb,
+  observation,
+  resultHistory,
   testAnalyte,
   testDefinition,
 } from '@lis/db';
@@ -18,6 +20,15 @@ const TENANT_A = '00000000-0000-0000-0000-000000000001';
 const GLUCOSE_CODE = 'GLU';
 const BUN_CODE = 'BUN';
 const SODIUM_CODE = 'NA';
+// TASK-055: LIPID (db/seed/chemistry-catalog.sql step 12) is the one seeded
+// test_definition with more than one test_analyte link (Total Cholesterol,
+// HDL, Triglycerides, plus the calculated LDL) -- needed so an ordered test
+// stays 'in_process' (enterable) after only one of its analytes is
+// finalized/verified, isolating upsertObservation's own new verified-row
+// pre-check from the unrelated ordered_test-status guard that would
+// otherwise also produce a 409 once every analyte is finalized.
+const LIPID_CODE = 'LIPID';
+const TOTAL_CHOLESTEROL_LOINC = '2093-3';
 
 /**
  * TASK-051 (FEAT-014 revision): first real writer to `observation`, first
@@ -34,6 +45,13 @@ const SODIUM_CODE = 'NA';
 describe('Result entry API (e2e)', () => {
   let app: INestApplication<App>;
   let tokenA: string;
+  // TASK-055: test-user-4 carries both 'technologist' and 'verifier' realm
+  // roles under the SAME tenant (TENANT_A) as tokenA/test-user (infra/
+  // keycloak/lis-realm.json) -- test-user-2, the other seeded verifier, is
+  // deliberately in TENANT_B (rls-isolation-check.ts's own convention), so
+  // it can never see this spec's own TENANT_A fixtures. test-user-4 is the
+  // only seeded user that can both enter and verify a result in one tenant.
+  let verifierToken: string;
   let patientId: string;
   // Fixed, not per-run-unique: repeated local runs (unlike CI's always-fresh
   // Postgres) reuse the same synthetic rows via find-or-create below, rather
@@ -146,6 +164,7 @@ describe('Result entry API (e2e)', () => {
     await app.init();
 
     tokenA = await getKeycloakToken('test-user', 'test-password');
+    verifierToken = await getKeycloakToken('test-user-4', 'test-password-4');
 
     const patientRes = await request(app.getHttpServer())
       .post('/v1/patients')
@@ -683,4 +702,422 @@ describe('Result entry API (e2e)', () => {
     }
     return row.analyteId;
   }
+
+  // TASK-055: `analyteIdForTestCode` resolves via a single test_definition ->
+  // one analyte join, which is ambiguous for LIPID (4 linked analytes,
+  // `.limit(1)` would return an arbitrary one) -- looked up by LOINC code
+  // directly instead, the same join `findAnalyteByLoincCode` (the
+  // controller's own private helper) uses internally.
+  async function analyteIdForLoincCode(loincCode: string): Promise<string> {
+    const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+    await db.execute(
+      sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+    );
+    const [row] = await db
+      .select({ analyteId: analyte.id })
+      .from(analyte)
+      .innerJoin(
+        codeSystemValue,
+        sql`${analyte.codeSystemValueId} = ${codeSystemValue.id}`,
+      )
+      .where(
+        sql`${codeSystemValue.system} = 'LOINC' AND ${codeSystemValue.code} = ${loincCode}`,
+      )
+      .limit(1);
+    if (!row) {
+      throw new Error(`no analyte found for LOINC code '${loincCode}'`);
+    }
+    return row.analyteId;
+  }
+
+  /**
+   * TASK-055 (FEAT-015 revision §7/§8): the verification action + the
+   * upsertObservation append-only pre-check. A `verifier`-roled caller
+   * (test-user-4) transitions a `'preliminary'` observation to `'verified'`;
+   * a `technologist`-roled caller (tokenA) is rejected 403; verifying a
+   * non-`'preliminary'` row (never finalized, or already verified) is
+   * rejected 409; and once verified, `upsertObservation`'s new pre-check
+   * (not the trigger itself) turns a later draft/finalize attempt against
+   * the same analyte into a 409 rather than an unhandled 500.
+   */
+  describe('Verification action + append-only pre-check (TASK-055)', () => {
+    it('a verifier transitions a preliminary observation to verified, with verifierUserId/verifiedAt set, audited', async () => {
+      const { orderId, orderedTestIds } = await createOrder([BUN_CODE]);
+      await receive(orderId);
+      const [orderedTestId] = orderedTestIds;
+      const bunAnalyteId = await analyteIdForTestCode(BUN_CODE);
+
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${bunAnalyteId}/finalize`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 15 })
+        .expect(200);
+
+      const before = await auditCount();
+
+      const res = await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${bunAnalyteId}/verify`,
+        )
+        .set('Authorization', `Bearer ${verifierToken}`)
+        .expect(200);
+      const body = res.body as {
+        resourceId: string;
+        before: { observation: { status: string } | null };
+        after: { observation: { status: string } };
+      };
+      if (body.after.observation.status !== 'verified') {
+        throw new Error(
+          `expected status 'verified' after verify, got ${JSON.stringify(body.after)}`,
+        );
+      }
+      if (body.before.observation?.status !== 'preliminary') {
+        throw new Error(
+          `expected before.observation.status 'preliminary', got ${JSON.stringify(body.before)}`,
+        );
+      }
+
+      const after = await auditCount();
+      if (after !== before + 1) {
+        throw new Error(
+          `expected exactly one new audit_event row for verify, before=${before} after=${after}`,
+        );
+      }
+
+      // Assert verifierUserId/verifiedAt directly on the row (proposal §7
+      // AC's own literal "on the row" wording) -- not currently exposed
+      // through observationSchema/the HTTP response (out of this task's
+      // own scope, proposal §2).
+      const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+      const [row] = await db
+        .select({
+          status: observation.status,
+          verifierUserId: observation.verifierUserId,
+          verifiedAt: observation.verifiedAt,
+        })
+        .from(observation)
+        .where(eq(observation.id, body.resourceId))
+        .limit(1);
+      if (!row || row.status !== 'verified') {
+        throw new Error(
+          `expected persisted status 'verified', got ${JSON.stringify(row)}`,
+        );
+      }
+      if (!row.verifierUserId || !row.verifiedAt) {
+        throw new Error(
+          `expected verifierUserId/verifiedAt both set, got ${JSON.stringify(row)}`,
+        );
+      }
+    });
+
+    it('a technologist (no verify capability) is rejected 403 on verify, with no mutation or audit row', async () => {
+      const { orderId, orderedTestIds } = await createOrder([SODIUM_CODE]);
+      await receive(orderId);
+      const [orderedTestId] = orderedTestIds;
+      const sodiumAnalyteId = await analyteIdForTestCode(SODIUM_CODE);
+
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${sodiumAnalyteId}/finalize`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 140 })
+        .expect(200);
+
+      const before = await auditCount();
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${sodiumAnalyteId}/verify`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(403);
+      const after = await auditCount();
+      if (after !== before) {
+        throw new Error(
+          `expected no new audit_event row on 403, before=${before} after=${after}`,
+        );
+      }
+
+      const status = await orderedTestStatus(orderId, orderedTestId);
+      if (status !== 'resulted') {
+        throw new Error(
+          `expected the underlying finalize to be unaffected by the rejected verify attempt, got '${status}'`,
+        );
+      }
+    });
+
+    it("verifying a draft-only ('registered') observation is rejected 409", async () => {
+      const { orderId, orderedTestIds } = await createOrder([GLUCOSE_CODE]);
+      await receive(orderId);
+      const [orderedTestId] = orderedTestIds;
+      const glucoseId = await glucoseAnalyteId();
+
+      await request(app.getHttpServer())
+        .put(`/v1/ordered-tests/${orderedTestId}/results/${glucoseId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 90 })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(`/v1/ordered-tests/${orderedTestId}/results/${glucoseId}/verify`)
+        .set('Authorization', `Bearer ${verifierToken}`)
+        .expect(409);
+    });
+
+    it('double-verifying an already-verified observation is rejected 409', async () => {
+      const { orderId, orderedTestIds } = await createOrder([BUN_CODE]);
+      await receive(orderId);
+      const [orderedTestId] = orderedTestIds;
+      const bunAnalyteId = await analyteIdForTestCode(BUN_CODE);
+
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${bunAnalyteId}/finalize`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 15 })
+        .expect(200);
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${bunAnalyteId}/verify`,
+        )
+        .set('Authorization', `Bearer ${verifierToken}`)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${bunAnalyteId}/verify`,
+        )
+        .set('Authorization', `Bearer ${verifierToken}`)
+        .expect(409);
+    });
+
+    it('verifying an analyte with no result at all is rejected 404', async () => {
+      const { orderId, orderedTestIds } = await createOrder([GLUCOSE_CODE]);
+      await receive(orderId);
+      const [orderedTestId] = orderedTestIds;
+      const glucoseId = await glucoseAnalyteId();
+
+      await request(app.getHttpServer())
+        .post(`/v1/ordered-tests/${orderedTestId}/results/${glucoseId}/verify`)
+        .set('Authorization', `Bearer ${verifierToken}`)
+        .expect(404);
+    });
+
+    /**
+     * The pre-check added to `upsertObservation` (proposal §1 finding #3),
+     * proven through the real HTTP stack rather than a unit test of the
+     * private method directly. Uses LIPID (4 linked analytes) specifically
+     * so the ordered_test stays 'in_process' (enterable) after only Total
+     * Cholesterol finalizes -- isolating this 409 from the unrelated
+     * ordered-test-status guard in loadWriteContext, which would otherwise
+     * also produce a 409 once every analyte on the panel is finalized.
+     */
+    it('draft/finalize against an already-verified observation is rejected 409, not 500 (upsertObservation pre-check)', async () => {
+      const { orderId, orderedTestIds } = await createOrder([LIPID_CODE]);
+      await receive(orderId);
+      const [orderedTestId] = orderedTestIds;
+      const cholesterolId = await analyteIdForLoincCode(
+        TOTAL_CHOLESTEROL_LOINC,
+      );
+
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${cholesterolId}/finalize`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 180 })
+        .expect(200);
+
+      // finalize() only advances ordered_test -> 'resulted' once every
+      // required analyte is finalized (draft() is the only route that
+      // advances 'received' -> 'in_process', and this test calls finalize()
+      // directly per TASK-051's own "type-and-finalize in one call" AC) --
+      // what matters here is that it's still 'received' or 'in_process'
+      // (ENTERABLE_ORDERED_TEST_STATUSES), i.e. NOT 'resulted', so the 409s
+      // asserted below can only come from upsertObservation's own new
+      // verified-row pre-check, not loadWriteContext's ordered-test guard.
+      const statusAfterOneFinalize = await orderedTestStatus(
+        orderId,
+        orderedTestId,
+      );
+      if (statusAfterOneFinalize === 'resulted') {
+        throw new Error(
+          `expected the ordered test NOT to be 'resulted' with 3 of 4 LIPID analytes still unfinalized, got '${statusAfterOneFinalize}'`,
+        );
+      }
+
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${cholesterolId}/verify`,
+        )
+        .set('Authorization', `Bearer ${verifierToken}`)
+        .expect(200);
+
+      // Draft: the ordered test is still 'in_process' (enterable), so this
+      // 409 can only come from upsertObservation's own new pre-check, not
+      // loadWriteContext's ordered-test-status guard.
+      await request(app.getHttpServer())
+        .put(`/v1/ordered-tests/${orderedTestId}/results/${cholesterolId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 200 })
+        .expect(409);
+
+      // Finalize: same pre-check, reached via the other write route.
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${cholesterolId}/finalize`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 200 })
+        .expect(409);
+    });
+  });
+
+  /**
+   * TASK-055 (FEAT-015 revision §10 Q3): trigger-only proof of "amendment
+   * correctly creates a new version" -- no public amendment endpoint exists
+   * in this task's own scope. Mirrors `rls-isolation-check.ts`'s own
+   * amendment-fixture insert (lines ~161-171): a direct @lis/db insert of a
+   * second observation with `amendmentOf` set to a verified row's id,
+   * exercising the real `fn_observation_link_created_at` +
+   * `fn_observation_supersede` trigger chain end-to-end through this task's
+   * own fixtures (not only through the pre-existing isolation-check script).
+   */
+  describe('Append-only trigger proof: amendment supersession (TASK-055)', () => {
+    it('inserting a new observation with amendmentOf set to a verified row archives result_history and sets supersededBy', async () => {
+      const { orderId, orderedTestIds } = await createOrder([SODIUM_CODE]);
+      await receive(orderId);
+      const [orderedTestId] = orderedTestIds;
+      const sodiumAnalyteId = await analyteIdForTestCode(SODIUM_CODE);
+
+      const finalizeRes = await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${sodiumAnalyteId}/finalize`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 140 })
+        .expect(200);
+      const observationId = (finalizeRes.body as { resourceId: string })
+        .resourceId;
+
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${sodiumAnalyteId}/verify`,
+        )
+        .set('Authorization', `Bearer ${verifierToken}`)
+        .expect(200);
+
+      const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+
+      const [predecessorBefore] = await db
+        .select({
+          patientId: observation.patientId,
+          specimenId: observation.specimenId,
+        })
+        .from(observation)
+        .where(eq(observation.id, observationId))
+        .limit(1);
+
+      // Direct @lis/db insert, same shape as rls-isolation-check.ts's own
+      // amendment fixture -- only amendmentOf is set by the caller;
+      // amendment_of_created_at is auto-populated by
+      // fn_observation_link_created_at (0008 migration).
+      await db.insert(observation).values({
+        tenantId: TENANT_A,
+        orderedTestId,
+        analyteId: sodiumAnalyteId,
+        specimenId: predecessorBefore.specimenId,
+        patientId: predecessorBefore.patientId,
+        dataType: 'quantity',
+        valueNum: '142',
+        source: 'manual',
+        amendmentOf: observationId,
+      });
+
+      const [predecessorAfter] = await db
+        .select({ supersededBy: observation.supersededBy })
+        .from(observation)
+        .where(eq(observation.id, observationId))
+        .limit(1);
+      if (!predecessorAfter.supersededBy) {
+        throw new Error(
+          `expected the verified predecessor's superseded_by to be set by fn_observation_supersede, got ${JSON.stringify(predecessorAfter)}`,
+        );
+      }
+
+      const historyRows = await db
+        .select({
+          observationId: resultHistory.observationId,
+          status: resultHistory.status,
+          supersededBy: resultHistory.supersededBy,
+        })
+        .from(resultHistory)
+        .where(eq(resultHistory.observationId, observationId));
+      if (historyRows.length !== 1) {
+        throw new Error(
+          `expected exactly one result_history row archiving the predecessor, got ${JSON.stringify(historyRows)}`,
+        );
+      }
+      if (
+        historyRows[0].status !== 'verified' ||
+        historyRows[0].supersededBy !== predecessorAfter.supersededBy
+      ) {
+        throw new Error(
+          `expected the archived row to carry the predecessor's final ('verified') status and the same superseded_by, got ${JSON.stringify(historyRows[0])}`,
+        );
+      }
+    });
+
+    it('a direct UPDATE against an already-verified row is rejected by fn_observation_append_only', async () => {
+      const { orderId, orderedTestIds } = await createOrder([BUN_CODE]);
+      await receive(orderId);
+      const [orderedTestId] = orderedTestIds;
+      const bunAnalyteId = await analyteIdForTestCode(BUN_CODE);
+
+      const finalizeRes = await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${bunAnalyteId}/finalize`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 15 })
+        .expect(200);
+      const observationId = (finalizeRes.body as { resourceId: string })
+        .resourceId;
+
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${bunAnalyteId}/verify`,
+        )
+        .set('Authorization', `Bearer ${verifierToken}`)
+        .expect(200);
+
+      const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+
+      let threw = false;
+      try {
+        await db.execute(
+          sql`UPDATE observation SET value_num = '999' WHERE id = ${observationId}`,
+        );
+      } catch {
+        threw = true;
+      }
+      if (!threw) {
+        throw new Error(
+          'expected a standalone UPDATE against an already-verified row to be rejected by fn_observation_append_only',
+        );
+      }
+    });
+  });
 });

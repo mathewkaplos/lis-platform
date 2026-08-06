@@ -34,11 +34,20 @@ export const resultEntrySchema = z
 export type ResultEntryInput = z.infer<typeof resultEntrySchema>;
 
 /**
- * `observation.status`'s two pre-verification values this task ever writes
- * (proposal §1 finding #2) — `'verified'`/`'reported'`/etc. are TASK-055+'s
- * own scope, never written here.
+ * `observation.status`. TASK-051 (FEAT-014) only ever wrote the two
+ * pre-verification values (`'registered'`/`'preliminary'`); TASK-055
+ * (FEAT-015 revision §1 finding #5) widens this to include `'verified'` —
+ * the first status this schema represents that the append-only trigger
+ * (`db/migrations/0007_observation_append_only_trigger.sql`) actually
+ * enforces immutability against. `'reported'`/`'amended'`/`'corrected'`/
+ * `'cancelled'`/`'rejected'` (named in the DB column's own comment) remain
+ * out of scope — no task writes them yet.
  */
-export const observationStatusSchema = z.enum(["registered", "preliminary"]);
+export const observationStatusSchema = z.enum([
+  "registered",
+  "preliminary",
+  "verified",
+]);
 export type ObservationStatus = z.infer<typeof observationStatusSchema>;
 
 /**

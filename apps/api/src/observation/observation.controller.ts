@@ -47,6 +47,7 @@ import { RequireCapability } from '../auth/require-capability.decorator';
 import type { RequestContext } from '../auth/request-context';
 import type { RequestWithTx } from '../auth/tenant-context.interceptor';
 import { TenantContextInterceptor } from '../auth/tenant-context.interceptor';
+import { FinalizationRollupInterceptor } from './finalization-rollup.interceptor';
 
 const orderedTestIdParamSchema = z.object({ id: z.uuid() });
 const resultParamSchema = z.object({ id: z.uuid(), analyteId: z.uuid() });
@@ -619,17 +620,28 @@ export class ObservationController {
    * Finalize: `status: 'preliminary'` (proposal §1 finding #2), audited.
    * Accepts the same body as draft (a keyboard-only user can type-and-
    * finalize in one call, no prior draft required — FEAT-014's own AC).
-   * Advances `orderedTest.status → 'resulted'` once every analyte named by
-   * this ordered test's own `test_analyte` rows has a `'preliminary'`
-   * observation (proposal §2) — the last analyte to finalize is the one
-   * that flips it, not a separate whole-panel submit action (KB-03 names
-   * none).
+   *
+   * TASK-056 (FEAT-015 revision, #115): this method itself no longer decides
+   * whether `orderedTest.status` advances to `'resulted'` — that roll-up,
+   * plus the new Constitution Law #3 guard blocking it while any critical on
+   * the panel is unacknowledged, moved to `FinalizationRollupInterceptor`
+   * (see its own doc comment for why: it needs to run in a transaction that
+   * commits *after*, and independently of, this method's own observation
+   * write, so a 409 from the guard can never unwind the write that triggered
+   * it). `FinalizationRollupInterceptor` is listed first (outermost) below so
+   * its post-`next.handle()` code runs only once `TenantContextInterceptor`'s
+   * own transaction — wrapping this method's write, `maybeComputeDependents`,
+   * and `AuditInterceptor`'s own audit insert — has actually committed.
    */
   @Post('results/:analyteId/finalize')
   @HttpCode(200) // an action on an existing resource, not a creation
   @UseGuards(JwtAuthGuard, CapabilityGuard)
   @RequireCapability('enter_result')
-  @UseInterceptors(TenantContextInterceptor, AuditInterceptor)
+  @UseInterceptors(
+    FinalizationRollupInterceptor,
+    TenantContextInterceptor,
+    AuditInterceptor,
+  )
   @Audit({ action: 'observation.finalize', resourceType: 'observation' })
   async finalize(
     @Param(new ZodValidationPipe(resultParamSchema))
@@ -687,37 +699,6 @@ export class ObservationController {
       user.sub,
       at,
     );
-
-    const requiredLinks = await tx
-      .select({ analyteId: testAnalyte.analyteId })
-      .from(testAnalyte)
-      .where(
-        eq(testAnalyte.testDefinitionId, ctx.orderedTestRow.testDefinitionId),
-      );
-    const requiredAnalyteIds = requiredLinks.map((link) => link.analyteId);
-
-    const finalizedObservations = await tx
-      .select({ analyteId: observation.analyteId })
-      .from(observation)
-      .where(
-        and(
-          eq(observation.orderedTestId, id),
-          eq(observation.status, 'preliminary'),
-        ),
-      );
-    const finalizedAnalyteIds = new Set(
-      finalizedObservations.map((o) => o.analyteId),
-    );
-
-    const allFinalized = requiredAnalyteIds.every((requiredId) =>
-      finalizedAnalyteIds.has(requiredId),
-    );
-    if (allFinalized) {
-      await tx
-        .update(orderedTest)
-        .set({ status: 'resulted' })
-        .where(eq(orderedTest.id, id));
-    }
 
     // TASK-053 (FEAT-014 revision §1 finding #4): `before`/`after` are now
     // always `{ observation, calculatedDependent }` -- a uniform shape

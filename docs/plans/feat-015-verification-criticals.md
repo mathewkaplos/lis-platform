@@ -561,3 +561,397 @@ found the verifier/timestamp columns and the `verify` capability already exist a
 the same way TASK-051's own proposal resolved its equivalent `enter_result` question via a finding
 rather than a human decision.
 either resolution via the options-prompt if this research missed something.
+
+---
+
+# Revision: TASK-056 — Finalization block on unacknowledged critical (409)
+
+Status: **IMPLEMENTED** — merged PR #324 (`6b9488f`), closing #115. Shipped exactly per this
+revision's own resolved §10: the `ordered_test.status → 'resulted'` roll-up inside `finalize()`
+(not the per-analyte write itself, which would reintroduce the detection/block paradox) is guarded,
+returning 409 when completing the panel would leave an observation with `HH`/`LL` flags whose
+`status <> 'verified'`; TASK-055's `verify()` alone counts as acknowledgement — no new column, no
+new endpoint, reuses the already-GIN-indexed `flags` column; the 409's `detail` string carries a
+generic, formatted count of pending criticals — no `ProblemDetailsFilter`/`ProblemDetails` shape
+change.
+
+**Real, load-bearing finding from implementation, directly answering §10 Q1's own transactional
+sub-question:** the analyte's own observation write and its `observation.finalize` audit event
+needed to commit even when the `finalize()` call itself returns 409 — achieved with a new
+`FinalizationRollupInterceptor`, layered *outside* `TenantContextInterceptor` in the interceptor
+chain, so its post-handler roll-up check only runs after that inner `db.transaction()` has already
+committed (a drizzle `db.transaction()` promise only resolves after a real Postgres `COMMIT`). A
+409 thrown from the new interceptor can therefore never unwind an already-committed write, unlike a
+409 thrown from inside the same transaction as the write, which the approved proposal explicitly
+rules out.
+
+**A second, unplanned finding, surfaced only by the positive-path test itself** (verify a critical
+analyte, then finalize a different, later analyte on the same panel): the roll-up's own
+pre-existing "is every required analyte finalized" check only ever matched `status = 'preliminary'`,
+so a panel could never reach `'resulted'` once one of its analytes had already been verified ahead
+of the rest — legal under `verify()`'s own design, which has no ordered-test-status gate of its own.
+Fixed by counting `'preliminary'` and `'verified'` both as "finalized." A synthetic two-analyte
+(Sodium + BUN) `test_definition` fixture was added to the e2e spec to exercise this case, since no
+seeded multi-analyte panel pairs a golden-dataset critical analyte with another analyte on the same
+panel.
+
+Verified end-to-end: `pnpm --filter api test:e2e` 138/138 (135 baseline + 3: the existing
+unverified-blocks-finalize test updated to assert 409 semantics, a new positive-path
+verified-before-last-finalize case, and a new non-critical-panel regression case); repo-wide
+`typecheck`/`lint`/`build` green; no `openapi.json`/SDK regeneration needed (`finalize()`'s response
+shape is unchanged; the 409 uses the existing generic `ProblemDetails.detail` string convention).
+`#115` auto-closed via PR #324's bare `Closes #115` line.
+
+§10's open questions were resolved by the human as follows:
+Q1: **candidate (b)** — the `ordered_test.status → 'resulted'` roll-up is the finalization being
+guarded, and the finalize() call **itself returns 409** when it would complete a panel that still
+has an unacknowledged critical (not a silent 200 non-advance). Q1's transactional sub-question: the
+analyte's own just-entered observation write is **persisted** even though the call returns 409 —
+only the `ordered_test.status` roll-up to `'resulted'` is blocked, so a technologist never loses a
+real typed value because the panel can't yet close out. Q2/Q3: **`verify()` alone is sufficient**
+acknowledgement for Constitution Law #3 — no new column, no new acknowledgement action; FEAT-021
+(M5, not started) still owns the richer notification/read-back/escalation delivery separately. Q4:
+the 409's `detail` string carries a generic, formatted message (e.g. naming how many criticals are
+pending) — no change to `ProblemDetailsFilter`/`ProblemDetails` itself.
+Date: 2026-08-06    Backlog ID: FEAT-015 (#24) / TASK-056 (#115)
+
+## 1. Goal
+
+TASK-055 (verification action + append-only versioning) is merged (PR #322/#323, `9fb5f42`),
+closing #114. FEAT-015's next task per its own ordering is **TASK-056 — finalization block on
+unacknowledged critical (409)** (#115). Its stated dependency, read directly from the issue, is
+**TASK-054** (critical detection, #113) — not TASK-055, even though TASK-055's `verify()` action is
+obviously the only mechanism in this codebase that could plausibly satisfy "acknowledged." Its
+literal AC: "Integration test proves finalization returns 409 while any critical is unacknowledged."
+Its "Expected output": "Finalization guard."
+
+**Real, load-bearing finding #1 — this repo has no single thing called "finalization"; there are
+three distinct, already-shipped candidates, and only one is honestly buildable without contradicting
+TASK-054's own shipped mechanism.** Read directly, in full, from
+`apps/api/src/observation/observation.controller.ts`:
+
+1. **`observation.finalize()` (TASK-051, `POST .../results/:analyteId/finalize`)** — the per-analyte
+   action that transitions one `observation` row `'registered'`/absent → `'preliminary'`. This is
+   the literal call inside which `computeFlags` runs and `row.flags` gets `HH`/`LL` written
+   (TASK-054's own `criticalDetected` audit field, line 748, reads exactly this call's own
+   just-written `row.flags`). **Blocking this call outright whenever a critical is unacknowledged is
+   the paradox the task brief names**: the very call that would first make a value's criticality
+   knowable to the system is the same call a naive reading of the AC would reject with 409, and
+   `criticalDetected` could then never be set for the first, defining case (a *newly*-critical
+   value). No test or Skill entry suggests this reading is intended.
+2. **`ordered_test.status` → `'resulted'` (also inside `finalize()`, lines 691–720)** — once every
+   analyte named by the ordered test's own `test_analyte` rows has a `'preliminary'` observation, the
+   *same* `finalize()` call that completes the panel flips `ordered_test.status` to `'resulted'`.
+   This is a real, already-shipped state transition distinct from the per-analyte write above, and
+   the only other status-advancing write in this file (`draft()`'s `'received'` → `'in_process'` is
+   the sole other one; neither `order.controller.ts` nor any other file writes `ordered_test.status`
+   forward — confirmed by a direct grep, see §3). It is the load-bearing candidate this proposal's
+   own research finds most consistent with what already exists: it represents "this panel is done,"
+   is literally reachable only via the code path named `finalize()`, and — critically — **does not
+   need to block the per-analyte write that detects the critical**, only the roll-up that follows it
+   in the same function, which avoids finding #1's paradox by construction (see finding #2 below for
+   the residual ambiguity this still leaves).
+3. **Report finalization** — Constitution Law #3's own literal text ("...block **report**
+   finalization until acknowledged") and KB-34's own worked example ("...only then can the report
+   finalize," `/mnt/d/LIS/research/34-notification-system.md:90-91`). Confirmed directly:
+   `github/issues/features/FEAT-016-minimal-report.md` (dependencies: `[FEAT-015]`, status "Not
+   Started," tasks TASK-058/059/060 all unstarted) — **no report-finalization endpoint exists
+   anywhere in this codebase to block.** This is a real, load-bearing tension between the
+   Constitution's literal wording and what is actually buildable today: FEAT-016 depends on FEAT-015
+   completing, so TASK-056 cannot literally implement "block report finalization" without either (a)
+   building report finalization itself (wildly out of scope — FEAT-016 is a separate, 5-day, M4
+   feature with its own unstarted tasks) or (b) treating candidate 2 as what Law #3 actually means
+   *right now*, with FEAT-016 expected to consult/re-check this same guard once it exists. KB-34's
+   own line 57 supports reading (b) directly: "the result engine enforces the finalization block on
+   unacknowledged criticals" — naming the *result engine* (this repo's `observation`/`ordered_test`
+   machinery, KB-14), not the not-yet-built report/notification systems, as the owner of the block
+   itself.
+
+**Real, load-bearing finding #2 — even scoped to candidate 2 (the `ordered_test` → `'resulted'`
+roll-up), the exact point of insertion still has a real, unresolved sub-ambiguity the AC's own
+wording does not settle.** `loadWriteContext`'s `ENTERABLE_ORDERED_TEST_STATUSES` guard
+(`['received', 'in_process']`) already rejects any `draft()`/`finalize()` call once
+`ordered_test.status` is `'resulted'` — traced directly, this means **no `finalize()` call ever
+reaches the roll-up logic except the one call that would itself be the last analyte to complete the
+panel**. There is no separate "close out the order" action to gate independently; the roll-up
+check and the last analyte's own per-analyte write happen inside one HTTP request. This produces two
+materially different implementations, both consistent with candidate 2 but reading the literal AC's
+"finalization returns 409" two different ways:
+- **(a) Silent non-advancement, 200 returned.** The last analyte's own observation write still
+  succeeds (still 200, same response shape as today); the guard only suppresses the
+  `ordered_test.status = 'resulted'` update when an unacknowledged critical exists anywhere on the
+  panel (including the one just written this call, since its own flags are already known by the time
+  the roll-up check runs — after `upsertObservation`, not before). Under this reading, **no caller
+  of `finalize()` ever actually receives a 409** — the guard is invisible to the AC's own literal
+  "integration test proves finalization returns 409" wording, which this reading does not satisfy
+  literally, only in spirit.
+- **(b) The finalize call itself throws 409.** The same check instead throws `ConflictException`
+  before (or instead of) committing the roll-up, and the surrounding transaction is rolled back —
+  meaning the analyte's own result entry (which this same call was trying to finalize) is discarded
+  along with the status advancement, or the check runs *after* the observation commit but the HTTP
+  response is still a 409 with the observation already persisted underneath it (an unusual shape:
+  "the write happened, but you get an error"). Reading (b) satisfies the AC's literal wording but
+  reintroduces a milder version of finding #1's paradox for the *specific* analyte that is itself
+  newly critical and is also the panel's last analyte: that call both detects the criticality and is
+  rejected because of it, in the same request.
+
+This proposal does not resolve which of (a)/(b) is intended — see §10 Q1. Neither is a technical
+gap; both are one afternoon's implementation once chosen.
+
+**Real, load-bearing finding #3 — "unacknowledged" has no dedicated column, and TASK-055's own
+`verify()` (read directly, not from its proposal's description) is the only candidate mechanism that
+exists.** `apps/api/src/observation/observation.controller.ts`'s real `verify()` handler (lines
+772–831): a bare `POST .../results/:analyteId/verify`, gated by the `verify` capability
+(verifier-only), transitions `observation.status` `'preliminary'` → `'verified'` and sets
+`verifierUserId`/`verifiedAt` — nothing else. It has **no ordered-test-status gate of its own** (an
+analyte can be verified whether its panel is `'in_process'` or already `'resulted'`) and **no
+critical-specific branch at all** — verifying a critical observation is byte-for-byte identical to
+verifying a non-critical one (TASK-055 proposal §10 Q4, its own resolved assumption). There is no
+`acknowledgedAt`/`readBackAt` column anywhere on `observation` (confirmed again here by re-reading
+`packages/db/src/schema/observation.ts` in full — only `verifierUserId`/`verifiedAt` exist, both
+from TASK-020, both unrelated in original intent to Law #3's specific "documented notification with
+read-back" language). TASK-055's own proposal explicitly deferred this exact question to TASK-056
+(§10 Q4: "TASK-056 inherits the open question of whether this verify action counts as sufficient
+acknowledgement for Constitution Law #3"); `domain/critical-values` Skill entry #6 and
+`domain/result-verification` Skill entry #5 both independently flag the identical gap. This
+proposal likewise does not resolve it — see §10 Q2/Q3.
+
+**Real, load-bearing finding #4 — KB-34's own architecture split assigns "read-back" to a different,
+later feature, but its own worked example still says finalization waits for it, which is a genuine
+tension, not a clean separation.** `/mnt/d/LIS/research/34-notification-system.md`, read in full
+around the critical-value section: line 19–21 ("All outbound notifications and acknowledgement
+tracking [belongs to KB-34/FEAT-021]... Critical detection itself happens in the result engine
+([14])"), line 39–47 (the documented **read-back** — "the clinician repeats the value to confirm
+correct receipt" — is captured as part of the notification workflow's own acknowledgement step, not
+named as something the result engine itself performs), and line 57 ("the result engine enforces the
+finalization block on unacknowledged criticals" — i.e., FEAT-015/TASK-056's own codebase is where the
+*block* lives, even though the *acknowledgement capture* KB-34 describes as "read-back" is FEAT-021's
+job). Read together, this supports treating TASK-056 as the consumer of *whatever* acknowledgement
+signal exists at the time it ships (today: only TASK-055's `verify()`), with FEAT-021 (M5,
+`github/issues/features/FEAT-021-critical-notification-read-back-escalation.md`, dependency
+`[FEAT-015]`, still "Not Started") expected to either (a) layer a richer, distinct
+acknowledgement/read-back capture on top later, which TASK-056's guard would then need to be updated
+to also check, or (b) treat `verify()` as already satisfying "acknowledged" and scope its own
+"read-back" language to notification delivery/escalation only, never touching TASK-056's guard
+again. Both are legitimate readings of KB-34's own text; this proposal does not pick between them
+(§10 Q2).
+
+**Real, load-bearing finding #5 — the global error shape has no field today that could name "which
+analyte(s) blocked this," and adding one would be a shared-surface change, not a local one.**
+`apps/api/src/common/problem-details.filter.ts` (ADR-0013 §2, RFC 9457 `problem+json`, the sole
+global exception filter) builds its `ProblemDetails` response from exactly `type`/`title`/`status`/
+`detail`/`instance`/`code`, plus an `errors` array populated **only** for `ZodValidationException`
+(line 62–74) — any other `HttpException` (including every existing `ConflictException` in this
+controller) only ever contributes a string into `detail` (line 76–83, reading `.message` off the
+exception body). There is no existing precedent anywhere in this repo for a `ConflictException`
+carrying structured data (e.g., a list of blocking analyte IDs) through to the client — doing so
+would mean either (a) encoding it as a formatted string inside `detail` (zero-touch, matches every
+existing `ConflictException` in this file), or (b) extending `ProblemDetails`/the filter itself to
+pass through an exception's own extra fields generically, which is shared surface touching every
+route in the API, not just this one guard. Neither is prescribed here (§10 Q4).
+
+## 2. Affected files
+
+Exact files depend on §10's resolution (which finalization point, and the response shape); the
+following are affected under every resolution that keeps the guard inside the existing
+`finalize()` handler (the only reading this research finds buildable without inventing a new HTTP
+surface, per finding #1):
+
+- `apps/api/src/observation/observation.controller.ts` — `finalize()` gains a query (whether it
+  runs before or after `upsertObservation`'s own write, and whether it inspects only *other*
+  analytes' persisted flags or also the just-written one, is exactly §10 Q1's undecided sub-case)
+  for "does this ordered test have any `observation` with `flags && ARRAY['HH','LL']` and
+  `status <> 'verified'`?" — reusing the already-GIN-indexed `ix_obs_flags` column (TASK-050), no new
+  index needed. The roll-up block at lines 715–720 (`if (allFinalized) { ...status: 'resulted' }`)
+  is the literal insertion point under candidate 2's reading (finding #1).
+- `apps/api/test/observation.e2e-spec.ts` (extend) — the literal AC's own integration test: finalize
+  a golden-dataset critical value (e.g., Sodium 115) as a panel's last remaining analyte, with no
+  prior `verify()` call on it, and assert the resolution chosen for §10 Q1's (a)/(b) split
+  (`ordered_test.status` still `'in_process'` and 200 returned, or a 409 on the call itself,
+  depending which is picked) — plus a positive case, the same panel completing normally once the
+  critical analyte has been verified first.
+- `domain/critical-values` and `domain/result-verification` Skills — both already carry entries
+  (#6 and #5 respectively) anticipating this exact gap; this proposal's findings extend, not
+  contradict, either — see §10's own notes on what remains genuinely open versus what this research
+  newly confirmed (finding #2's (a)/(b) split, and finding #5's error-shape gap, are new; neither
+  Skill entry named them).
+- `packages/db/src/schema/observation.ts` — **only** if §10 Q3 resolves toward a new
+  `acknowledgedAt`-style column; otherwise unaffected (no migration under the "verify() is
+  sufficient" reading).
+- `apps/api/openapi.json` / `packages/sdk/src/schema.ts` — regenerate only if `finalize()`'s response
+  shape changes (e.g., a 200-but-non-advancing reading under §10 Q1(a) needs no shape change at all;
+  a 409 body naming blocking analytes under §10 Q4's option (b) would).
+
+**Not affected under any reading:**
+- `apps/api/src/observation/observation.controller.ts`'s `verify()` handler itself — no finding here
+  suggests `verify()` needs to change; it is TASK-056's dependency to *read*, not to modify (its own
+  finding #3 confirms it already sets everything TASK-056 could plausibly check today).
+- `db/migrations/0007_observation_append_only_trigger.sql` — unrelated; that trigger enforces
+  append-only on already-verified rows, a different invariant (Law #2) than this task's (Law #3).
+- `apps/api/src/order/order.controller.ts` — confirmed by direct grep (§3) that no other file writes
+  `ordered_test.status` forward; this task's guard belongs solely inside `finalize()`.
+- FEAT-016 (`github/issues/features/FEAT-016-minimal-report.md`) and its TASK-058/059/060 — confirmed
+  "Not Started," depends on FEAT-015; this proposal does not build any part of it (finding #1,
+  candidate 3).
+
+## 3. Architecture consulted
+
+- Constitution Law #3 ("Critical values never auto-verify... require human verification, a
+  documented notification with read-back, and block report finalization until acknowledged") — the
+  literal source of this task's own ambiguity (finding #1, candidate 3).
+- KB-14 Result Engine — its five-step pipeline names detection and the
+  notification/acknowledgement/finalization-block machinery as adjacent, and (per the FEAT-015
+  proposal's own §3, cited again here) assigns the *block* itself to the result engine, matching
+  finding #4's reading.
+- KB-34 Notification System, read in full around its critical-value section
+  (`/mnt/d/LIS/research/34-notification-system.md` lines 12–99) — direct source of "documented
+  read-back" (finding #3/#4), and of the specific line ("the result engine enforces the finalization
+  block on unacknowledged criticals," line 57) this proposal leans on to scope TASK-056 to the result
+  engine rather than to a not-yet-built report/notification surface.
+- `apps/api/src/observation/observation.controller.ts` (`finalize()`, lines 618–751; `verify()`,
+  lines 753–831) — read in full for findings #1–#3; the only file in this repo where "finalization"
+  and "verification" both concretely exist as code today.
+- `packages/db/src/schema/order.ts` (the `ordered_test` table) — read in full for its own `status`
+  CHECK constraint (`'ordered'|'collected'|'received'|'in_process'|'resulted'|'verified'|'reported'
+  |'cancelled'|'rejected'`) and its header comment confirming only `'ordered'`/`'in_process'`/
+  `'resulted'`/`'cancelled'` are written by any code today — `'verified'`/`'reported'` at the
+  *ordered_test* level (as distinct from `observation.status`'s own, unrelated `'verified'` value)
+  are reserved, unwritten future states per KB-03's own state machine, not something this task
+  should assume it can or should start writing.
+- `apps/api/src/common/problem-details.filter.ts` (ADR-0013 §2) — read in full for finding #5.
+- `github/issues/features/FEAT-016-minimal-report.md` and
+  `github/issues/features/FEAT-021-critical-notification-read-back-escalation.md` — both read for
+  their own dependency/status fields, confirming finding #1 (candidate 3) and finding #4.
+- `docs/plans/feat-015-verification-criticals.md`'s own TASK-054 and TASK-055 revisions (this file)
+  — direct precedent for this task's own §10 Q4 (TASK-055's Q4 explicitly deferred the
+  acknowledgement-sufficiency question to this proposal) and for the "surface, don't resolve" §10
+  convention this revision follows.
+
+## 4. Skills loaded
+
+- `domain/critical-values` — all 6 entries; entry #6 (updated post-TASK-055) is the direct precedent
+  for this proposal's finding #3, and is itself extended by this proposal's finding #2 (the (a)/(b)
+  roll-up-timing split, which entry #6 does not name) and finding #5 (the error-shape gap, also not
+  previously named).
+- `domain/result-verification` — all 7 entries; entry #5 is the direct precedent for finding #3's
+  "no acknowledgement-specific column" finding, and entry #7 (verifier identity not exposed by any
+  read route) is relevant to §10 Q4 if a 409 body ever needs to name *who* still needs to verify, not
+  just *which analyte*.
+- `engineering/api-design` — entry #2 (RFC 9457 `problem+json`, the direct source of finding #5),
+  entry #7 (cross-tenant 404 convention, relevant if this task's own `NotFoundException`/
+  `ConflictException` choice needs to follow existing precedent), and entry #11 (slash-verb
+  action-sub-resource convention — not directly load-bearing here since this task extends an
+  existing route rather than adding a new one, but confirms no new route is the expected shape).
+- `engineering/testing` — entry #1 (real-Postgres e2e precedent, not mocked trigger/flag behavior)
+  and entry #4 (golden-dataset boundary framing) — this task's own integration test needs a real
+  critical golden-dataset value (Sodium/Potassium/Glucose/Calcium, per `domain/critical-values`
+  entry #3's "only 4 of 14" limit, re-cited here since it still applies to whatever value is chosen
+  for the new test case).
+
+## 5. Assumptions & autonomous decisions
+
+- **The guard belongs inside `finalize()`, not a new endpoint.** No finding above surfaces a need
+  for a new HTTP surface; `loadWriteContext`'s own `ENTERABLE_ORDERED_TEST_STATUSES` guard already
+  means no other call site could reach a "close out this order" moment even if one wanted to add a
+  separate action (finding #2). This is treated as settled, following TASK-051/054/055's own
+  precedent for not inventing new architecture ahead of a real need — but see §10 Q1 for what
+  *inside* `finalize()` remains open.
+- **Report finalization (Constitution Law #3's own literal words) is explicitly out of this task's
+  scope**, per finding #1 candidate 3 — FEAT-016 does not exist yet, and TASK-056 cannot honestly
+  block an endpoint that has not been built. This proposal treats KB-34's own "the result engine
+  enforces the finalization block" (line 57) as authorizing this narrowing, not as this proposal's
+  own invention.
+- **No event bus, notification, or escalation mechanism is proposed** — same reasoning as
+  `domain/critical-values` entry #4 and the TASK-054 proposal's own finding #5; FEAT-021 (M5) still
+  owns all of that, unstarted.
+- **This proposal does not choose an answer to any of §10's four questions.** Unlike TASK-054's
+  Q3 (ADR necessity) or TASK-055's Q1/Q2 (HTTP shape, capability reuse), which had one honestly
+  buildable answer each once researched, all four of TASK-056's own open questions have at least two
+  live, defensible readings this research could not collapse to one without a human decision —
+  the same discipline TASK-054/055's own §10 sections used for their genuinely ambiguous questions
+  (TASK-054 Q1, TASK-055 Q3).
+
+## 6. Risks
+
+- **The central risk is, again, scope/reading ambiguity, not a technical one** — but here it is
+  sharper than TASK-054/055's own versions: picking the wrong one of finding #1's three candidates
+  would mean either reintroducing the exact paradox the task brief warns about (candidate 1),
+  building a feature this repo has explicitly not started yet (candidate 3), or shipping a guard
+  that never actually returns a 409 to any real caller (candidate 2, reading (a)) against an AC that
+  literally says "returns 409."
+- **Reading (b) of finding #2 (finalize-call itself 409s) has a real transactional consequence worth
+  a reviewer's explicit attention**: if the observation write and the roll-up check share one
+  transaction (as `finalize()` does today for every other check inside it), a 409 thrown after
+  `upsertObservation` has already run means either the whole transaction rolls back (the analyte's
+  result entry is silently lost from the caller's perspective — a technologist who just typed in a
+  critical value would see it rejected, which may or may not be the intended UX) or the check must
+  run and fail *before* `upsertObservation` is called at all (meaning the critical value is never
+  detected or persisted for that attempt, closer to finding #1's paradox again, just scoped to the
+  last-analyte-of-a-panel case specifically rather than every finalize call).
+- **If Q3 resolves toward a new `acknowledgedAt` column, this becomes a real migration** — the first
+  new column FEAT-015 would introduce (TASK-054/055 both found no migration was needed); worth
+  flagging since every prior task in this feature has been additive-only against already-migrated
+  structure.
+- **Only 4 of 14 seeded chemistry analytes have any critical row** (re-cited from
+  `domain/critical-values` entry #3) — this task's own integration test is bounded by the same real
+  data limit as TASK-054's.
+
+## 7. Acceptance criteria
+
+TASK-056's literal AC, pending §10's resolution — cannot be finalized (no pun intended) into
+checkable items until Q1/Q2/Q3/Q4 are answered:
+- [ ] Integration test proves finalization returns 409 while any critical is unacknowledged — exact
+  meaning of "finalization" (§10 Q1), "critical" (already well-defined per TASK-054), and
+  "unacknowledged" (§10 Q2/Q3) must be settled first.
+- [ ] A positive-path test proves the same panel completes normally (whatever "completes" means
+  under the chosen §10 Q1 reading) once the critical analyte has been verified/acknowledged first.
+- [ ] No regression to `draft()`/`finalize()`/`verify()`'s existing behavior for panels with no
+  critical analytes at all (the overwhelming majority of golden-dataset analytes, per
+  `domain/critical-values` entry #3).
+
+## 8. Testing plan
+
+1. `pnpm --filter api test:e2e` full suite re-run before any change, confirming the current 135-test
+   baseline (per TASK-055's own revision) is the correct starting point.
+2. New e2e case(s) in `apps/api/test/observation.e2e-spec.ts`: finalize every analyte on a
+   golden-dataset panel containing one critical analyte (e.g., Sodium at 115) as the last remaining
+   write, without a prior `verify()` call, and assert the outcome §10 Q1 resolves to (either a 409 on
+   that call, or a 200 with `ordered_test.status` still not `'resulted'`).
+3. A companion case: the same panel, but the critical analyte is `verify()`'d before the last
+   analyte's finalize call — assert normal completion (whatever "normal" means under the chosen
+   reading), proving the guard is not permanently stuck once acknowledged.
+4. A non-critical-panel regression case, confirming no behavior change for the common case.
+5. `pnpm typecheck`/`pnpm lint`/`pnpm build` at the repo root.
+
+## 9. Rollback plan
+
+Additive under every reading that does not require a new column (§10 Q3's "verify() is sufficient"
+option): a new conditional check inside `finalize()`'s existing roll-up branch, plus new e2e tests —
+no migration, no new route. Rollback is reverting the PR. TASK-057 (verification UI) is FEAT-015's
+next and final named task, and per finding #5 above may need whatever error shape this task chooses
+in order to show something useful to a user blocked by this guard — a real, not yet started,
+downstream dependency worth naming even though TASK-057 has not begun.
+
+## 10. Open questions — resolved 2026-08-06 via the native options-prompt
+
+1. **Which finalization is actually being blocked?** **Resolved: candidate (b)** — the
+   `ordered_test.status → 'resulted'` roll-up already inside `finalize()`, not the per-analyte write
+   itself (candidate (a), which would reintroduce the detection/block paradox) and not report
+   finalization (candidate (c), unbuildable today — FEAT-016 not started). Within (b): **the
+   `finalize()` HTTP call itself returns 409** when it would complete a panel that still has an
+   unacknowledged critical — a silent 200 non-advance was rejected as not literally satisfying the
+   AC's own "returns 409" wording. Transactional sub-question: **the analyte's own observation write
+   is persisted** even though the call returns 409 — only the `ordered_test.status` roll-up is
+   blocked, so a technologist's real typed value is never lost just because the panel can't yet
+   close out.
+2. **What counts as "acknowledged"?** **Resolved: TASK-055's `verify()` alone is sufficient** —
+   `observation.status = 'verified'` is the acknowledgement signal this guard checks. No distinct
+   acknowledgement action or column. FEAT-021 (M5, not started) still owns the richer notification/
+   read-back/escalation delivery separately, per KB-34's own architecture split.
+3. **Does a new column need to be added on `observation`?** **Resolved: no** — follows directly from
+   Q2; checking `status <> 'verified'` on any `flags && ARRAY['HH','LL']` observation reuses
+   already-shipped TASK-054/055 columns entirely.
+4. **What is the exact response/error shape for the 409?** **Resolved: a generic, formatted message
+   in the existing `detail` string** (e.g., naming how many criticals are pending, not which specific
+   analyte) — no change to `ProblemDetailsFilter`/`ProblemDetails`. A richer, structured shape
+   (naming specific blocking analytes) is deferred until TASK-057's own UI genuinely needs one.

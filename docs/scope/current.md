@@ -1,7 +1,7 @@
 # Status — 2026-08-06 (session 18)
 
-Last commit on main: `9fb5f42` — "feat(api,domain): verification action + append-only versioning,
-closing TASK-055 (FEAT-015)" (PR #322), closing #114.
+Last commit on main: `6b9488f` — "feat(api): finalization block on unacknowledged critical (409),
+closing TASK-056 (FEAT-015)" (PR #324), closing #115.
 
 ## TASK-054 (FEAT-015's first task) merged this session, via PR #320 (`f311a2e`), closing #113 —
 FEAT-015 (Verification & criticals, M4, EPIC-004) has started, immediately after FEAT-014's full
@@ -120,6 +120,60 @@ own open question of whether `verify` alone counts as acknowledgement) and TASK-
 are both not started. `/orient`'s next run (or a named-task request, as both TASK-054 and TASK-055
 were this session) should specify TASK-056 as the next revision to
 `docs/plans/feat-015-verification-criticals.md`.
+
+## TASK-056 (FEAT-015's third task) merged this same session, via PR #324 (`6b9488f`), closing #115
+— continuing directly from TASK-055 (no new `/orient` cycle — the human asked for TASK-056 by name)
+
+`docs/plans/feat-015-verification-criticals.md` gained its third revision (TASK-056's own AC:
+"finalize() returns 409 while any critical is unacknowledged"). Four open questions (§10) resolved
+via the native options-prompt: (1) which finalization is guarded — candidate (b), the
+`ordered_test.status → 'resulted'` roll-up already inside `finalize()`, not the per-analyte write
+itself (candidate (a), which would reintroduce the detection/block paradox the task brief warns
+about) and not report finalization (candidate (c), unbuildable — FEAT-016 not started); within that,
+the `finalize()` HTTP call itself returns 409 (not a silent 200 non-advance), and the analyte's own
+observation write is still persisted even though the call returns 409 — only the roll-up is blocked;
+(2) acknowledgement — TASK-055's `verify()` alone is sufficient (`observation.status = 'verified'`),
+no new distinct acknowledgement action; (3) no new column — checking `status <> 'verified'` on any
+`flags && ARRAY['HH','LL']` observation reuses TASK-054/055's already-shipped columns entirely; (4)
+the 409's error shape — a generic, formatted count of pending criticals in the existing
+`ProblemDetails.detail` string, no `ProblemDetailsFilter` shape change (a richer, structured shape
+naming specific blocking analytes deferred until TASK-057's UI genuinely needs one).
+
+**Real, load-bearing finding from implementation, directly answering §10 Q1's own transactional
+sub-question:** persisting the analyte's own observation write and its `observation.finalize` audit
+event even though the call itself returns 409 required a new `FinalizationRollupInterceptor`,
+layered *outside* `TenantContextInterceptor` in the interceptor chain, so its post-handler roll-up
+check only runs after that inner `db.transaction()` has actually committed (a drizzle
+`db.transaction()` promise resolves only after a real Postgres `COMMIT`) — a 409 thrown from the new
+interceptor can never unwind an already-committed write, unlike a 409 thrown from inside the same
+transaction, which the approved proposal explicitly ruled out.
+
+**A second, unplanned finding, surfaced only by the positive-path test itself** (verify a critical
+analyte, then finalize a different, later analyte on the same panel): the roll-up's own pre-existing
+"is every required analyte finalized" check only ever matched `status = 'preliminary'`, so a panel
+could never reach `'resulted'` once one of its analytes had already been verified ahead of the rest
+— legal under `verify()`'s own design, which has no ordered-test-status gate of its own. Fixed by
+counting `'preliminary'` and `'verified'` both as "finalized." A synthetic two-analyte (Sodium + BUN)
+`test_definition` fixture was added to the e2e spec to exercise this case, since no seeded
+multi-analyte panel pairs a golden-dataset critical analyte with another analyte on the same panel.
+
+Verified end-to-end: `pnpm --filter api test:e2e` 138/138 (135 baseline + 3: the existing
+unverified-blocks-finalize test updated to assert 409 semantics, a new positive-path
+verified-before-last-finalize case, and a new non-critical-panel regression case); repo-wide
+`typecheck`/`lint`/`build` green; no `openapi.json`/SDK regeneration needed (`finalize()`'s response
+shape is unchanged; the 409 uses the existing generic `ProblemDetails.detail` string convention).
+`#115` auto-closed via PR #324's bare `Closes #115` line.
+
+**FEAT-015 remaining**: TASK-057 (verification UI) is the feature's fourth and last named task, not
+yet started. Its scope research is already done, though — a separate agent completed proposal
+research for it in parallel while this session implemented TASK-056, with its own four open
+questions already resolved by the human via the native options-prompt: prior-result-only context (no
+computed delta against it), an additive UI placed inside the existing TASK-052 results grid (not a
+new screen), the verify control hidden from `technologist` (mirroring `verify`'s own existing
+role-asymmetric capability grant), and verifier identity/timestamp shown once an analyte is verified.
+That resolved revision text is ready to be inserted into
+`docs/plans/feat-015-verification-criticals.md` by the orchestrating session — not done as part of
+this entry.
 
 ## `/orient` confirmed FEAT-013/#22 already closed; EPIC-002/EPIC-003 and TASK-027's sign-off
 (#171) all remain open on the same non-code blocker — a real, recurring, business-level gap, not

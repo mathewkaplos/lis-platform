@@ -28,6 +28,7 @@ import {
   analyte,
   codeSystemValue,
   computeFlags,
+  criticalNotification,
   observation,
   order,
   orderedTest,
@@ -37,7 +38,7 @@ import {
   testAnalyte,
   unit,
 } from '@lis/db';
-import { and, desc, eq, isNull, ne } from 'drizzle-orm';
+import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { Audit } from '../auth/audit.decorator';
@@ -744,6 +745,58 @@ export class ObservationController {
     // actually finalized) -- not `calculated`'s (a dependent computed
     // value's own criticality is that dependent's own finalize event, once
     // it's finalized itself, not this one's).
+    const criticalDetected =
+      row.flags.includes('HH') || row.flags.includes('LL');
+
+    // TASK-065 (FEAT-021, ADR-0016): a plain, synchronous insert inside this
+    // SAME transaction -- no event bus, no queue (domain/critical-values
+    // Skill entry #4: no infra exists to build one ahead of FEAT-028). At
+    // most one 'pending'/'escalated' notification exists per observation at
+    // a time -- a re-finalize of an already-critical, not-yet-acknowledged
+    // analyte (e.g. a corrected value still HH/LL) reuses the existing row
+    // rather than spawning a duplicate the acknowledge flow would then have
+    // to disambiguate between. Deliberately does NOT touch
+    // FinalizationRollupInterceptor's existing gate (ADR-0016 Decision) --
+    // that widening is TASK-066's scope, not this one's.
+    let criticalNotificationId: string | null = null;
+    if (criticalDetected) {
+      const [existingNotification] = await tx
+        .select({ id: criticalNotification.id })
+        .from(criticalNotification)
+        .where(
+          and(
+            eq(criticalNotification.observationId, row.id),
+            ne(criticalNotification.status, 'acknowledged'),
+          ),
+        )
+        .limit(1);
+
+      if (existingNotification) {
+        criticalNotificationId = existingNotification.id;
+      } else {
+        // observationCreatedAt is a server-side subquery, not `row.createdAt`
+        // (proposal §2/ADR-0016 didn't anticipate this): drizzle parses a
+        // returned timestamptz into a JS Date, which only has millisecond
+        // resolution, while Postgres's own `now()` (this column's default)
+        // carries microsecond precision -- writing the JS-truncated value
+        // back would never exactly match the row Postgres actually stored,
+        // breaking this composite FK's exact-equality lookup. Same class of
+        // bug TASK-053 already found and fixed around elsewhere on this
+        // exact table (upsertObservation's own `existing.createdAt` note,
+        // above) -- confirmed here the same way, a real failed insert, not
+        // assumed from that precedent alone.
+        const [insertedNotification] = await tx
+          .insert(criticalNotification)
+          .values({
+            tenantId: user.tenantId,
+            observationId: row.id,
+            observationCreatedAt: sql`(SELECT created_at FROM observation WHERE id = ${row.id})`,
+          })
+          .returning({ id: criticalNotification.id });
+        criticalNotificationId = insertedNotification.id;
+      }
+    }
+
     return {
       resourceId: row.id,
       before: {
@@ -755,7 +808,8 @@ export class ObservationController {
         calculatedDependent: calculated
           ? toObservationDto(calculated.after)
           : null,
-        criticalDetected: row.flags.includes('HH') || row.flags.includes('LL'),
+        criticalDetected,
+        criticalNotificationId,
       },
     };
   }

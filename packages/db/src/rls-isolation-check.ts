@@ -32,6 +32,7 @@ import { observation } from "./schema/observation";
 import { patient } from "./schema/patient";
 import { patientAlert } from "./schema/patient-alert";
 import { controlLot } from "./schema/control-lot";
+import { criticalNotification } from "./schema/critical-notification";
 import { writeAuditEvent } from "./audit";
 
 type Db = ReturnType<typeof createDb>;
@@ -184,6 +185,21 @@ async function insertFixtures(db: Db) {
     valueNum: "5.2",
     source: "manual",
     amendmentOf: obs.id,
+  });
+
+  // TASK-065 (FEAT-021, ADR-0016): critical_notification fixture, same
+  // reasoning as control_lot's own above -- a genuinely new tenant table
+  // this task introduces, so the live leak check needs real data to prove
+  // isolation against. observationCreatedAt is a server-side subquery, not
+  // `obs.createdAt` -- a real, failed-the-hard-way precision mismatch
+  // (drizzle's JS Date round-trip truncates Postgres's microsecond
+  // timestamptz to milliseconds, breaking this composite FK's exact-equality
+  // lookup), same fix as finalize()'s own creation hook in
+  // observation.controller.ts.
+  await db.insert(criticalNotification).values({
+    tenantId: TENANT_A,
+    observationId: obs.id,
+    observationCreatedAt: sql`(SELECT created_at FROM observation WHERE id = ${obs.id})`,
   });
 
   // audit_event fixture, via the real writer (TASK-025) rather than a

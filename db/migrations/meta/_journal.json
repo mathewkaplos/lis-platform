@@ -120,6 +120,13 @@
       "when": 1786116910407,
       "tag": "0016_control_lot_and_observation_qc_subject",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1786127783148,
+      "tag": "0017_critical_notification",
+      "breakpoints": true
     }
   ]
 }

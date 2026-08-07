@@ -311,7 +311,8 @@ merge is verified as part of §8's testing plan regardless.
 
 # Revision: TASK-059 — Report data assembly with snapshotted ranges
 
-Status: **APPROVED** (2026-08-07) — §10's open questions resolved by the human as follows:
+Status: **IMPLEMENTED** — merged PR #334 (`ccc83d7`), closing #118. §10's open questions resolved
+by the human as follows:
 Q1: **Option A** — new `report` table storing hash + provenance metadata only (no PDF bytes).
 Q2: **Option A** — no new HTTP route in this task; service-only, TASK-060 owns the public route.
 Q3: **Option A** — 409 Conflict on assembly against a partially-verified panel.

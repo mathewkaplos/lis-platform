@@ -64,3 +64,20 @@ itself rather than logged as separate friction (skill drafting, not a
 session's lived friction): a duplicate-entry check before appending here
 (`skills/workflow/retro/SKILL.md`), and an explicit `allowed-tools`
 frontmatter declaration (this entry's own commit).
+
+## 2026-08-07 (4)
+
+- **Friction:** landing this same session's own PRs hit a real, undocumented
+  GitHub gotcha: deleting a branch that was the **base** of a different,
+  still-open, stacked PR (#341's `retro/skill-and-first-fixes`, base of
+  #342) permanently closed that PR. `gh pr edit --base` and the equivalent
+  `mcp__github__update_pull_request` both failed
+  ("Cannot change the base branch of a closed pull request" /
+  "state cannot be changed... branch has been deleted"). No data lost (the
+  head branch and commit were untouched), but recovery meant opening a
+  brand-new PR (#343) from the same head branch, not reusing #342.
+- **Area:** github-workflow
+- **Change:** added a note to `AGENTS.md`'s merge-discipline bullet:
+  before deleting any branch, check whether it's the base of a different
+  open PR; retarget or merge that PR first, or confirm none depends on it.
+- **Files:** `AGENTS.md`

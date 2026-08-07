@@ -436,6 +436,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/control-lots/{id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ControlLotController_listResults"];
+        put?: never;
+        post: operations["ControlLotController_recordResult"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -661,6 +677,25 @@ export interface components {
                 createdAt: string;
                 ageMinutes: number;
             }[];
+        };
+        QcObservationDto_Output: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            controlLotId: string;
+            /** Format: uuid */
+            analyteId: string;
+            /** @enum {string} */
+            dataType: "quantity" | "coded" | "text";
+            valueNum: number | null;
+            valueCode: string | null;
+            valueText: string | null;
+            unit: string | null;
+            source: string;
+            /** Format: date-time */
+            producedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
         };
     };
     responses: never;
@@ -1271,6 +1306,50 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["WorklistResponseDto_Output"];
                 };
+            };
+        };
+    };
+    ControlLotController_listResults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QcObservationDto_Output"][];
+                };
+            };
+        };
+    };
+    ControlLotController_recordResult: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResultEntryDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

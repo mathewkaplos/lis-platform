@@ -1,6 +1,8 @@
 # Implementation Proposal: FEAT-018 QC materials & results as Observations
-Status: **APPROVED** — TASK-063 implemented (this revision). TASK-064 (#351) remains.
-ADR: adr-0015 (accepted 2026-08-07 — see §10 Q1)    Date: 2026-08-07    Backlog ID: FEAT-018 (#27) / TASK-063 (#350)
+Status: **FULLY IMPLEMENTED** — both tasks merged. TASK-063 (PR merged, #350) and TASK-064 (below,
+#351). FEAT-018 (#27) itself still needs its own manual-comment close — bare `Closes` lines don't
+auto-close a parent feature issue, the same recurring gotcha every prior feature has hit.
+ADR: adr-0015 (accepted 2026-08-07 — see §10 Q1)    Date: 2026-08-07    Backlog ID: FEAT-018 (#27) / TASK-063 (#350) / TASK-064 (#351)
 
 **TASK-063 (Control lot & QC observation schema), 2026-08-07.** All three §10 questions resolved
 via the native options-prompt, recommended option chosen for each: ADR-0015 accepted as drafted;
@@ -230,3 +232,71 @@ data-preservation concern.
    general caution about actions visible to others. Recommended: create them now, alongside proposal
    approval — matches how every prior feature's kickoff session in this repo has sequenced it, and
    TASK-063's own dependency references need a real issue number to link against.
+
+---
+
+## TASK-064 (Control lot & QC result entry/query API) — revision, 2026-08-07
+
+`GET/POST /v1/control-lots/:id/results` — TASK-063's first real HTTP caller, and `control_lot`'s
+first real consumer. The human asked for TASK-064 by name (continuing directly from TASK-063, no
+new `/orient` cycle), so this revision documents the design decisions made during implementation
+rather than re-running the full open-questions options-prompt — none of them were genuinely
+ambiguous enough to need one; each is a direct application of an already-established precedent,
+stated below with its reasoning rather than silently assumed.
+
+**Route shape:** `POST v1/control-lots/:id/results` (record), `GET v1/control-lots/:id/results`
+(list) — the same `/resource/:id/sub-resource` shape `observation.controller.ts` already uses for
+patient results, per `engineering/api-design` entry #11 (slash, not KB-08's literal colon-suffix
+syntax, which doesn't survive this repo's real stack).
+
+**No draft/finalize split — every POST is a new row, audited unconditionally.** A patient's
+ordered-test analyte has one current result per analyte (upsertable); a control lot's QC history is
+a genuine time series — every run is a real, distinct data point FEAT-019's future Levey-Jennings
+charting needs in full, not just the latest. So `recordResult()` is a plain `INSERT`, never an
+`UPDATE`, and always audited (no unaudited "draft" concept applies here, unlike `draft()`'s
+unaudited autosave for patient results) — matches ADR-0015's own Consequences note that QC entry
+should be audited the same way patient result entry is.
+
+**Request/response schemas (`packages/domain/src/control-lot.ts`, new):** the request body reuses
+`resultEntrySchema` verbatim (quantity/coded/text, same discriminated union TASK-051 already built)
+rather than defining a parallel one — same real-world data shapes. The response
+(`qcObservationSchema`) is deliberately smaller than `observationSchema`: no `refLow`/`refHigh`/
+`flags`/verification fields, since reference-range resolution and flagging are patient-specific
+concepts (KB-15) that don't apply to a control material's target mean/SD — that evaluation is
+Westgard's own job (FEAT-019), not built here.
+
+**Real bug found during implementation, not anticipated in this revision's own first draft:**
+`AuditInterceptor` requires its wrapped handler return an `AuditedMutationResult`
+(`{ resourceId, before?, after? }`, the exact shape `finalize()`/`verify()` already return) — not a
+flat DTO. `recordResult()`'s first draft returned `toQcObservationDto(inserted)` directly (an object
+with `id`, no `resourceId`), which compiled fine (both are plain objects) but produced a real 500 at
+request time: `writeAuditEvent`'s `resourceId` column is `NOT NULL`, and the interceptor read
+`result.resourceId` as `undefined`. Caught by this task's own e2e suite, not by inspection — fixed
+by returning `{ resourceId: after.id, before: null, after }`, matching every other audited route's
+shape exactly, and removing the `@ZodResponse` annotation `recordResult()` had incorrectly carried
+(the audited-route convention, per `finalize()`/`verify()`, is no fixed response-schema binding for
+this shape).
+
+**Second real finding:** a hand-crafted fake UUID (`00000000-0000-0000-0000-0000000000ff`) for a
+"control lot does not exist" 404 test failed Zod's `z.uuid()` validation itself (400, not 404) —
+Zod validates real UUID version/variant bits, which an all-zeros-plus-suffix string doesn't satisfy.
+Fixed by using `randomUUID()` for the nonexistent-id case, matching every other spec's own existing
+precedent for this exact test shape (`patient.e2e-spec.ts`, `observation.e2e-spec.ts`).
+
+Delivered: `apps/api/src/control-lot/control-lot.controller.ts` + `control-lot.module.ts`
+(registered in `app.module.ts`), `packages/domain/src/control-lot.ts`. `openapi.json`/
+`packages/sdk/src/schema.ts` regenerated for both new routes (CI-enforced since PR #343).
+
+Verified: 6 new HTTP-level e2e tests (401 unauthenticated, a QC result recorded with the correct
+`controlLotId`-not-`orderedTestId`/`patientId` shape and confirmed audited against the real
+persisted `audit_event` row, a `dataType` mismatch rejected 400, a nonexistent control lot 404, a
+cross-tenant control lot 404 per `engineering/api-design` entry #7, and multiple POSTs against the
+same lot proven to accumulate as a real time series rather than overwrite) alongside TASK-063's own
+5 schema-level tests, 11/11 in `control-lot.e2e-spec.ts`; full `apps/api` e2e suite 163/163 on a
+clean DB, zero regression; `rls-check`/`golden-check` both green (the `report` table's own
+pre-existing fixture gap in `rls-isolation-check.ts`, unrelated to this task, left as-is); repo-wide
+`typecheck`/`lint`/`build` green, including a real `next build`/`nest build`.
+
+**FEAT-018 (#27) is now fully implemented — both named tasks merged.** Not yet closed via the
+standard manual comment (bare `Closes` lines never auto-close a parent feature issue) — a real next
+step, not done as part of this task's own implementation work.

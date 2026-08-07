@@ -1,6 +1,12 @@
 # Implementation Proposal: FEAT-016 Minimal report
 
-Status: **APPROVED** (2026-08-06) — §10's open questions resolved by the human as follows:
+Status: **FULLY IMPLEMENTED** — all three tasks merged. TASK-058 (PR #333, `8c339fa`, closing
+#117, PDF rendering pipeline), TASK-059 (PR #334, `ccc83d7`, closing #118, report data assembly
+with snapshotted ranges), TASK-060 (PR #336, `997f310`, closing #119, report viewer + download
+screen). FEAT-016 (#25) itself closed 2026-08-07 via manual comment — bare `Closes` lines don't
+auto-close a parent feature issue, the same recurring gotcha every prior feature in this repo has
+hit.
+§10's open questions were resolved by the human as follows:
 Q1: **pure-JS PDF construction**, not headless-Chromium — avoids a new native/Chromium
 production-dependency class this repo has zero prior experience operating, matching the `bwip-js`
 "avoid native dependencies" precedent (TASK-046). Specifically `pdfkit` (not
@@ -561,7 +567,8 @@ task's output.
 
 # Revision: TASK-060 — Report viewer + download screen
 
-Status: **APPROVED** (2026-08-07) — §10's open questions resolved by the human as follows:
+Status: **IMPLEMENTED** — merged PR #336 (`997f310`), closing #119. §10's open questions resolved
+by the human as follows:
 Q1: **Option A** — raw binary PDF response via `@Res()`, not base64 JSON.
 Q2: **Option A** — reuse the existing `verify` capability; `apps/web` hides "Download PDF" from
 non-`verifier` sessions.

@@ -1541,6 +1541,32 @@
       "deps": [
         "TASK-061"
       ]
+    },
+    {
+      "id": "TASK-063",
+      "title": "Control lot & QC observation schema",
+      "priority": "Critical",
+      "milestone": "M5",
+      "feature": "FEAT-018",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-063-control-lot-qc-observation-schema.md",
+      "deps": [
+        "TASK-020"
+      ]
+    },
+    {
+      "id": "TASK-064",
+      "title": "QC result entry & query API",
+      "priority": "Critical",
+      "milestone": "M5",
+      "feature": "FEAT-018",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-064-qc-result-entry-query-api.md",
+      "deps": [
+        "TASK-063"
+      ]
     }
   ]
 }

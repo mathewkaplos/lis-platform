@@ -1,24 +1,178 @@
-import { getSession } from '@/auth/get-session';
+import Link from 'next/link';
+import { Button, Card, CardContent, CardHeader, CardTitle, StatCard } from '@lis/ui';
+import { getValidAccessToken } from '@/auth/access-token';
+import { createLisApiClient } from '@/lib/api-client';
+import { ActiveFilters } from './active-filters';
+import { WorklistView } from './worklist-view';
 
-// The auth guard now lives in this route group's layout.tsx (renders on
-// every authenticated route, not just this one) -- this page only needs its
-// own content.
-export default async function Home() {
-  const session = await getSession();
+const STAGE_TABS = [
+  { key: undefined, label: 'All' },
+  { key: 'pending', label: 'Pending' },
+  { key: 'in_progress', label: 'In Progress' },
+  { key: 'verified', label: 'Verified' },
+] as const;
+
+/**
+ * TASK-062 (FEAT-017 revision, docs/plans/feat-017-minimal-worklist.md):
+ * replaces the placeholder "Signed in" screen -- the technologist's real
+ * home screen, per FEAT-017's own issue text and §10 Q1 (approved). Server
+ * Component driven by URL `searchParams` (§10 Q4, approved), same
+ * convention as `orders/page.tsx`/`patients/page.tsx`. The 3 `StatCard`s
+ * double as stage-tab controls (proposal §5) -- `GET /v1/worklist`'s own
+ * `counts` field, always computed against the tenant's full active set
+ * regardless of the current filter (TASK-061 proposal §10 Q1).
+ */
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    stage?: string;
+    priority?: string;
+    createdFrom?: string;
+    createdTo?: string;
+  }>;
+}) {
+  const { stage, priority, createdFrom, createdTo } = await searchParams;
+  const normalizedStage = stage
+    ? (stage as 'pending' | 'in_progress' | 'verified')
+    : undefined;
+  const normalizedPriority = priority ? (priority as 'routine' | 'stat') : undefined;
+
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    throw new Error('Your session has expired — please log in again.');
+  }
+  const client = createLisApiClient(accessToken);
+
+  const { data, response } = await client.GET('/v1/worklist', {
+    params: {
+      query: {
+        stage: normalizedStage,
+        priority: normalizedPriority,
+        createdFrom: createdFrom ? `${createdFrom}T00:00:00.000Z` : undefined,
+        createdTo: createdTo ? `${createdTo}T23:59:59.999Z` : undefined,
+      },
+    },
+  });
+  if (!response.ok || !data) {
+    throw new Error('Something went wrong loading the worklist. Please try again.');
+  }
+
+  function filterHref(overrides: Record<string, string | undefined>): string {
+    const params = new URLSearchParams();
+    const merged = { stage, priority, createdFrom, createdTo, ...overrides };
+    for (const [key, value] of Object.entries(merged)) {
+      if (value) params.set(key, value);
+    }
+    const qs = params.toString();
+    return qs ? `/?${qs}` : '/';
+  }
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-6">
-      <h1 className="text-2xl font-semibold text-foreground">Signed in</h1>
-      <dl className="space-y-1 text-sm text-text-secondary">
-        <div className="flex gap-2">
-          <dt className="font-medium">User:</dt>
-          <dd>{session?.sub}</dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="font-medium">Tenant:</dt>
-          <dd>{session?.tenantId}</dd>
-        </div>
-      </dl>
+    <div className="flex flex-1 flex-col gap-4 p-6">
+      <h1 className="text-xl font-semibold text-foreground">Worklist</h1>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Link
+          href={filterHref({ stage: 'pending' })}
+          aria-label={`Filter to Pending, ${data.counts.pending} items`}
+          className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <StatCard
+            label="Pending"
+            value={data.counts.pending}
+            className={normalizedStage === 'pending' ? 'ring-2 ring-ring' : undefined}
+          />
+        </Link>
+        <Link
+          href={filterHref({ stage: 'in_progress' })}
+          aria-label={`Filter to In Progress, ${data.counts.inProgress} items`}
+          className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <StatCard
+            label="In Progress"
+            value={data.counts.inProgress}
+            className={normalizedStage === 'in_progress' ? 'ring-2 ring-ring' : undefined}
+          />
+        </Link>
+        <Link
+          href={filterHref({ stage: 'verified' })}
+          aria-label={`Filter to Verified, ${data.counts.verified} items`}
+          className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <StatCard
+            label="Verified"
+            value={data.counts.verified}
+            className={normalizedStage === 'verified' ? 'ring-2 ring-ring' : undefined}
+          />
+        </Link>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Worklist stage">
+        {STAGE_TABS.map((tab) => (
+          <Link key={tab.label} href={filterHref({ stage: tab.key })}>
+            <Button
+              type="button"
+              variant={normalizedStage === tab.key ? 'default' : 'outline'}
+              size="sm"
+              role="tab"
+              aria-selected={normalizedStage === tab.key}
+            >
+              {tab.label}
+            </Button>
+          </Link>
+        ))}
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Filters</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <form className="flex flex-wrap items-end gap-3" action="/">
+            {stage ? <input type="hidden" name="stage" value={stage} /> : null}
+            <label className="flex flex-col gap-1 text-sm">
+              Priority
+              <select
+                name="priority"
+                defaultValue={priority ?? ''}
+                className="h-9 rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                <option value="">Any</option>
+                <option value="routine">Routine</option>
+                <option value="stat">STAT</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              From
+              <input
+                type="date"
+                name="createdFrom"
+                defaultValue={createdFrom}
+                className="h-9 rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              To
+              <input
+                type="date"
+                name="createdTo"
+                defaultValue={createdTo}
+                className="h-9 rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              />
+            </label>
+            <Button type="submit">Apply</Button>
+          </form>
+          <ActiveFilters
+            stage={stage}
+            priority={priority}
+            createdFrom={createdFrom}
+            createdTo={createdTo}
+          />
+        </CardContent>
+      </Card>
+
+      <WorklistView items={data.items} />
     </div>
   );
 }

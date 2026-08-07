@@ -5,6 +5,7 @@ export * from "./control-lot";
 export * from "./patient";
 export * from "./patient-alert";
 export * from "./observation";
+export * from "./critical-notification";
 export * from "./result-history";
 export * from "./order";
 export * from "./specimen";

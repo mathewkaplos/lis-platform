@@ -13,6 +13,7 @@ import { ObservationModule } from './observation/observation.module';
 import { ReportModule } from './report/report.module';
 import { WorklistModule } from './worklist/worklist.module';
 import { ControlLotModule } from './control-lot/control-lot.module';
+import { CriticalNotificationModule } from './critical-notification/critical-notification.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
 @Module({
@@ -27,6 +28,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     ReportModule,
     WorklistModule,
     ControlLotModule,
+    CriticalNotificationModule,
   ],
   controllers: [AppController],
   providers: [

@@ -7,3 +7,4 @@ export * from "./observation";
 export * from "./calculated-fields";
 export * from "./worklist";
 export * from "./control-lot";
+export * from "./critical-notification";

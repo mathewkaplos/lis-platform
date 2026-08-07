@@ -8,3 +8,4 @@ export * from "./result-history";
 export * from "./order";
 export * from "./specimen";
 export * from "./audit";
+export * from "./report";

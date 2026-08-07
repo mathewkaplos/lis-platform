@@ -1437,7 +1437,9 @@ describe('Result entry API (e2e)', () => {
       };
       const found = catalog.tests.find((t) => t.code === GLUCOSE_CODE);
       if (!found) {
-        throw new Error(`expected catalog fixture '${GLUCOSE_CODE}' in /v1/catalog`);
+        throw new Error(
+          `expected catalog fixture '${GLUCOSE_CODE}' in /v1/catalog`,
+        );
       }
       glucoseTestDefinitionId = found.id;
     });
@@ -1449,7 +1451,9 @@ describe('Result entry API (e2e)', () => {
       await receive(order1.orderId);
 
       await request(app.getHttpServer())
-        .post(`/v1/ordered-tests/${order1.orderedTestId}/results/${glucoseId}/finalize`)
+        .post(
+          `/v1/ordered-tests/${order1.orderedTestId}/results/${glucoseId}/finalize`,
+        )
         .set('Authorization', `Bearer ${tokenA}`)
         .send({ dataType: 'quantity', valueNum: 88 })
         .expect(200);
@@ -1457,7 +1461,9 @@ describe('Result entry API (e2e)', () => {
       // Before any earlier order exists for this brand-new, dedicated
       // patient, this ordered test's own prior list is empty.
       const priorBeforeRes = await request(app.getHttpServer())
-        .get(`/v1/ordered-tests/${order1.orderedTestId}/results/${glucoseId}/prior`)
+        .get(
+          `/v1/ordered-tests/${order1.orderedTestId}/results/${glucoseId}/prior`,
+        )
         .set('Authorization', `Bearer ${tokenA}`)
         .expect(200);
       if ((priorBeforeRes.body as unknown[]).length !== 0) {
@@ -1475,14 +1481,20 @@ describe('Result entry API (e2e)', () => {
       // behind the `verify` capability, so any authenticated caller who can
       // see this ordered test at all can also see its prior context.
       const priorRes = await request(app.getHttpServer())
-        .get(`/v1/ordered-tests/${order2.orderedTestId}/results/${glucoseId}/prior`)
+        .get(
+          `/v1/ordered-tests/${order2.orderedTestId}/results/${glucoseId}/prior`,
+        )
         .set('Authorization', `Bearer ${tokenA}`)
         .expect(200);
       const prior = priorRes.body as {
         orderedTestId: string;
         valueNum: number | null;
       }[];
-      if (prior.length !== 1 || prior[0].orderedTestId !== order1.orderedTestId || prior[0].valueNum !== 88) {
+      if (
+        prior.length !== 1 ||
+        prior[0].orderedTestId !== order1.orderedTestId ||
+        prior[0].valueNum !== 88
+      ) {
         throw new Error(
           `expected exactly one prior result, from order1 (orderedTestId=${order1.orderedTestId}, valueNum=88), got ${JSON.stringify(prior)}`,
         );
@@ -1492,10 +1504,14 @@ describe('Result entry API (e2e)', () => {
       // ordered test with no result of its own yet still returns the same
       // one prior entry, not itself.
       const priorForOrder2AgainRes = await request(app.getHttpServer())
-        .get(`/v1/ordered-tests/${order2.orderedTestId}/results/${glucoseId}/prior`)
+        .get(
+          `/v1/ordered-tests/${order2.orderedTestId}/results/${glucoseId}/prior`,
+        )
         .set('Authorization', `Bearer ${tokenA}`)
         .expect(200);
-      const priorAgain = priorForOrder2AgainRes.body as { orderedTestId: string }[];
+      const priorAgain = priorForOrder2AgainRes.body as {
+        orderedTestId: string;
+      }[];
       if (priorAgain.some((p) => p.orderedTestId === order2.orderedTestId)) {
         throw new Error(
           `expected order2's own ordered test to never appear in its own prior list, got ${JSON.stringify(priorAgain)}`,

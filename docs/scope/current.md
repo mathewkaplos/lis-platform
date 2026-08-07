@@ -1,7 +1,79 @@
 # Status — 2026-08-07 (session 19)
 
-Last commit on main: `ccc83d7` — "feat(api,db): report data assembly with snapshotted ranges,
-closing TASK-059 (FEAT-016)" (PR #334).
+Last commit on main: `997f310` — "feat(api,web): report viewer + download screen, closing
+TASK-060 (FEAT-016)" (PR #336).
+
+## TASK-060 (FEAT-016's third and last task) implemented and merged this same session, via PR #336
+(`997f310`), closing #119 — FEAT-016 (Minimal report, #25) is now fully implemented, all three
+tasks done
+
+`docs/plans/feat-016-minimal-report.md` gained its second revision (TASK-060's own AC: "Preliminary
+vs. final status is unambiguous in the viewer"). Two open questions (§10) resolved via the native
+options-prompt, both recommended options chosen: (1) the PDF response is raw binary via `@Res()`
+(not base64 JSON) — the standard browser-native download shape, works with a plain `<a href>` link,
+no client JS, no payload bloat; (2) generating/downloading a report reuses the existing `verify`
+capability (not left ungated) — a generated report is this feature's own final, clinically-signed
+artifact, gated the same way verification itself already is (TASK-055/057's own role-asymmetry
+precedent).
+
+**Real, load-bearing findings, all confirmed directly against code, not assumed:** (1) PRELIMINARY
+vs. FINAL is provable entirely from data already exposed by `GET /v1/ordered-tests/:id/results`
+against the catalog's own per-test analyte count — `ordered_test.status = 'resulted'` does NOT
+itself guarantee every analyte is `'verified'` (only that each is at least finalized, per TASK-056),
+so the viewer computes the real N-of-M-verified count itself, the exact same set
+`assembleAndPersistReport` (TASK-059) checks — no new backend read route, no second "preliminary
+report" rendering path (would have reopened the `Report` state-machine scope TASK-059 already
+declined). (2) This is the first route in this repo to return raw, non-JSON bytes — no existing
+`@ZodResponse`/OpenAPI precedent applied; deliberately excluded from that convention, called from
+`apps/web` via direct authenticated `fetch`, not the typed `@lis/sdk` client. (3) The route carries
+no `@Audit()`/`AuditInterceptor` — `assembleAndPersistReport` already writes its own audit event
+directly, and that interceptor's JSON-shaped contract has no sensible meaning for a raw-bytes
+response; applying it would have double-audited the same action. (4) A real browser file download
+needed a genuinely new `apps/web` mechanism — neither a Server Action (RSC-serialized return value)
+nor the typed SDK client (assumes JSON) can hand raw PDF bytes to the browser; a Next.js Route
+Handler (this repo's only prior precedent: the `/api/auth/*` login/callback/logout routes from
+TASK-031) proxies the audited `POST` server-side and streams bytes back with
+`Content-Disposition: attachment`, reached via a plain `<a href>` full-navigation link — the same
+TASK-046 "force a full navigation, not client-side routing" technique reused a second time.
+
+Delivered: `POST /v1/ordered-tests/:id/report` (`apps/api/src/report/report.controller.ts`,
+verify-capability-gated, raw PDF response); `apps/web`'s
+`orders/[id]/report/[orderedTestId]` viewer page (PRELIMINARY/FINAL badge, N-of-M-verified text,
+"Download PDF" link visible only to verifier-roled sessions once FINAL) plus its
+`.../download/route.ts` Route Handler; a "View report" link per ordered-test row on the order
+detail page, visible once `status === 'resulted'`. `openapi.json`/`packages/sdk/src/schema.ts`
+regenerated for the new route (a generic, schema-less entry, since the response has no JSON shape)
+— proactively avoiding the already-known #292 drift gap even for a route the SDK itself never calls
+through.
+
+**Sandbox limitation carried over from this same session's TASK-059 work, worth re-recording:** no
+`docker`/local Postgres/Keycloak in this session's shell, so neither the e2e suite nor a real
+headless-browser `web-verify` pass (which itself needs live Keycloak to mint a session token) could
+run locally. Typecheck/lint/build stayed green locally throughout; the full e2e suite (including
+this task's own new HTTP-level tests: real PDF bytes + exactly one new `report`/`audit_event` row
+per call, 403 for a technologist-only session, 409 when not all analytes are verified) passed for
+real only via CI. **The UI's own visual behavior (the literal AC's own "unambiguous in the viewer"
+wording, and a real triggered download) was not verified with a real browser this session** — a
+real gap, not silently glossed over; worth a human or a future session's own `web-verify` pass
+against a real Keycloak-backed environment before fully trusting the frontend's visual correctness,
+even though the backend contract it depends on is fully proven.
+
+Verified end-to-end (via CI, real Postgres/Keycloak): `pnpm --filter api test:e2e` green on the
+first push, including the 3 new HTTP-level tests above (plus TASK-059's own 4, all still green,
+zero regression); repo-wide `typecheck`/`lint`/`build` green (including a real `next build`/
+`nest build`, and both new routes registered/visible in the build's own route list).
+`#119` auto-closed via PR #336's bare `Closes #119` line. `Deploy to Staging` (run 31160998097,
+triggered by the merge) — see this session's own follow-up for its result.
+
+**FEAT-016 (Minimal report, #25) is now fully implemented — all three named tasks merged**
+(TASK-058 #117/PR #333, TASK-059 #118/PR #334, TASK-060 #119/PR #336). Not yet closed via the
+standard manual comment (bare `Closes` lines never auto-close a parent feature issue, the same
+recurring gotcha as `#99`/`#265`/`#74`/`#93`/`#94`/`#105`/`#107`/`#112`/`#115`/`#116` before it) —
+real next step, not done as part of this session's own implementation work.
+
+**M4 remaining**: FEAT-017 (Minimal worklist, #26, TASK-061/062) is M4's other remaining feature,
+fully unstarted. `/orient`'s next run (or a named-task request) should specify TASK-061 as the next
+scope, once FEAT-016's own close-out (issue comment + plan doc FULLY IMPLEMENTED status) is done.
 
 ## `/orient` found PR #333 (TASK-058) already implemented but stuck ~10-11h on an anomalous
 GitHub Actions queued-run glitch, unrelated to this repo's own config — unblocked, merged, deployed

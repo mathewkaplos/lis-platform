@@ -21,7 +21,6 @@ file. Not a product changelog; see git history / PR descriptions for that.
   (enabling the plugin) is a global settings change owned by the
   `update-config` skill, not something to hand-edit here.
 - **Files:** `AGENTS.md`
-
 ## 2026-08-07 (2)
 
 - **Friction:** PR reviews keep missing whether `apps/api/openapi.json`/

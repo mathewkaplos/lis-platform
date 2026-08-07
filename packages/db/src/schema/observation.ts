@@ -2,6 +2,7 @@ import { pgTable, pgEnum, uuid, text, numeric, boolean, jsonb, timestamp, index,
 import { sql } from "drizzle-orm";
 import { analyte, unit } from "./catalog";
 import { patient } from "./patient";
+import { controlLot } from "./control-lot";
 
 // Tenant-scoped per ADR-0004: this is operational, tenant-varying clinical
 // data, not global reference data like analyte/unit.
@@ -27,13 +28,21 @@ export const observationDataType = pgEnum("observation_data_type", [
 ]);
 
 // KB-06's canonical `observation` DDL ("heart of the schema"). ordered_test_id
-// / specimen_id are required plain uuid columns with no FK per ADR-0005
-// (their natural target, ordered_test/specimen, was built by TASK-023 in a
-// later feature by design — the FK backfill ADR-0005 requires for these two
-// was never actually done; tracked as issue #260, found during FEAT-011's
-// proposal research, not fixed here since it's an unrelated pre-existing
-// gap). patient_id's own forward-reference FK is backfilled below, by this
-// task (TASK-038), per ADR-0005 and FEAT-011 proposal §2.
+// / specimen_id are plain uuid columns with no FK per ADR-0005 (their natural
+// target, ordered_test/specimen, was built by TASK-023 in a later feature by
+// design — the FK backfill ADR-0005 requires for these two was never
+// actually done; tracked as issue #260, found during FEAT-011's proposal
+// research, not fixed here since it's an unrelated pre-existing gap).
+// patient_id's own forward-reference FK is backfilled below, by TASK-038,
+// per ADR-0005 and FEAT-011 proposal §2.
+//
+// patient_id/ordered_test_id/specimen_id are nullable per ADR-0015: a QC
+// Observation (is_control = true) has none of these -- it has a control_lot
+// instead. chk_observation_subject enforces every row is unambiguously
+// either a patient result or a QC result, never neither, never both. Any
+// query written before ADR-0015 that assumed patient_id is always present
+// must now filter is_control = false explicitly (domain/qc-westgard Skill
+// entry #1).
 //
 // PARTITION BY RANGE (created_at) per ADR-0008 — not representable by
 // drizzle-kit, so db/migrations/0008_observation_partitioning.sql is
@@ -46,14 +55,18 @@ export const observation = pgTable(
     id: uuid("id").notNull().defaultRandom(),
     tenantId: uuid("tenant_id").notNull(),
 
-    orderedTestId: uuid("ordered_test_id").notNull(), // FK backfilled by TASK-023, see ADR-0005
+    orderedTestId: uuid("ordered_test_id"), // FK backfilled by TASK-023, see ADR-0005; nullable per ADR-0015 (null for QC rows)
     analyteId: uuid("analyte_id")
       .notNull()
       .references(() => analyte.id),
-    specimenId: uuid("specimen_id").notNull(), // FK backfill still pending, see #260 and header comment above
-    patientId: uuid("patient_id")
-      .notNull()
-      .references(() => patient.id), // FK backfilled by TASK-038, see ADR-0005
+    specimenId: uuid("specimen_id"), // FK backfill still pending, see #260; nullable per ADR-0015 (null for QC rows)
+    patientId: uuid("patient_id").references(() => patient.id), // FK backfilled by TASK-038, see ADR-0005; nullable per ADR-0015 (null for QC rows)
+
+    // ADR-0015 (FEAT-018/TASK-063): QC subject columns. isControl is an
+    // explicit discriminator (not inferred from nullability), matching this
+    // schema's own "explicit unknown/state" discipline (patient.sex = 'U').
+    isControl: boolean("is_control").notNull().default(false),
+    controlLotId: uuid("control_lot_id").references(() => controlLot.id), // set only when isControl = true
 
     dataType: observationDataType("data_type").notNull(),
     valueNum: numeric("value_num"), // quantity
@@ -126,6 +139,26 @@ export const observation = pgTable(
     check("ck_observation_table_value", sql`(${table.dataType} <> 'table') OR (${table.valueJson} IS NOT NULL)`),
     check("ck_observation_structured_value", sql`(${table.dataType} <> 'structured') OR (${table.valueJson} IS NOT NULL)`),
     check("ck_observation_attachment_value", sql`(${table.dataType} <> 'attachment') OR (${table.valueJson} IS NOT NULL)`),
+    // ADR-0015: every row is unambiguously a patient result or a QC result,
+    // never neither, never both -- structural, not an application-level
+    // convention (Constitution Law #4's own "structural, not an if check"
+    // framing, applied here to subject-type integrity).
+    //
+    // Deliberately unqualified column names (not the usual ${table.column}
+    // interpolation this file uses everywhere else): this constraint is
+    // added via a later ALTER TABLE ADD CONSTRAINT (this table already
+    // existed before ADR-0015), not embedded inside the original CREATE
+    // TABLE the way ck_observation_*_value above are. Postgres only permits
+    // table-qualified column references ("observation"."col") inside a CHECK
+    // clause that's part of the same CREATE TABLE statement -- in a
+    // standalone ALTER TABLE ADD CONSTRAINT, a qualified reference errors
+    // with "missing FROM-clause entry for table observation" (confirmed
+    // against a real migration run, not assumed). Bare column names are
+    // required here and work correctly either way.
+    check(
+      "chk_observation_subject",
+      sql`(is_control = false AND patient_id IS NOT NULL AND control_lot_id IS NULL) OR (is_control = true AND patient_id IS NULL AND control_lot_id IS NOT NULL)`,
+    ),
     // MATCH FULL per ADR-0008's second addendum -- not representable by
     // drizzle-kit's foreignKey() builder (no `match` option), so
     // db/migrations/0011_observation_fk_integrity.sql hand-adds it after this

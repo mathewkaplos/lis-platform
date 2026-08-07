@@ -21,13 +21,19 @@ import { getKeycloakToken } from './get-keycloak-token';
 const TENANT_A = '00000000-0000-0000-0000-000000000001';
 
 /**
- * TASK-059 (FEAT-016 revision, docs/plans/feat-016-minimal-report.md).
- * `assembleAndPersistReport` has no HTTP route (proposal §10 Q2) -- exercised
- * directly against real Postgres/Keycloak, the same direct-`@lis/db` pattern
+ * TASK-059/TASK-060 (FEAT-016 revisions, docs/plans/feat-016-minimal-report.md).
+ * The top-level describes exercise `assembleAndPersistReport` directly
+ * against real Postgres/Keycloak (TASK-059's own proposal §10 Q2: no HTTP
+ * route in that task), the same direct-`@lis/db` pattern
  * `reference-range-resolution.e2e-spec.ts` (TASK-049) already established
- * for a service with no controller yet. Synthetic, non-clinical fixtures
- * (TASK-049/056's own precedent) -- no seeded golden-dataset test has a
- * single-analyte panel simple enough to isolate this task's own AC.
+ * for a service with no controller yet. The final describe block
+ * (TASK-060) exercises the real `POST /v1/ordered-tests/:id/report` HTTP
+ * route on top of the same fixtures/tokens, mirroring
+ * `calculated-fields.e2e-spec.ts`'s own "pure/service tests + HTTP
+ * integration tests in one file" precedent. Synthetic, non-clinical
+ * fixtures throughout (TASK-049/056's own precedent) -- no seeded
+ * golden-dataset test has a single-analyte panel simple enough to isolate
+ * either task's own AC.
  */
 describe('Report assembly (e2e)', () => {
   const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
@@ -106,6 +112,22 @@ describe('Report assembly (e2e)', () => {
       .post(`/v1/ordered-tests/${orderedTestId}/results/${analyteId}/verify`)
       .set('Authorization', `Bearer ${verifierToken}`)
       .expect(200);
+  }
+
+  async function auditCount(): Promise<number> {
+    const res = await request(app.getHttpServer())
+      .get('/auth/tenant-audit-count')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    return (res.body as { count: number }).count;
+  }
+
+  async function reportCount(orderedTestId: string): Promise<number> {
+    const rows = await db
+      .select({ id: report.id })
+      .from(report)
+      .where(eq(report.orderedTestId, orderedTestId));
+    return rows.length;
   }
 
   /** Wraps `assembleAndPersistReport` in its own real transaction with the
@@ -429,5 +451,101 @@ describe('Report assembly (e2e)', () => {
         'expected two different observation sets to produce different content hashes',
       );
     }
+  });
+
+  /**
+   * TASK-060 (FEAT-016 revision). The real `POST /v1/ordered-tests/:id/report`
+   * route on top of the same fixtures/tokens above -- `assembleAndPersistReport`
+   * itself is already proven correct by the describes above; these tests
+   * prove the HTTP layer (capability gate, raw PDF response, and that the
+   * route's own audit/persistence behavior matches calling the service
+   * directly).
+   */
+  describe('HTTP: POST /v1/ordered-tests/:id/report', () => {
+    it(
+      'returns real PDF bytes once every analyte is verified, gated behind the verify capability, ' +
+        'creating exactly one new report row and one new audit_event row',
+      async () => {
+        const patientId = await createPatient();
+        const { orderId, orderedTestId } = await createOrder(
+          patientId,
+          singleAnalyteTestDefId,
+        );
+        await receive(orderId);
+        await finalize(orderedTestId, analyteAId, 55);
+        await verify(orderedTestId, analyteAId);
+
+        const reportCountBefore = await reportCount(orderedTestId);
+        const auditBefore = await auditCount();
+
+        const res = await request(app.getHttpServer())
+          .post(`/v1/ordered-tests/${orderedTestId}/report`)
+          .set('Authorization', `Bearer ${verifierToken}`)
+          .expect(200);
+
+        if (res.headers['content-type'] !== 'application/pdf') {
+          throw new Error(
+            `expected Content-Type: application/pdf, got ${JSON.stringify(res.headers['content-type'])}`,
+          );
+        }
+        const bodyBuffer = Buffer.isBuffer(res.body)
+          ? res.body
+          : Buffer.from(res.text ?? '', 'binary');
+        if (
+          bodyBuffer.length === 0 ||
+          bodyBuffer.subarray(0, 4).toString('latin1') !== '%PDF'
+        ) {
+          throw new Error(
+            `expected a non-empty PDF response body starting with the %PDF magic bytes, got length=${bodyBuffer.length}`,
+          );
+        }
+
+        const reportCountAfter = await reportCount(orderedTestId);
+        if (reportCountAfter !== reportCountBefore + 1) {
+          throw new Error(
+            `expected exactly one new report row, before=${reportCountBefore} after=${reportCountAfter}`,
+          );
+        }
+        const auditAfter = await auditCount();
+        if (auditAfter !== auditBefore + 1) {
+          throw new Error(
+            `expected exactly one new audit_event row, before=${auditBefore} after=${auditAfter}`,
+          );
+        }
+      },
+    );
+
+    it('rejects a technologist-only session with 403 (no verify capability)', async () => {
+      const patientId = await createPatient();
+      const { orderId, orderedTestId } = await createOrder(
+        patientId,
+        singleAnalyteTestDefId,
+      );
+      await receive(orderId);
+      await finalize(orderedTestId, analyteAId, 60);
+      await verify(orderedTestId, analyteAId);
+
+      await request(app.getHttpServer())
+        .post(`/v1/ordered-tests/${orderedTestId}/report`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(403);
+    });
+
+    it('returns 409 when not every analyte on the panel is verified -- unchanged assembleAndPersistReport behavior over HTTP', async () => {
+      const patientId = await createPatient();
+      const { orderId, orderedTestId } = await createOrder(
+        patientId,
+        twoAnalyteTestDefId,
+      );
+      await receive(orderId);
+      await finalize(orderedTestId, analyteAId, 50);
+      await verify(orderedTestId, analyteAId);
+      await finalize(orderedTestId, analyteBId, 60); // finalized, never verified
+
+      await request(app.getHttpServer())
+        .post(`/v1/ordered-tests/${orderedTestId}/report`)
+        .set('Authorization', `Bearer ${verifierToken}`)
+        .expect(409);
+    });
   });
 });

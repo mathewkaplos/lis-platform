@@ -103,3 +103,26 @@ frontmatter declaration (this entry's own commit).
   navigation, not `waitForLoadState('networkidle')` — reserve `networkidle`
   for a fresh `page.goto()`/full-page form submission.
 - **Files:** `.claude/skills/web-verify/SKILL.md`
+
+## 2026-08-07 (6)
+
+- **Friction:** implementing TASK-064's `POST /v1/control-lots/:id/results`
+  (audited via `@Audit()`), the route's first draft returned
+  `toQcObservationDto(inserted)` — a flat DTO typed as
+  `Promise<QcObservationResult>`. This compiled cleanly (nothing statically
+  ties an `@Audit()`-decorated handler's return type to
+  `AuditInterceptor`'s actual expected shape) and only failed at real
+  request time, as a `500` from `writeAuditEvent`'s `NOT NULL` violation on
+  `resource_id` — `AuditInterceptor` reads `result.resourceId` off whatever
+  the handler returns, and a flat DTO has no such field. Caught by the e2e
+  suite's own real HTTP call, not by inspection or by TypeScript. A second,
+  distinct failure mode from the one `api-design` Skill entry #5 already
+  documents (that entry covers *ordering* — `CapabilityGuard` must run
+  before `AuditInterceptor` — not the handler's *return-shape* contract).
+- **Area:** existing-skill:engineering/api-design
+- **Change:** added entry #15 to `engineering/api-design/SKILL.md`: any
+  route decorated with `@Audit()` must return
+  `{ resourceId, before?, after? }`, matching `finalize()`/`verify()`'s own
+  shape — not the route's own flat response DTO, and not enforced by
+  TypeScript.
+- **Files:** `~/work/lis-engineering/skills/engineering/api-design/SKILL.md`

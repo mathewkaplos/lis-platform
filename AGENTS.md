@@ -186,6 +186,16 @@ packages/ui (design system) · packages/sdk (generated API client)
   identical `gh issue close 232 --comment ...` ran unblocked later in the
   same session — the block is not reliably predictable from the command
   shape alone, so don't assume every `gh` write will fail once one does.
+- When told to use a named Skill and the `Skill` tool call returns `Unknown
+  skill: <name>`, don't assume the skill doesn't exist — check whether it's
+  a marketplace plugin present on disk under
+  `~/.claude/plugins/marketplaces/*/plugins/<name>/` but simply missing
+  from `~/.claude/settings.json`'s `enabledPlugins` (confirmed 2026-08-07:
+  `skill-creator` existed on disk but wasn't enabled there). Same-turn
+  fallback: read the plugin's `SKILL.md` directly and follow it manually.
+  The actual fix — enabling the plugin — is a global, non-repo settings
+  change; that belongs to the `update-config` skill, not a manual edit
+  here.
 - **A PreToolUse denial does not tell you which earlier steps, if any,
   already ran — verify with a read-only check before proceeding as if a
   prior step succeeded (or as if it didn't).** Applies to a single denied

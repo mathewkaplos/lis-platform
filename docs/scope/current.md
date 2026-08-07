@@ -1,7 +1,7 @@
 # Status — 2026-08-07 (session 19)
 
-Last commit on main: `997f310` — "feat(api,web): report viewer + download screen, closing
-TASK-060 (FEAT-016)" (PR #336).
+Last commit on main: `5f4e487` — "docs: TASK-060 close-out -- breadcrumb refresh, plan doc
+FULLY IMPLEMENTED, FEAT-016 (#25) closed" (PR #337).
 
 ## TASK-060 (FEAT-016's third and last task) implemented and merged this same session, via PR #336
 (`997f310`), closing #119 — FEAT-016 (Minimal report, #25) is now fully implemented, all three

@@ -97,6 +97,33 @@ doesn't break the production build, the same way `apps/api`'s own e2e specs
 already can't be fully trusted from a single local run for other reasons
 (see AGENTS.md's harness-mismatch rule).
 
+## 1b. Launch a real `apps/api` server
+
+Most real `apps/web` screens call `apps/api` server-side (order/patient
+pages, the worklist, the results grid, the report viewer -- everything
+except a bare static placeholder). Step 1 alone only gets `apps/web`
+running; without a live `apps/api` too, every such page fails with its own
+"Something went wrong loading..." error, not an obviously API-shaped one.
+
+```bash
+cd ~/work/lis-platform && set -a && source .env && set +a && pnpm --filter api build
+node apps/api/dist/main.js > /tmp/api-dev.log 2>&1 &
+disown
+sleep 3 && tail -5 /tmp/api-dev.log   # look for "Nest application successfully started"
+                                       # and your route's own "Mapped {...}" log line
+```
+
+**Gotcha (2026-08-07, TASK-062 verification): `nest build` can report
+success while writing zero files to `dist/`, if a stale
+`apps/api/tsconfig.build.tsbuildinfo` survives from an earlier build --
+`tsc`'s own incremental cache doesn't notice `deleteOutDir` removed the
+output directory it believes is still up to date.** This is the exact
+same root cause `engineering/testing` Skill entry #10 already documents
+(discovered in a prior session, hit again fresh here) -- don't rediscover
+it from scratch: `rm apps/api/tsconfig.build.tsbuildinfo` and rebuild if
+`node apps/api/dist/main.js` fails with `Cannot find module '.../dist/main.js'`
+right after a build that itself reported no errors.
+
 ## 2. Reach an authenticated route without live Keycloak
 
 Local dev has no Keycloak/Postgres by default, and the full OIDC login

@@ -306,3 +306,252 @@ merge is verified as part of §8's testing plan regardless.
    ("Report data assembly," the more natural owner of a real `report` row).
 4. **TASK-058's own scope boundary.** **Confirmed: mechanism-only against placeholder/sample data.**
    Real `observation`/`patient` data wiring remains explicitly TASK-059's job.
+
+---
+
+# Revision: TASK-059 — Report data assembly with snapshotted ranges
+
+Status: **APPROVED** (2026-08-07) — §10's open questions resolved by the human as follows:
+Q1: **Option A** — new `report` table storing hash + provenance metadata only (no PDF bytes).
+Q2: **Option A** — no new HTTP route in this task; service-only, TASK-060 owns the public route.
+Q3: **Option A** — 409 Conflict on assembly against a partially-verified panel.
+Date: 2026-08-07    Backlog ID: FEAT-016 (#25) / TASK-059 (#118)
+
+## 1. Goal
+
+TASK-058 is merged (`8c339fa`, PR #333) — the rendering mechanism (`renderChemistryReport`,
+`apps/api/src/report/report-render.ts`) exists and is proven deterministic against placeholder
+input. TASK-059's own issue text (#118): "Expected output: Report assembly service." Its one AC:
+"A 2-year-old result renders using its originally snapshotted range, not the current one." Its one
+dependency, TASK-058, is satisfied.
+
+**Real, load-bearing finding #1 — the literal AC is already provable from columns that exist
+today, with zero new range-resolution logic.** `observation.refLow`/`refHigh`/`refCondition`/
+`refSource` (TASK-049/050, `packages/db/src/schema/observation.ts`) are snapshotted once at
+write time and never recomputed — the assembly service's entire job for range correctness is to
+read these columns directly off each included `observation` row and never call
+`resolveObservationRange`/query `reference_range` again. A `reference_range` row can be superseded
+or edited years after the observation that used it was written; the observation's own snapshot
+columns are unaffected by that, by construction. This is the same "snapshot, never recompute" rule
+already enforced for TASK-051's writes — TASK-059 is the first *reader* required to prove it holds
+on the read side too.
+
+**Real, load-bearing finding #2 — the reporting unit for chemistry is already answered by KB-02's
+own open question, not a fresh design decision.** `02-domain-model.md`'s "Open questions" section
+asks explicitly: "Is the reporting unit best keyed per-OrderedTest or per-accession by default?
+(Likely configurable per discipline; **histology = per case, chemistry = per panel**.)" A chemistry
+panel *is* one `OrderedTest` (one `test_definition`, e.g. `LIPID`, `CMP`) in this schema — this
+proposal reads that KB line as chemistry's own answer to its own open question, not as still
+unresolved for this task. This also matches every existing precedent in this codebase: draft,
+finalize, verify, and the results grid (TASK-051/052/055) are all scoped to one `ordered_test`,
+never to an `order` or accession spanning multiple ordered tests. TASK-059 assembles one report
+per `ordered_test`, not per `order`. Building order-level (multi-panel) bundling now would be
+speculative ahead of a real multi-panel report need — a real future task if/when it arises, not
+assumed here.
+
+**Real, load-bearing finding #3 — this repo deliberately does not yet build KB-02's own `Report`
+aggregate/state machine (`draft → preliminary → final → amended/corrected`), and TASK-059 should
+not either.** That state machine — `ReportTemplate` versioning, narrative sections, `ReportFinalized`/
+`ReportAmended` events — is FEAT-016's own issue-level "Architecture documents to reference" (KB-12,
+KB-13) read the same narrower way TASK-058's own proposal already read them (finding #2 above in the
+TASK-058 revision): the full engine is FEAT-032 (M7, `status: Not Started`, depends on FEAT-016, not
+the reverse). "Minimal report" is the operative word in this feature's own name. TASK-059 therefore
+persists a plain assembly record (hash + provenance), not a `Report` row with its own lifecycle
+column — no `report.status` state machine, no amendment linkage. If a later feature needs the real
+`Report` aggregate, it is layered on top of this table, not retrofitted into it.
+
+**Real, load-bearing finding #4 — Constitution Law #3 ("block report finalization until
+acknowledged") is already enforced upstream, for free, by TASK-056's existing roll-up guard.**
+`FinalizationRollupInterceptor` (TASK-056, `apps/api/src/observation/finalization-rollup.interceptor.ts`)
+already returns 409 on the `ordered_test.status → 'resulted'` roll-up while any critical observation
+on that ordered test is unverified. Reading KB-03's own canonical `OrderedTest` state machine
+(`resulted → verified → reported`), assembling a report only from ordered tests that have reached
+`'resulted'` (i.e., every analyte at least finalized) inherits that guard automatically — no new
+critical-acknowledgement check is needed inside the assembly service itself. This is checked
+directly against the interceptor's own code, not assumed by analogy.
+
+**Real, load-bearing finding #5 — no object/blob storage exists anywhere in this repo.** Grepped
+`apps/api/`, `packages/`, `infra/` for `s3`, `bucket`, `spaces`, `blob`, `@aws-sdk`: zero hits
+outside unrelated tooling. `apps/api`'s only production dependencies remain NestJS/Fastify/Drizzle/
+Zod/`bwip-js`/`jose`/`pdfkit` (added by TASK-058). This directly informs §10 Q1 below — persisting
+raw PDF bytes would be this repo's first blob-storage-shaped data, whereas persisting hash +
+provenance and re-rendering on demand needs no new infrastructure at all, leaning on TASK-058's own
+already-proven byte-for-byte determinism (same input twice → identical PDF).
+
+## 2. Affected files
+
+- `packages/db/src/schema/report.ts` (new) — a tenant-scoped, RLS-enabled table recording each
+  assembled report (see §10 Q1 for exact columns, gated on that resolution).
+- `db/migrations/0015_report.sql` (new, if §10 Q1 resolves to Option A).
+- `packages/db/src/schema/index.ts` — export the new table.
+- A new report-assembly module in `apps/api/src/report/` (e.g. `report-assembly.ts`), querying
+  `observation`/`orderedTest`/`order`/`patient`/`specimenFulfillment`/`specimen` and mapping to
+  `ChemistryReportInput`, then calling TASK-058's `renderChemistryReport`.
+- `packages/db/src/audit.ts` consumer — a `report.generate` audited event (Constitution invariant
+  #5), written in the same transaction as the new `report` row's insert, mirroring `finalize()`'s
+  existing audit-in-transaction shape.
+
+**Not affected:**
+- No new HTTP route (§10 Q2) — TASK-060 ("Report viewer + download screen") is the task that adds
+  a public route; TASK-059 stays an internal, directly-testable service, mirroring the
+  `resolveObservationRange`(TASK-049)/consumer(TASK-051) and `renderChemistryReport`(TASK-058)/
+  consumer(TASK-059-here-as-consumer) "service first, consumer later" precedent this repo has used
+  twice already.
+- No new capability (`apps/api/src/auth/capabilities.ts`) — no new route means no new authorization
+  surface; TASK-060 is free to decide whether viewing/downloading a report needs a new capability
+  or reuses `verify`.
+- `apps/api/src/report/report-render.ts`/`report.types.ts` — TASK-058's rendering mechanism is
+  reused as-is; `ChemistryReportInput` is populated with real data, not modified.
+
+## 3. Architecture consulted
+
+- `02-domain-model.md` — the reporting-unit open question (finding #2), the `Report` aggregate's
+  own state machine (finding #3), and the Observation→Report ownership line ("Report renders,
+  never owns... Report generation must resolve/assemble" — the literal source of this task's
+  "assembly service" framing).
+- `03-business-workflows.md` — the canonical `OrderedTest`/`Report` state machines and stage 8
+  ("Report → Deliver. When required Observations are verified, the Report reaches final") —
+  informs finding #4's verified-only reading, without this task building the `Report` state
+  machine itself (finding #3).
+- `apps/api/src/observation/finalization-rollup.interceptor.ts` (TASK-056) — the existing critical-
+  acknowledgement guard this task relies on rather than re-implementing (finding #4).
+- `packages/db/src/schema/observation.ts` — the snapshot columns this task's entire AC rests on
+  (finding #1).
+- `engineering/pdf-generation` Skill — TASK-058's own rendering entry points and determinism
+  guarantees, reused unmodified.
+- `engineering/database-design` Skill — checked for this repo's tenant-scoped/RLS table
+  conventions before drafting the new `report` table shape (§10 Q1).
+
+## 4. Skills loaded
+
+- `engineering/pdf-generation` (existing, TASK-058) — `renderChemistryReport`'s determinism
+  contract is this task's foundation; no changes needed to the Skill itself unless implementation
+  surfaces a new finding.
+- `domain/clinical-chemistry`, `domain/reference-ranges` — snapshot-vs-live-resolution discipline
+  (finding #1), already-documented critical/normal range semantics for the report's per-analyte
+  rows.
+- `engineering/api-design` — entry #7 (RLS makes cross-tenant rows structurally invisible), entry
+  #8 (explicit `ZodValidationPipe` instantiation) — checked even though this task adds no route,
+  since the assembly service still queries tenant-scoped tables directly.
+- `engineering/database-design` — this repo's established tenant-scoped/RLS table pattern, applied
+  to the new `report` table if §10 Q1 resolves to Option A.
+- `engineering/testing` — entry #1 (real-Postgres integration checks are `tsx` scripts, not
+  Vitest only) — this task's core AC (2-year-old snapshot vs. current range) needs a real
+  Postgres-backed test proving a `reference_range` row can change after the fact without affecting
+  an already-written observation's snapshot.
+
+## 5. Assumptions & autonomous decisions
+
+- **Report scope is one `ordered_test`, not one `order`** (finding #2) — a genuinely resolved
+  question (KB-02's own text), not left to §10.
+- **No `Report` state machine, no `ReportTemplate` versioning, no amendment linkage** is built in
+  this task (finding #3) — out of scope, matching "Minimal report."
+- **Only `'verified'` observations are eligible for inclusion**, and assembly requires every
+  analyte named by the ordered test's own `test_analyte` rows to have reached `'verified'` status
+  — not just `'preliminary'`/`'resulted'` — before a report can be assembled at all; assembling
+  from a partially-verified panel is rejected (409), not silently produced with gaps. This reads
+  KB line 111 ("A Report cannot be final unless all required Observations are present and
+  validated") plainly, and is the strictest, safest reading available given this task builds no
+  partial/interim report concept (finding #3).
+- **The verifier block on the rendered report reflects the most-recently-verified analyte**
+  (`MAX(verifiedAt)` and its `verifierUserId`) across the included observations — a reasonable
+  single-line proxy for "who signed this off," not a per-analyte verifier list, matching TASK-058's
+  own single verifier block shape. Worth a reviewer's attention if a real design-partner review
+  later asks for a different convention (out of this task's own scope to anticipate).
+- **`ChemistryReportInput`'s shape is reused as-is** — the assembly service maps real
+  `observation`/`patient`/`order`/`specimen` rows into exactly the shape TASK-058 already defined,
+  rather than introducing a second, parallel data shape.
+
+## 6. Risks
+
+- **The new `report` table (if §10 Q1 resolves to Option A) is the first schema change in this
+  feature area** — matching the same risk TASK-058's own proposal already flagged for itself;
+  needs the standard RLS/migration review this Definition-of-Done already requires for any new
+  tenant-scoped table.
+- **The all-analytes-verified precondition (§5) is a real, load-bearing clinical-safety choice, not
+  a formality** — get it wrong (e.g. allow assembly from a partially-verified panel) and a report
+  could omit or silently misrepresent a not-yet-reviewed result. Needs an explicit test proving the
+  409/rejection path, not just the happy path.
+- **Regenerating the PDF on every view (if §10 Q1 resolves to Option A) trades storage cost for
+  compute cost on every report view** — acceptable for "minimal report" at this milestone's real
+  traffic, but worth a reviewer's attention if TASK-060 later shows this is a real latency problem
+  (a caching layer would be a follow-up, not built speculatively here).
+
+## 7. Acceptance criteria
+
+TASK-059's literal AC, narrowed per findings #1–#5:
+- [ ] A report assembled from an `ordered_test` whose observations were written using a
+  `reference_range` row that has since been superseded (edited/effective-dated-out) still renders
+  using each observation's own `refLow`/`refHigh`/`refCondition`/`refSource` snapshot — proven by a
+  real Postgres-backed test that changes the underlying `reference_range` row *after* the
+  observation was written, then asserts the assembled report reflects the original, not the
+  changed, range (finding #1's literal proof, not simulated).
+- [ ] Assembly succeeds only once every analyte on the ordered test's `test_analyte` set has
+  reached `'verified'` status; assembly against a partially-verified panel is rejected, not
+  silently partial (§5).
+- [ ] The assembled report's content hash matches what TASK-058's own `computeReportContentHash`
+  would produce for the equivalent input — proving the two tasks' pieces compose correctly, not
+  just each in isolation.
+- [ ] The hash (and, per §10 Q1, whatever else is persisted) is recorded somewhere real — not
+  silently dropped, matching TASK-058's own AC language.
+
+## 8. Testing plan
+
+1. `pnpm --filter @lis/db typecheck`/build/migrate — the new `report` table (if §10 Q1: Option A).
+2. New e2e test(s) in `apps/api/test/`: the snapshot-vs-live-range proof (finding #1, the literal
+   AC); the all-verified precondition (positive and 409-rejection cases); a differential test
+   (two different underlying observation sets produce different hashes, mirroring TASK-058's own
+   differential proof, now through real assembled data).
+3. Repo-wide `pnpm typecheck`/`pnpm lint`/`pnpm build`, including a real `nest build`.
+4. `openapi.json`/`packages/sdk/src/schema.ts` regeneration — only if §10 Q2 resolves to adding a
+   route in this task; a no-op otherwise, since a service-only change has no HTTP surface to
+   regenerate from.
+
+## 9. Rollback plan
+
+Additive-only under every resolution of §10: a new module, and (only if §10 Q1: Option A) one new
+tenant-scoped table with its own migration and down-migration, verified against seeded data as part
+of §8 before merge, same discipline as every prior schema change in this repo. No existing route,
+table, or UI screen is modified — TASK-060 (not yet started) is the only future consumer of this
+task's output.
+
+## 10. Open questions — resolved 2026-08-07 via the native options-prompt
+
+1. **Persistence shape for the assembled report.** **Resolved: Option A.**
+   - **Option A (recommended, chosen): a new `report` table storing hash + provenance metadata
+     only** —
+     `tenantId`, `orderedTestId`, `contentHash`, `generatedAt`, `generatedByUserId`, and the set of
+     `(observationId, observationCreatedAt)` pairs included (mirroring the existing
+     `previousObservationId`/`previousObservationCreatedAt` composite-FK pattern in
+     `observation.ts`, for real provenance, not just a hash). No PDF bytes stored — TASK-060
+     re-renders on demand by re-assembling from the same (immutable, verified) observation rows,
+     verifying the hash still matches. Avoids this repo's first blob-storage dependency (finding
+     #5), leans on TASK-058's own proven determinism.
+   - **Option B: persist the actual PDF bytes** (`bytea` column, matching `audit_event`'s own
+     `bytea` precedent for `hash`/`prev_hash`) alongside the metadata above — avoids re-render cost
+     on every view, at the cost of real storage growth and a genuinely new "the DB holds
+     documents" pattern this repo has never used.
+   - **Option C: no table at all** — TASK-059 is a pure function only (`assembleReport(orderedTestId)
+     → ChemistryReportInput`), proven by tests, with all persistence deferred to TASK-060. Keeps
+     TASK-059 minimal but pushes the audited-write (finding #5's Constitution invariant #5
+     obligation) entirely into TASK-060, splitting "assemble" and "record that it happened" across
+     two tasks in a way that doesn't cleanly map to either task's own issue text.
+
+2. **Whether TASK-059 adds any HTTP route at all.** **Resolved: Option A.**
+   - **Option A (recommended, chosen): no route** — service-only, consistent with the "service first,
+     consumer later" precedent (§2). TASK-060 ("Report viewer + download screen") adds the actual
+     public route(s).
+   - **Option B: add an internal/ops-facing route now** (e.g. a `POST .../report:generate` a
+     verifier can call explicitly) even though no UI consumes it yet — gets the audited-write
+     wired end-to-end sooner, at the cost of building a route shape TASK-060 might want to change
+     once it has real UI requirements.
+
+3. **The all-analytes-verified precondition's failure shape (§5).** **Resolved: Option A.**
+   - **Option A (recommended, chosen): 409 Conflict**, mirroring this repo's existing convention
+     for "the
+     resource exists but isn't in the right state" (`FinalizationRollupInterceptor`'s own 409,
+     `upsertObservation`'s 409 on a verified row) — consistent, no new HTTP-status convention.
+   - **Option B: a distinct 4xx/response shape** naming exactly which analytes are still
+     unverified (richer, more actionable for a future caller) — more useful but introduces a new
+     response shape this task's own scope doesn't otherwise need (TASK-056's own §10 Q4 explicitly
+     deferred a similar "richer error shape" question until a real UI consumer needed one).

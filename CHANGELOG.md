@@ -126,3 +126,29 @@ frontmatter declaration (this entry's own commit).
   shape — not the route's own flat response DTO, and not enforced by
   TypeScript.
 - **Files:** `~/work/lis-engineering/skills/engineering/api-design/SKILL.md`
+
+## 2026-08-07 (7)
+
+- **Friction:** TASK-063's `chk_observation_subject` CHECK constraint (added
+  to the already-existing `observation` table via `ALTER TABLE ADD
+  CONSTRAINT`) was first drafted with the same `${table.column}`
+  interpolation style as `observation.ts`'s ten pre-existing checks — which
+  produced a real failed migration run,
+  `error: missing FROM-clause entry for table "observation"`, against a real
+  Postgres instance. Not caught by `drizzle-kit generate` (which only diffs
+  schema shape, not constraint SQL validity), only by actually applying the
+  migration. Root cause: Postgres allows a table-qualified column reference
+  in a CHECK clause only when it's part of the same `CREATE TABLE` statement
+  creating that table — the ten pre-existing checks get this for free
+  (embedded in `0004_observation.sql`'s original `CREATE TABLE`); a
+  standalone `ALTER TABLE ... ADD CONSTRAINT ... CHECK (...)` does not allow
+  it. A real, reproducible Postgres limitation, not a drizzle bug — and a
+  real risk of recurring, since this file's own established convention is
+  `${table.column}` interpolation everywhere else.
+- **Area:** existing-skill:engineering/database-design
+- **Change:** added entry #9 to `engineering/database-design/SKILL.md`: any
+  CHECK constraint added to an already-existing table (as opposed to one
+  embedded in that table's original `CREATE TABLE`) must reference columns
+  unqualified (bare column names), never via the usual `${table.column}`
+  interpolation.
+- **Files:** `~/work/lis-engineering/skills/engineering/database-design/SKILL.md`

@@ -1,6 +1,12 @@
-import { eq, sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
+import request from 'supertest';
+import { App } from 'supertest/types';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import {
   analyte,
+  auditEvent,
   controlLot,
   createDb,
   observation,
@@ -12,6 +18,8 @@ import {
   testDefinition,
   unit,
 } from '@lis/db';
+import { AppModule } from './../src/app.module';
+import { getKeycloakToken } from './get-keycloak-token';
 
 /**
  * TASK-063 (FEAT-018): proves ADR-0015's schema mechanism against real
@@ -279,5 +287,178 @@ describe('control_lot schema (e2e)', () => {
         }),
       );
     });
+  });
+});
+
+/**
+ * TASK-064 (FEAT-018 revision): the real HTTP surface over TASK-063's
+ * schema -- `POST/GET /v1/control-lots/:id/results`. Real Nest app, real
+ * Keycloak tokens, real Postgres, matching observation.e2e-spec.ts's own
+ * standard for anything mutating clinical data.
+ */
+describe('Control lot QC result API (e2e)', () => {
+  const TENANT_A = '00000000-0000-0000-0000-000000000001';
+  let app: INestApplication<App>;
+  let tokenA: string;
+  let tokenB: string; // test-user-2, TENANT_B -- proves cross-tenant 404 (engineering/api-design entry #7)
+  let controlLotId: string;
+  let quantityAnalyteId: string;
+
+  async function auditAfterFor(
+    action: string,
+    resourceId: string,
+  ): Promise<unknown> {
+    const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+    await db.execute(
+      sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+    );
+    const [row] = await db
+      .select({ after: auditEvent.after })
+      .from(auditEvent)
+      .where(
+        and(
+          eq(auditEvent.action, action),
+          eq(auditEvent.resourceId, resourceId),
+        ),
+      )
+      .orderBy(desc(auditEvent.sequence))
+      .limit(1);
+    return row?.after ?? null;
+  }
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+    app = moduleFixture.createNestApplication();
+    await app.init();
+
+    tokenA = await getKeycloakToken('test-user', 'test-password');
+    tokenB = await getKeycloakToken('test-user-2', 'test-password-2');
+
+    const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+    await db.execute(
+      sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+    );
+    const [analyteRow] = await db
+      .select({ id: analyte.id })
+      .from(analyte)
+      .limit(1);
+    const [unitRow] = await db.select({ id: unit.id }).from(unit).limit(1);
+    if (!analyteRow || !unitRow) {
+      throw new Error(
+        'chemistry-catalog seed data not found -- run `pnpm db:reset` first',
+      );
+    }
+    quantityAnalyteId = analyteRow.id;
+    const [lot] = await db
+      .insert(controlLot)
+      .values({
+        tenantId: TENANT_A,
+        analyteId: analyteRow.id,
+        level: 'normal',
+        unitId: unitRow.id,
+        targetMean: '5.0',
+        targetSd: '0.2',
+        lotNumber: `TASK-064-HTTP-${Date.now()}`,
+      })
+      .returning();
+    controlLotId = lot.id;
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    await request(app.getHttpServer())
+      .post(`/v1/control-lots/${controlLotId}/results`)
+      .send({ dataType: 'quantity', valueNum: 5.2 })
+      .expect(401);
+  });
+
+  it('records a QC result and returns it with controlLotId, not orderedTestId/patientId', async () => {
+    const res = await request(app.getHttpServer())
+      .post(`/v1/control-lots/${controlLotId}/results`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ dataType: 'quantity', valueNum: 5.2 })
+      .expect(201);
+
+    const body = res.body as {
+      resourceId: string;
+      after: {
+        id: string;
+        controlLotId: string;
+        analyteId: string;
+        dataType: string;
+        valueNum: number;
+        source: string;
+      };
+    };
+    expect(body.after.controlLotId).toBe(controlLotId);
+    expect(body.after.analyteId).toBe(quantityAnalyteId);
+    expect(body.after.dataType).toBe('quantity');
+    expect(body.after.valueNum).toBe(5.2);
+    expect(body.after.source).toBe('manual');
+    expect(body.after).not.toHaveProperty('orderedTestId');
+    expect(body.after).not.toHaveProperty('patientId');
+    expect(body.resourceId).toBe(body.after.id);
+
+    // Audited (ADR-0015's own Consequences note) -- proven against the real
+    // persisted audit_event row, not just trusted from the response.
+    const after = await auditAfterFor('observation.qc_record', body.resourceId);
+    expect(after).not.toBeNull();
+  });
+
+  it("rejects a dataType mismatch against the control lot analyte's own catalog dataType", async () => {
+    await request(app.getHttpServer())
+      .post(`/v1/control-lots/${controlLotId}/results`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ dataType: 'coded', valueCode: 'POS' })
+      .expect(400);
+  });
+
+  it('404s on a control lot that does not exist', async () => {
+    await request(app.getHttpServer())
+      .get(`/v1/control-lots/${randomUUID()}/results`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(404);
+  });
+
+  it("404s on another tenant's control lot -- cross-tenant existence is never leaked (engineering/api-design entry #7)", async () => {
+    await request(app.getHttpServer())
+      .get(`/v1/control-lots/${controlLotId}/results`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .expect(404);
+  });
+
+  it('every POST is a new row, never an upsert -- multiple results for the same lot all persist as a real time series, most recent first', async () => {
+    const first = await request(app.getHttpServer())
+      .post(`/v1/control-lots/${controlLotId}/results`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ dataType: 'quantity', valueNum: 4.9 })
+      .expect(201);
+    const second = await request(app.getHttpServer())
+      .post(`/v1/control-lots/${controlLotId}/results`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ dataType: 'quantity', valueNum: 5.3 })
+      .expect(201);
+
+    const listRes = await request(app.getHttpServer())
+      .get(`/v1/control-lots/${controlLotId}/results`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const body = listRes.body as { id: string }[];
+    const ids = body.map((r) => r.id);
+
+    const firstId = (first.body as { resourceId: string }).resourceId;
+    const secondId = (second.body as { resourceId: string }).resourceId;
+
+    // Both new rows present alongside every earlier result this describe
+    // block already created for the same lot -- proves accumulation, not
+    // replacement.
+    expect(ids).toContain(firstId);
+    expect(ids).toContain(secondId);
+    expect(ids.indexOf(secondId)).toBeLessThan(ids.indexOf(firstId));
   });
 });

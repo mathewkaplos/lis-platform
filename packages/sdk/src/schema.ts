@@ -420,6 +420,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["WorklistController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -617,6 +633,34 @@ export interface components {
             producedAt: string | null;
             /** Format: date-time */
             createdAt: string;
+        };
+        WorklistResponseDto_Output: {
+            counts: {
+                pending: number;
+                inProgress: number;
+                verified: number;
+            };
+            items: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                orderId: string;
+                /** Format: uuid */
+                testDefinitionId: string;
+                testDisplayName: string;
+                /** @enum {string} */
+                status: "ordered" | "collected" | "received" | "in_process" | "resulted" | "verified" | "reported" | "cancelled" | "rejected";
+                /** @enum {string} */
+                priority: "routine" | "stat";
+                patient: {
+                    firstName: string;
+                    lastName: string;
+                    mrn: string;
+                };
+                /** Format: date-time */
+                createdAt: string;
+                ageMinutes: number;
+            }[];
         };
     };
     responses: never;
@@ -1202,6 +1246,31 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    WorklistController_list: {
+        parameters: {
+            query?: {
+                stage?: "pending" | "in_progress" | "verified";
+                status?: "ordered" | "collected" | "received" | "in_process" | "resulted" | "verified" | "reported" | "cancelled" | "rejected";
+                priority?: "routine" | "stat";
+                createdFrom?: string;
+                createdTo?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorklistResponseDto_Output"];
+                };
             };
         };
     };

@@ -1,3 +1,94 @@
+# Status — 2026-08-07 (session 20)
+
+Last commit on main: `288fc20` — "fix(web-verify): waitForLoadState('networkidle') races
+client-side nav (/retro)" (PR #348).
+
+## FEAT-017 (Minimal worklist, #26) fully implemented this session — TASK-061 (PR #346) and
+TASK-062 (PR #347) both merged, verified, and deployed to staging; issue #26 closed
+
+Session opened via `/orient`: FEAT-016 (Minimal report) was already fully closed (issue #25 closed
+08:25:04Z the same morning, before this session started); M4's only remaining open items were
+FEAT-017 (#26) and its two tasks (#120 TASK-061, #121 TASK-062) — all three milestone signals
+agreed. TASK-061's one dependency (FEAT-014) was already merged.
+
+**TASK-061 (Worklist query API with filters + TAT), PR #346 (`eaaa9d7`), closing #120.** Proposal
+(`docs/plans/feat-017-minimal-worklist.md`) scoped to TASK-061 only, same narrowing precedent every
+prior feature has used. Real, load-bearing finding: `ordered_test.status`'s own schema/domain
+comments claimed only `'ordered'`/`'cancelled'` are ever written — directly disproven by grep against
+already-merged TASK-047/051/056 code (6 of the 9 canonical values are real; only `'collected'`/
+`'reported'` are unwritten, and the row itself never reaches a literal `'verified'` value). Delivered
+`GET /v1/worklist` (`{ counts, items }`, tenant-scoped via RLS, stage buckets pending/in-progress/
+verified mapped onto the real status lifecycle, computed elapsed-time TAT, no stored SLA). Fixed the
+two stale comments in the same PR. **Real bug found and fixed during implementation:** a single query
+capped at `WORKLIST_RESULT_LIMIT` across the whole default active set silently starved smaller stages
+once one status dominated — confirmed directly against 116 real `'ordered'` rows accumulated locally
+(a realistic lab-volume shape, not a test artifact). Fixed by capping each of the 3 counted buckets
+independently. Verified: 5 new e2e tests, full suite 152/152 green on a clean DB; repo-wide
+typecheck/lint/build green (real `next build`/`nest build`); `openapi.json`/SDK regenerated (now
+CI-enforced as of PR #343, merged the same morning). Deploy to Staging succeeded.
+
+**TASK-062 (Worklist UI — tabs, filters, priority, TAT), PR #347 (`63f9f40`), closing #121 —
+FEAT-017 (#26) now fully implemented, both tasks done.** Proposal revision to the same plan doc.
+Real, load-bearing finding: Stitch §8.0's "Work Queue master" prompt describes a much larger surface
+(7 tabs, SLA-color-coded TAT, assignee avatars, bulk actions, live updates) than TASK-061's real API
+backs — read narrowly to exactly the 3 real stage buckets, 3 real filters, and the columns the API
+actually returns, the same "config template ≠ full engine" discipline TASK-058 already set. Second
+finding: the literal "two clicks or fewer" AC needs **status-conditional** row-click routing, not one
+fixed destination — `'ordered'` rows aren't yet receivable-into-results (`ENTERABLE_ORDERED_TEST_STATUSES`
+only accepts `'received'`/`'in_process'`), so `'ordered'` → order detail, `'received'`/`'in_process'` →
+straight into the results grid (the literal one-click path), `'resulted'` → the report viewer.
+Delivered: `apps/web/app/(app)/page.tsx` replaced (the placeholder "Signed in" screen is gone —
+this is now the real technologist home screen), `worklist-view.tsx`, `active-filters.tsx` (`FilterBar`'s
+first real consumer anywhere in `apps/web`; `StatCard`'s too, doubling as clickable stage-tab
+controls), `lib/format-duration.ts`. No `apps/api`/`packages/domain`/`packages/db` changes.
+**Verified via a real `web-verify` headless-browser pass** (Docker/Postgres/Keycloak, a compiled
+`apps/api` server, fixtures driven through the real order/reception/result-entry/finalize/cancel
+endpoints): stage counts correct against the seeded fixture; each `StatCard`/tab and the priority
+filter + its removable chip all work; an `'in_process'` row's click lands on the real results grid
+showing the correct drafted value; a `'resulted'` row's click lands on the real report viewer showing
+the correct `PRELIMINARY` status; dark mode renders correctly; zero console/page errors in the final
+run. One real, non-blocking finding from that pass, corrected in the proposal doc: `results-grid.tsx`
+has no autofocus-on-mount (only auto-*advance* after an action) — the "two clicks" AC is still
+satisfied literally (one click, field immediately visible), but the proposal's own "lands
+keyboard-ready per TASK-052's auto-focus" phrasing overstated it. Repo-wide typecheck/lint/build
+green; full `apps/api` e2e suite re-confirmed 152/152 (no backend change). Deploy to Staging
+succeeded. Issue #26 closed via the standard manual comment (bare `Closes` lines don't auto-close a
+parent feature issue, the same recurring gotcha as every prior feature).
+
+## `/retro` this session: a real Playwright/Next.js verification gotcha found and fixed, PR #348
+(`288fc20`)
+
+While driving TASK-062's `web-verify` pass, `page.waitForLoadState('networkidle')` called right after
+clicking a Next.js client-side `<Link>`/`router.push()` navigation resolved *before* the RSC fetch
+even started (the click handler returns synchronously; the network can already be idle at that exact
+instant) — a 100%-reproducible false failure indistinguishable from a real navigation bug, costing
+real debugging time before being root-caused by direct isolation (the same click, awaited with
+`waitForTimeout` instead, navigated correctly every time). Fixed by documenting the gotcha in
+`web-verify/SKILL.md`'s "Drive it" section: use `page.waitForURL(<pattern>)` after a click-triggered
+client-side navigation, not `waitForLoadState('networkidle')`. Logged to `CHANGELOG.md`.
+
+## `/close` this session: breadcrumb refreshed (this entry); a second real `web-verify` gap approved
+and drafted, not yet applied
+
+The Pre-Close Report (`~/work/lis-engineering/session-close-reports/2026-08-07-1720-pre.md`) found
+`web-verify/SKILL.md`'s own "Launch the dev server" step never covers standing up a real `apps/api`
+server, even though nearly every real page (including this session's own TASK-062 verification) needs
+one — this session had to rediscover the `engineering/testing` Skill's already-documented stale-
+`tsconfig.build.tsbuildinfo` gotcha the hard way mid-session as a result. Human approved the drafted
+fix (a new step cross-referencing that gotcha directly, rather than requiring rediscovery); **not yet
+applied — a real next step for `web-verify/SKILL.md`**, distinct from this session's own `/retro`
+fix (which covered a different gotcha). TASK-062's own Manual Verification Checklist items (a real
+Keycloak login pass, `StatCard`-as-tab visual/UX judgment, raw-enum status-badge copy) were explicitly
+waived by the human, not deferred to a future session.
+
+**Next milestone/feature not yet identified this session** — M4 (Chemistry Result Loop, the thesis
+milestone) is now fully implemented: FEAT-014/015/016/017 all closed. `/orient`'s next run should
+re-run milestone/next-task discovery from scratch, the same "M4 is genuinely done, don't assume a
+particular next direction" discipline session 17's own entry (below) already used when FEAT-015
+closed out M4's own thesis feature.
+
+---
+
 # Status — 2026-08-07 (session 19)
 
 Last commit on main: `42f684e` — "fix(api): report route uses StreamableFile (transaction-commit

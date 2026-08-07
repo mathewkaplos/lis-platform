@@ -109,6 +109,19 @@ jobs:
           docker logs keycloak
           exit 1
       - run: pnpm --filter api test:e2e
+      # retro (2026-08-07): enforce that apps/api/openapi.json and
+      # packages/sdk/src/schema.ts never silently drift from the code
+      # (ADR-0013 §1) -- previously relied entirely on whoever happened to
+      # remember to regenerate them each session (see CHANGELOG.md), never
+      # actually enforced. Placed after test:e2e so AppModule boots against
+      # an already-migrated/seeded DB, same env this job already proved works.
+      - run: pnpm --filter api generate-openapi
+      - run: pnpm --filter @lis/sdk generate
+      - run: |
+          if ! git diff --exit-code -- apps/api/openapi.json packages/sdk/src/schema.ts; then
+            echo "::error::apps/api/openapi.json or packages/sdk/src/schema.ts is out of date. Run 'pnpm --filter api generate-openapi && pnpm --filter @lis/sdk generate' and commit the result."
+            exit 1
+          fi
       - run: pnpm build
 
   # TASK-037: CI-enforcing a11y check on the 6 design-system primitives (packages/ui).

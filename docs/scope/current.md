@@ -1,3 +1,83 @@
+# Status — 2026-08-07 (session 19)
+
+Last commit on main: `ccc83d7` — "feat(api,db): report data assembly with snapshotted ranges,
+closing TASK-059 (FEAT-016)" (PR #334).
+
+## `/orient` found PR #333 (TASK-058) already implemented but stuck ~10-11h on an anomalous
+GitHub Actions queued-run glitch, unrelated to this repo's own config — unblocked, merged, deployed
+
+`gh run rerun`/`gh run cancel` both returned anomalous errors ("workflow file may be broken" /
+"already completed") against runs the API still reported as `queued`, and GitHub's own status page
+showed all systems operational — an isolated stuck-run record, not a platform incident or a repo
+misconfiguration (`runs-on: ubuntu-latest`, no `environment:` gate, no concurrency-group lock).
+Closing and reopening PR #333 forced a clean new check run, resolving it in under 4 minutes. Merged
+at `8c339fa` (PR #333, closing #117); "Deploy to Staging" completed successfully.
+
+## TASK-059 (FEAT-016's second task) implemented and merged this session, via PR #334 (`ccc83d7`),
+closing #118
+
+`docs/plans/feat-016-minimal-report.md` gained its first revision (TASK-059's own AC: "A 2-year-old
+result renders using its originally snapshotted range, not the current one"). Three open questions
+(§10) resolved via the native options-prompt, all recommended options chosen: (1) persistence —
+a new `report` table storing hash + observation provenance only, no PDF bytes (TASK-060 re-renders
+on demand and verifies the hash); (2) no new HTTP route in this task — service-only, mirroring the
+"service first, consumer later" precedent (TASK-049/051, TASK-058/059); (3) 409 Conflict on
+assembly against a partially-verified panel, matching `FinalizationRollupInterceptor`'s own existing
+409 convention.
+
+**Real, load-bearing findings, all confirmed directly against code/KB text, not assumed:** (1) the
+entire AC is provable from columns that already exist — `observation.refLow`/`refHigh`/
+`refCondition`/`refSource` (TASK-049/050) are snapshotted once at write time and never recomputed;
+assembly reads these directly and never calls `resolveObservationRange` again. (2) The reporting
+unit (per-`ordered_test` vs per-`order`/accession) is KB-02's own already-answered open question —
+"chemistry = per panel" — not a fresh design decision. (3) This repo deliberately does not build
+KB-02's own `Report` aggregate/state machine (`draft→preliminary→final→amended`) in this task —
+that's FEAT-032's later, much larger scope; `report` here is a plain provenance/hash record. (4)
+Constitution Law #3 ("block report finalization until acknowledged") is already enforced upstream,
+for free, by TASK-056's existing `FinalizationRollupInterceptor` — no new critical-acknowledgement
+check was needed. (5) No object/blob storage exists anywhere in this repo — directly informed the
+"hash + provenance only, re-render on demand" persistence choice.
+
+Delivered: `assembleAndPersistReport` (`apps/api/src/report/report-assembly.ts`) — requires every
+analyte on the panel's own `test_analyte` set to be `'verified'` (409 otherwise), maps real
+`observation`/`patient`/`order`/`specimen` rows to TASK-058's `ChemistryReportInput` shape, calls
+`renderChemistryReport`, persists a `report` row (hash + `{observationId, observationCreatedAt}`
+provenance pairs, no PDF bytes) and writes a `report.generate` audit event in the same transaction.
+One real gap found and handled plainly, not fabricated: no ordering-provider column exists anywhere
+in this schema (`order.ts`'s own header comment already named this out of scope) — rendered as
+"Not recorded," matching this schema's own explicit-unknown convention (`patient.sex = 'U'`).
+
+**Real bug caught by CI, not local testing — this PR needed two pushes:** the e2e spec's own
+`afterAll` tried to delete its synthetic `test_definition`/`test_analyte` fixture rows, which by
+then were referenced by real `ordered_test` rows the tests themselves had created — a real FK
+violation (`ordered_test_test_definition_id_test_definition_id_fk`). `observation.e2e-spec.ts`'s
+own synthetic multi-analyte `test_definition` fixture (TASK-056) already established the correct
+precedent (insert and leave, never delete) — this spec's `afterAll` was fixed to match.
+
+**Sandbox limitation, worth recording:** this session's shell had no `docker` and no reachable
+local Postgres/Keycloak (`docker: command not found`, `ECONNREFUSED 127.0.0.1:5432`/`:8080`) —
+unlike prior sessions' own real-headless-browser/real-compiled-server verification passes. Typecheck/
+lint/build and `apps/api`'s own DB-independent unit tests all ran locally and stayed green; the full
+e2e suite (including this task's own new tests) was verified for real only via CI, which does
+provision real Postgres/Keycloak via Docker. `apps/web`'s `auth/access-token.spec.ts` (needs a real
+Keycloak) failed locally for the same reason — pre-existing, unrelated to this session's changes,
+confirmed green in the same CI run.
+
+Verified end-to-end (via CI, real Postgres/Keycloak): `pnpm --filter api test:e2e` green, including
+4 new tests — the literal AC (hash invariance + a direct DB check across a `reference_range` edit),
+409 on a partially-verified panel, success with correct persisted provenance, and a differential-
+hash proof across two different observation sets; repo-wide `typecheck`/`lint`/`build` green
+(including a real `next build`/`nest build`). No `openapi.json`/SDK regeneration needed (no new HTTP
+route, per §10 Q2). `#118` auto-closed via PR #334's bare `Closes #118` line. `Deploy to Staging`
+(run 31156321718, triggered by the merge) — see this session's own follow-up for its result.
+
+**FEAT-016 remaining**: TASK-060 (report viewer + download screen) is the feature's third and last
+named task, not yet started — the natural next task, since it depends on TASK-059's own
+`assembleAndPersistReport` (now real) to have anything to view/download. FEAT-017 (Minimal
+worklist, #26, TASK-061/062) is M4's other remaining feature, fully unstarted.
+
+---
+
 # Status — 2026-08-06 (session 18)
 
 Last commit on main: `0a86847` — "docs: AGENTS.md standing rule for concurrent-agent

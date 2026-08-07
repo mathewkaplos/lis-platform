@@ -4,11 +4,10 @@ import {
   Param,
   Post,
   Req,
-  Res,
+  StreamableFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import type { FastifyReply } from 'fastify';
 import { createZodDto, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { assembleAndPersistReport } from './report-assembly';
@@ -53,6 +52,23 @@ export class ReportController {
    * Route Handler is what the browser actually reaches via a plain-link
    * `GET` (finding #4 in the plan doc: the two layers are allowed to
    * differ, since only `apps/web`'s edge is browser-visible).
+   *
+   * Real bug found and fixed during this task's own local verification, not
+   * caught by CI (see `engineering/testing` Skill entry #11's own origin
+   * note): an earlier version of this handler took over the response itself
+   * via `@Res({ passthrough: false })`, calling `res.send()` directly. That
+   * call happens *inside* `TenantContextInterceptor`'s own
+   * `db.transaction(async (tx) => ...)` callback -- which only issues
+   * `COMMIT` *after* the callback (i.e., this handler) returns -- so the PDF
+   * bytes could reach the client before the `report`/`audit_event` insert
+   * had actually committed. Confirmed directly, not assumed: a same-process
+   * follow-up query for the just-created `report` row intermittently found
+   * zero rows immediately after a `200` response. Returning a
+   * `StreamableFile` instead routes the response through Nest's own normal
+   * post-interceptor pipeline (confirmed live via Context7's NestJS docs:
+   * "Returns a StreamableFile instance to allow post-controller interceptor
+   * logic to execute") -- the bytes are only sent once the full interceptor
+   * chain, including the transaction commit, has resolved.
    */
   @Post('report')
   @HttpCode(200)
@@ -64,13 +80,7 @@ export class ReportController {
     { id }: OrderedTestIdParamDto,
     @Req() request: RequestWithGrantingRole,
     @DbTx() tx: RequestWithTx['tx'],
-    @Res({ passthrough: false }) res: FastifyReply,
-  ): Promise<void> {
-    // A thrown ConflictException (not all analytes verified) propagates to
-    // Nest's own exception-filter layer (ProblemDetailsFilter) exactly as
-    // it does on every other route — @Res() only changes how a *successful*
-    // response is sent, not exception handling, since `res` is never
-    // touched until after this call resolves.
+  ): Promise<StreamableFile> {
     const result = await assembleAndPersistReport(tx, {
       tenantId: request.authContext.tenantId,
       orderedTestId: id,
@@ -78,9 +88,9 @@ export class ReportController {
       actorRole: request.grantingRole,
     });
 
-    res
-      .header('Content-Type', 'application/pdf')
-      .header('Content-Disposition', `attachment; filename="report-${id}.pdf"`)
-      .send(result.pdf);
+    return new StreamableFile(result.pdf, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="report-${id}.pdf"`,
+    });
   }
 }

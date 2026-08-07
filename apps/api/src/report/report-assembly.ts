@@ -62,6 +62,29 @@ function formatReferenceRangeText(
   return `> ${refLow}${condition}`;
 }
 
+/**
+ * Real finding, caught only by actually opening a real rendered PDF during
+ * this task's own local `web-verify` pass (2026-08-07), not by any
+ * automated test: `specimen.collectedAt`/`receivedAt` and
+ * `observation.verifiedAt` were passed into `ChemistryReportInput` via a
+ * bare `.toISOString()`, rendering a raw machine timestamp
+ * ("2026-08-07T09:20:56.870Z") on an otherwise human-readable report.
+ * `dateOfBirth` (a date-only field, `.slice(0, 10)`) is unaffected -- this
+ * only formats real datetimes. `timeZone: 'UTC'`/`locale: 'en-US'` are both
+ * explicit, not server-default -- the same determinism discipline
+ * `formatReferenceRangeText` above already applies to numbers, extended to
+ * dates: a locale/timezone-dependent format would make this repo's own
+ * "same input, byte-identical PDF" AC (TASK-058) depend on which
+ * environment rendered it.
+ */
+function formatDateTime(date: Date): string {
+  return new Intl.DateTimeFormat('en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'medium',
+    timeZone: 'UTC',
+  }).format(date);
+}
+
 function formatObservationValue(row: typeof observation.$inferSelect): string {
   if (row.dataType === 'quantity') {
     return row.valueNum === null ? '' : String(Number(row.valueNum));
@@ -242,10 +265,10 @@ export async function assembleAndPersistReport(
     specimen: {
       accessionNumber: specimenRow.accessionNumber,
       collectedAt: specimenRow.collectedAt
-        ? specimenRow.collectedAt.toISOString()
+        ? formatDateTime(specimenRow.collectedAt)
         : 'Unknown',
       receivedAt: specimenRow.receivedAt
-        ? specimenRow.receivedAt.toISOString()
+        ? formatDateTime(specimenRow.receivedAt)
         : undefined,
     },
     order: {
@@ -263,7 +286,7 @@ export async function assembleAndPersistReport(
       // TASK-057's own identical convention in the results-grid UI.
       name: mostRecentlyVerified.verifierUserId ?? 'Unknown',
       status: 'verified',
-      verifiedAt: mostRecentlyVerified.verifiedAt!.toISOString(),
+      verifiedAt: formatDateTime(mostRecentlyVerified.verifiedAt!),
     },
   };
 

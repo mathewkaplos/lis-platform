@@ -233,3 +233,210 @@ never reaches a literal `'verified'` value at the ordered_test grain (finding #1
   shape.
 - (b) Two separate routes (`GET /v1/worklist`, `GET /v1/worklist/counts`), mirroring
   `order.controller.ts`'s one-concern-per-route convention more literally.
+
+---
+
+# Revision: TASK-062 — Worklist UI (tabs, filters, priority, TAT)
+
+Status: **IMPLEMENTED** — `apps/web/app/(app)/page.tsx` replaced, `worklist-view.tsx`,
+`active-filters.tsx`, `lib/format-duration.ts` added. FEAT-017 (#26) is now fully implemented — both
+named tasks (TASK-061 #120/PR #346, TASK-062 #121) done.
+§10's open questions were resolved by the human via the native options-prompt, recommended option
+chosen for each: Q1 **replace `apps/web/app/(app)/page.tsx` directly**, no new `/worklist` route.
+Q2 **status-conditional row-click destination**. Q3 **plain formatted duration text only**, no color
+urgency cue. Q4 **URL-searchParams-driven Server Component**, same convention as `orders/page.tsx`.
+
+**Verified end-to-end via a real `web-verify` headless-browser pass** (Docker/Postgres/Keycloak, a
+compiled `apps/api` server, real fixtures driven through the actual order/reception/result-entry/
+finalize/cancel endpoints — not assumed from code review): stage counts render correctly (Pending 6,
+In Progress 2, Verified 2 against the seeded fixture); each `StatCard`/tab correctly filters via the
+URL; the priority filter and its `ActiveFilters`/`FilterBar` removable chip both work; an
+`'in_process'` row's click lands directly on the real results grid showing the correct drafted value
+(Sodium, 140, flag N) — the literal one-click path satisfying "two clicks or fewer"; a `'resulted'`
+row's click lands on the real report viewer, correctly showing `PRELIMINARY`/"0 of 1 result verified"
+(a `'resulted'` `ordered_test` means every analyte is at least finalized, per TASK-061's own §10 Q1 —
+not the same as the report's own `FINAL` status, which needs full per-analyte verification; both
+screens agree, not a contradiction). Dark mode renders correctly. Zero console/page errors in the
+final clean run.
+
+**Real, load-bearing correction to this revision's own §1 finding #4, caught only by driving the
+actual page, not assumed from `results-grid.tsx`'s code:** `results-grid.tsx` has no focus-on-mount
+behavior — its `.focus()` calls only ever fire in response to an action (advancing to the *next*
+enterable row after a finalize), never automatically on initial page load. The "two clicks or fewer"
+AC is still satisfied literally (a single row click is one click, and the field is immediately
+visible and one `Tab`/click away — no click is spent reaching the page itself), but this revision's
+own finding #4 overstated it as "landing keyboard-ready per TASK-052's own auto-focus" — corrected
+here, not silently left inaccurate.
+
+**Real, minor finding from the verification pass itself, not a regression:** a Playwright-driven
+click sequence that mixes a client-side `Link`/`router.push()` navigation followed immediately by a
+full-page form submission (stage tab → priority filter, back-to-back) triggers a one-time React
+hydration-mismatch console warning on the `createdFrom`/`createdTo` date inputs
+(`style={{caret-color:"transparent"}}`, injected by Chromium's own native date-input rendering, not
+by any application code). Confirmed non-regression by direct isolation: neither the identical
+`orders/page.tsx` date-input markup under the same interaction sequence, nor this same worklist page
+driven in a single fresh browser context, reproduces it — only the specific "client nav, then form
+nav, same page instance" sequence does. Cosmetic only (React explicitly logs "this won't be patched
+up"; the DOM keeps the browser's own value), no functional impact observed across the whole
+verification pass. Not fixed — a browser-native input-styling quirk outside application code's
+control, the same class of "known, sandbox/browser-specific quirk, not a real code bug" this Skill's
+own doc already carries an example of (the Turbopack prerender quirk).
+
+Date: 2026-08-07    Backlog ID: FEAT-017 (#26) / TASK-062 (#121)
+
+## 1. Goal
+
+TASK-061 is merged (`eaaa9d7`, PR #346, deployed to staging) — `GET /v1/worklist` is real. TASK-062
+is FEAT-017's second and last task. Its own issue text (#121): "Worklist UI (tabs, filters, priority,
+TAT)." FEAT-017's AC: "Worklist returns correct counts per stage" (already proven by TASK-061's own
+e2e suite) and **"A technologist goes from login to entering a result in two clicks or fewer"** —
+this task's own literal AC to satisfy.
+
+**Real, load-bearing finding #1 — Stitch §8.0's own "Work Queue (master)" prompt describes a much
+larger surface than TASK-061's real API backs, and building the full prompt now would be
+speculative.** §8.0 names 7 tabs (Pending/In Progress/Waiting Verification/Verified/Approved/
+Rejected/Critical Results), an assigned-user avatar column with click-to-reassign, SLA-color-coded
+TAT (amber at-risk, red-pulse overdue), bulk assign/transition/print actions, live row updates, a
+density toggle, and saved views. None of these are backed by real data or infrastructure today:
+TASK-061's proposal findings #2/#4 (this same document, above) already confirmed no TAT/SLA/
+target-minutes column and no user/assignment table exist anywhere in this schema; no real-time
+transport (websocket/SSE/polling) exists anywhere in this repo; `apps/api` has no bulk-mutation
+route for `ordered_test`. Read the same way TASK-058 read KB-12's full template-engine vision
+against FEAT-032's later, separate scope: this task builds exactly the 3 stages TASK-061's API
+actually counts (pending/in-progress/verified) plus an "All" view, the 3 real filter dimensions the
+API actually accepts (stage, priority, date range — no assignee/discipline/facility filter, none of
+which exist), and the one column set the API actually returns. "Critical Results" as its own tab is
+a real, named gap this leaves open, not silently dropped — flagged in §6 Risks.
+
+**Real, load-bearing finding #2 — `FilterBar` and `StatCard` (TASK-035/036) have zero real
+consumers anywhere in `apps/web` today.** Grepped every non-Storybook `.tsx` file under `apps/web`:
+`FilterBar` appears only in its own Storybook story; `StatCard` likewise. `patients/page.tsx`'s own
+comment explicitly declined `FilterBar` for that screen ("a two-attribute filter panel was judged
+marginal value for this task's sizing") — not a rejection of the primitive itself. The worklist has
+4 real, independent filter dimensions (stage, status, priority, date range) and 3 real per-stage
+counts to display — a materially stronger case than patients' own 2-attribute screen. This task is
+their first real consumer, the same "built but never consumed until X" pattern `StatusPill` went
+through before TASK-057.
+
+**Real, load-bearing finding #3 — the app's current home route is a placeholder, and FEAT-017's own
+issue text names this task's destination directly.** `apps/web/app/(app)/page.tsx` (confirmed by
+direct read) renders only "Signed in" plus the raw session `sub`/`tenantId` — no real content.
+FEAT-017's own issue body (#26): "The technologist's home screen — without it, result entry has no
+usable entry point." Read together, this is unambiguous: TASK-062 replaces `(app)/page.tsx`'s
+content, not a new URL (§10 Q1 still poses this as a real choice, since a distinct `/worklist` route
+has genuine future value for nav-linking, but "replace the placeholder home" is the literal, narrow
+reading of both the issue text and finding #6 from TASK-061's own proposal above).
+
+**Real, load-bearing finding #4 — the literal "two clicks or fewer" AC is only achievable with
+status-conditional row navigation, not one fixed destination.** The worklist API's own `pending`
+bucket groups two real statuses that are *not* equally actionable:
+`observation.controller.ts`'s own `ENTERABLE_ORDERED_TEST_STATUSES` guard (confirmed by direct read)
+accepts only `'received'`/`'in_process'` for result entry — a plain `'ordered'` row (not yet
+received) has no results screen to usefully land on yet. A single fixed row-click target can
+therefore never be *both* always-valid and one-click-to-result-entry for the common case. Each
+worklist item already carries its own real `status` (not just its bucket), so the row click can
+branch on it directly — see §10 Q2.
+
+## 2. Affected files
+
+- `apps/web/app/(app)/page.tsx` — replaced with the real worklist screen (§10 Q1).
+- `apps/web/app/(app)/worklist-view.tsx` (new) — the client island: tabs, filter form results,
+  `DataTable`, row-click routing. Mirrors `orders-table.tsx`'s "thin client island" shape.
+- `apps/web/lib/format-duration.ts` (new, small) — formats `ageMinutes` as human-readable text
+  (e.g. "2h 15m"), consumed by the TAT column.
+- No `apps/api`/`packages/domain`/`packages/db` changes — TASK-061's API is consumed as-is.
+- No `openapi.json`/SDK regeneration needed (no new/changed route).
+
+## 3. Architecture consulted
+
+Stitch Prompt Library §8.0 ("Work Queue master") and Pattern E — read narrowly per finding #1.
+KB-26 Task Management (already loaded for TASK-061; unchanged). This document's own TASK-061
+revision (proposal findings #1–#6) — the authoritative source for exactly what the API returns.
+
+## 4. Skills loaded
+
+`engineering/frontend-design` (StatusPill-vs-Badge scoping, TASK-037's a11y-contrast findings on
+`StatCard`'s own delta chip, general primitive-usage conventions). `engineering/api-design`
+(read-only, gate-free consumption pattern already used by `orders/page.tsx`/`patients/page.tsx`).
+
+## 5. Assumptions & autonomous decisions
+
+- Status badges render the raw lowercase enum value (`ordered`, `received`, ...), matching
+  `orders-table.tsx`'s own established convention — no new label-mapping layer.
+- `Badge`, not `StatusPill`, for status/priority — `frontend-design` entry #1 reserves `StatusPill`
+  for clinical result flags (N/L/H/LL/HH), not general resource status; same reasoning
+  `orders-table.tsx`/`collection-queue-table.tsx` already documented.
+- The 3 `StatCard`s (Pending/In Progress/Verified) double as the stage-tab controls — each wrapped
+  in a plain `<Link>` setting `?stage=...`, rather than building a separate tab-strip component and
+  a redundant counts row. A 4th "All" link (no `stage` param) sits alongside them.
+
+## 6. Risks
+
+- "Critical Results" as a distinct tab/filter (Stitch §8.0) is real, out-of-scope-for-now surface —
+  `observation.flags` (HH/LL) exists and is already GIN-indexed (TASK-050), but `GET /v1/worklist`
+  does not expose or filter on it today. A future task can extend the API and this UI together if
+  triage-by-criticality becomes a real, named need.
+- No live/real-time updates — a technologist must reload/re-navigate to see new work; acceptable for
+  v1 given zero real-time transport exists anywhere in this repo today.
+- No assignee/claim workflow — every technologist sees the same tenant-wide worklist; matches the
+  already-established finding that no user/assignment table exists yet.
+
+## 7. Acceptance criteria
+
+- [ ] The app's home route (`/`) shows the real worklist, not the "Signed in" placeholder.
+- [ ] Stage counts render correctly and match `GET /v1/worklist`'s own `counts` field.
+- [ ] Tabs (`All`/`Pending`/`In Progress`/`Verified`) filter the table correctly.
+- [ ] Priority and date-range filters combine correctly with the active tab.
+- [ ] A `'received'`/`'in_process'` row's click navigates directly into the keyboard-ready results
+      grid — the literal "two clicks or fewer" AC, provable with a real headless-browser pass.
+- [ ] Dark mode, keyboard navigation, and zero console/page errors confirmed via a real `web-verify`
+      pass (Docker/Postgres/Keycloak already proven reachable this session).
+
+## 8. Testing plan
+
+No new `apps/api` e2e coverage needed (no backend change). A real `web-verify` headless-browser pass
+(Docker/Postgres/Keycloak already up this session): load the worklist as a real `technologist`
+session, confirm stage counts match a known fixture, click through each tab and filter combination,
+confirm a `'received'` row's click lands directly in the results grid with the first enterable field
+focused (TASK-052's own auto-focus behavior), confirm dark mode and zero console errors.
+`packages/ui`'s existing Storybook/axe CI check (TASK-037) covers `FilterBar`/`StatCard` in
+isolation already — no new story needed unless a real gap is found.
+
+## 9. Rollback plan
+
+Purely additive/replacement at the UI layer only — no schema, no API, no migration. Revert the PR;
+`apps/web` returns to the placeholder home screen.
+
+## 10. Questions requiring human approval
+
+**Q1 — Does this replace the app's home route directly, or become a new dedicated `/worklist`
+route?**
+- (a) **[Recommended]** Replace `apps/web/app/(app)/page.tsx` directly — it's already the literal
+  home route, and FEAT-017's own issue text calls this "the technologist's home screen." No redirect
+  indirection.
+- (b) A new dedicated `/worklist` route; `(app)/page.tsx` redirects to it — gives it a stable,
+  bookmarkable URL distinct from `/`, useful if a future sidebar nav wants an explicit "Worklist"
+  link highlighted separately from a generic "home" concept.
+
+**Q2 — Row-click destination: one fixed target, or status-conditional?**
+- (a) **[Recommended]** Status-conditional (finding #4): `'ordered'` → order detail page
+  (`/orders/{orderId}`, not yet receivable-into-results); `'received'`/`'in_process'` → the results
+  grid (`/orders/{orderId}/results`) — the literal two-click AC path, landing keyboard-ready per
+  TASK-052's own auto-focus; `'resulted'` → the report viewer (`/orders/{orderId}/report/
+  {orderedTestId}`, FEAT-016). `'cancelled'`/`'rejected'` (filter-only) → order detail.
+- (b) Always navigate to the order detail page — simplest and always valid, but adds an extra click
+  beyond order detail to reach result entry for the common case, missing the literal AC.
+
+**Q3 — TAT display: plain formatted duration only, or a visual urgency cue?**
+- (a) **[Recommended]** Plain formatted duration text only (e.g. "2h 15m"), no color-coding —
+  matches TASK-061's own already-approved "computed elapsed-time only, no stored SLA" decision;
+  color-coding now would silently invent an SLA threshold that was explicitly declined.
+- (b) A simple client-side-only color threshold (e.g. amber past some fixed minutes), acknowledged
+  as a UI-invented heuristic with no real SLA data behind it.
+
+**Q4 — Filters/tabs mechanism: URL-searchParams Server Component, or client-side state?**
+- (a) **[Recommended]** URL-searchParams-driven Server Component — plain `<Link>`s for tabs, a plain
+  form for priority/date filters, identical convention to `orders/page.tsx`/`patients/page.tsx`; no
+  new client-state pattern introduced, filters stay bookmarkable/shareable.
+- (b) Client-side tab/filter state (no full navigation per click) — snappier, but diverges from
+  every existing filtered-list page's convention in this repo and loses bookmarkability.

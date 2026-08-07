@@ -60,7 +60,12 @@ interface CanonicalEnvelope {
 // not a concurrency issue, a canonicalization mismatch with jsonb's own
 // real storage semantics. See order.controller.ts's own toOrderDto for the
 // call site this was found through.
-function stableStringify(value: unknown): string {
+//
+// Exported (TASK-058, FEAT-016 proposal §10 Q2) so the report-rendering
+// pipeline can reuse this exact canonicalize-then-hash convention for its
+// own content hash, rather than duplicating an independently-drifting copy
+// of the same logic in apps/api.
+export function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value);
   }

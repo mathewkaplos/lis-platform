@@ -49,13 +49,16 @@ export const order = pgTable(
 // its own status; references TestDefinition by ID (catalog vs. operational
 // split). status's full canonical value set is KB-03's own OrderedTest state
 // machine (03-business-workflows.md:68-73); TASK-042 (FEAT-012 proposal §5)
-// is the first task to write real rows, and writes only 'ordered' (create)
-// and 'cancelled' (cascade cancel) — the remaining values are reserved for
-// later features (FEAT-013+) per the same "don't build ahead of a real
-// consumer" discipline already used elsewhere in this schema, but included
-// in the CHECK now since KB-03 already documents them as this column's real,
-// non-speculative eventual range (matching specimen.status's identical
-// precedent, packages/db/src/schema/specimen.ts).
+// wrote the first real rows ('ordered' on create, 'cancelled' on cascade
+// cancel). Real writers since then (verified directly against code, not
+// assumed from this comment — FEAT-017/TASK-061 proposal finding #1):
+// 'received'/'rejected' by TASK-047 reception (specimen.controller.ts),
+// 'in_process' by TASK-051 draft-save (observation.controller.ts),
+// 'resulted' by TASK-056's finalization roll-up
+// (finalization-rollup.interceptor.ts), gated on Constitution Law #3. Only
+// 'collected' and 'reported' remain unwritten; this row's own status never
+// reaches a literal 'verified' value — that's tracked per-analyte on
+// observation.status instead.
 export const orderedTest = pgTable(
   "ordered_test",
   {

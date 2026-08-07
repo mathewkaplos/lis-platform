@@ -17,8 +17,13 @@ export const orderStatusSchema = z.enum(["ordered", "cancelled"]);
 export type OrderStatus = z.infer<typeof orderStatusSchema>;
 
 /** Full canonical OrderedTest lifecycle (KB-03, 03-business-workflows.md:68-73).
- * TASK-042 only ever writes 'ordered' and 'cancelled' — the rest are reserved
- * for FEAT-013+ (reception, result entry, verification, reporting). */
+ * TASK-042 wrote the first real values ('ordered'/'cancelled'); real writers
+ * since then (verified directly against code — FEAT-017/TASK-061 proposal
+ * finding #1): 'received'/'rejected' (TASK-047 reception), 'in_process'
+ * (TASK-051 draft-save), 'resulted' (TASK-056 finalization roll-up). Only
+ * 'collected'/'reported' remain unwritten; this column never reaches a
+ * literal 'verified' value — that's tracked per-analyte on
+ * observation.status instead. */
 export const orderedTestStatusSchema = z.enum([
   "ordered",
   "collected",

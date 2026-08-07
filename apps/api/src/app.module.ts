@@ -11,6 +11,7 @@ import { CatalogModule } from './catalog/catalog.module';
 import { SpecimenModule } from './specimen/specimen.module';
 import { ObservationModule } from './observation/observation.module';
 import { ReportModule } from './report/report.module';
+import { WorklistModule } from './worklist/worklist.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
 @Module({
@@ -23,6 +24,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     SpecimenModule,
     ObservationModule,
     ReportModule,
+    WorklistModule,
   ],
   controllers: [AppController],
   providers: [

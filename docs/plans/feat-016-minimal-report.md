@@ -574,6 +574,21 @@ Q2: **Option A** — reuse the existing `verify` capability; `apps/web` hides "D
 non-`verifier` sessions.
 Date: 2026-08-07    Backlog ID: FEAT-016 (#25) / TASK-060 (#119)
 
+**Post-merge correction (2026-08-07, same day):** the first Docker-capable session (this repo's
+sandbox lacked Docker/local Keycloak when PR #336 merged, so its CI-only verification couldn't
+catch either of these) found and fixed two real bugs during a real local `web-verify` pass:
+(1) `@Res({ passthrough: false })` sent the PDF response *inside* `TenantContextInterceptor`'s own
+transaction callback, before `COMMIT` — confirmed directly via an intermittent zero-rows read
+immediately after a `200` response, not assumed — fixed by returning a `StreamableFile` instead
+(routes through Nest's normal post-interceptor pipeline, confirmed via Context7's live NestJS
+docs); (2) `specimen.collectedAt`/`receivedAt` and `observation.verifiedAt` rendered as raw
+`.toISOString()` machine timestamps on an otherwise human-readable report — caught only by
+actually opening a real downloaded PDF, not any automated assertion — fixed with an explicit
+`en-US`/UTC `Intl.DateTimeFormat` (deliberately not server-default locale/timezone, to keep
+TASK-058's own "same input, byte-identical PDF" AC environment-independent). See `report.controller.ts`'s
+own doc comment and `report-assembly.ts`'s `formatDateTime` for the full detail. Fixed via a
+follow-up PR, not by editing #336's own already-merged commit.
+
 ## 1. Goal
 
 TASK-059 is merged (`ccc83d7`, PR #334) — `assembleAndPersistReport`

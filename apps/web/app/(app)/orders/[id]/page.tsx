@@ -100,7 +100,23 @@ export default async function OrderDetailPage({
                   <span className="text-foreground">
                     {testNameById.get(t.testDefinitionId) ?? t.testDefinitionId}
                   </span>
-                  <Badge variant="outline">{t.status}</Badge>
+                  <div className="flex items-center gap-2">
+                    {/* TASK-060 (FEAT-016 revision §1 finding #5): visible
+                        once this panel has reached 'resulted' -- mirrors
+                        "Enter results"'s own identical conditional shape.
+                        'resulted' does not itself guarantee every analyte is
+                        verified (TASK-056); the report page shows the real
+                        PRELIMINARY/FINAL state once reached. */}
+                    {t.status === 'resulted' ? (
+                      <Link
+                        href={`/orders/${order.id}/report/${t.id}`}
+                        className="text-sm text-primary hover:underline"
+                      >
+                        View report
+                      </Link>
+                    ) : null}
+                    <Badge variant="outline">{t.status}</Badge>
+                  </div>
                 </li>
               ))}
             </ul>

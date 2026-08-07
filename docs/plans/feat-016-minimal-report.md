@@ -556,3 +556,231 @@ task's output.
      unverified (richer, more actionable for a future caller) — more useful but introduces a new
      response shape this task's own scope doesn't otherwise need (TASK-056's own §10 Q4 explicitly
      deferred a similar "richer error shape" question until a real UI consumer needed one).
+
+---
+
+# Revision: TASK-060 — Report viewer + download screen
+
+Status: **APPROVED** (2026-08-07) — §10's open questions resolved by the human as follows:
+Q1: **Option A** — raw binary PDF response via `@Res()`, not base64 JSON.
+Q2: **Option A** — reuse the existing `verify` capability; `apps/web` hides "Download PDF" from
+non-`verifier` sessions.
+Date: 2026-08-07    Backlog ID: FEAT-016 (#25) / TASK-060 (#119)
+
+## 1. Goal
+
+TASK-059 is merged (`ccc83d7`, PR #334) — `assembleAndPersistReport`
+(`apps/api/src/report/report-assembly.ts`) exists, requires every analyte on a panel to be
+verified, and has no HTTP route by design (its own §10 Q2). TASK-060's own issue text (#119):
+"Expected output: Report viewer screen." Its one AC: "Preliminary vs. final status is unambiguous
+in the viewer." Its one dependency, TASK-059, is satisfied.
+
+**Real, load-bearing finding #1 — "preliminary vs. final" is provable entirely from data this repo
+already exposes; no new "preliminary report" rendering path is needed.** `ordered_test.status`
+only ever reaches `'resulted'` today (TASK-056) once every analyte on the panel is at least
+finalized (`'preliminary'` or `'verified'`) and any critical is verified — `'resulted'` does **not**
+guarantee every analyte is `'verified'`, only `assembleAndPersistReport`'s own stricter
+all-`'verified'` precondition does. The already-shipped `GET /v1/ordered-tests/:id/results`
+(TASK-051/052/057) already returns each analyte's own `status` — the exact count of
+verified-vs-total analytes on the panel is computable from that one existing, ungated read, with
+zero new backend surface. This directly answers the AC: the viewer shows a real "N of M verified"
+state — **PRELIMINARY** while `N < M`, **FINAL** (with a working download) once `N === M` — read
+from data, not a second rendering pipeline for partial results. Building an actual "preliminary PDF"
+from partial data would reopen exactly the `Report` state-machine scope TASK-059's own finding #3
+already declined (draft/preliminary/final rendering variants) — out of scope here too, for the same
+reason.
+
+**Real, load-bearing finding #2 — this repo has never returned a raw binary HTTP response; every
+existing "rendered artifact" route stays JSON.** Grepped `apps/api/src` for `@Res(`/`StreamableFile`/
+raw response handling: zero hits. TASK-046's own closest precedent (`GET /v1/specimens/:id/label`)
+embeds `bwip-js`'s SVG output as a *string* inside an otherwise-ordinary `@ZodResponse`-typed JSON
+body, because SVG is text — that pattern does not extend to a PDF (binary). This task is
+necessarily the first route in this repo to return non-JSON bytes, a real, deliberate exception to
+the `@ZodResponse`/OpenAPI-typed convention every other route follows (§10 Q1).
+
+**Real, load-bearing finding #3 — the download route cannot itself carry `@Audit()`/
+`AuditInterceptor`, but is still fully audited.** `assembleAndPersistReport` already writes its own
+`report.generate` audit event directly (`writeAuditEvent`, inside the same transaction as the
+`report` row insert) — not through the `@Audit()` decorator/`AuditInterceptor` mechanism every other
+audited route uses, because that interceptor's contract (`AuditedMutationResult`: `resourceId` +
+JSON `before`/`after`) has no sensible shape for a raw-PDF-bytes response, and finding #2 already
+established this route returns raw bytes. Applying `@Audit()` on top would either not compile
+against the interceptor's contract or double-audit the same action. The controller route below
+therefore applies `TenantContextInterceptor` only (for `tx`/RLS binding), not `AuditInterceptor` —
+Constitution Law #5 is still satisfied because the service's own internal write already runs in the
+same transaction as the `report` insert; nothing about *this* route being unaudited-at-the-
+interceptor-level weakens that.
+
+**Real, load-bearing finding #4 — a real browser file download needs a genuinely new mechanism in
+`apps/web`, not an extension of the existing Server-Action/typed-SDK pattern.** Every existing
+`apps/web` write (draft, finalize, verify, cancel) is a Server Action returning JSON, and every read
+goes through `@lis/sdk`'s typed `client.GET(...)`. Neither can hand raw PDF bytes to the browser as
+a real "Save As" download — a Server Action's return value is serialized through Next's own RSC
+protocol, not a plain HTTP response the browser can save as a file. `apps/web/app/api/auth/*/route.ts`
+(TASK-031, login/callback/logout) is this repo's only existing precedent for a plain Next.js Route
+Handler returning a real `Response` — reused here for the same reason: a Route Handler
+(`apps/web/app/(app)/orders/[id]/report/[orderedTestId]/download/route.ts`) that holds the session's
+access token server-side (same `getValidAccessToken()` every Server Action already uses), calls
+`apps/api`'s new route directly via `fetch` (not the typed SDK client, which assumes JSON), and
+returns the PDF bytes with `Content-Type: application/pdf`/`Content-Disposition: attachment` — reached
+from the browser via a plain `<a href>` full-navigation link, the same TASK-046 "force a full
+navigation, not client-side routing" technique already used for "Print label."
+
+**Real, load-bearing finding #5 — the report scope is per-`ordered_test` (a panel), not per-`order`,
+matching TASK-059's own already-resolved finding #2 exactly** — but `/orders/[id]/results`
+(TASK-052) is a single order-wide grid across every ordered test on the order. The natural,
+lowest-risk placement is a "View report" affordance **per ordered-test row** on the existing order
+detail page (`apps/web/app/(app)/orders/[id]/page.tsx`'s own "Tests" list, which already renders
+each ordered test's own status Badge), visible once `status === 'resulted'` — mirroring "Enter
+results"'s own identical conditional-visibility shape — landing on a new per-ordered-test page, not
+a second order-wide screen.
+
+## 2. Affected files
+
+- `apps/api/src/report/report.controller.ts` (new) — `POST /v1/ordered-tests/:id/report`, raw PDF
+  bytes on success (finding #2), calling `assembleAndPersistReport` (409 propagates unchanged when
+  not all analytes are verified — the exact error `ProblemDetailsFilter` already formats).
+- `apps/api/src/report/report.module.ts` (new) — registers `ReportController`, mirroring every
+  other domain module's own minimal shape (`ObservationModule`).
+- `apps/api/src/app.module.ts` — registers the new `ReportModule`.
+- `apps/web/app/(app)/orders/[id]/page.tsx` — a "View report" link per ordered-test row, visible
+  once `status === 'resulted'` (finding #5).
+- `apps/web/app/(app)/orders/[id]/report/[orderedTestId]/page.tsx` (new) — the viewer: fetches the
+  existing `GET /v1/ordered-tests/:id/results` (no new read route, finding #1), computes N-of-M
+  verified, renders an unambiguous PRELIMINARY/FINAL state (the literal AC), and — once FINAL — a
+  "Download PDF" link to the Route Handler below.
+- `apps/web/app/(app)/orders/[id]/report/[orderedTestId]/download/route.ts` (new) — the Route
+  Handler proxying the audited `POST` to `apps/api` and returning raw bytes to the browser (finding
+  #4).
+
+**Not affected:**
+- `packages/domain`/`packages/sdk`/`openapi.json` — this route is deliberately excluded from the
+  `@ZodResponse`/OpenAPI-schema convention (finding #2); `apps/web` calls it via direct `fetch`, not
+  the typed SDK client, so no schema/SDK regeneration applies to it. (`GET /v1/ordered-tests/:id/results`,
+  the one route the viewer *does* call through the typed client, already exists — nothing to
+  regenerate there either.)
+- `apps/api/src/report/report-assembly.ts`/`report-render.ts` — reused as-is; this task adds a
+  caller, not a change to either.
+
+## 3. Architecture consulted
+
+- `docs/plans/feat-016-minimal-report.md`'s own TASK-059 revision — the all-verified precondition,
+  the 409 shape, and finding #3 ("no `Report` state machine") this revision's finding #1 extends to
+  the viewer's own preliminary/final reading.
+- `apps/api/src/specimen/specimen.controller.ts` (TASK-046) — the closest existing "preview vs.
+  audited action" split (`label()` unaudited GET, `print()` audited POST) and the "plain `<a>` forces
+  full navigation" precedent, both directly reused (findings #4/#5).
+- `apps/web/app/api/auth/*/route.ts` (TASK-031) — this repo's only existing Next.js Route Handler
+  precedent, confirming the mechanism exists and is already trusted for a real `Response` (finding
+  #4).
+- `engineering/api-design` Skill — entry #6 (reads aren't audited by default) and entry #8
+  (explicit `ZodValidationPipe` instantiation for params) — checked for the new controller's own
+  param validation, even though its response body itself opts out of the JSON/Zod convention.
+- `engineering/pdf-generation` Skill — checked for any existing guidance on serving generated PDFs;
+  none yet (TASK-058/059 both stopped short of an HTTP surface) — this task's own findings are
+  written up as a new entry once implementation confirms them.
+
+## 4. Skills loaded
+
+- `engineering/pdf-generation` — TASK-058's determinism contract, reused unmodified; this task adds
+  the first real consumer of its byte output over HTTP.
+- `engineering/api-design` — entries #6/#7/#8 (reads unaudited by default, RLS invisibility,
+  explicit `ZodValidationPipe`) for the new controller's param handling.
+- `domain/result-verification` — the `verify` capability's own existing role-asymmetric grant
+  (verifier-only), relevant to §10 Q2 below.
+- `engineering/frontend-design` — entry #5 (Next.js client-side nav retains a prior route's RSC
+  payload in the DOM) — checked again given this task adds a second "force full navigation via a
+  plain `<a>`" link, the same class of risk TASK-046 already found and fixed once.
+
+## 5. Assumptions & autonomous decisions
+
+- **No "preliminary PDF" is ever rendered** (finding #1) — the PRELIMINARY state is a plain status
+  read, not a second artifact.
+- **The download route is `POST`, not `GET`**, on `apps/api` — it side-effects (creates a `report`
+  row + audit event) every call, matching `print()`'s own POST-for-audited-action precedent;
+  `apps/web`'s own Route Handler is what the *browser* reaches via a plain-link `GET`, translating
+  that into a server-side `POST` call to `apps/api` (finding #4) — the two layers are allowed to
+  differ since only `apps/web`'s edge is browser-visible.
+- **Every download call re-generates and re-audits**, exactly matching TASK-046/059's own "every
+  print/generate, first or repeat, audited identically" precedent — no caching, no "already
+  generated, skip" shortcut, keeping this task's own scope additive-only.
+- **The viewer page itself needs no capability gate** — it only reads `GET /v1/ordered-tests/:id/results`,
+  already ungated, matching every other read in this repo.
+
+## 6. Risks
+
+- **This is the first route in this repo to break the `@ZodResponse`/JSON convention** (finding #2)
+  — a real, deliberate, documented exception, not an oversight; a future reviewer unfamiliar with
+  this revision could mistake the missing `@ZodResponse`/schema entry for a bug. Worth calling out
+  explicitly in the PR description, not just this doc.
+- **The same RSC-payload-retention risk TASK-046 already found once** (`engineering/frontend-design`
+  entry #5) could recur for this task's own new plain-`<a>` link if a caller ever converts it back to
+  `next/link` client-side navigation without realizing why it was plain in the first place — the
+  code comment on the link itself needs to say why, not just the plan doc.
+- **A second full transaction (assemble + render + insert + audit) runs on every single download
+  click**, not just the first — acceptable at this milestone's real traffic (same tradeoff TASK-059's
+  own §6 already accepted for repeated *view/assembly* calls), but a real, non-hypothetical load
+  cost if a future caller starts polling this route instead of a human clicking a button.
+
+## 7. Acceptance criteria
+
+TASK-060's literal AC, narrowed per findings #1–#5:
+- [ ] The viewer unambiguously shows PRELIMINARY (with the real verified-count) while any analyte on
+  the panel is unverified, and FINAL once every analyte is verified — the literal AC, proven by a
+  real `web-verify` pass showing both states for the same panel at different points in its lifecycle.
+- [ ] "Download PDF" is only reachable/functional once FINAL; attempting it while PRELIMINARY is
+  either hidden or clearly disabled, never a dead link/opaque failure.
+- [ ] Clicking "Download PDF" while FINAL produces a real PDF file save, verified via a real
+  headless-browser download-triggered check, not just an HTTP-level assertion.
+- [ ] Each click creates exactly one new `report`/`audit_event` row pair (finding #3's own audit
+  path), proven by a before/after count delta, matching every prior audited-action task's own
+  verification discipline.
+
+## 8. Testing plan
+
+1. New `apps/api` e2e test(s): `POST /v1/ordered-tests/:id/report` returns real PDF bytes
+   (`Content-Type: application/pdf`, non-empty body) once every analyte is verified; 409 (unchanged
+   `assembleAndPersistReport` behavior) when not; exactly one new `report`/`audit_event` row per
+   call, proven by count deltas; §10 Q2's resolved capability enforced (403 for the wrong role, if
+   Option A).
+2. Repo-wide `pnpm typecheck`/`pnpm lint`/`pnpm build`, including a real `nest build`/`next build`.
+3. A real headless-Chromium `web-verify` pass (this task's own literal AC's own words: "unambiguous
+   in the viewer") — both PRELIMINARY and FINAL states against a real panel at each stage, a real
+   triggered download, dark mode, zero console/page errors — the same discipline TASK-046/052/057
+   already used for their own UI-facing ACs.
+4. `openapi.json`/SDK regeneration is a deliberate no-op for the new binary route (finding #2); a
+   normal check only if any *other* route's shape incidentally changed (not expected).
+
+## 9. Rollback plan
+
+Additive-only: two new backend files (controller + module), one new `app.module.ts` import line, two
+new `apps/web` pages/routes, one new link on an existing page. No existing route, table, or screen is
+modified. Reverting the PR removes the entire feature cleanly; no migration, no data written by this
+task that a rollback would need to reconcile (each `report` row remains a valid, self-contained
+record of a real past generation regardless of whether this task's own UI is later reverted).
+
+## 10. Open questions — resolved 2026-08-07 via the native options-prompt
+
+1. **Response shape for the PDF bytes.** **Resolved: Option A.**
+   - **Option A (recommended, chosen): raw binary**, via NestJS's `@Res()` (`res.type('application/pdf').send(buffer)`),
+     with `Content-Disposition: attachment; filename="..."` — the standard, browser-native shape for
+     a real file download, works with a plain `<a href>` navigation with zero client JS, no payload
+     bloat.
+   - **Option B: base64-encoded JSON** (`{ pdfBase64: string }`), keeping every route's response
+     JSON/`@ZodResponse`-typed uniformly — avoids finding #2's exception, at the cost of ~33% payload
+     bloat and requiring client-side JS (Blob conversion + a synthetic anchor click) to actually
+     trigger a save, since a JSON response can't drive a plain-link download.
+
+2. **Capability gate on generating/downloading a report.** **Resolved: Option A.**
+   - **Option A (recommended, chosen): reuse the existing `verify` capability** (verifier-only) — a
+     generated report is this feature's own final, clinically-signed artifact; gating it the same
+     way `verify` itself already is (TASK-055) matches this repo's own established role-asymmetry
+     precedent (TASK-057 already hides the "Verify" control from `technologist` sessions) rather
+     than introducing a laxer standard for the artifact that *depends on* verification. If chosen,
+     `apps/web` hides "Download PDF" from non-`verifier` sessions, reusing `hasVerifierRole` as-is
+     (TASK-057).
+   - **Option B: no new capability** — any authenticated tenant user who can already see the order
+     can generate/download its report, matching this repo's uniform "reads aren't capability-gated"
+     convention (catalog, patient search, results list are all ungated) — the audit trail (finding
+     #3) still records exactly who generated it either way, so this option isn't a traceability gap,
+     just a laxer access default.

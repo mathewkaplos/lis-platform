@@ -81,3 +81,25 @@ frontmatter declaration (this entry's own commit).
   before deleting any branch, check whether it's the base of a different
   open PR; retarget or merge that PR first, or confirm none depends on it.
 - **Files:** `AGENTS.md`
+
+## 2026-08-07 (5)
+
+- **Friction:** verifying TASK-062's worklist UI with a real headless-browser
+  Playwright script, `page.waitForLoadState('networkidle')` called right
+  after clicking a Next.js client-side `<Link>`/`router.push()` navigation
+  resolved *before* the resulting RSC fetch even started — the click handler
+  returns synchronously, and the network happened to already be idle at that
+  exact instant. This produced a 100%-reproducible false failure (stale
+  `page.url()`, a screenshot of the pre-click page) that looked exactly like
+  a real navigation bug in the app, costing real debugging time before being
+  root-caused by direct isolation (the identical click, awaited with
+  `waitForTimeout` instead, navigated correctly every time). Not a one-off:
+  `apps/web` now has several client-side-navigating components (tables with
+  `onRowClick`/`router.push()`, `Link`-wrapped tabs/stat tiles), so any
+  future verification session driving one of them would hit this cold.
+- **Area:** existing-skill:web-verify
+- **Change:** added a gotcha to `web-verify/SKILL.md`'s "Drive it" section:
+  use `page.waitForURL(<pattern>)` after a click-triggered client-side
+  navigation, not `waitForLoadState('networkidle')` — reserve `networkidle`
+  for a fresh `page.goto()`/full-page form submission.
+- **Files:** `.claude/skills/web-verify/SKILL.md`

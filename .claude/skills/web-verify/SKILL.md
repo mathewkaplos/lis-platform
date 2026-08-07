@@ -270,6 +270,24 @@ stderr lines (`org.freedesktop.UPower...ServiceUnknown`) on launch are
 harmless sandbox noise, not a real failure -- ignore them, don't debug
 them.
 
+**Gotcha (2026-08-07, TASK-062 verification): after clicking a Next.js
+client-side `<Link>` or a `router.push()` call, `page.waitForLoadState('networkidle')`
+can resolve *before* the resulting RSC fetch/navigation even starts --
+the click handler returns synchronously, and if the network happens to be
+already idle at that exact instant, `networkidle` is satisfied immediately,
+long before the actual client-side transition completes.** This produced a
+misleading, 100%-reproducible false failure: `page.url()` read the stale
+pre-click URL, and a screenshot taken right after showed the old page --
+looking exactly like a real navigation bug in the app, not a driving-script
+race. Root-caused by direct isolation: the identical click, awaited with
+`page.waitForTimeout(1500)` instead of `waitForLoadState('networkidle')`,
+navigated correctly every time. **Use `page.waitForURL(<pattern>)` after any
+click that triggers client-side navigation (a `<Link>` or a
+`useRouter().push()` call), not `waitForLoadState('networkidle')` --
+reserve `networkidle` for a fresh `page.goto()`/full-page form submission,
+where there's always a real, immediate in-flight request for it to
+legitimately wait on.**
+
 **Look at the screenshot.** A blank frame or an unstyled page (classes
 present in the DOM but no visible styling) is a real failure signal even
 if the script reports no thrown errors.

@@ -13,7 +13,7 @@ import {
   testDefinition,
   unit,
 } from '@lis/db';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { assembleAndPersistReport } from '../src/report/report-assembly';
 import { AppModule } from './../src/app.module';
 import { getKeycloakToken } from './get-keycloak-token';
@@ -44,7 +44,6 @@ describe('Report assembly (e2e)', () => {
   let analyteBId: string;
   let singleAnalyteTestDefId: string;
   let twoAnalyteTestDefId: string;
-  const insertedRangeIds: string[] = [];
 
   async function createPatient(): Promise<string> {
     const res = await request(app.getHttpServer())
@@ -219,7 +218,6 @@ describe('Report assembly (e2e)', () => {
           effectiveFrom: new Date('2000-01-01T00:00:00Z'),
         })
         .returning();
-      insertedRangeIds.push(row.id);
       return row.id;
     }
     await insertRange(analyteAId);
@@ -263,34 +261,15 @@ describe('Report assembly (e2e)', () => {
     ]);
   });
 
+  // No fixture cleanup here, deliberately -- unlike
+  // reference-range-resolution.e2e-spec.ts's own synthetic analyte (never
+  // referenced by a real order), this spec drives real orders/observations/
+  // report rows against its synthetic test_definition, which FK-references
+  // block deleting afterward. observation.e2e-spec.ts's own synthetic
+  // multi-analyte test_definition fixture (TASK-056) already established
+  // this exact precedent: insert and leave, never delete -- matching this
+  // repo's own "accumulated e2e/manual-verification data" convention.
   afterAll(async () => {
-    await db
-      .delete(testAnalyte)
-      .where(
-        inArray(testAnalyte.testDefinitionId, [
-          singleAnalyteTestDefId,
-          twoAnalyteTestDefId,
-        ]),
-      );
-    await db
-      .delete(testDefinition)
-      .where(
-        inArray(testDefinition.id, [
-          singleAnalyteTestDefId,
-          twoAnalyteTestDefId,
-        ]),
-      );
-    if (insertedRangeIds.length > 0) {
-      await db
-        .delete(referenceRange)
-        .where(inArray(referenceRange.id, insertedRangeIds));
-    }
-    await db
-      .delete(analyte)
-      .where(inArray(analyte.id, [analyteAId, analyteBId]));
-    await db
-      .delete(codeSystemValue)
-      .where(inArray(codeSystemValue.id, [synthCsvIdA, synthCsvIdB]));
     await app.close();
   });
 

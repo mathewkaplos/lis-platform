@@ -1,7 +1,53 @@
 # Status — 2026-08-07 (session 19)
 
-Last commit on main: `5f4e487` — "docs: TASK-060 close-out -- breadcrumb refresh, plan doc
-FULLY IMPLEMENTED, FEAT-016 (#25) closed" (PR #337).
+Last commit on main: `42f684e` — "fix(api): report route uses StreamableFile (transaction-commit
+race); human-readable report dates" (PR #339).
+
+## Docker became available mid-session (WSL integration enabled) -- a real local `web-verify` pass
+on TASK-059/060 found and fixed two real bugs neither CI run had caught, via PR #339 (`42f684e`)
+
+The `/close` Pre-Close Report's own "no docker" Manual Verification Checklist gap (session 19's
+earlier entry, below) got resolved for real, not just deferred: once Docker was reachable, a full
+local Postgres/Keycloak/headless-Chromium pass drove both a `technologist` and a `verifier` session
+through the real PRELIMINARY (Lipid Panel, 2/4 verified) and FINAL (Sodium, fully verified) states,
+confirmed "View report" link visibility gated on `resulted` status and "Download PDF" gated on
+`verifier` role, and completed a real triggered download.
+
+**Real bug #1, reproduced directly (not assumed):** `ReportController.generate()`'s original
+`@Res({ passthrough: false })` + manual `res.send()` sent the PDF response *inside*
+`TenantContextInterceptor`'s own `db.transaction()` callback, before `COMMIT` — a same-process
+follow-up query for the just-created `report` row intermittently found zero rows immediately after
+a `200` response (reproduced on the very first local e2e run, 5/5 clean after the fix). Fixed by
+returning a `StreamableFile` instead — confirmed via Context7's live NestJS docs that this routes
+through Nest's normal post-interceptor response pipeline, so bytes are only sent once the
+transaction has actually committed. CI's own single passing run per PR never happened to hit this
+timing window — a real, load-bearing reminder that "CI is green" and "no race exists" are not the
+same claim.
+
+**Real bug #2, caught only by opening a real downloaded PDF:** `specimen.collectedAt`/`receivedAt`
+and `observation.verifiedAt` rendered as raw `.toISOString()` machine timestamps on an otherwise
+human-readable report. Fixed with an explicit `en-US`/UTC `Intl.DateTimeFormat` — deliberately not
+server-default locale/timezone, to keep TASK-058's own "same input, byte-identical PDF" AC
+environment-independent.
+
+Both fixes verified end-to-end: `pnpm --filter api test:e2e -- report-assembly` 5/5 clean local
+runs against a fresh DB each time; repo-wide `typecheck`/`lint`/`build` green; the real headless-
+Chromium pass re-run after the fix, downloaded PDF opened and visually confirmed correct in both
+light and dark mode, zero console/page errors. `Deploy to Staging` (run 31166615034, triggered by
+the merge) completed successfully.
+
+**FEAT-016 is fully implemented and now genuinely verified end-to-end, including a real UI pass**
+— `docs/plans/feat-016-minimal-report.md`'s TASK-060 revision carries the full "Post-merge
+correction" detail. This closes the loop on the earlier session-19 breadcrumb entry below (session
+start with no Docker; both real bugs above were invisible to CI's own single-pass runs).
+
+**Also fixed this session, both approved via the Pre-Close Report:** `close/SKILL.md` check 6 now
+distinguishes the expected one-commit breadcrumb lag after a close-out commit from real staleness;
+`engineering/testing` Skill gained entry #11 (no-`docker`-at-all sandbox condition) and
+`web-verify/SKILL.md` gained a matching early-bail check — both pushed to `lis-engineering` this
+session (`3a1d84f`).
+
+---
 
 ## TASK-060 (FEAT-016's third and last task) implemented and merged this same session, via PR #336
 (`997f310`), closing #119 — FEAT-016 (Minimal report, #25) is now fully implemented, all three

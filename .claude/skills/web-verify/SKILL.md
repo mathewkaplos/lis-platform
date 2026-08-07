@@ -14,6 +14,19 @@ concern. First captured 2026-08-01 verifying TASK-036 (app shell, PR #237);
 extend it with anything a future verification session actually discovers,
 same as any other Skill.
 
+**Check this session actually has a local stack before starting (added
+2026-08-07, TASK-059/060 session):** this Skill's own description says
+"without needing a live Keycloak" -- that means without the full OIDC
+redirect dance, not without Keycloak reachable at all. Step 2's own
+password-grant recipe still needs a real Keycloak listening on `:8080` to
+mint the token pair it signs into the session cookie, which in turn needs a
+working `docker compose up` locally. Run `which docker && docker ps` first;
+if that fails (a sandbox where `docker` isn't a usable command at all, not
+just missing one image -- `engineering/testing` Skill entry #11 has the
+exact symptom), this entire Skill is blocked, not just its Chromium step --
+stop here and rely on CI's own real e2e run instead, stated explicitly in
+the PR rather than attempting local verification.
+
 ## 1. Launch the dev server
 
 `apps/web`'s pages that read `cookies()` fail at request time (not just

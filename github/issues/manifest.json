@@ -1567,6 +1567,32 @@
       "deps": [
         "TASK-063"
       ]
+    },
+    {
+      "id": "TASK-065",
+      "title": "Critical notification record, read-back capture & query",
+      "priority": "Critical",
+      "milestone": "M5",
+      "feature": "FEAT-021",
+      "size": "L (2 days)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-065-critical-notification-record-read-back-query.md",
+      "deps": [
+        "TASK-054"
+      ]
+    },
+    {
+      "id": "TASK-066",
+      "title": "Escalation timer & finalization-gate widening",
+      "priority": "Critical",
+      "milestone": "M5",
+      "feature": "FEAT-021",
+      "size": "M (1-2 days)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-066-escalation-timer-finalization-gate-widening.md",
+      "deps": [
+        "TASK-065"
+      ]
     }
   ]
 }

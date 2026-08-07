@@ -58,6 +58,17 @@ packages/ui (design system) · packages/sdk (generated API client)
   on 2026-07-26 (see `guard-dangerous-git.py`, which blocks it). Delete the
   branch as its own separate step afterward, only after confirming the merge
   actually landed (`git log origin/main`).
+- Before deleting any branch, check whether it is the **base** branch of a
+  different, still-open PR (a stacked-PR setup) — deleting it **permanently
+  closes** that PR; GitHub refuses to reopen it or change its base once the
+  base branch is gone (confirmed 2026-08-07: PR #342, `gh pr edit --base`
+  and the equivalent `mcp__github__update_pull_request` both failed with
+  "Cannot change the base branch of a closed pull request" /
+  "state cannot be changed... branch has been deleted"). No data is lost —
+  the head branch and its commits are untouched — but recovery means opening
+  a brand-new PR from the same head branch against the real target instead
+  of reusing the old PR number. Retarget or merge the dependent PR first, or
+  confirm no open PR uses the branch as its base, before deleting it.
 - PRs or commits that modify `AGENTS.md`, `.claude/settings*.json`, or hook
   scripts under `.claude/hooks/` should be expected to need the human to run
   the git-level stage/commit/push/PR-create steps directly, even when the

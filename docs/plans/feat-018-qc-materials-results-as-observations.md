@@ -1,6 +1,46 @@
 # Implementation Proposal: FEAT-018 QC materials & results as Observations
-Status: **DRAFT**
-ADR: adr-0015 (proposed, drafted alongside this proposal — see §10 Q1)    Date: 2026-08-07    Backlog ID: FEAT-018 (#27) / TASK-063 (not yet created)
+Status: **APPROVED** — TASK-063 implemented (this revision). TASK-064 (#351) remains.
+ADR: adr-0015 (accepted 2026-08-07 — see §10 Q1)    Date: 2026-08-07    Backlog ID: FEAT-018 (#27) / TASK-063 (#350)
+
+**TASK-063 (Control lot & QC observation schema), 2026-08-07.** All three §10 questions resolved
+via the native options-prompt, recommended option chosen for each: ADR-0015 accepted as drafted;
+`enter_result` reused (no new capability); TASK-063/TASK-064 created as real GitHub issues (#350,
+#351). Delivered exactly per §2's affected-files list: `control_lot` table (migration
+`0016_control_lot_and_observation_qc_subject.sql`), `observation`'s `isControl`/`controlLotId` +
+nullable `patientId`/`orderedTestId`/`specimenId` + `chk_observation_subject`.
+
+**Real finding during implementation, not anticipated in §5/§6:** Postgres only permits
+table-qualified column references (`"observation"."col"`) inside a CHECK clause that's part of the
+same `CREATE TABLE` statement — this table's original ten `ck_observation_*_value` constraints get
+that for free (embedded in `0004_observation.sql`'s own `CREATE TABLE`), but `chk_observation_subject`
+is added later via a standalone `ALTER TABLE ... ADD CONSTRAINT`, where a qualified reference errors
+with "missing FROM-clause entry for table observation" — confirmed by a real failed migration run,
+not assumed. Fixed by writing the new constraint with bare (unqualified) column names instead of
+this file's usual `${table.column}` interpolation; documented inline in `observation.ts` so the next
+person adding a post-creation CHECK constraint to this table doesn't rediscover it.
+
+**Second real finding:** widening `observation`'s nullability (per ADR-0015's own Consequences
+section) broke real, existing type-checking in `observation.controller.ts`'s `toObservationDto`/
+`toPriorObservationDto` — both read `row.orderedTestId` and assign it into a domain type that still
+requires it non-null (correctly — every route these mappers serve only ever reads patient-flow rows,
+never a QC row). Fixed with a narrow non-null assertion at each site, commented with why it's safe
+there specifically (ADR-0015's own predicted widening, not a new gap).
+
+**Third real finding:** `rls-isolation-check.ts`'s own structural sweep auto-discovers every
+tenant-scoped table generically (via `information_schema`), so `control_lot` was picked up
+immediately — but its live leak check failed until a `control_lot` fixture was added to
+`insertFixtures()` (no fixture ⇒ "tenant A has 0 rows — cannot prove isolation"), the same gap
+`report` (TASK-059/060) already has and this task does not fix (out of scope, unrelated table).
+
+Verified: real migration applied against local Postgres (`pnpm db:reset`, drop/recreate — no
+production data exists at this milestone, ADR-0015's own rollback precondition); a re-run of
+`drizzle-kit generate` immediately after confirmed "No schema changes, nothing to migrate"; the new
+`apps/api/test/control-lot.e2e-spec.ts` (RLS isolation + both valid/invalid CHECK shapes) plus the
+full existing `apps/api` e2e suite, 157/157 on a clean DB; `pnpm --filter @lis/db rls-check` and
+`golden-check` both green on a clean DB (the RLS script's own "4 leaks" on a *non-clean* run were
+confirmed as legitimate cross-tenant fixture data from `order.e2e-spec.ts`'s own `TENANT_B`, not a
+real leak — re-confirmed clean immediately after a fresh `db:reset`); repo-wide `typecheck`/`lint`/
+`build` green, including a real `next build`/`nest build`.
 
 ## 1. Goal
 

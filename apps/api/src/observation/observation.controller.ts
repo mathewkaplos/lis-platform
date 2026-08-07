@@ -81,7 +81,11 @@ const ENTERABLE_ORDERED_TEST_STATUSES = ['received', 'in_process'] as const;
 function toObservationDto(row: ObservationRow): ObservationResult {
   return {
     id: row.id,
-    orderedTestId: row.orderedTestId,
+    // orderedTestId is nullable on the row per ADR-0015 (QC rows have none)
+    // -- but every route that calls this mapper (draft/finalize/verify/list)
+    // only ever reads patient-flow rows (isControl = false), never a QC row,
+    // so it's always actually present here.
+    orderedTestId: row.orderedTestId!,
     analyteId: row.analyteId,
     dataType: row.dataType as ObservationResult['dataType'], // restricted to this task's 3 dataTypes by the write path itself
     valueNum: row.valueNum === null ? null : Number(row.valueNum),
@@ -107,7 +111,10 @@ function toObservationDto(row: ObservationRow): ObservationResult {
 function toPriorObservationDto(row: ObservationRow): PriorObservation {
   return {
     id: row.id,
-    orderedTestId: row.orderedTestId,
+    // orderedTestId is nullable on the row per ADR-0015 (QC rows have none)
+    // -- but prior() only ever reads patient-flow rows, same reasoning as
+    // toObservationDto above.
+    orderedTestId: row.orderedTestId!,
     valueNum: row.valueNum === null ? null : Number(row.valueNum),
     valueCode: row.valueCode,
     valueText: row.valueText,

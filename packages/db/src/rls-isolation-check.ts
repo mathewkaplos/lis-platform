@@ -31,6 +31,7 @@ import { specimen, specimenFulfillment } from "./schema/specimen";
 import { observation } from "./schema/observation";
 import { patient } from "./schema/patient";
 import { patientAlert } from "./schema/patient-alert";
+import { controlLot } from "./schema/control-lot";
 import { writeAuditEvent } from "./audit";
 
 type Db = ReturnType<typeof createDb>;
@@ -102,9 +103,24 @@ async function insertFixtures(db: Db) {
 
   const [testDef] = await db.select().from(schema.testDefinition).where(sql`tenant_id = ${TENANT_A}`).limit(1);
   const [analyte] = await db.select().from(schema.analyte).limit(1); // global, per ADR-0004
-  if (!testDef || !analyte) {
+  const [unit] = await db.select().from(schema.unit).limit(1); // global, per ADR-0004
+  if (!testDef || !analyte || !unit) {
     throw new Error("chemistry-catalog seed data not found — run `pnpm db:reset` first");
   }
+
+  // TASK-063 (FEAT-018, ADR-0015): control_lot fixture, so the live leak
+  // check below has real data to prove isolation against — mirrors every
+  // other fixture in this function, not exercised by any other e2e spec's
+  // own tenant-A/tenant-B pair.
+  await db.insert(controlLot).values({
+    tenantId: TENANT_A,
+    analyteId: analyte.id,
+    level: "normal",
+    unitId: unit.id,
+    targetMean: "5.0",
+    targetSd: "0.2",
+    lotNumber: `RLS-CHECK-${Date.now()}`,
+  });
 
   // TASK-038: patient is a real row now, not a sentinel UUID — observation.
   // patient_id and order.patient_id both carry a real FK to patient(id) as

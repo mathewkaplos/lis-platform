@@ -1,6 +1,7 @@
 export * from "./catalog";
 export * from "./test-catalog";
 export * from "./reference-range";
+export * from "./control-lot";
 export * from "./patient";
 export * from "./patient-alert";
 export * from "./observation";

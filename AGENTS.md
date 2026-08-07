@@ -186,6 +186,20 @@ packages/ui (design system) · packages/sdk (generated API client)
   this repo with `GraphQL: Projects (classic) is being deprecated ...
   (repository.issue.projectCards)`, breaking at exactly the moment this
   rule is telling you to go verify.
+- **`gh`'s GraphQL-backed subcommands draw from a separate rate-limit
+  bucket from the REST-backed ones, and can exhaust independently.**
+  Confirmed 2026-08-07: `gh pr create`/`gh pr merge` failed repeatedly with
+  `GraphQL: API rate limit already exceeded for user ID ...` while
+  `gh api rate_limit` showed the GraphQL bucket at `0/5000` remaining and
+  the REST/core bucket still at `4929/5000` — likely exhausted by
+  `import-to-github.sh`'s own bulk Project-field-population GraphQL calls
+  earlier in the same session. Before assuming a `gh` command itself is
+  broken, check `gh api rate_limit --jq '.resources.graphql'`. Fallback:
+  the equivalent REST call works immediately even while GraphQL is
+  exhausted — `gh api repos/<owner>/<repo>/pulls -X POST -f title=... -f
+  head=... -f base=... -f body=...` for `pr create`,
+  `gh api repos/<owner>/<repo>/pulls/<n>/merge -X PUT -f
+  merge_method=squash` for `pr merge`.
 - If a `gh issue`/`gh pr` write command (comment, close, edit) is denied by
   the permission classifier, the equivalent `mcp__github__*` tool
   (`add_issue_comment`, `issue_write`, `pull_request_review_write`, etc.)

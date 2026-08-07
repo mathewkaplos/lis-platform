@@ -152,3 +152,26 @@ frontmatter declaration (this entry's own commit).
   unqualified (bare column names), never via the usual `${table.column}`
   interpolation.
 - **Files:** `~/work/lis-engineering/skills/engineering/database-design/SKILL.md`
+
+## 2026-08-07 (8)
+
+- **Friction:** `gh pr create`/`gh pr merge` failed repeatedly with
+  `GraphQL: API rate limit already exceeded for user ID ...` while working
+  through TASK-063/064's own PRs, re-diagnosed from scratch each time.
+  `gh api rate_limit` showed the GraphQL bucket at `0/5000` remaining while
+  the REST/core bucket still had `4929/5000` — a separate, independently
+  exhaustible quota, likely drained by `import-to-github.sh`'s own bulk
+  Project-field-population GraphQL calls run earlier in the same session.
+  The equivalent REST call (`gh api repos/<owner>/<repo>/pulls -X POST ...`
+  / `.../pulls/<n>/merge -X PUT ...`) worked immediately every time, once
+  found.
+- **Area:** github-workflow
+- **Change:** added a bullet to `AGENTS.md`'s "Rules of engagement" section
+  (next to the existing `gh issue view --comments` GraphQL-failure note):
+  check `gh api rate_limit --jq '.resources.graphql'` before assuming a
+  `gh` command is broken, and fall back to the equivalent `gh api ... -X
+  POST`/`-X PUT` REST call. **Not yet applied — `AGENTS.md` is one of this
+  repo's own restricted files; per this project's standing rule, the git
+  stage/commit/push/PR-create steps are handed to the human rather than run
+  autonomously.**
+- **Files:** `AGENTS.md`

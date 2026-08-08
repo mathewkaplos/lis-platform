@@ -88,6 +88,21 @@ the fact"; here, "never configured out-of-band").
   guarantee (ADR-0011 §6/`capabilities.ts`) against a real token, not just the unit
   test: two audit rows for the same logical action must never disagree on which role
   authorized it.
+- **A third realm role, `qa`, and a fifth user, `test-user-5`, added TASK-070
+  (FEAT-020).** `resolve_qc` (clearing a QC rule-violation hold) is granted to `qa`
+  alone, not `technologist`/`verifier` — ADR-0019 Decision 3's own reasoning that
+  resolving a QC failure and verifying a patient result are different real-world
+  actors, matching KB-10's persona list (`lab_director` / `qa`, distinct from
+  `technologist`/`verifier`). `test-user-5` carries `qa` only, tenant `...0001`,
+  same "prove it against a real token" precedent as `test-user`/`test-user-4`.
+- **A sixth user, `test-user-6`, carries `qa` under `tenant_id` `...0099`
+  (`test-user-2`'s own `TENANT_B` convention)** — added the same session as
+  `test-user-5`, since `test-user-2` (the existing `TENANT_B` seed) carries only
+  `verifier`, which does not grant `resolve_qc`: proving the resolve route's
+  cross-tenant 404 needs a second tenant's principal that actually holds the
+  capability being tested, not just a second tenant at all (the same reasoning
+  `test-user-4` already established for `resolveGrantingRole`'s determinism proof
+  needing a real multi-role token, not an assumption from the unit test alone).
 
 ## Local dev
 

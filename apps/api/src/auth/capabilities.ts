@@ -21,13 +21,22 @@
  * `manage_specimens` (TASK-047, FEAT-013 revision §2/§10 Q2): identical
  * reasoning and grant as `manage_patients`/`manage_orders` — no dedicated
  * reception/accessioning role exists in Keycloak yet.
+ *
+ * `resolve_qc` (TASK-070, FEAT-020 proposal §10 Q4, ADR-0019 Decision 3):
+ * granted to a new `qa` role, not `technologist`/`verifier` — resolving a QC
+ * rule violation and verifying a patient result are different real-world
+ * actors, matching KB-10's own persona list (`lab_director` / `qa`, distinct
+ * from `technologist`/`verifier`). Unlike `manage_patients`/`manage_orders`/
+ * `manage_specimens` above, this is a genuine new role, not a grant onto an
+ * existing one — see `infra/keycloak/lis-realm.json`.
  */
 export type Capability =
   | 'enter_result'
   | 'verify'
   | 'manage_patients'
   | 'manage_orders'
-  | 'manage_specimens';
+  | 'manage_specimens'
+  | 'resolve_qc';
 
 const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
   technologist: [
@@ -43,6 +52,7 @@ const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
     'manage_orders',
     'manage_specimens',
   ],
+  qa: ['resolve_qc'],
 };
 
 /**

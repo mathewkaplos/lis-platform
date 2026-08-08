@@ -6,8 +6,10 @@ import {
   type NestInterceptor,
 } from '@nestjs/common';
 import {
+  controlLot,
   criticalNotification,
   observation,
+  qcRuleViolation,
   orderedTest,
   testAnalyte,
 } from '@lis/db';
@@ -17,6 +19,7 @@ import {
   eq,
   exists,
   inArray,
+  isNull,
   ne,
   or,
   sql,
@@ -181,6 +184,35 @@ export class FinalizationRollupInterceptor implements NestInterceptor {
           if (unacknowledgedCriticals.length > 0) {
             throw new ConflictException(
               `Cannot complete: ${unacknowledgedCriticals.length} critical result(s) pending verification and/or acknowledgement (Constitution Law #3)`,
+            );
+          }
+
+          // TASK-070 (ADR-0019 Decision 1/2): a third, independent gate --
+          // does an unresolved (resolvedAt IS NULL), rejection-severity
+          // qc_rule_violation exist for any of this panel's required
+          // analytes? Scoped by analyte alone, not analyte x instrument
+          // (control_lot.instrumentId is never populated by any code today
+          // -- an instrument-scoped join would be silently vacuous, ADR-0019
+          // Decision 2's own documented, safety-favoring over-block).
+          // Warning-severity violations never gate here, matching KB-27's
+          // own "a rejection-rule violation... holds" language directly.
+          const heldByQcViolation = await tx
+            .selectDistinct({ analyteId: controlLot.analyteId })
+            .from(qcRuleViolation)
+            .innerJoin(
+              controlLot,
+              eq(controlLot.id, qcRuleViolation.controlLotId),
+            )
+            .where(
+              and(
+                inArray(controlLot.analyteId, requiredAnalyteIds),
+                eq(qcRuleViolation.severity, 'rejection'),
+                isNull(qcRuleViolation.resolvedAt),
+              ),
+            );
+          if (heldByQcViolation.length > 0) {
+            throw new ConflictException(
+              `Cannot complete: ${heldByQcViolation.length} analyte(s) held on an unresolved QC violation`,
             );
           }
 

@@ -193,9 +193,14 @@ modified. No production data exists at this milestone (ADR-0008/ADR-0015/ADR-001
    populated by this creation (the repo's own `import-to-github.sh` normally does that sync; skipped
    here to avoid its GraphQL cost against an already-strained session quota) — populate before any
    board-driven planning relies on those fields being current.
-4. **Which capability/role should `resolve_qc` map to?** **Resolved: still deferred to implementation
-   start**, as originally recommended — this is the one open question genuinely better answered by
-   research at the moment of writing the migration than by a guess now. TASK-070's implementer should
-   research the existing Keycloak role/capability grants first and record the chosen mapping in a
-   small proposal revision (matching FEAT-018/019's own "specified once the prior task exists"
-   precedent), not invent one from this proposal alone.
+4. **Which capability/role should `resolve_qc` map to?** **Resolved 2026-08-08, at `/develop` TASK-070
+   start:** a new **`qa`** Keycloak realm role, granted `resolve_qc` only — not `verify` or
+   `enter_result`. `infra/keycloak/lis-realm.json` today defines only `technologist`/`verifier`
+   (ADR-0011's deliberately narrow initial scope); KB-10's own persona list already names
+   `lab_director` / `qa` as a role distinct from both, and ADR-0019 Decision 3 already reasoned that
+   resolving a QC failure and verifying a patient result are different real-world actors — reusing
+   `verifier` for `resolve_qc` (the alternative considered) would quietly contradict that same
+   reasoning at the role layer even though the capability itself stayed separate. A seeded
+   `test-user-5` (tenant `...0001`, `realmRoles: ["qa"]`) is added alongside it, mirroring
+   `test-user`/`test-user-4`'s own real-token-proof precedent (ADR-0011 AC) rather than only unit-
+   testing `resolveGrantingRole` in isolation.

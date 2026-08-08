@@ -51,9 +51,15 @@ type QcResultEntryDto = InstanceType<typeof QcResultEntryDto>;
 type Tx = RequestWithTx['tx'];
 type QcObservationRow = typeof observation.$inferSelect;
 type ControlLotRow = typeof controlLot.$inferSelect;
-type QcRuleViolationRow = typeof qcRuleViolation.$inferSelect;
+export type QcRuleViolationRow = typeof qcRuleViolation.$inferSelect;
 
-function toQcRuleViolationDto(row: QcRuleViolationRow): QcRuleViolationResult {
+// Exported for QcRuleViolationController's own resolve() response (TASK-070)
+// -- same shape, no reason to duplicate this mapping (mirrors
+// critical-notification.controller.ts's own exported toCriticalNotificationDto
+// precedent).
+export function toQcRuleViolationDto(
+  row: QcRuleViolationRow,
+): QcRuleViolationResult {
   return {
     id: row.id,
     controlLotId: row.controlLotId,
@@ -61,6 +67,8 @@ function toQcRuleViolationDto(row: QcRuleViolationRow): QcRuleViolationResult {
     ruleCode: row.ruleCode as WestgardRuleCode,
     severity: row.severity as QcRuleViolationResult['severity'],
     detectedAt: row.detectedAt.toISOString(),
+    resolvedAt: row.resolvedAt ? row.resolvedAt.toISOString() : null,
+    resolvedByUserId: row.resolvedByUserId,
   };
 }
 

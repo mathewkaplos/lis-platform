@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ClipboardList, FlaskConical, LayoutDashboard, ListChecks, Users } from 'lucide-react';
+import { AlertTriangle, ClipboardList, FlaskConical, LayoutDashboard, ListChecks, Users } from 'lucide-react';
 
 // Nav grows as later features add routes -- not invented ahead of them.
 // TASK-041: "Register patient" -> "Patients" (search list owns the
@@ -9,13 +9,17 @@ import { ClipboardList, FlaskConical, LayoutDashboard, ListChecks, Users } from 
 // TASK-047: "Reception" added -- the scan/lookup entry point for receiving
 // specimens (revision §2), same standing as "Orders"/"Patients". TASK-048:
 // "Collection queue" added -- pending-collection worklist (revision §2),
-// same standing as the others.
+// same standing as the others. TASK-070: "QC violations" added -- unlike
+// control-lots/[id]/chart (TASK-069, still direct-link-only, no list to
+// link from), this route IS that list (proposal §10 Q2, folding in #381),
+// so it earns a real nav entry rather than staying link-only.
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/patients', label: 'Patients', icon: Users },
   { href: '/orders', label: 'Orders', icon: ClipboardList },
   { href: '/reception', label: 'Reception', icon: FlaskConical },
   { href: '/collection-queue', label: 'Collection queue', icon: ListChecks },
+  { href: '/qc-violations', label: 'QC violations', icon: AlertTriangle },
 ];
 
 export function Sidebar() {

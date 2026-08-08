@@ -21,3 +21,15 @@ import type { SessionPayload } from './session';
 export function hasVerifierRole(session: SessionPayload | undefined): boolean {
   return Boolean(session && Array.isArray(session.roles) && session.roles.includes('verifier'));
 }
+
+/**
+ * TASK-070 (FEAT-020, ADR-0019 Decision 3): the `qa` realm role added
+ * alongside the new `resolve_qc` capability. Same fail-closed shape and same
+ * "UI-visibility convenience only" caveat as `hasVerifierRole` above --
+ * `apps/api`'s own `CapabilityGuard`/`resolve_qc` grant is the real
+ * enforcement point (`qc-rule-violation.controller.ts`); this only decides
+ * whether the Resolve button renders at all.
+ */
+export function hasQaRole(session: SessionPayload | undefined): boolean {
+  return Boolean(session && Array.isArray(session.roles) && session.roles.includes('qa'));
+}

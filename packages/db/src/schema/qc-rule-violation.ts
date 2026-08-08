@@ -10,11 +10,14 @@ const tenantIsolation = () =>
   });
 
 // ADR-0018 (FEAT-019, TASK-067): a Westgard rejection/warning detected
-// against a QC Observation. Detection-only -- no resolve/acknowledge
-// lifecycle here (FEAT-020's own scope, KB-27's "resolution is a documented,
-// audited action"). Written in the same transaction as the triggering
-// observation.qc_record insert (control-lot.controller.ts's recordResult()),
-// never as a standalone write.
+// against a QC Observation. Detection-only originally -- TASK-070 (ADR-0019
+// Decision 3) adds the resolve lifecycle KB-27's "resolution is a
+// documented, audited action" always intended: resolvedAt/resolvedByUserId,
+// mirroring critical_notification's own acknowledgedAt/acknowledgedByUserId
+// precedent (ADR-0016). "Unresolved" (the gate's own query,
+// finalization-rollup.interceptor.ts) means resolvedAt IS NULL. Written in
+// the same transaction as the triggering observation.qc_record insert
+// (control-lot.controller.ts's recordResult()), never as a standalone write.
 export const qcRuleViolation = pgTable(
   "qc_rule_violation",
   {
@@ -36,6 +39,12 @@ export const qcRuleViolation = pgTable(
     severity: text("severity").notNull(), // 'warning' | 'rejection'
     detectedAt: timestamp("detected_at", { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // TASK-070: nullable, resolvedAt IS NULL means "still holding release"
+    // (ADR-0019 Decision 3). No FK on resolvedByUserId -- matches this
+    // table's/observation's own no-FK-on-user-columns convention (no user
+    // table exists in Postgres, identity lives in Keycloak, ADR-0011).
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedByUserId: uuid("resolved_by_user_id"),
   },
   (table) => [
     index("ix_qc_rule_violation_tenant_control_lot").on(table.tenantId, table.controlLotId),

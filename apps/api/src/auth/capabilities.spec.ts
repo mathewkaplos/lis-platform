@@ -52,6 +52,17 @@ describe('resolveGrantingRole', () => {
     ).toBeUndefined();
   });
 
+  it('grants resolve_qc to qa but not to technologist or verifier (ADR-0019 Decision 3)', () => {
+    expect(resolveGrantingRole(['qa'], 'resolve_qc')).toBe('qa');
+    expect(resolveGrantingRole(['technologist'], 'resolve_qc')).toBeUndefined();
+    expect(resolveGrantingRole(['verifier'], 'resolve_qc')).toBeUndefined();
+  });
+
+  it('denies enter_result and verify to a qa-only principal', () => {
+    expect(resolveGrantingRole(['qa'], 'enter_result')).toBeUndefined();
+    expect(resolveGrantingRole(['qa'], 'verify')).toBeUndefined();
+  });
+
   it('resolves deterministically when multiple held roles grant the same capability', () => {
     // Both technologist and verifier grant enter_result — the result must
     // always be the same role for the same input, not arbitrary, since two

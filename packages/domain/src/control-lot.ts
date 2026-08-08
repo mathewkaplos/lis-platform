@@ -41,8 +41,12 @@ export type QcObservationResult = z.infer<typeof qcObservationSchema>;
 
 /**
  * TASK-067 (FEAT-019, ADR-0018): a Westgard rule violation detected against
- * a QC observation, in the same transaction as its insert. Detection-only --
- * no resolve/acknowledge fields (FEAT-020's own scope).
+ * a QC observation, in the same transaction as its insert. TASK-070
+ * (ADR-0019 Decision 3) adds the resolve lifecycle -- resolvedAt/
+ * resolvedByUserId, null until a `qa`-role user calls
+ * `POST /v1/qc-rule-violations/:id/resolve`, mirroring
+ * `criticalNotificationSchema`'s own acknowledgedAt/acknowledgedByUserId
+ * precedent exactly.
  */
 export const qcRuleViolationSchema = z
   .object({
@@ -52,9 +56,28 @@ export const qcRuleViolationSchema = z
     ruleCode: z.enum(["1_2s", "1_3s", "2_2s", "r_4s", "4_1s", "10x"]),
     severity: z.enum(["warning", "rejection"]),
     detectedAt: z.iso.datetime(),
+    resolvedAt: z.iso.datetime().nullable(),
+    resolvedByUserId: z.uuid().nullable(),
   })
   .meta({ id: "QcRuleViolationDto" });
 export type QcRuleViolationResult = z.infer<typeof qcRuleViolationSchema>;
+
+/**
+ * TASK-070 (FEAT-020, proposal §10 Q2, folding in issue #381): the minimal
+ * violation-list screen's own row shape -- `qcRuleViolationSchema` plus
+ * `analyteId`, denormalized from the violation's own `control_lot` join
+ * (`GET /v1/qc-rule-violations`). Deliberately just the id, not a joined
+ * display name -- the frontend already fetches `/v1/catalog` separately for
+ * `control-lots/[id]/chart/page.tsx`'s own analyte-display lookup; this
+ * reuses that exact same precedent rather than duplicating catalog logic in
+ * a second endpoint.
+ */
+export const qcRuleViolationListItemSchema = qcRuleViolationSchema.extend({
+  analyteId: z.uuid(),
+});
+export type QcRuleViolationListItem = z.infer<
+  typeof qcRuleViolationListItemSchema
+>;
 
 /**
  * TASK-068 (FEAT-019 revision): one Levey-Jennings chart point -- an

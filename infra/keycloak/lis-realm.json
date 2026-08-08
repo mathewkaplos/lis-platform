@@ -16,6 +16,10 @@
       {
         "name": "verifier",
         "description": "May verify results entered by a technologist (TASK-032)"
+      },
+      {
+        "name": "qa",
+        "description": "Quality/lab-manager role: may resolve QC rule violations, may not enter or verify patient results (TASK-070)"
       }
     ]
   },
@@ -216,6 +220,44 @@
         {
           "type": "password",
           "secretData": "{\"value\": \"nr4yXj+gwU8S+dZ3r1qKsTkm5Z0qkxcz6zGFDeIQ741cYhpcU1KKSo4OYETAhfxAhVGVItVCQqgvoaEKSwC2iQ==\", \"salt\": \"vYVvohihiqhzySGm7OfODA==\", \"additionalParameters\": {}}",
+          "credentialData": "{\"hashIterations\": 210000, \"algorithm\": \"pbkdf2-sha512\", \"additionalParameters\": {}}"
+        }
+      ]
+    },
+    {
+      "username": "test-user-5",
+      "email": "test-user-5@example.invalid",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Test",
+      "lastName": "User Five",
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+      },
+      "realmRoles": ["qa"],
+      "credentials": [
+        {
+          "type": "password",
+          "secretData": "{\"value\": \"PKwfuzIKYfgQWRmgcuymfVjiP/AMvliKZLBftYeDsJYWR7Yv6/gNVTQoASM1v5l6mxPYntOrJ+RtvQcG6pAHDw==\", \"salt\": \"gkZMC/BqkDZUjOxjhlqSow==\", \"additionalParameters\": {}}",
+          "credentialData": "{\"hashIterations\": 210000, \"algorithm\": \"pbkdf2-sha512\", \"additionalParameters\": {}}"
+        }
+      ]
+    },
+    {
+      "username": "test-user-6",
+      "email": "test-user-6@example.invalid",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Test",
+      "lastName": "User Six",
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000099"]
+      },
+      "realmRoles": ["qa"],
+      "credentials": [
+        {
+          "type": "password",
+          "secretData": "{\"value\": \"anY1buX+esngpJynofeL2tVHD74EaAJnq5t/q8hQoujvx2NVr9SV0Z50Xu5qREVw2dwnwcr/iKptgiZsr9zUeg==\", \"salt\": \"JbNChkAAJ5zBEk2b8/dfDw==\", \"additionalParameters\": {}}",
           "credentialData": "{\"hashIterations\": 210000, \"algorithm\": \"pbkdf2-sha512\", \"additionalParameters\": {}}"
         }
       ]

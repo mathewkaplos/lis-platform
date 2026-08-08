@@ -3,8 +3,15 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { analyte, codeSystemValue, controlLot, createDb, unit } from '@lis/db';
-import { eq, sql } from 'drizzle-orm';
+import {
+  analyte,
+  codeSystemValue,
+  controlLot,
+  createDb,
+  qcRuleViolation,
+  unit,
+} from '@lis/db';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { AppModule } from './../src/app.module';
 import { getKeycloakToken } from './get-keycloak-token';
 
@@ -115,6 +122,36 @@ describe('Levey-Jennings chart data (e2e)', () => {
   });
 
   afterAll(async () => {
+    // TASK-070 (ADR-0019 Decision 1/2): same real cross-file contamination
+    // risk qc-westgard.e2e-spec.ts's own afterAll now guards against --
+    // `analyteIds` here is likewise an arbitrary, non-deterministic
+    // `LIMIT 3` slice of real, shared seeded analytes, and this file's own
+    // "1-3s rejection" chart-point test (`z = 3.5`) leaves a real,
+    // unresolved rejection-severity qc_rule_violation on one of them.
+    // `FinalizationRollupInterceptor`'s new gate is tenant-wide, not scoped
+    // to this file -- resolving everything created here restores the
+    // pre-TASK-070 property (zero externally observable side effects).
+    const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+    await db.execute(
+      sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+    );
+    const lotRows = await db
+      .select({ id: controlLot.id })
+      .from(controlLot)
+      .where(inArray(controlLot.analyteId, analyteIds));
+    const lotIds = lotRows.map((row) => row.id);
+    if (lotIds.length > 0) {
+      await db
+        .update(qcRuleViolation)
+        .set({ resolvedAt: new Date(), resolvedByUserId: null })
+        .where(
+          and(
+            inArray(qcRuleViolation.controlLotId, lotIds),
+            isNull(qcRuleViolation.resolvedAt),
+          ),
+        );
+    }
+
     await app.close();
   });
 

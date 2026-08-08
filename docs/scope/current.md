@@ -1,95 +1,76 @@
-# Status — 2026-08-08 (session 23)
+# Status — 2026-08-08 (session 24)
 
-Last commit on main: `460bf33` — "fix: close-retro findings -- import-to-github.sh GraphQL waste, gh pr edit note (#380)".
+Last commit on main: `892c9d8` — "docs: log retro -- Closes-#N fix recurred despite being live (#372/#373) (#383)".
+Two more PRs (#385, #386-or-later) are landing this same session for FEAT-020's kickoff and this
+breadcrumb refresh itself — check `git log origin/main -5` for the real current tip, this line will
+already be one or two commits behind it by construction (a breadcrumb commit can never state its own
+SHA).
 
 **Earlier sessions' breadcrumb entries are not carried in this file — see git history on this
-exact file (`git log -- docs/scope/current.md`) for full detail back through session 12.** Same
-convention prior sessions already established — every session's own commits, PR descriptions, and
-Skill/ADR entries carry the real detail; this file's job is orientation for the *next* session, not
-a permanent archive.
+exact file (`git log -- docs/scope/current.md`) for full detail back through session 12.**
 
-## Session opened by fixing a real gap from session 22: FEAT-021/TASK-065/TASK-066 issues had never
-actually closed on GitHub, despite being fully merged
+## Session opened with `/orient`, which re-found the exact `Closes #N` bug session 22 already "fixed" —
+this time recurring even though the fix was already live
 
-`/orient`'s milestone cross-check (CHECKLIST.md item 9) found #30 (FEAT-021), #360 (TASK-065), #361
-(TASK-066) still **open** on GitHub even though PRs #363/#366 were merged — both PR bodies referenced
-their issues as `Implements TASK-N (#N)` rather than a bare `Closes #N`, so GitHub's closing-keyword
-parser never fired. Closed all three manually. Root cause traced further than the symptom: the
-`Closes #N` convention was already documented in `AGENTS.md` (from an earlier #93/#94 incident) but
-never linked from `develop/SKILL.md`, the Skill that actually walks through implementing/shipping a
-task — added as a new step 5 there, plus a `/retro` log entry (`CHANGELOG.md`).
+`/orient`'s milestone cross-check (CHECKLIST.md item 9) found #372 (TASK-067) and #373 (TASK-068)
+still **open** on GitHub despite PRs #376/#377 being merged. Same root cause as session 22's #30/#360/
+#361 incident (`Implements TASK-N (#N)` instead of a bare `Closes #N`) — except this time
+`develop/SKILL.md`'s own step-5 reminder (added earlier session 23) was already live and committed
+*before* PRs #376/#377 were even opened (confirmed by timestamp: fix at 09:05 UTC, #376 at 09:43 UTC,
+#377 at 10:00 UTC), and both PRs still got it wrong. Only PR #378, opened later the same session, got
+it right. Closed #372/#373 manually. Ran `/retro`: writing the reminder in the Skill was evidently not
+enough on its own, so `develop/SKILL.md` gained a new step 6 — after a PR merges, actually check the
+referenced issue's state (`gh issue view <N> --jq .state`) and close it manually right away if still
+open, instead of relying on a session-later `/orient` to catch it. Logged to `CHANGELOG.md`
+(2026-08-08 (4)), landed via lis-platform PR #383.
 
-## FEAT-019 (Levey-Jennings + Westgard engine) kicked off, fully implemented (all three tasks), and
-closed — all in this same session
+## FEAT-020 (QC gating of result release) kicked off this session — proposal approved, ADR-0019
+accepted, TASK-070 (#384) created; **not yet implemented**
 
-M5's four unblocked open features were FEAT-019/FEAT-022/FEAT-023/FEAT-025; FEAT-019 chosen as the
-direct next link in the QC/safety thread FEAT-018/FEAT-021 already built this milestone, and the only
-one that unblocks a second Critical-priority feature (FEAT-020, QC gating of result release).
+Of M5's four unblocked open features (FEAT-020/022/023/025), FEAT-020 chosen: Critical priority, its
+sole dependency (FEAT-019) closed last session, and the direct safety payoff KB-27/`domain/qc-westgard`
+Skill entry #4 have named since FEAT-018's own kickoff.
 
-**ADR-0018** (accepted): three real gaps KB-27 leaves open, resolved — a fixed default Westgard rule
-set (1-2s/1-3s/2-2s/R-4s/4-1s/10x), not a speculative per-tenant configurable rule-pack table;
-synchronous same-transaction evaluation (no event bus exists yet); and a nearest-same-day-
-sibling-level pairing heuristic for the cross-level R-4s rule, since no "run" entity exists in the
-schema (a real `qc_run` table deliberately deferred until analyzer integration, FEAT-027, makes
-multi-level batch entry a structured event).
+**Two real, load-bearing findings from this proposal's own research**, both resolved in **ADR-0019**
+(accepted): (1) this codebase has no separate "release" action to gate at all — the closest existing
+concept is `ordered_test.status -> 'resulted'`, already gated by `FinalizationRollupInterceptor` for
+unacknowledged criticals (Constitution Law #3), so the QC gate extends that same interceptor rather
+than inventing a new one; (2) `observation.instrumentId`/`control_lot.instrumentId` are real schema
+columns that **no application code anywhere ever sets** (confirmed by repo-wide grep) — KB-27's stated
+"analyte × instrument" gate scope is currently unenforceable as written, so the hold is scoped by
+analyte alone until something actually populates `instrumentId` (a documented, safety-favoring
+over-block, not a silent gap). A third: `qc_rule_violation` (ADR-0018) has no resolve/acknowledge
+lifecycle by design — ADR-0019 adds nullable `resolvedAt`/`resolvedByUserId` columns and a new
+`resolve_qc`-capability-gated `POST /v1/qc-rule-violations/:id/resolve` action, mirroring
+`critical_notification`'s own acknowledge-lifecycle precedent.
 
-**TASK-067 (Westgard multirule evaluation engine), PR #376, closing #372.** Pure-function evaluator
-(`packages/domain/src/qc-westgard.ts`) + new `qc_rule_violation` table (composite FK to
-`observation.(id, created_at)`, `database-design` entry #10's own pattern) + wired into
-`recordResult()`'s existing transaction, folding violations into the same audit event
-(`TASK-065`'s `criticalNotificationId` precedent). Real finding: e2e tests sharing one seeded analyte
-let R-4s's `analyteId`-scoped sibling-matching leak across unrelated tests — fixed via per-test
-analyte isolation, written up as `qc-westgard` Skill entry #8. 202/202 `apps/api` e2e green.
+All four of the proposal's own §10 questions resolved via their recommended option, same session:
+ADR-0019 accepted as drafted; issue #381 (no control-lot list/QC dashboard screen, filed last session)
+folded into TASK-070's own frontend scope rather than left as a separate task, since this is the first
+feature that makes resolving a violation a real, needed user action; **TASK-070 created as issue
+#384**, single and undivided (the gate and resolve halves are small and tightly coupled); the
+`resolve_qc` capability/role mapping deliberately left for the implementer to research against the
+real Keycloak role model at implementation start, not guessed here. Landed via lis-platform PR #385
+(proposal) and a direct `lis-engineering` main commit (ADR-0019 acceptance).
 
-**TASK-068 (Levey-Jennings chart data API), PR #377, closing #373.** `GET /v1/control-lots/:id/chart`
-— mean/SD band + ordered points with z-scores + violations. Real finding: `chemistry-catalog.sql`'s
-seed only ever inserts quantity-dataType analytes, so the "400 for non-quantity" test needed a
-synthetic coded-analyte fixture. 208/208 `apps/api` e2e green; `openapi.json`/SDK regenerated
-(this route IS `@ZodResponse`-bound, confirmed purely additive).
+**No code written yet.** TASK-070 (#384) is ready for a future session's `/develop` invocation.
 
-**TASK-069 (Levey-Jennings chart UI), PR #378, closing #374 — FEAT-019 now fully implemented, all
-three tasks done, #28 manually closed.** `/control-lots/:id/chart` — hand-rolled inline SVG chart (no
-new dependency; none existed in `apps/web` and the chart is simple enough to hand-roll against
-existing semantic color tokens), `DataTable` below it as the literal "a11y data-table alternative"
-Stitch §14.4 itself names. No sidebar nav entry yet (no control-lot list screen exists to link from —
-see below) and no level-selector/date-range (out of TASK-068's own single-lot endpoint scope), both
-deliberate narrowings. Two real findings, both found via an actual browser verification run
-(`web-verify` Skill), neither caught by typecheck/lint/build: (1) `DataTable`'s `columns` prop carries
-functions, and rendering it from a plain Server Component throws a real RSC serialization error at
-request time — fixed by marking the wrapping component `'use client'`; (2) `<svg height="auto">` is
-invalid (SVG length attributes reject the CSS keyword `"auto"`) — a real, easy-to-miss console error,
-fixed via a CSS class instead. Both written up as `frontend-design` Skill entry #6. Verified with a
-real seeded control lot (4 QC results, the last a genuine 1-3s rejection via the real API),
-screenshotted in light + dark mode; all four states confirmed (populated, empty, 404, error).
+## `/close` this session found one new Engineering Flow Retrospective finding, fixed the same session
 
-## `/close` this session: Pre-Close Report found the stale breadcrumb (this file, now fixed) plus two
-Engineering Flow Retrospective findings, both approved and fixed
+GraphQL quota was already at **0/5000 remaining** at this session's very first `gh` call needing it
+(`gh issue list --json ...` for the M5 board snapshot, CHECKLIST.md item 9) — the third distinct
+GraphQL-quota incident this project has now hit (session 22's own mid-session block; `import-to-
+github.sh`'s own waste, fixed last session's PR #380). Worked around via the REST equivalent at the
+time; recurred again later the same session (checking PR #385's own CI). Fixed proactively rather than
+just noted again: `engineering-radar/SKILL.md` gained a new check (3b) — `gh api rate_limit --jq
+'.resources.graphql'`, flagged alongside the existing SSH-IP infra-risk check — so a future session
+knows to prefer REST from the start instead of discovering the exhaustion via a failed command.
 
-1. **`import-to-github.sh`'s `populate_fields` (Step 6) re-fetched GraphQL project-field data for the
-   entire ~130-item backlog on every run, not just newly-created issues** — a 3-issue kickoff burned
-   the shared 5,000/hr GraphQL quota, blocking `gh pr create`/`checks`/`merge` for ~35-40 minutes
-   mid-session (worked around via direct REST calls at the time). Fixed via PR #380: now tracks which
-   IDs are actually created each invocation and only populates fields for those — verified via a real
-   `--dry-run` (completes cleanly, does no Step 6 work, `import-map.json` untouched).
-2. **`gh pr edit --body`/`--title` fails outright on this repo** (a Projects-classic-sunset GraphQL
-   error), even for a trivial body-only edit — documented in `AGENTS.md`'s PR conventions with the
-   working REST substitute (`gh api repos/.../pulls/<n> -X PATCH -f body=...`), same PR #380.
+**Manual Verification Checklist:** nothing closed this session has a human-checkable surface — #372/
+#373 were bookkeeping closures of already-merged work, the `develop/SKILL.md`/`engineering-radar`
+changes are documentation, and FEAT-020 itself is proposal-approved only, not implemented.
 
-**Manual Verification Checklist finding, turned into a real follow-up issue:** TASK-069's chart page
-is reachable only by a hand-typed direct URL — no control-lot list/QC dashboard screen exists yet to
-link from. Filed as **issue #381**, flagged as likely FEAT-020's own natural territory (it already
-needs to read the same `qc_rule_violation` data for its release gate) but not assumed — a real
-decision for whoever picks up the next QC-related feature.
-
-**Two Manual Verification Checklist items explicitly deferred, not resolved:** a lab-domain-expert
-visual review of the chart's SD-band/rule-coloring rendering, and a real human click-through on the
-actual public staging URL — neither is available from this environment (no lab-QC domain expert, no
-tailnet/staging credentials), same standing gap already noted for an unrelated feature in session
-22's own breadcrumb. Worth a look next time a human with the right access/background is at a
-computer, not because anything indicates a problem.
-
-**Next milestone/feature: FEAT-020 (QC gating of result release) is the natural next M5 feature** —
-it directly reads the `qc_rule_violation` table this session's FEAT-019 built, closing the actual
-safety payoff KB-27 names (holding patient-result release on a rejection-rule violation). Not
-started this session; a future `/orient` should still weigh it against M5's other unblocked features
-(FEAT-022, FEAT-023, FEAT-025) fresh rather than assuming it's automatically next.
+**Next session: `/develop` TASK-070 (#384)** — the QC release gate + resolve action, per the now-
+approved proposal (`docs/plans/feat-020-qc-gating-of-result-release.md`) and accepted ADR-0019. The
+one still-open design question (which capability/role `resolve_qc` maps to) needs real research
+against the existing Keycloak role model before the migration is written, not a guess.

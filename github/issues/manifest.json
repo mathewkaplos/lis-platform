@@ -1593,6 +1593,45 @@
       "deps": [
         "TASK-065"
       ]
+    },
+    {
+      "id": "TASK-067",
+      "title": "Westgard multirule evaluation engine",
+      "priority": "Critical",
+      "milestone": "M5",
+      "feature": "FEAT-019",
+      "size": "L (2 days)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-067-westgard-multirule-evaluation-engine.md",
+      "deps": [
+        "TASK-064"
+      ]
+    },
+    {
+      "id": "TASK-068",
+      "title": "Levey-Jennings chart data API",
+      "priority": "Critical",
+      "milestone": "M5",
+      "feature": "FEAT-019",
+      "size": "M (1 day)",
+      "area": "backend",
+      "file": "github/issues/tasks/TASK-068-levey-jennings-chart-data-api.md",
+      "deps": [
+        "TASK-067"
+      ]
+    },
+    {
+      "id": "TASK-069",
+      "title": "Levey-Jennings chart UI",
+      "priority": "Critical",
+      "milestone": "M5",
+      "feature": "FEAT-019",
+      "size": "M (1-2 days)",
+      "area": "frontend",
+      "file": "github/issues/tasks/TASK-069-levey-jennings-chart-ui.md",
+      "deps": [
+        "TASK-068"
+      ]
     }
   ]
 }

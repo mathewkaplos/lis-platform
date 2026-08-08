@@ -3,10 +3,50 @@ import { sql } from "drizzle-orm";
 import { observation } from "./observation";
 
 // Tenant-scoped per ADR-0004: operational, tenant-varying clinical data,
-// same pattern as observation/control_lot.
+// same pattern as observation/control_lot. Uses current_setting(...,
+// missing_ok=true) -- unlike every other table's own copy of this same
+// helper -- because Postgres's 1-arg current_setting() *throws*
+// "unrecognized configuration parameter" when app.tenant_id was never set
+// in the session at all, not just returns null/false. Multiple PERMISSIVE
+// RLS policies on one table are combined with OR, and an exception from
+// evaluating one policy's USING clause aborts the whole query regardless of
+// what the other policy would have allowed -- confirmed the hard way,
+// against a real Postgres instance, not assumed: with the 1-arg form,
+// lis_scheduler's own SELECT (restricted to schedulerEnumeration() below)
+// failed with that exact error, on every query, because tenant_isolation's
+// own clause is evaluated too (no `to` clause restricts it away from any
+// role) and lis_scheduler never sets app.tenant_id. Real, load-bearing
+// tradeoff this fix accepts, stated explicitly rather than silently: a
+// `lis_app` connection that somehow reaches this table with
+// TenantContextInterceptor never having run (a real bug, not a normal
+// path) now sees zero rows instead of a loud Postgres error -- every other
+// table in this schema still fails loudly in that scenario; only this
+// table's policy is widened, and only because it has a second role to
+// serve that genuinely needs the non-throwing form.
 const tenantIsolation = () =>
   pgPolicy("tenant_isolation", {
-    using: sql`tenant_id = current_setting('app.tenant_id')::uuid`,
+    using: sql`tenant_id = current_setting('app.tenant_id', true)::uuid`,
+  });
+
+// TASK-066 (FEAT-021, ADR-0017): a second, role-scoped, additive policy --
+// not a replacement for tenant_isolation above, and not a BYPASSRLS
+// exception. Postgres evaluates multiple PERMISSIVE policies as OR'd
+// together, but this one only ever applies to `lis_scheduler` (`to`
+// clause); `lis_app`'s own tenant_isolation policy is completely
+// unaffected. Column-scoped GRANT (SELECT (tenant_id) only, see this
+// migration's hand-written role-creation statements) means lis_scheduler
+// cannot read any other column even where this policy's rows are visible.
+// Exists so the escalation job's own enumeration phase can discover which
+// tenants have outstanding work without any role in this schema ever
+// holding BYPASSRLS (db/migrations/0002_app_role.sql's own explicit reason
+// never to grant that to an application-facing role, applied here to a
+// second role for the first time).
+const schedulerEnumeration = () =>
+  pgPolicy("scheduler_enumeration", {
+    as: "permissive",
+    for: "select",
+    to: "lis_scheduler",
+    using: sql`status = 'pending'`,
   });
 
 // ADR-0016 / KB-34: the notification/read-back/escalation half of
@@ -63,5 +103,6 @@ export const criticalNotification = pgTable(
       name: "critical_notification_observation_id_created_at_fk",
     }),
     tenantIsolation(),
+    schedulerEnumeration(),
   ],
 ).enableRLS();

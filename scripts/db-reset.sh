@@ -19,6 +19,12 @@ docker compose exec -T postgres psql -U postgres -d lis -c \
   "ALTER ROLE lis_app WITH PASSWORD '${LIS_APP_DB_PASSWORD:-lis_app_dev_password}';" >/dev/null
 echo "lis_app role password set."
 
+# TASK-066 (ADR-0017): lis_scheduler, same convention as lis_app's password
+# above -- never committed into the migration itself.
+docker compose exec -T postgres psql -U postgres -d lis -c \
+  "ALTER ROLE lis_scheduler WITH PASSWORD '${SCHEDULER_DB_PASSWORD:-lis_scheduler_dev_password}';" >/dev/null
+echo "lis_scheduler role password set."
+
 # Seeded as postgres (migrations-only role) so RLS never gets in the way of
 # the seed itself; the app connects as lis_app afterward, as it always does.
 docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/chemistry-catalog.sql

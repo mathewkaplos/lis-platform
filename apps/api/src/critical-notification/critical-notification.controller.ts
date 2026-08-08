@@ -57,9 +57,11 @@ const listQuerySchema = z.object({
 class ListQueryDto extends createZodDto(listQuerySchema) {}
 
 type Tx = RequestWithTx['tx'];
-type CriticalNotificationRow = typeof criticalNotification.$inferSelect;
+export type CriticalNotificationRow = typeof criticalNotification.$inferSelect;
 
-function toCriticalNotificationDto(
+// Exported for CriticalNotificationEscalationService's own audit payload
+// (TASK-066) -- same shape, no reason to duplicate this mapping.
+export function toCriticalNotificationDto(
   row: CriticalNotificationRow,
 ): CriticalNotificationResult {
   return {

@@ -17,6 +17,15 @@ the skill as unavailable (e.g. newly registered and not yet loaded into this
 session's skill listing), fall back to reading the underlying file directly:
 ~/work/lis-engineering/skills/workflow/engineering-radar/SKILL.md
 
+Before producing the Session Report, send a PushNotification summarizing
+readiness (e.g. blockers found, CI status, one line on the recommended next
+action) — automatically, do not wait for user confirmation or an explicit
+request. This is the actual mechanism available for this: there is no tool
+to directly "invoke" a Remote Control connection (it's an external
+device-pairing state, not something callable), but PushNotification reaches
+the user's phone automatically if Remote Control happens to already be
+connected, and is a harmless desktop-only notification otherwise.
+
 Produce the Session Report per the current template:
 ~/work/lis-engineering/playbooks/session-start/SESSION_REPORT_TEMPLATE.md —
 Engineering Action Plan first. Reason across all signal categories for item 2

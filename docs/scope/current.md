@@ -1,100 +1,95 @@
-# Status — 2026-08-08 (session 22)
+# Status — 2026-08-08 (session 23)
 
-Last commit on main: `810a41d` — "fix: wire SCHEDULER_DATABASE_URL/lis_scheduler into staging deploy pipeline (#368)".
+Last commit on main: `460bf33` — "fix: close-retro findings -- import-to-github.sh GraphQL waste, gh pr edit note (#380)".
 
 **Earlier sessions' breadcrumb entries are not carried in this file — see git history on this
 exact file (`git log -- docs/scope/current.md`) for full detail back through session 12.** Same
-convention session 12/21 already established — every session's own commits, PR descriptions, and
+convention prior sessions already established — every session's own commits, PR descriptions, and
 Skill/ADR entries carry the real detail; this file's job is orientation for the *next* session, not
 a permanent archive.
 
-## FEAT-021 (Critical notification, read-back & escalation) kicked off, fully implemented (both
-tasks), and closed — all in this same session
+## Session opened by fixing a real gap from session 22: FEAT-021/TASK-065/TASK-066 issues had never
+actually closed on GitHub, despite being fully merged
 
-Session opened via `/orient`. Three open M5 features had zero unmet dependencies (FEAT-019,
-FEAT-021, FEAT-023); FEAT-021 was chosen because it closes a real, already-identified gap against
-**Constitution Law #3** ("documented notification with read-back"), rather than opening new domain
-breadth or continuing a chain whose safety payoff doesn't land until a later feature ships.
+`/orient`'s milestone cross-check (CHECKLIST.md item 9) found #30 (FEAT-021), #360 (TASK-065), #361
+(TASK-066) still **open** on GitHub even though PRs #363/#366 were merged — both PR bodies referenced
+their issues as `Implements TASK-N (#N)` rather than a bare `Closes #N`, so GitHub's closing-keyword
+parser never fired. Closed all three manually. Root cause traced further than the symptom: the
+`Closes #N` convention was already documented in `AGENTS.md` (from an earlier #93/#94 incident) but
+never linked from `develop/SKILL.md`, the Skill that actually walks through implementing/shipping a
+task — added as a new step 5 there, plus a `/retro` log entry (`CHANGELOG.md`).
 
-**Real, load-bearing finding from kickoff research, not present in FEAT-021's issue text:**
-`finalize()` already computes `criticalDetected` (TASK-054) — detection isn't this feature's gap,
-only the notification/read-back/escalation half is. **ADR-0016** (accepted) resolves the schema
-mechanism: a new, decoupled `critical_notification` entity, not a change to `verify()`'s own shape,
-with the finalization-gate widening deliberately sequenced to a second task.
+## FEAT-019 (Levey-Jennings + Westgard engine) kicked off, fully implemented (all three tasks), and
+closed — all in this same session
 
-**TASK-065 (Critical notification record, read-back capture & query), PR #363, closing #360.**
-`critical_notification` table + `finalize()` creation hook + acknowledge/query endpoints. Three real
-findings: (1) `observation`'s composite PK `(id, created_at)` post-partitioning means any new FK to
-it needs a companion `*_created_at` column, not a plain single-column FK; (2) that companion value
-read back through a JS `Date` never round-trips to Postgres's microsecond `now()`, breaking the
-composite FK — fixed with a server-side subquery instead of the JS-parsed value; (3) a DTO
-unnecessarily used nestjs-zod's discriminated-union workaround, silently corrupting an unrelated
-route's OpenAPI schema — caught by `apps/web`'s own build. 175/175 `apps/api` e2e suite green;
-written up as `database-design` Skill entry #10 (the FK/timestamp finding).
+M5's four unblocked open features were FEAT-019/FEAT-022/FEAT-023/FEAT-025; FEAT-019 chosen as the
+direct next link in the QC/safety thread FEAT-018/FEAT-021 already built this milestone, and the only
+one that unblocks a second Critical-priority feature (FEAT-020, QC gating of result release).
 
-**TASK-066 (Escalation timer & finalization-gate widening), PR #366, closing #361 — FEAT-021 now
-fully implemented, both tasks done, issue closed.** Widened `FinalizationRollupInterceptor`'s gate:
-verification alone no longer unblocks finalization for a critical — its `critical_notification` must
-also be `acknowledged`. Added `CriticalNotificationEscalationService` (`@nestjs/schedule`, 5 min
-poll, 30 min window). **ADR-0017** (accepted): a new `lis_scheduler` DB role, `NOBYPASSRLS`,
-column-scoped `SELECT(tenant_id, created_at)` via a role-specific RLS policy restricted to pending
-rows — the escalation job's only cross-tenant capability; the actual mutating write stays fully
-`lis_app`/RLS-scoped per tenant. Two real findings, both fixed forward as separate migrations (never
-editing a past one): Postgres's 1-arg `current_setting()` throws when unset rather than returning
-null, aborting the whole OR'd-policy query before the new role's own policy ever evaluated
-(migration 0019); Postgres's column-level GRANT model requires `SELECT` on every column referenced
-*anywhere* in a query, including a `WHERE` clause, not just the returned columns (migration 0020).
-182/182 `apps/api` e2e suite green; written up as `rls-multi-tenancy` Skill entry #5.
+**ADR-0018** (accepted): three real gaps KB-27 leaves open, resolved — a fixed default Westgard rule
+set (1-2s/1-3s/2-2s/R-4s/4-1s/10x), not a speculative per-tenant configurable rule-pack table;
+synchronous same-transaction evaluation (no event bus exists yet); and a nearest-same-day-
+sibling-level pairing heuristic for the cross-level R-4s rule, since no "run" entity exists in the
+schema (a real `qc_run` table deliberately deferred until analyzer integration, FEAT-027, makes
+multi-level batch entry a structured event).
 
-## A real staging outage happened mid-session, caused by TASK-066's own merge, and was found and
-fixed before this session's `/close`
+**TASK-067 (Westgard multirule evaluation engine), PR #376, closing #372.** Pure-function evaluator
+(`packages/domain/src/qc-westgard.ts`) + new `qc_rule_violation` table (composite FK to
+`observation.(id, created_at)`, `database-design` entry #10's own pattern) + wired into
+`recordResult()`'s existing transaction, folding violations into the same audit event
+(`TASK-065`'s `criticalNotificationId` precedent). Real finding: e2e tests sharing one seeded analyte
+let R-4s's `analyteId`-scoped sibling-matching leak across unrelated tests — fixed via per-test
+analyte isolation, written up as `qc-westgard` Skill entry #8. 202/202 `apps/api` e2e green.
 
-TASK-066's PR wired `SCHEDULER_DATABASE_URL` into local dev (`.env.example`) and `pr.yml`'s CI, but
-not the separate staging deploy pipeline (`deploy-staging.yml`/`docker-compose.staging.yml`) —
-`scheduler-db.ts`'s `requiredEnv()` threw at module load, crash-looping the `api` container the
-moment TASK-066 merged. Found via a failed `Deploy to Staging` run (not proactively — it surfaced
-during this session's own `/close`), diagnosed from the real smoke-test logs (`Container ... is
-restarting`), and fixed same-session: PR #368 mirrors `APP_DATABASE_URL`'s own pattern for the new
-var, adds an `ALTER ROLE lis_scheduler WITH PASSWORD` step, and a new `SCHEDULER_DB_PASSWORD` repo
-secret was set. The resulting redeploy was directly confirmed green (both smoke-test steps passed,
-not just the merge commit's own checkmark).
+**TASK-068 (Levey-Jennings chart data API), PR #377, closing #373.** `GET /v1/control-lots/:id/chart`
+— mean/SD band + ordered points with z-scores + violations. Real finding: `chemistry-catalog.sql`'s
+seed only ever inserts quantity-dataType analytes, so the "400 for non-quantity" test needed a
+synthetic coded-analyte fixture. 208/208 `apps/api` e2e green; `openapi.json`/SDK regenerated
+(this route IS `@ZodResponse`-bound, confirmed purely additive).
 
-## `/retro` ran three times this session — all fixed and merged
+**TASK-069 (Levey-Jennings chart UI), PR #378, closing #374 — FEAT-019 now fully implemented, all
+three tasks done, #28 manually closed.** `/control-lots/:id/chart` — hand-rolled inline SVG chart (no
+new dependency; none existed in `apps/web` and the chart is simple enough to hand-roll against
+existing semantic color tokens), `DataTable` below it as the literal "a11y data-table alternative"
+Stitch §14.4 itself names. No sidebar nav entry yet (no control-lot list screen exists to link from —
+see below) and no level-selector/date-range (out of TASK-068's own single-lot endpoint scope), both
+deliberate narrowings. Two real findings, both found via an actual browser verification run
+(`web-verify` Skill), neither caught by typecheck/lint/build: (1) `DataTable`'s `columns` prop carries
+functions, and rendering it from a plain Server Component throws a real RSC serialization error at
+request time — fixed by marking the wrapping component `'use client'`; (2) `<svg height="auto">` is
+invalid (SVG length attributes reject the CSS keyword `"auto"`) — a real, easy-to-miss console error,
+fixed via a CSS class instead. Both written up as `frontend-design` Skill entry #6. Verified with a
+real seeded control lot (4 QC results, the last a genuine 1-3s rejection via the real API),
+screenshotted in light + dark mode; all four states confirmed (populated, empty, 404, error).
 
-1. `database-design` Skill entry #10 (composite-FK-companion-column precision trap, generalizing
-   entry #8's UPDATE-WHERE finding to INSERT) — `lis-engineering` `d5c4554`.
-2. `rls-multi-tenancy` Skill entry #5 (a second role-scoped RLS policy doesn't help if the table's
-   existing policy throws rather than returns null for that role) — `lis-engineering` `4a782cd`.
-3. (Named above under TASK-065) `database-design` entry #10 covers both real DB findings from that
-   task in one entry, per the retro loop's own "one friction, one fix" discipline applied to the
-   single most generalizable of the two.
+## `/close` this session: Pre-Close Report found the stale breadcrumb (this file, now fixed) plus two
+Engineering Flow Retrospective findings, both approved and fixed
 
-## `/close` this session: Pre-Close Report found the stale breadcrumb (this file, now fixed) plus
-two Engineering Flow Retrospective findings, both approved and applied
+1. **`import-to-github.sh`'s `populate_fields` (Step 6) re-fetched GraphQL project-field data for the
+   entire ~130-item backlog on every run, not just newly-created issues** — a 3-issue kickoff burned
+   the shared 5,000/hr GraphQL quota, blocking `gh pr create`/`checks`/`merge` for ~35-40 minutes
+   mid-session (worked around via direct REST calls at the time). Fixed via PR #380: now tracks which
+   IDs are actually created each invocation and only populates fields for those — verified via a real
+   `--dry-run` (completes cleanly, does no Step 6 work, `import-map.json` untouched).
+2. **`gh pr edit --body`/`--title` fails outright on this repo** (a Projects-classic-sunset GraphQL
+   error), even for a trivial body-only edit — documented in `AGENTS.md`'s PR conventions with the
+   working REST substitute (`gh api repos/.../pulls/<n> -X PATCH -f body=...`), same PR #380.
 
-1. **`docker-pnpm-monorepo-deploy` Skill entry #25** (the staging env-var-drift finding above, made
-   reusable): before merging a PR that adds a new `requiredEnv()`'d variable, grep
-   `deploy-staging.yml`/`docker-compose.staging.yml` for it too, not just `pr.yml`/`.env.example` —
-   three independently-maintained env-wiring surfaces, no automated check keeps them in sync (same
-   shape of gap the openapi/sdk drift check already closed for a different surface, session 21's own
-   `/retro`). A full automated check (extract `requiredEnv()` names, cross-reference all three
-   files) was named as the more valuable but more expensive option — not built this session, a real
-   candidate for a future one.
-2. **`close/SKILL.md` item 11's PR-base-staleness note, broadened**: the "a PR needs
-   `update-branch` after a sibling PR merges" mechanism isn't only a close-out-multi-PR-resolution
-   thing — it happened mid-session this time (PR #365 after #364 merged), with no close-out in
-   progress. The note's scope is now stated generally.
+**Manual Verification Checklist finding, turned into a real follow-up issue:** TASK-069's chart page
+is reachable only by a hand-typed direct URL — no control-lot list/QC dashboard screen exists yet to
+link from. Filed as **issue #381**, flagged as likely FEAT-020's own natural territory (it already
+needs to read the same `qc_rule_violation` data for its release gate) but not assumed — a real
+decision for whoever picks up the next QC-related feature.
 
-**Next milestone/feature not yet identified for a future session** — M5 has 5 more unstarted
-features (FEAT-019 Levey-Jennings/Westgard engine, FEAT-020 QC gating of result release, FEAT-022
-worklist v2, FEAT-023 Haematology CBC + differential, FEAT-024 peripheral film structured reporting,
-FEAT-025 delta checks — FEAT-024 still blocked on FEAT-023, FEAT-020 still blocked on FEAT-019). A
-future `/orient` should run real milestone/next-task discovery fresh, weighing all of these against
-current signals, not assume FEAT-019 is automatically next just because it continues the QC thread
-FEAT-018/021 both touched.
+**Two Manual Verification Checklist items explicitly deferred, not resolved:** a lab-domain-expert
+visual review of the chart's SD-band/rule-coloring rendering, and a real human click-through on the
+actual public staging URL — neither is available from this environment (no lab-QC domain expert, no
+tailnet/staging credentials), same standing gap already noted for an unrelated feature in session
+22's own breadcrumb. Worth a look next time a human with the right access/background is at a
+computer, not because anything indicates a problem.
 
-**One item outside this session's own automated verification:** the staging outage-and-fix was
-confirmed via CI's own smoke tests (api `/health`, web+Keycloak over real HTTPS) — a real human
-login/usage check against the actual public staging URL was not performed (no tailnet access or
-staging credentials available from this environment) and is worth a quick look next time a human is
-at a computer, not because anything indicates a problem.
+**Next milestone/feature: FEAT-020 (QC gating of result release) is the natural next M5 feature** —
+it directly reads the `qc_rule_violation` table this session's FEAT-019 built, closing the actual
+safety payoff KB-27 names (holding patient-result release on a rejection-rule violation). Not
+started this session; a future `/orient` should still weigh it against M5's other unblocked features
+(FEAT-022, FEAT-023, FEAT-025) fresh rather than assuming it's automatically next.

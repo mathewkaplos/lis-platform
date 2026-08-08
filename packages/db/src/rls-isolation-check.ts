@@ -33,6 +33,7 @@ import { patient } from "./schema/patient";
 import { patientAlert } from "./schema/patient-alert";
 import { controlLot } from "./schema/control-lot";
 import { criticalNotification } from "./schema/critical-notification";
+import { qcRuleViolation } from "./schema/qc-rule-violation";
 import { writeAuditEvent } from "./audit";
 
 type Db = ReturnType<typeof createDb>;
@@ -113,14 +114,43 @@ async function insertFixtures(db: Db) {
   // check below has real data to prove isolation against — mirrors every
   // other fixture in this function, not exercised by any other e2e spec's
   // own tenant-A/tenant-B pair.
-  await db.insert(controlLot).values({
+  const [lot] = await db
+    .insert(controlLot)
+    .values({
+      tenantId: TENANT_A,
+      analyteId: analyte.id,
+      level: "normal",
+      unitId: unit.id,
+      targetMean: "5.0",
+      targetSd: "0.2",
+      lotNumber: `RLS-CHECK-${Date.now()}`,
+    })
+    .returning();
+
+  // TASK-067 (FEAT-019, ADR-0018): qc_rule_violation fixture, same reasoning
+  // as control_lot's own above -- a genuinely new tenant table this task
+  // introduces. Needs a real QC observation (isControl = true) to satisfy
+  // the composite FK; observationCreatedAt is a server-side subquery, same
+  // precision-mismatch fix as critical_notification's own fixture below.
+  const [qcObs] = await db
+    .insert(observation)
+    .values({
+      tenantId: TENANT_A,
+      isControl: true,
+      controlLotId: lot.id,
+      analyteId: analyte.id,
+      dataType: "quantity",
+      valueNum: "9.5",
+      source: "manual",
+    })
+    .returning();
+  await db.insert(qcRuleViolation).values({
     tenantId: TENANT_A,
-    analyteId: analyte.id,
-    level: "normal",
-    unitId: unit.id,
-    targetMean: "5.0",
-    targetSd: "0.2",
-    lotNumber: `RLS-CHECK-${Date.now()}`,
+    controlLotId: lot.id,
+    observationId: qcObs.id,
+    observationCreatedAt: sql`(SELECT created_at FROM observation WHERE id = ${qcObs.id})`,
+    ruleCode: "1_3s",
+    severity: "rejection",
   });
 
   // TASK-038: patient is a real row now, not a sentinel UUID — observation.

@@ -38,3 +38,20 @@ export const qcObservationSchema = z
   })
   .meta({ id: "QcObservationDto" });
 export type QcObservationResult = z.infer<typeof qcObservationSchema>;
+
+/**
+ * TASK-067 (FEAT-019, ADR-0018): a Westgard rule violation detected against
+ * a QC observation, in the same transaction as its insert. Detection-only --
+ * no resolve/acknowledge fields (FEAT-020's own scope).
+ */
+export const qcRuleViolationSchema = z
+  .object({
+    id: z.uuid(),
+    controlLotId: z.uuid(),
+    observationId: z.uuid(),
+    ruleCode: z.enum(["1_2s", "1_3s", "2_2s", "r_4s", "4_1s", "10x"]),
+    severity: z.enum(["warning", "rejection"]),
+    detectedAt: z.iso.datetime(),
+  })
+  .meta({ id: "QcRuleViolationDto" });
+export type QcRuleViolationResult = z.infer<typeof qcRuleViolationSchema>;

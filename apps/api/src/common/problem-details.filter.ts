@@ -5,10 +5,12 @@ import {
   type ArgumentsHost,
   type ExceptionFilter,
 } from '@nestjs/common';
+import type { ObservationResult } from '@lis/domain';
 import { SentryExceptionCaptured } from '@sentry/nestjs';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ZodValidationException } from 'nestjs-zod';
 import { ZodError } from 'zod';
+import { PanelHoldException } from '../observation/finalization-rollup.interceptor';
 
 interface ProblemDetails {
   type: string;
@@ -18,6 +20,13 @@ interface ProblemDetails {
   instance: string;
   code: string;
   errors?: Array<{ path: string; message: string; code: string }>;
+  // ADR-0021 / issue #400: only present on a PanelHoldException -- lets a
+  // consumer (apps/web's finalizeResult()) tell "the write committed, the
+  // panel just can't close yet" apart from every other ConflictException,
+  // without a second network round-trip to discover the value it already has.
+  reason?: 'unacknowledged_critical' | 'qc_violation';
+  heldObservation?: ObservationResult;
+  heldCalculatedDependents?: ObservationResult[];
 }
 
 /**
@@ -72,6 +81,13 @@ export class ProblemDetailsFilter implements ExceptionFilter {
               code: issue.code,
             }))
           : [];
+    } else if (exception instanceof PanelHoldException) {
+      problem.title = 'Panel held';
+      problem.detail = exception.message;
+      problem.code = 'panel_hold';
+      problem.reason = exception.reason;
+      problem.heldObservation = exception.heldObservation;
+      problem.heldCalculatedDependents = exception.heldCalculatedDependents;
     } else if (exception instanceof HttpException) {
       const body = exception.getResponse();
       const message =

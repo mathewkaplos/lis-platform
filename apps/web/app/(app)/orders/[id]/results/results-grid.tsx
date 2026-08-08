@@ -64,6 +64,10 @@ interface RowState {
   verifiedAt: string | null;
   pending: boolean;
   error: string | null;
+  // ADR-0021 / issue #400: set only when finalizeResult() returns
+  // status: 'held' -- the write succeeded, distinct from `error` so it never
+  // renders with `error`'s danger styling over a value that wasn't lost.
+  heldMessage: string | null;
 }
 
 function rowKey(row: Pick<ResultRow, 'orderedTestId' | 'analyteId'>): string {
@@ -134,6 +138,7 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
           verifiedAt: row.initialVerifiedAt,
           pending: false,
           error: null,
+          heldMessage: null,
         } satisfies RowState,
       ]),
     ),
@@ -181,7 +186,7 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
 
   function handleVerify(row: ResultRow, index: number) {
     const key = rowKey(row);
-    updateRow(key, { pending: true, error: null });
+    updateRow(key, { pending: true, error: null, heldMessage: null });
     startTransition(async () => {
       const outcome = await verifyResult(row.orderedTestId, row.analyteId);
       if (outcome.status === 'error') {
@@ -208,7 +213,7 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
     if (parsed === null || Number.isNaN(parsed)) {
       return; // nothing entered yet, or mid-edit -- draft only on a real number
     }
-    updateRow(key, { pending: true, error: null });
+    updateRow(key, { pending: true, error: null, heldMessage: null });
     startTransition(async () => {
       const outcome = await draftResult(row.orderedTestId, row.analyteId, parsed);
       if (outcome.status === 'error') {
@@ -236,6 +241,7 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
       observationStatus: dependent.observationStatus,
       pending: false,
       error: null,
+      heldMessage: null,
     });
   }
 
@@ -248,11 +254,31 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
     if (parsed === null || Number.isNaN(parsed)) {
       return;
     }
-    updateRow(key, { pending: true, error: null });
+    updateRow(key, { pending: true, error: null, heldMessage: null });
     startTransition(async () => {
       const outcome = await finalizeResult(row.orderedTestId, row.analyteId, parsed);
       if (outcome.status === 'error') {
         updateRow(key, { pending: false, error: outcome.error ?? 'Something went wrong.' });
+        return;
+      }
+      // ADR-0021 / issue #400: 'held' means the write committed but the
+      // panel can't close yet -- the real, already-persisted value (not the
+      // FAILURE-shaped placeholder a plain 409 would imply), plus an
+      // informational caption instead of a danger-colored error.
+      if (outcome.status === 'held') {
+        updateRow(key, {
+          pending: false,
+          text: outcome.valueNum === null ? state.text : String(outcome.valueNum),
+          flags: outcome.flags,
+          refLow: outcome.refLow,
+          refHigh: outcome.refHigh,
+          observationStatus: outcome.observationStatus,
+          heldMessage: outcome.heldMessage ?? 'panel held pending an unrelated result.',
+        });
+        for (const dependent of outcome.calculatedDependents ?? []) {
+          applyCalculatedDependent(row.orderedTestId, dependent);
+        }
+        focusNextEnterable(index);
         return;
       }
       updateRow(key, {
@@ -360,6 +386,11 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
                 {state.error ? (
                   <span role="alert" className="text-xs text-danger">
                     {state.error}
+                  </span>
+                ) : null}
+                {state.heldMessage ? (
+                  <span role="status" className="text-xs text-warning">
+                    Saved — {state.heldMessage}
                   </span>
                 ) : null}
               </div>

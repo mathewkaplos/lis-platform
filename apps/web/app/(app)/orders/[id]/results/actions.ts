@@ -23,8 +23,13 @@ export interface CalculatedDependentOutcome {
 }
 
 export interface ResultActionOutcome {
-  status: 'ok' | 'error';
+  // ADR-0021 / issue #400: 'held' is only ever returned by finalizeResult(),
+  // when FinalizationRollupInterceptor's post-commit gate blocks the panel
+  // from completing -- the write itself already succeeded (see heldMessage),
+  // so this is NOT the same as 'error' and must not be rendered as one.
+  status: 'ok' | 'error' | 'held';
   error?: string;
+  heldMessage?: string;
   valueNum: number | null;
   flags: string[];
   refLow: number | null;
@@ -36,6 +41,23 @@ export interface ResultActionOutcome {
   verifierUserId?: string | null;
   verifiedAt?: string | null;
   calculatedDependents?: CalculatedDependentOutcome[];
+}
+
+// The subset of `ProblemDetails` (apps/api's problem-details.filter.ts)
+// present only on a `panel_hold` 409 -- the echoed, already-committed write.
+interface HeldObservationDto {
+  analyteId: string;
+  valueNum: number | null;
+  flags: string[];
+  refLow: number | null;
+  refHigh: number | null;
+  status: 'registered' | 'preliminary' | 'verified';
+}
+interface PanelHoldProblem {
+  code: 'panel_hold';
+  detail: string;
+  heldObservation: HeldObservationDto;
+  heldCalculatedDependents?: HeldObservationDto[];
 }
 
 const FAILURE: Omit<ResultActionOutcome, 'status' | 'error'> = {
@@ -105,11 +127,36 @@ export async function finalizeResult(
   }
   const client = createLisApiClient(accessToken);
 
-  const { data, response } = await client.POST('/v1/ordered-tests/{id}/results/{analyteId}/finalize', {
+  const { data, error, response } = await client.POST('/v1/ordered-tests/{id}/results/{analyteId}/finalize', {
     params: { path: { id: orderedTestId, analyteId } },
     body: { dataType: 'quantity', valueNum },
   });
   if (!response.ok || !data) {
+    // ADR-0021 / issue #400: distinguish "the write committed, the panel is
+    // just held" from every other 409/failure -- openapi-fetch already
+    // parses the problem+json body into `error` (finalize's error responses
+    // aren't in the generated OpenAPI schema, hence the manual cast, same as
+    // the success-path `after` casts below).
+    const problem = error as PanelHoldProblem | undefined;
+    if (response.status === 409 && problem?.code === 'panel_hold') {
+      return {
+        status: 'held',
+        heldMessage: problem.detail,
+        valueNum: problem.heldObservation.valueNum,
+        flags: problem.heldObservation.flags,
+        refLow: problem.heldObservation.refLow,
+        refHigh: problem.heldObservation.refHigh,
+        observationStatus: problem.heldObservation.status,
+        calculatedDependents: (problem.heldCalculatedDependents ?? []).map((dep) => ({
+          analyteId: dep.analyteId,
+          valueNum: dep.valueNum,
+          flags: dep.flags,
+          refLow: dep.refLow,
+          refHigh: dep.refHigh,
+          observationStatus: dep.status,
+        })),
+      };
+    }
     return { status: 'error', error: writeErrorMessage(response.status), ...FAILURE };
   }
   // Not run through @ZodResponse (same {resourceId, before, after} shape as

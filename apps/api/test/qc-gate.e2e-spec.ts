@@ -333,12 +333,28 @@ describe('QC release gate + resolve action (e2e)', () => {
     // is thrown from the second, independently-committed rollup transaction
     // (finalization-rollup.interceptor.ts's own header comment), so this
     // call 409s but the value is recorded.
-    await finalize(
+    const heldRes = await finalize(
       orderedTestId,
       heldAnalyteId,
       HELD_ANALYTE_NORMAL_VALUE,
       409,
     );
+    // ADR-0021 / issue #400: the QC-hold branch shares the exact same
+    // post-commit-veto mechanism as the unacknowledged-critical branch
+    // (already covered in observation.e2e-spec.ts) -- proves it got the
+    // same panel_hold/heldObservation treatment, not just the branch #400
+    // happened to reproduce.
+    const heldProblem = heldRes.body as {
+      code: string;
+      reason?: string;
+      heldObservation?: { valueNum: number | null; status: string };
+    };
+    expect(heldProblem.code).toBe('panel_hold');
+    expect(heldProblem.reason).toBe('qc_violation');
+    expect(heldProblem.heldObservation?.valueNum).toBe(
+      HELD_ANALYTE_NORMAL_VALUE,
+    );
+    expect(heldProblem.heldObservation?.status).toBe('preliminary');
     expect(await orderedTestStatus(orderId, orderedTestId)).not.toBe(
       'resulted',
     );

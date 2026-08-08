@@ -11,13 +11,16 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import {
+  evaluateWestgardRules,
   qcObservationSchema,
   qcResultEntrySchema,
   type QcObservationResult,
   type QcResultEntryInput,
+  type QcRuleViolationResult,
+  type WestgardRuleCode,
 } from '@lis/domain';
-import { analyte, controlLot, observation } from '@lis/db';
-import { and, desc, eq } from 'drizzle-orm';
+import { analyte, controlLot, observation, qcRuleViolation } from '@lis/db';
+import { and, desc, eq, gte, lte, ne, sql } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { Audit } from '../auth/audit.decorator';
@@ -44,6 +47,29 @@ type QcResultEntryDto = InstanceType<typeof QcResultEntryDto>;
 
 type Tx = RequestWithTx['tx'];
 type QcObservationRow = typeof observation.$inferSelect;
+type ControlLotRow = typeof controlLot.$inferSelect;
+type QcRuleViolationRow = typeof qcRuleViolation.$inferSelect;
+
+function toQcRuleViolationDto(row: QcRuleViolationRow): QcRuleViolationResult {
+  return {
+    id: row.id,
+    controlLotId: row.controlLotId,
+    observationId: row.observationId,
+    ruleCode: row.ruleCode as WestgardRuleCode,
+    severity: row.severity as QcRuleViolationResult['severity'],
+    detectedAt: row.detectedAt.toISOString(),
+  };
+}
+
+// ADR-0018 (TASK-067): the trailing window this lot's own history is
+// evaluated over -- large enough for 10x (the longest-lookback rule), small
+// enough to keep the query bounded rather than scanning a lot's entire
+// history on every write.
+const RULE_EVALUATION_HISTORY_LIMIT = 20;
+// ADR-0018 §Decision 3: R-4s pairs with the nearest different-level result
+// of the same analyte/instrument recorded in the prior 24 hours; no pairing
+// (not a violation, not an error) when none exists in that window.
+const SIBLING_LEVEL_PAIRING_WINDOW_HOURS = 24;
 
 function toQcObservationDto(row: QcObservationRow): QcObservationResult {
   return {
@@ -124,6 +150,111 @@ export class ControlLotController {
   }
 
   /**
+   * TASK-067 (FEAT-019, ADR-0018): evaluates the fixed Westgard multirule
+   * set against `insertedObs` (the point just recorded) and persists any
+   * fired violations, all within the caller's own transaction -- a rollback
+   * anywhere in the request rolls back the violations too. Only meaningful
+   * for quantity results (Westgard compares numeric values against a
+   * mean/SD, which coded/text QC entries have no concept of) -- returns []
+   * without evaluating for any other dataType, not a silent gap: control
+   * lots exist for a single, fixed-dataType analyte (ADR-0015 §2), so this
+   * only ever skips non-quantity analytes entirely, consistently.
+   */
+  private async evaluateAndPersistViolations(
+    tx: Tx,
+    lotRow: ControlLotRow,
+    insertedObs: QcObservationRow,
+  ): Promise<QcRuleViolationResult[]> {
+    if (insertedObs.dataType !== 'quantity' || insertedObs.valueNum === null) {
+      return [];
+    }
+    const newProducedAt = insertedObs.producedAt ?? insertedObs.createdAt;
+
+    const historyRows = await tx
+      .select({
+        valueNum: observation.valueNum,
+        producedAt: observation.producedAt,
+        createdAt: observation.createdAt,
+      })
+      .from(observation)
+      .where(
+        and(
+          eq(observation.isControl, true),
+          eq(observation.controlLotId, lotRow.id),
+        ),
+      )
+      .orderBy(desc(observation.producedAt), desc(observation.createdAt))
+      .limit(RULE_EVALUATION_HISTORY_LIMIT);
+    const history = historyRows
+      .map((row) => ({
+        value: Number(row.valueNum),
+        producedAt: row.producedAt ?? row.createdAt,
+      }))
+      .reverse(); // oldest -> newest, per evaluateWestgardRules's own contract
+
+    const windowStart = new Date(
+      newProducedAt.getTime() -
+        SIBLING_LEVEL_PAIRING_WINDOW_HOURS * 60 * 60 * 1000,
+    );
+    const [sibling] = await tx
+      .select({
+        valueNum: observation.valueNum,
+        siblingTargetMean: controlLot.targetMean,
+        siblingTargetSd: controlLot.targetSd,
+      })
+      .from(observation)
+      .innerJoin(controlLot, eq(controlLot.id, observation.controlLotId))
+      .where(
+        and(
+          eq(observation.isControl, true),
+          eq(controlLot.analyteId, lotRow.analyteId),
+          sql`${controlLot.instrumentId} IS NOT DISTINCT FROM ${lotRow.instrumentId}`,
+          ne(controlLot.level, lotRow.level),
+          lte(observation.producedAt, newProducedAt),
+          gte(observation.producedAt, windowStart),
+        ),
+      )
+      .orderBy(desc(observation.producedAt))
+      .limit(1);
+    const siblingLevelZScore = sibling
+      ? (Number(sibling.valueNum) - Number(sibling.siblingTargetMean)) /
+        Number(sibling.siblingTargetSd)
+      : null;
+
+    const candidates = evaluateWestgardRules({
+      history,
+      targetMean: Number(lotRow.targetMean),
+      targetSd: Number(lotRow.targetSd),
+      siblingLevelZScore,
+    });
+    if (candidates.length === 0) {
+      return [];
+    }
+
+    const insertedViolations = await tx
+      .insert(qcRuleViolation)
+      .values(
+        candidates.map((candidate) => ({
+          tenantId: insertedObs.tenantId,
+          controlLotId: lotRow.id,
+          observationId: insertedObs.id,
+          // Same precision-mismatch fix as critical_notification's own
+          // creation hook (TASK-065, database-design Skill entry #10): a
+          // server-side subquery, never the JS-parsed `insertedObs.createdAt`
+          // -- node-postgres truncates Postgres's microsecond timestamptz to
+          // milliseconds, which breaks this composite FK's exact-equality
+          // lookup if the JS value is written back.
+          observationCreatedAt: sql`(SELECT created_at FROM observation WHERE id = ${insertedObs.id})`,
+          ruleCode: candidate.ruleCode,
+          severity: candidate.severity,
+        })),
+      )
+      .returning();
+
+    return insertedViolations.map(toQcRuleViolationDto);
+  }
+
+  /**
    * Records a new QC measurement. Audited unconditionally (proposal §5,
    * ADR-0015's own Consequences note that QC entry should be audited the
    * same way patient result entry is) -- there is no unaudited "draft" call
@@ -141,7 +272,11 @@ export class ControlLotController {
     @Body(new ZodValidationPipe(qcResultEntrySchema)) body: QcResultEntryDto,
     @CurrentUser() user: RequestContext,
     @DbTx() tx: Tx,
-  ): Promise<AuditedMutationResult & { after: QcObservationResult }> {
+  ): Promise<
+    AuditedMutationResult & {
+      after: QcObservationResult & { violations: QcRuleViolationResult[] };
+    }
+  > {
     const { lotRow, analyteRow } = await this.loadControlLot(
       tx,
       id,
@@ -170,12 +305,24 @@ export class ControlLotController {
       })
       .returning();
 
-    const after = toQcObservationDto(inserted);
+    // TASK-067 (ADR-0018 §Decision 2): evaluated in the same transaction as
+    // the insert above -- a rollback anywhere in this request rolls back any
+    // detected violations too.
+    const violations = await this.evaluateAndPersistViolations(
+      tx,
+      lotRow,
+      inserted,
+    );
+
+    const after = { ...toQcObservationDto(inserted), violations };
     // AuditInterceptor requires the handler return an AuditedMutationResult
     // (resourceId + before/after) -- same shape observation.controller.ts's
     // finalize()/verify() return, found the hard way here via a real 500
     // (writeAuditEvent's resourceId column is NOT NULL; a flat DTO with no
-    // `resourceId` field left it undefined).
+    // `resourceId` field left it undefined). Violations fold into this same
+    // audit event's `after` payload rather than a second `@Audit()` write
+    // (ADR-0018 §Decision 5, mirroring TASK-065's `criticalNotificationId`
+    // precedent).
     return { resourceId: after.id, before: null, after };
   }
 

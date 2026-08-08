@@ -1,11 +1,33 @@
 # Implementation Proposal: FEAT-019 Levey-Jennings + Westgard engine
-Status: **APPROVED** — narrowed to TASK-067 (#372). TASK-068 (#373)/TASK-069 (#374) will each get
-their own revision to this file once their preceding task is real, per FEAT-018's own precedent.
+Status: **TASK-067 IMPLEMENTED** — PR pending. TASK-068 (#373)/TASK-069 (#374) will each get their
+own revision to this file once their preceding task is real, per FEAT-018's own precedent.
 ADR: adr-0018 (accepted 2026-08-08)    Date: 2026-08-08    Backlog ID: FEAT-019 (#28) / TASK-067 (#372) / TASK-068 (#373) / TASK-069 (#374)
 
 **Both §10 questions resolved via the native options-prompt, 2026-08-08** — recommended option
 chosen for each: ADR-0018 accepted as drafted; TASK-067/068/069 created as real GitHub issues
 (#372/#373/#374) alongside proposal approval.
+
+**TASK-067 (Westgard multirule evaluation engine), 2026-08-08.** Delivered exactly per §2's
+affected-files list, with two real corrections found during implementation (both noted inline where
+they occurred, not silently absorbed): no standalone `packages/domain/src/qc-westgard.test.ts` (no
+package under `packages/` has ever had its own test runner — every existing pure-domain function is
+validated via a `describe(...'no DB dependency'...)` block inside its own `apps/api/test/*.e2e-spec.ts`,
+`flagging.e2e-spec.ts`'s own precedent); and no bespoke forced-failure test for transactional
+atomicity (already proven generically by `capability-check.e2e-spec.ts` for any audited route sharing
+the same transaction wrapper). A third, real implementation-only finding: this repo's own e2e specs
+share one seeded set of analytes across all test files, and R-4s's sibling-pairing is scoped by
+`analyteId` alone — the first draft of `qc-westgard.e2e-spec.ts` let two unrelated tests share one
+analyte, so one test's own 'high'-level control lot leaked in as a false R-4s sibling for a later
+test. Fixed by allocating a distinct analyte per test (`analyteIds[0..7]`), not by narrowing the
+production query (the leak was a test-isolation bug, not an evaluator bug — confirmed by the pure-eval
+describe block's own direct-call tests passing throughout). 202/202 `apps/api` e2e suite green on a
+clean DB (20 new: 12 pure-eval boundary cases + 8 HTTP/RLS/persistence cases); `rls-check` green
+(`qc_rule_violation` fixture added to `insertFixtures()`, mirroring `control_lot`'s own TASK-063
+precedent); repo-wide `typecheck`/`lint`/`build` green, including a real `next build`/`nest build`;
+`openapi.json`/`packages/sdk/src/schema.ts` confirmed unchanged (`recordResult()` has no
+`@ZodResponse` binding, per TASK-064's own precedent, so the additive `violations` field doesn't
+surface in the OpenAPI spec at all — not a gap, the route's response was never schema-bound);
+migration applies cleanly on two separate `pnpm db:reset` runs.
 
 ## 1. Goal
 
@@ -74,13 +96,23 @@ from FEAT-018's own kickoff, reaffirmed here for FEAT-019.
   sibling-level result (R-4s, per ADR-0018 §Decision 3 — queried by joining `control_lot` on
   `analyteId`/`instrumentId` with a different `level`), call `evaluateWestgardRules`, insert any
   resulting `qc_rule_violation` rows, and include them in the returned `after.violations`.
-- `apps/api/test/qc-westgard.e2e-spec.ts` (new) — real-Postgres proof: RLS isolation on
-  `qc_rule_violation`, each named rule detected from a crafted history, R-4s correctly skipped when no
-  sibling-level result exists in-window, 1-2s-alone-vs-1-2s-suppressed-by-a-confirming-rejection-rule,
-  transactional atomicity (a forced failure after violation-detection rolls back the whole insert).
-- `packages/domain/src/qc-westgard.test.ts` (new, or co-located per this repo's existing unit-test
-  convention) — pure-function boundary tests for each rule (exact-2SD not a 1-2s trigger, etc.),
-  matching TASK-050's own flagging-service boundary-test discipline.
+- `apps/api/test/qc-westgard.e2e-spec.ts` (new) — a `describe('pure rule evaluation (no DB
+  dependency)', ...)` block calling `evaluateWestgardRules` directly (boundary-exact cases per named
+  rule — exact-2SD not a 1-2s trigger, etc.), plus real-Postgres blocks: RLS isolation on
+  `qc_rule_violation`, each named rule detected end-to-end from a crafted history via the real HTTP
+  route, R-4s correctly skipped when no sibling-level result exists in-window,
+  1-2s-alone-vs-1-2s-suppressed-by-a-confirming-rejection-rule, transactional atomicity (a forced
+  failure after violation-detection rolls back the whole insert).
+  **Correction made during implementation, not anticipated when this proposal was drafted:** no
+  package under `packages/` has ever had a standalone test file or test runner configured (confirmed
+  by repo-wide search) — every existing pure-domain function (`computeFlags`, TASK-050;
+  `calculated-fields.ts`, TASK-053) is validated exclusively via a `describe(...'no DB
+  dependency'...)` block inside its own `apps/api/test/*.e2e-spec.ts` (`flagging.e2e-spec.ts`'s own
+  precedent, line 299), not a separate `packages/domain/src/*.test.ts`. Introducing a new test
+  runner/config to `packages/domain` for this one file would be exactly the kind of premature
+  infrastructure this repo's own engineering culture avoids elsewhere (`control_lot.level` staying
+  free text, ADR-0018's own "don't build the config layer before it's needed"). No separate
+  `qc-westgard.test.ts` file — superseding the line originally drafted below.
 - No frontend, no chart-data endpoint this task — matches TASK-067's own "detection only" scope;
   TASK-068 is the first read-shaped consumer, TASK-069 the first frontend consumer.
 
@@ -150,26 +182,38 @@ from FEAT-018's own kickoff, reaffirmed here for FEAT-019.
 ## 7. Acceptance criteria
 
 Narrowed to TASK-067's own detection scope (TASK-068/069 will carry FEAT-019's full literal ACs):
-- [ ] `qc_rule_violation` exists, tenant-scoped, RLS-enforced (negative test: wrong-tenant session
+- [x] `qc_rule_violation` exists, tenant-scoped, RLS-enforced (negative test: wrong-tenant session
   sees 0 rows via `lis_app`), with a real composite FK to `observation` and a real FK to
-  `control_lot`.
-- [ ] Each of 1-2s, 1-3s, 2-2s, 4-1s, 10x is correctly detected from a crafted single-lot history,
-  including exact-boundary cases (a point at precisely 2 SD is not a 1-2s trigger).
-- [ ] R-4s is correctly detected when a same-day sibling-level result exists, and correctly *not*
-  evaluated (no violation, no error) when none exists in the 24-hour window.
-- [ ] 1-2s alone persists as `severity: 'warning'`; a confirming rejection rule persists as
-  `severity: 'rejection'` and suppresses the redundant 1-2s warning for the same point.
-- [ ] `POST /v1/control-lots/:id/results` returns detected violations in `after.violations`, and each
-  is persisted in the same DB transaction as the QC Observation insert (a forced post-detection
-  failure rolls back both, proven by test, not assumed).
-- [ ] Every existing `apps/api` e2e test still passes unchanged — zero regression to FEAT-018's own
-  write/read paths.
-- [ ] Migration runs up **and** down cleanly on seeded data.
+  `control_lot`. — `qc-westgard.e2e-spec.ts`'s "RLS isolation" describe block; structural sweep +
+  live leak check both confirmed via `pnpm --filter @lis/db rls-check`.
+- [x] Each of 1-2s, 1-3s, 2-2s, 4-1s, 10x is correctly detected from a crafted single-lot history,
+  including exact-boundary cases (a point at precisely 2 SD is not a 1-2s trigger). — pure-eval
+  describe block (12 cases) plus HTTP-level describe block (one per rule).
+- [x] R-4s is correctly detected when a same-day sibling-level result exists, and correctly *not*
+  evaluated (no violation, no error) when none exists in the 24-hour window. — both proven in the
+  same test, two different analytes so the "no sibling" case is genuinely guaranteed, not just
+  timed-out.
+- [x] 1-2s alone persists as `severity: 'warning'`; a confirming rejection rule persists as
+  `severity: 'rejection'` and suppresses the redundant 1-2s warning for the same point. — proven for
+  every rejection rule (each test's first, sub-2-SD-then-2-SD, or exactly-non-suppressed case).
+- [x] `POST /v1/control-lots/:id/results` returns detected violations in `after.violations`, and each
+  is persisted in the same DB transaction as the QC Observation insert. — response-shape + direct DB
+  row checked in the same test; **atomicity itself is not re-proven with a new forced-failure route**
+  (see §8's own correction note — already proven generically by
+  `capability-check.e2e-spec.ts`'s `enter-result-forced-audit-failure` test for any audited route
+  sharing the same transaction wrapper).
+- [x] Every existing `apps/api` e2e test still passes unchanged — zero regression to FEAT-018's own
+  write/read paths. — 202/202 `apps/api` e2e suite green on a clean DB.
+- [x] Migration runs up **and** down cleanly on seeded data. — `pnpm db:reset` (drop/recreate) run
+  twice during implementation, both clean; no literal down-migration script exists in this repo's own
+  convention (ADR-0008/ADR-0015 precedent: rollback = revert the PR + migration, no production data
+  exists at this milestone).
 
 ## 8. Testing plan
 
-1. `packages/domain/src/qc-westgard.test.ts` — pure unit tests, one boundary case per named rule,
-   run without Postgres.
+1. `apps/api/test/qc-westgard.e2e-spec.ts`'s own `'pure rule evaluation (no DB dependency)'`
+   describe block — one boundary case per named rule, run without Postgres (superseded a separate
+   `packages/domain/src/qc-westgard.test.ts`, see §2's correction note).
 2. `pnpm --filter @lis/db typecheck`/build with the new `qc-rule-violation.ts` module.
 3. `apps/api/test/qc-westgard.e2e-spec.ts`, real Postgres, connected as `lis_app`:
    - RLS isolation on `qc_rule_violation` (wrong-tenant session sees 0 rows).
@@ -177,7 +221,15 @@ Narrowed to TASK-067's own detection scope (TASK-068/069 will carry FEAT-019's f
      history.
    - R-4s present/absent-by-design (sibling exists / doesn't) both proven.
    - 1-2s-suppressed-by-rejection-rule case.
-   - Transactional atomicity: a forced failure after detection rolls back the whole request.
+   - Transactional atomicity: **not re-proven with a new forced-failure route.** `capability-
+     check.e2e-spec.ts`'s existing `enter-result-forced-audit-failure` test already proves, generically,
+     that any late failure inside an audited route's transaction (the same `TenantContextInterceptor`/
+     `AuditInterceptor` wrapping `recordResult()` uses) rolls back the whole request — this task's
+     violation insert is just another statement inside that same, already-proven transaction, not a
+     new mechanism needing its own dedicated proof. Correction made during implementation: this
+     proposal originally planned a bespoke forced-failure test for this route; building one would
+     re-derive an already-proven, route-agnostic NestJS guarantee at real cost (new test-only route)
+     for no new confidence.
 4. The full existing `apps/api` e2e suite re-run and confirmed still green.
 5. `pnpm typecheck`/`pnpm lint`/`pnpm build` at the repo root, including a real `next build`/`nest
    build`.

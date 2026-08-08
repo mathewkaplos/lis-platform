@@ -148,6 +148,13 @@
       "when": 1786218000000,
       "tag": "0020_lis_scheduler_created_at_grant",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786181246979,
+      "tag": "0021_qc_rule_violation",
+      "breakpoints": true
     }
   ]
 }

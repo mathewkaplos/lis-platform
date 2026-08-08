@@ -228,3 +228,24 @@ frontmatter declaration (this entry's own commit).
   table now fails quietly, not loudly, on a mis-wired request) stated
   explicitly.
 - **Files:** `~/work/lis-engineering/skills/engineering/rls-multi-tenancy/SKILL.md`
+
+## 2026-08-08 (3)
+
+- **Friction:** `/orient`'s milestone cross-check (CHECKLIST.md item 9)
+  found #30 (FEAT-021), #360 (TASK-065), and #361 (TASK-066) still open on
+  GitHub, despite PRs #363/#366 being merged and the breadcrumb narrating
+  the feature as fully closed. Root cause: both PR bodies referenced their
+  issues as `Implements TASK-N (#N)` rather than a bare `Closes #N`, so
+  GitHub's closing-keyword parser never fired — the exact failure class
+  AGENTS.md's "PR conventions" section already documents from an earlier
+  #93/#94 incident. The rule was already written correctly; it just wasn't
+  linked from `develop/SKILL.md`, the Skill that actually walks through
+  implementing and shipping a task, so it never surfaced at the point the
+  mistake keeps happening.
+- **Area:** existing-skill:workflow/develop
+- **Change:** added step 5 to `develop/SKILL.md` pointing to AGENTS.md's
+  `Closes #N` convention at the PR-opening step, naming both incident pairs
+  (#93/#94, #360/#361) so the "why" travels with the rule. Also manually
+  closed #30/#360/#361 (already-merged, real work — GitHub state was simply
+  stale) as part of this session's `/orient`.
+- **Files:** `~/work/lis-engineering/skills/workflow/develop/SKILL.md`

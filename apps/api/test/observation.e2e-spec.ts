@@ -783,30 +783,34 @@ describe('Result entry API (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({ dataType: 'quantity', valueNum: 15 })
         .expect(409);
-      const problem = res.body as { detail: string };
+      const problem = res.body as {
+        detail: string;
+        code: string;
+        reason?: string;
+        heldObservation?: { valueNum: number | null; status: string };
+      };
       if (!/critical/i.test(problem.detail)) {
         throw new Error(
           `expected a generic critical-pending 409 detail, got ${JSON.stringify(problem.detail)}`,
         );
       }
-
-      const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
-      await db.execute(
-        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
-      );
-      const [bunRow] = await db
-        .select({ status: observation.status })
-        .from(observation)
-        .where(
-          and(
-            eq(observation.orderedTestId, orderedTestId),
-            eq(observation.analyteId, bunAnalyteId),
-          ),
-        )
-        .limit(1);
-      if (!bunRow || bunRow.status !== 'preliminary') {
+      // ADR-0021 / issue #400: the 409 body itself now proves the write
+      // committed, in place of the DB re-query this test previously needed
+      // to work around the 409 carrying no id at all.
+      if (
+        problem.code !== 'panel_hold' ||
+        problem.reason !== 'unacknowledged_critical'
+      ) {
         throw new Error(
-          `expected BUN's own observation write to persist as 'preliminary' despite the 409, got ${JSON.stringify(bunRow)}`,
+          `expected code: 'panel_hold', reason: 'unacknowledged_critical', got ${JSON.stringify({ code: problem.code, reason: problem.reason })}`,
+        );
+      }
+      if (
+        problem.heldObservation?.valueNum !== 15 ||
+        problem.heldObservation.status !== 'preliminary'
+      ) {
+        throw new Error(
+          `expected the 409 body to echo BUN's own just-committed write (valueNum: 15, status: 'preliminary'), got ${JSON.stringify(problem.heldObservation)}`,
         );
       }
 

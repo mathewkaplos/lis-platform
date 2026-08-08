@@ -5,6 +5,7 @@ import {
   type ExecutionContext,
   type NestInterceptor,
 } from '@nestjs/common';
+import type { ObservationResult } from '@lis/domain';
 import {
   controlLot,
   criticalNotification,
@@ -31,6 +32,45 @@ import type { RequestWithAuthContext } from '../auth/jwt-auth.guard';
 type RequestWithOrderedTestParam = RequestWithAuthContext & {
   params: { id: string };
 };
+
+// The exact shape `observation.controller.ts`'s `finalize()` returns --
+// narrowed from `unknown` only where this interceptor needs to read it back,
+// since it's the sole caller `next.handle()` ever resolves to on this route.
+interface FinalizeResult {
+  resourceId: string;
+  before: unknown;
+  after: {
+    observation: ObservationResult;
+    calculatedDependents: ObservationResult[];
+    criticalDetected: boolean;
+    criticalNotificationId: string | null;
+  };
+}
+
+/**
+ * ADR-0021 / issue #400: both post-commit hold branches below throw this
+ * instead of a bare `ConflictException`, so `ProblemDetailsFilter` can give
+ * the response a distinguishable `code: 'panel_hold'` and echo the
+ * already-committed write (`heldObservation`/`heldCalculatedDependents`) --
+ * captured from `result` (the just-finalized analyte's own response body,
+ * resolved before either hold-check below runs) rather than a fresh query.
+ * `apps/web`'s `finalizeResult()` uses the presence of this code to render
+ * the row as "saved, held" instead of spreading its generic `FAILURE` state
+ * over a value that was never actually lost. `loadWriteContext`'s own
+ * pre-write 409 (`observation.controller.ts`) deliberately stays a bare
+ * `ConflictException` -- it's the control case the frontend's `code` check
+ * falls back to.
+ */
+export class PanelHoldException extends ConflictException {
+  constructor(
+    message: string,
+    public readonly reason: 'unacknowledged_critical' | 'qc_violation',
+    public readonly heldObservation: ObservationResult,
+    public readonly heldCalculatedDependents: ObservationResult[],
+  ) {
+    super(message);
+  }
+}
 
 /**
  * TASK-056 (FEAT-015 revision, #115): the `ordered_test.status -> 'resulted'`
@@ -182,8 +222,12 @@ export class FinalizationRollupInterceptor implements NestInterceptor {
               ),
             );
           if (unacknowledgedCriticals.length > 0) {
-            throw new ConflictException(
+            const finalized = result as FinalizeResult;
+            throw new PanelHoldException(
               `Cannot complete: ${unacknowledgedCriticals.length} critical result(s) pending verification and/or acknowledgement (Constitution Law #3)`,
+              'unacknowledged_critical',
+              finalized.after.observation,
+              finalized.after.calculatedDependents,
             );
           }
 
@@ -211,8 +255,12 @@ export class FinalizationRollupInterceptor implements NestInterceptor {
               ),
             );
           if (heldByQcViolation.length > 0) {
-            throw new ConflictException(
+            const finalized = result as FinalizeResult;
+            throw new PanelHoldException(
               `Cannot complete: ${heldByQcViolation.length} analyte(s) held on an unresolved QC violation`,
+              'qc_violation',
+              finalized.after.observation,
+              finalized.after.calculatedDependents,
             );
           }
 

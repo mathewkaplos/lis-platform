@@ -249,3 +249,26 @@ frontmatter declaration (this entry's own commit).
   closed #30/#360/#361 (already-merged, real work — GitHub state was simply
   stale) as part of this session's `/orient`.
 - **Files:** `~/work/lis-engineering/skills/workflow/develop/SKILL.md`
+
+## 2026-08-08 (4)
+
+- **Friction:** `/orient`'s milestone cross-check (CHECKLIST.md item 9)
+  found #372 (TASK-067) and #373 (TASK-068) still open on GitHub, despite
+  PRs #376/#377 being merged — the same `Closes #N` failure class as the
+  #30/#360/#361 incident earlier the same session (2026-08-08 (3), below).
+  This time the fix from that earlier entry (develop/SKILL.md step 5) was
+  already live when PRs #376/#377 were opened (confirmed via timestamps:
+  fix committed 09:05 UTC, #376 opened 09:43 UTC, #377 opened 10:00 UTC) —
+  it was violated anyway. Only PR #378, opened later the same session,
+  actually followed it. Writing the reminder was evidently not sufficient
+  on its own; there was also no step anywhere that verified, after a PR
+  merged, that the issue it referenced actually closed.
+- **Area:** existing-skill:workflow/develop
+- **Change:** added step 6 to `develop/SKILL.md` — after a PR merges,
+  check the referenced issue's actual state (`gh issue view <N> --jq
+  .state`) and close it manually right away if still open, rather than
+  relying on a future session's `/orient` to catch it a session late.
+  Step 5 also updated to record this second recurrence inline. Also
+  manually closed #372/#373 (already-merged, real work) as part of this
+  session's `/orient`.
+- **Files:** `~/work/lis-engineering/skills/workflow/develop/SKILL.md`

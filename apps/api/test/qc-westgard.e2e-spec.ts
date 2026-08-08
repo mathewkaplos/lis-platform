@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   analyte,
   controlLot,
@@ -363,6 +363,42 @@ describe('Westgard rule evaluation on QC result entry (e2e)', () => {
   });
 
   afterAll(async () => {
+    // TASK-070 (ADR-0019 Decision 1/2): FinalizationRollupInterceptor now
+    // holds ANY ordered test requiring one of `analyteIds` on an unresolved,
+    // rejection-severity qc_rule_violation -- tenant-wide, not scoped to
+    // this file. Before TASK-070, a violation left unresolved here (this
+    // describe block's own long-standing behavior; no resolve lifecycle
+    // existed yet) was inert outside this file. Now it isn't: `analyteIds`
+    // is an arbitrary, non-deterministic `LIMIT 10` slice of real, shared
+    // seeded analytes (no `ORDER BY`), so it can draw the same analyte
+    // another spec file's own fixture happens to use -- confirmed as a real
+    // CI failure (`worklist.e2e-spec.ts`'s `makeOrderedFixture` 409'd,
+    // passing consistently in every local run only because the local draw
+    // never collided). Resolving everything this file creates restores the
+    // pre-TASK-070 property (zero externally observable side effects) via a
+    // direct DB update -- not the HTTP resolve route, since proving that
+    // route's own behavior isn't this file's concern.
+    const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+    await db.execute(
+      sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+    );
+    const lotRows = await db
+      .select({ id: controlLot.id })
+      .from(controlLot)
+      .where(inArray(controlLot.analyteId, analyteIds));
+    const lotIds = lotRows.map((row) => row.id);
+    if (lotIds.length > 0) {
+      await db
+        .update(qcRuleViolation)
+        .set({ resolvedAt: new Date(), resolvedByUserId: null })
+        .where(
+          and(
+            inArray(qcRuleViolation.controlLotId, lotIds),
+            isNull(qcRuleViolation.resolvedAt),
+          ),
+        );
+    }
+
     await app.close();
   });
 

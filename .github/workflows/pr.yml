@@ -23,6 +23,11 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lis
       APP_DATABASE_URL: postgresql://lis_app:lis_app_ci_password@localhost:5432/lis
+      # TASK-066 (ADR-0017): the critical-notification escalation job's
+      # enumeration-only connection (apps/api/src/critical-notification/
+      # scheduler-db.ts requiredEnv()s this at module load, same reasoning
+      # as APP_DATABASE_URL above). CI-only value, never a real secret.
+      SCHEDULER_DATABASE_URL: postgresql://lis_scheduler:lis_scheduler_ci_password@localhost:5432/lis
       # Matches TASK-028's local docker-compose Keycloak service (also
       # localhost:8080) — same realm-import file, no CI-specific override
       # needed. See infra/keycloak/README.md.
@@ -94,6 +99,7 @@ jobs:
       # CI-only bootstrap path.
       - run: pnpm --filter @lis/db migrate
       - run: psql "$DATABASE_URL" -c "ALTER ROLE lis_app WITH PASSWORD 'lis_app_ci_password';"
+      - run: psql "$DATABASE_URL" -c "ALTER ROLE lis_scheduler WITH PASSWORD 'lis_scheduler_ci_password';"
       - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/chemistry-catalog.sql
       - run: pnpm run-golden-datasets
       - run: pnpm test

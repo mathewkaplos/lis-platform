@@ -127,6 +127,27 @@
       "when": 1786127783148,
       "tag": "0017_critical_notification",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1786166827010,
+      "tag": "0018_lis_scheduler_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786167020044,
+      "tag": "0019_critical_notification_tenant_isolation_missing_ok",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786218000000,
+      "tag": "0020_lis_scheduler_created_at_grant",
+      "breakpoints": true
     }
   ]
 }

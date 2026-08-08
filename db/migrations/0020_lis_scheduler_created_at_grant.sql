@@ -1,0 +1,18 @@
+-- TASK-066 (FEAT-021), fixing forward from 0018_lis_scheduler_role.sql --
+-- never editing a past migration, same discipline 0019 already followed.
+-- Pure GRANT, no schema.ts representation (same as 0018's own role/grant
+-- statements and 0002_app_role.sql's precedent) -- drizzle-kit generate
+-- correctly reports "No schema changes, nothing to migrate" for this file;
+-- meta/0020_snapshot.json is a hand-chained copy of 0019's, same shape
+-- 0002_snapshot.json already established for the identical situation.
+--
+-- Real, load-bearing finding from a real failed query, not anticipated by
+-- ADR-0017 or 0018: Postgres's column-level GRANT model requires SELECT
+-- privilege on EVERY column referenced ANYWHERE in a query -- including a
+-- WHERE clause -- not just the columns actually returned. The escalation
+-- job's own enumeration query (CriticalNotificationEscalationService)
+-- filters `WHERE created_at < $1` (so it doesn't wake a tenant whose only
+-- pending notification isn't overdue yet), which needs its own SELECT
+-- grant -- confirmed by a real "permission denied for table
+-- critical_notification" error against a real Postgres instance.
+GRANT SELECT (created_at) ON "critical_notification" TO "lis_scheduler";

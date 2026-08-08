@@ -606,17 +606,19 @@ describe('Result entry API (e2e)', () => {
    */
   describe('Finalization block on unacknowledged critical (409) (TASK-056)', () => {
     /**
-     * Positive path (proposal §7/§8): the SAME real critical (Sodium at 115,
-     * real critical-low threshold 120) that 409s unverified above completes
-     * normally once verified first -- proves the guard is not permanently
-     * stuck, only conditional on acknowledgement. Uses the synthetic
-     * Sodium+BUN panel (see beforeAll) so Sodium can be finalized and
-     * verified WHILE the panel still has a second, unfinalized analyte
-     * (BUN) -- i.e. verification happens strictly before the call that
-     * completes the panel, the one ordering TASK-055's own `verify()` never
-     * gated against and this task's own testing plan calls for directly.
+     * Positive path (proposal §7/§8, widened by TASK-066): the SAME real
+     * critical (Sodium at 115, real critical-low threshold 120) that 409s
+     * unverified above completes normally once BOTH verified AND its
+     * `critical_notification` acknowledged -- proves the widened guard is
+     * not permanently stuck, only conditional on the full acknowledgement
+     * TASK-066 now requires (verification alone is no longer sufficient,
+     * see the regression test right below this one). Uses the synthetic
+     * Sodium+BUN panel (see beforeAll) so Sodium can be finalized, verified,
+     * and acknowledged WHILE the panel still has a second, unfinalized
+     * analyte (BUN) -- i.e. every acknowledgement step happens strictly
+     * before the call that completes the panel.
      */
-    it('a verified critical no longer blocks the roll-up: the panel completes (200, resulted) once the critical analyte is verified before the last analyte finalizes', async () => {
+    it('a verified AND acknowledged critical no longer blocks the roll-up: the panel completes (200, resulted) (TASK-056, widened by TASK-066)', async () => {
       const { orderId, orderedTestIds } = await createOrder([
         SODIUM_BUN_SYNTH_PANEL_CODE,
       ]);
@@ -628,13 +630,22 @@ describe('Result entry API (e2e)', () => {
       // Sodium finalizes first, critical (LL) -- NOT the panel's last
       // remaining analyte yet (BUN is still unfinalized), so this call is
       // unaffected by the guard (allFinalized is false) and succeeds 200.
-      await request(app.getHttpServer())
+      const sodiumRes = await request(app.getHttpServer())
         .post(
           `/v1/ordered-tests/${orderedTestId}/results/${sodiumAnalyteId}/finalize`,
         )
         .set('Authorization', `Bearer ${tokenA}`)
         .send({ dataType: 'quantity', valueNum: 115 })
         .expect(200);
+      const sodiumBody = sodiumRes.body as {
+        after: { criticalNotificationId: string | null };
+      };
+      const criticalNotificationId = sodiumBody.after.criticalNotificationId;
+      if (!criticalNotificationId) {
+        throw new Error(
+          `expected a criticalNotificationId on Sodium's own finalize response, got ${JSON.stringify(sodiumBody.after)}`,
+        );
+      }
 
       const midStatus = await orderedTestStatus(orderId, orderedTestId);
       if (midStatus === 'resulted') {
@@ -643,7 +654,6 @@ describe('Result entry API (e2e)', () => {
         );
       }
 
-      // Acknowledge the critical before the panel is complete.
       await request(app.getHttpServer())
         .post(
           `/v1/ordered-tests/${orderedTestId}/results/${sodiumAnalyteId}/verify`,
@@ -651,8 +661,20 @@ describe('Result entry API (e2e)', () => {
         .set('Authorization', `Bearer ${verifierToken}`)
         .expect(200);
 
+      // TASK-066: verification alone is no longer sufficient -- the
+      // documented read-back must be captured too, before the panel is
+      // complete.
+      await request(app.getHttpServer())
+        .post(
+          `/v1/critical-notifications/${criticalNotificationId}/acknowledge`,
+        )
+        .set('Authorization', `Bearer ${verifierToken}`)
+        .send({ readBack: 'confirmed with on-call physician' })
+        .expect(200);
+
       // BUN is now the panel's last remaining analyte -- the roll-up runs,
-      // finds Sodium's critical already verified, and completes normally.
+      // finds Sodium's critical both verified and acknowledged, and
+      // completes normally.
       await request(app.getHttpServer())
         .post(
           `/v1/ordered-tests/${orderedTestId}/results/${bunAnalyteId}/finalize`,
@@ -664,7 +686,67 @@ describe('Result entry API (e2e)', () => {
       const finalStatus = await orderedTestStatus(orderId, orderedTestId);
       if (finalStatus !== 'resulted') {
         throw new Error(
-          `expected ordered_test 'resulted' once BUN finalizes with Sodium's critical already verified, got '${finalStatus}'`,
+          `expected ordered_test 'resulted' once BUN finalizes with Sodium's critical both verified and acknowledged, got '${finalStatus}'`,
+        );
+      }
+    });
+
+    /**
+     * TASK-066's own regression test: proves the widening actually took
+     * effect, not just that the already-covered verified+acknowledged case
+     * above still passes. Identical setup to the positive-path test above,
+     * except the read-back is never captured -- before TASK-066, this
+     * exact scenario (verified, not acknowledged) returned 200/resulted;
+     * after TASK-066, it must 409, since a verified-but-unacknowledged
+     * critical no longer satisfies Constitution Law #3's own "documented
+     * notification with read-back" clause.
+     */
+    it('a verified but NOT acknowledged critical still blocks the roll-up (TASK-066 widened gate)', async () => {
+      const { orderId, orderedTestIds } = await createOrder([
+        SODIUM_BUN_SYNTH_PANEL_CODE,
+      ]);
+      await receive(orderId);
+      const [orderedTestId] = orderedTestIds;
+      const sodiumAnalyteId = await analyteIdForTestCode(SODIUM_CODE);
+      const bunAnalyteId = await analyteIdForTestCode(BUN_CODE);
+
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${sodiumAnalyteId}/finalize`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 115 })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${sodiumAnalyteId}/verify`,
+        )
+        .set('Authorization', `Bearer ${verifierToken}`)
+        .expect(200);
+      // No acknowledge() call -- the critical_notification stays 'pending'.
+
+      const res = await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId}/results/${bunAnalyteId}/finalize`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 15 })
+        .expect(409);
+      const problem = res.body as { detail: string };
+      if (
+        !/critical/i.test(problem.detail) ||
+        !/acknowledg/i.test(problem.detail)
+      ) {
+        throw new Error(
+          `expected a 409 detail naming pending acknowledgement, got ${JSON.stringify(problem.detail)}`,
+        );
+      }
+
+      const status = await orderedTestStatus(orderId, orderedTestId);
+      if (status === 'resulted') {
+        throw new Error(
+          `expected ordered_test NOT to advance to 'resulted' while verified-but-unacknowledged, got '${status}'`,
         );
       }
     });

@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, sql } from 'drizzle-orm';
 import {
   auditEvent,
   createDb,
@@ -14,6 +14,7 @@ import {
 } from '@lis/db';
 import { AppModule } from './../src/app.module';
 import { getKeycloakToken } from './get-keycloak-token';
+import { CriticalNotificationEscalationService } from '../src/critical-notification/critical-notification-escalation.service';
 
 const TENANT_A = '00000000-0000-0000-0000-000000000001';
 const TENANT_B = '00000000-0000-0000-0000-000000000099';
@@ -438,6 +439,192 @@ describe('Critical notification API (e2e)', () => {
       await db.execute(
         sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
       );
+    });
+  });
+
+  /**
+   * TASK-066 (FEAT-021, ADR-0017). `@Interval` fires every 5 minutes in real
+   * use -- far too slow for a test -- so these call
+   * `CriticalNotificationEscalationService.escalateOverdue()` directly (a
+   * real NestJS testing pattern: grab the provider instance off the same
+   * app module already booted for this spec), and backdate a real
+   * `critical_notification.createdAt` via direct `@lis/db` access to
+   * simulate it being overdue, rather than manipulating the global
+   * `CRITICAL_NOTIFICATION_ESCALATION_MINUTES` env var (which every other
+   * test in this file, and every other spec file sharing this same env,
+   * would also read).
+   */
+  describe('CriticalNotificationEscalationService (TASK-066)', () => {
+    async function backdateCreatedAt(
+      notificationId: string,
+      minutesAgo: number,
+    ): Promise<void> {
+      const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+      await db
+        .update(criticalNotification)
+        .set({ createdAt: new Date(Date.now() - minutesAgo * 60 * 1000) })
+        .where(eq(criticalNotification.id, notificationId));
+    }
+
+    it('escalates a critical_notification still pending past the configured window, audited', async () => {
+      const { orderId, orderedTestId } = await createOrder();
+      await receive(orderId);
+      const observationId = await finalizeSodiumCritical(orderedTestId);
+      const [notification] = await notificationsForObservation(observationId);
+
+      // Default window is 30 minutes (ADR-0017 revision) -- 60 minutes ago
+      // is unambiguously overdue regardless of test env overrides.
+      await backdateCreatedAt(notification.id, 60);
+
+      const escalationService = app.get(CriticalNotificationEscalationService);
+      await escalationService.escalateOverdue();
+
+      const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+      const [updated] = await db
+        .select()
+        .from(criticalNotification)
+        .where(eq(criticalNotification.id, notification.id));
+      expect(updated.status).toBe('escalated');
+      expect(updated.escalationLevel).toBe(1);
+      expect(updated.lastEscalatedAt).not.toBeNull();
+
+      const [auditRow] = await db
+        .select({ after: auditEvent.after })
+        .from(auditEvent)
+        .where(
+          and(
+            eq(auditEvent.action, 'critical_notification.escalate'),
+            eq(auditEvent.resourceId, notification.id),
+          ),
+        )
+        .orderBy(desc(auditEvent.sequence))
+        .limit(1);
+      expect(auditRow).toBeDefined();
+      const after = auditRow.after as { status: string };
+      expect(after.status).toBe('escalated');
+    });
+
+    it('does not escalate a notification still within the escalation window', async () => {
+      const { orderId, orderedTestId } = await createOrder();
+      await receive(orderId);
+      const observationId = await finalizeSodiumCritical(orderedTestId);
+      const [notification] = await notificationsForObservation(observationId);
+      // createdAt left at "now" -- not overdue.
+
+      const escalationService = app.get(CriticalNotificationEscalationService);
+      await escalationService.escalateOverdue();
+
+      const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+      const [unchanged] = await db
+        .select()
+        .from(criticalNotification)
+        .where(eq(criticalNotification.id, notification.id));
+      expect(unchanged.status).toBe('pending');
+      expect(unchanged.escalationLevel).toBe(0);
+    });
+
+    it('does not escalate an already-acknowledged notification even if old', async () => {
+      const { orderId, orderedTestId } = await createOrder();
+      await receive(orderId);
+      const observationId = await finalizeSodiumCritical(orderedTestId);
+      const [notification] = await notificationsForObservation(observationId);
+
+      await request(app.getHttpServer())
+        .post(`/v1/critical-notifications/${notification.id}/acknowledge`)
+        .set('Authorization', `Bearer ${verifierToken}`)
+        .send({ readBack: 'confirmed' })
+        .expect(200);
+      await backdateCreatedAt(notification.id, 60);
+
+      const escalationService = app.get(CriticalNotificationEscalationService);
+      await escalationService.escalateOverdue();
+
+      const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+      const [unchanged] = await db
+        .select()
+        .from(criticalNotification)
+        .where(eq(criticalNotification.id, notification.id));
+      expect(unchanged.status).toBe('acknowledged');
+    });
+  });
+
+  /**
+   * TASK-066 (ADR-0017). Proves the migration's own AC directly against a
+   * real Postgres instance, connected as `lis_scheduler` itself -- not
+   * inferred from the escalation job's own behavior above, which only ever
+   * exercises the happy path through that role.
+   */
+  describe('lis_scheduler role (ADR-0017)', () => {
+    it('can read tenant_id of pending critical_notification rows, but no other column', async () => {
+      const { orderId, orderedTestId } = await createOrder();
+      await receive(orderId);
+      await finalizeSodiumCritical(orderedTestId);
+
+      const schedulerConn = createDb(process.env.SCHEDULER_DATABASE_URL, {
+        max: 1,
+      });
+      const rows = await schedulerConn
+        .select({ tenantId: criticalNotification.tenantId })
+        .from(criticalNotification);
+      expect(rows.some((r) => r.tenantId === TENANT_A)).toBe(true);
+
+      await expect(
+        schedulerConn.select().from(criticalNotification),
+      ).rejects.toThrow();
+    });
+
+    it('cannot read any other table', async () => {
+      const schedulerConn = createDb(process.env.SCHEDULER_DATABASE_URL, {
+        max: 1,
+      });
+      await expect(schedulerConn.select().from(observation)).rejects.toThrow();
+    });
+
+    it('sees zero rows once a notification is acknowledged (policy restricted to status = pending)', async () => {
+      // lis_scheduler has no grant on the `id` column at all (only
+      // tenant_id/created_at, per 0018/0020) -- filtering WHERE id = ...
+      // would itself be a permission-denied query, the same class of bug
+      // this file's own escalation tests just found for `created_at`. This
+      // test isolates "this run's own row" via a created_at lower-bound
+      // instead, using only granted columns.
+      const testStartedAt = new Date();
+      const { orderId, orderedTestId } = await createOrder();
+      await receive(orderId);
+      const observationId = await finalizeSodiumCritical(orderedTestId);
+      const [notification] = await notificationsForObservation(observationId);
+
+      const schedulerConn = createDb(process.env.SCHEDULER_DATABASE_URL, {
+        max: 1,
+      });
+      const beforeAck = await schedulerConn
+        .select({ tenantId: criticalNotification.tenantId })
+        .from(criticalNotification)
+        .where(gt(criticalNotification.createdAt, testStartedAt));
+      expect(beforeAck.some((r) => r.tenantId === TENANT_A)).toBe(true);
+
+      await request(app.getHttpServer())
+        .post(`/v1/critical-notifications/${notification.id}/acknowledge`)
+        .set('Authorization', `Bearer ${verifierToken}`)
+        .send({ readBack: 'confirmed' })
+        .expect(200);
+
+      const afterAck = await schedulerConn
+        .select({ tenantId: criticalNotification.tenantId })
+        .from(criticalNotification)
+        .where(gt(criticalNotification.createdAt, testStartedAt));
+      expect(afterAck).toHaveLength(0);
     });
   });
 });

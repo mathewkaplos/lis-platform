@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { AppController } from './app.controller';
@@ -19,6 +20,10 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
 @Module({
   imports: [
     SentryModule.forRoot(),
+    // TASK-066 (ADR-0017): the critical-notification escalation job's own
+    // @Interval scheduling. No queue, no event bus -- a plain polling
+    // interval (domain/critical-values Skill entry #4).
+    ScheduleModule.forRoot(),
     AuthModule,
     PatientModule,
     OrderModule,

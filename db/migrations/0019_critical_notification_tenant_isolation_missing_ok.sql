@@ -1,0 +1,20 @@
+-- TASK-066 (FEAT-021), fixing forward from 0018_lis_scheduler_role.sql --
+-- never editing a past migration (AGENTS.md's own standing rule), even one
+-- created earlier in this same session. Real, load-bearing bug found by
+-- directly testing lis_scheduler against a real Postgres instance, not
+-- assumed: Postgres's 1-arg current_setting('app.tenant_id') *throws*
+-- "unrecognized configuration parameter" when the session variable was
+-- never set at all -- not merely false/null. Multiple PERMISSIVE RLS
+-- policies on one table are OR'd together, and an exception evaluating one
+-- policy's USING clause aborts the whole query regardless of what a
+-- second, more permissive policy would have allowed. lis_scheduler never
+-- sets app.tenant_id (it has no single tenant -- that's the whole point of
+-- 0018's own scheduler_enumeration policy), so every one of its queries
+-- against this table failed on tenant_isolation's own clause before
+-- scheduler_enumeration ever got evaluated. Fixed by switching to the
+-- 2-arg current_setting(..., missing_ok := true) form, which returns null
+-- instead of throwing -- see packages/db/src/schema/critical-notification.ts's
+-- own updated comment for the accepted tradeoff (this one table now fails
+-- quietly, not loudly, if TenantContextInterceptor ever failed to run
+-- against it -- every other table in this schema is unaffected).
+ALTER POLICY "tenant_isolation" ON "critical_notification" TO public USING (tenant_id = current_setting('app.tenant_id', true)::uuid);

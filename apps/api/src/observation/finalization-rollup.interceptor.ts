@@ -5,8 +5,22 @@ import {
   type ExecutionContext,
   type NestInterceptor,
 } from '@nestjs/common';
-import { observation, orderedTest, testAnalyte } from '@lis/db';
-import { and, arrayOverlaps, eq, inArray, ne, sql } from 'drizzle-orm';
+import {
+  criticalNotification,
+  observation,
+  orderedTest,
+  testAnalyte,
+} from '@lis/db';
+import {
+  and,
+  arrayOverlaps,
+  eq,
+  exists,
+  inArray,
+  ne,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { from, firstValueFrom, type Observable } from 'rxjs';
 import { db } from '../auth/db';
 import type { RequestWithAuthContext } from '../auth/jwt-auth.guard';
@@ -122,23 +136,51 @@ export class FinalizationRollupInterceptor implements NestInterceptor {
           );
           if (!allFinalized) return;
 
-          // TASK-056's own new guard (Constitution Law #3): reuses the
+          // TASK-056's own original guard (Constitution Law #3): reuses the
           // already-GIN-indexed `flags` column (`ix_obs_flags`, TASK-050) and
           // TASK-055's own `verify()` as the sole acknowledgement signal
           // (proposal §10 Q2) -- no new column, no new index.
-          const unverifiedCriticals = await tx
+          //
+          // TASK-066 (ADR-0016/ADR-0017) widens it: verification alone is no
+          // longer sufficient. An HH/LL observation now also blocks
+          // completion if it has a `critical_notification` whose own status
+          // isn't `'acknowledged'` -- the real gap ADR-0016 named explicitly
+          // (a verified critical could finalize a report before its
+          // documented read-back was ever captured). A correlated `exists()`
+          // subquery, not a join: an observation can accumulate multiple
+          // historical `critical_notification` rows across corrections (only
+          // the current one need be unacknowledged), so a join would need
+          // the same per-row dedup logic anyway -- `exists()` expresses "an
+          // outstanding notification exists for this observation" directly.
+          const unacknowledgedCriticals = await tx
             .select({ id: observation.id })
             .from(observation)
             .where(
               and(
                 eq(observation.orderedTestId, orderedTestId),
                 arrayOverlaps(observation.flags, ['HH', 'LL']),
-                ne(observation.status, 'verified'),
+                or(
+                  ne(observation.status, 'verified'),
+                  exists(
+                    tx
+                      .select({ one: sql`1` })
+                      .from(criticalNotification)
+                      .where(
+                        and(
+                          eq(
+                            criticalNotification.observationId,
+                            observation.id,
+                          ),
+                          ne(criticalNotification.status, 'acknowledged'),
+                        ),
+                      ),
+                  ),
+                ),
               ),
             );
-          if (unverifiedCriticals.length > 0) {
+          if (unacknowledgedCriticals.length > 0) {
             throw new ConflictException(
-              `Cannot complete: ${unverifiedCriticals.length} critical result(s) pending verification (Constitution Law #3)`,
+              `Cannot complete: ${unacknowledgedCriticals.length} critical result(s) pending verification and/or acknowledgement (Constitution Law #3)`,
             );
           }
 

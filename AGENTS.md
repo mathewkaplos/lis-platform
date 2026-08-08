@@ -37,6 +37,13 @@ packages/ui (design system) · packages/sdk (generated API client)
   form does). Confirmed twice in the same session (#93 and #94 both stayed
   open after merge, each needing a manual `gh issue close`) — see the close
   Skill's Engineering Flow Retrospective, Section 8, finding #1.
+- `gh pr edit` (`--body`/`--title`) fails outright on this repo with
+  `GraphQL: Projects (classic) is being deprecated...
+  (repository.pullRequest.projectCards)`, even for a trivial body-only edit
+  unrelated to Projects — confirmed 2026-08-08 (close Skill's Engineering
+  Flow Retrospective, Section 8, finding B). Use the REST API instead:
+  `gh api repos/mathewkaplos/lis-platform/pulls/<n> -X PATCH -f body=...`
+  (or `-f title=...`) — confirmed working.
 
 ## Where knowledge lives
 - Architecture KB: ../lis-engineering/knowledge-base/

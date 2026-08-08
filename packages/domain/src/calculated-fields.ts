@@ -112,6 +112,33 @@ export function computeLdl(input: FriedewaldInput): CalculatedResult {
   return { value: Math.round(value) };
 }
 
+export interface DifferentialAbsoluteInput {
+  percentage: number;
+  wbc: number;
+}
+
+/**
+ * TASK-072 (FEAT-023, ADR-0020 Decision 1): absolute count = (percentage /
+ * 100) x WBC. Suppressed (not fabricated as 0) when WBC is non-positive -- a
+ * differential absolute count is clinically meaningless without a real WBC
+ * to scale against, same "don't fabricate an invalid basis" discipline as
+ * `computeLdl`'s triglyceride guard.
+ *
+ * Rounded to 2 decimal places, NOT `computeEgfr`/`computeLdl`'s whole-number
+ * convention -- differential absolute counts (10^3/uL) are clinically
+ * reported at that precision, and rounding to a whole number would erase a
+ * clinically meaningful distinction at typical magnitudes (e.g. an absolute
+ * neutrophil count of 1.8 vs 2 spans a real neutropenia-threshold
+ * difference).
+ */
+export function computeDifferentialAbsolute(input: DifferentialAbsoluteInput): CalculatedResult {
+  if (input.wbc <= 0) {
+    return { suppressed: true, reason: "Absolute count requires a positive WBC count" };
+  }
+  const value = (input.percentage / 100) * input.wbc;
+  return { value: Math.round(value * 100) / 100 };
+}
+
 export interface CalculatedAnalytePatientContext {
   sex: PatientSex;
   ageYears: number | null;
@@ -153,6 +180,47 @@ export const CALCULATED_ANALYTES: readonly CalculatedAnalyteDefinition[] = [
         hdlMgDl: inputs["2085-9"],
         triglyceridesMgDl: inputs["2571-8"],
       }),
+  },
+  // TASK-072 (FEAT-023, ADR-0020): five differential absolute counts, each
+  // depending on its own percentage analyte AND the shared WBC Count
+  // (6690-2) -- the first registry entries where more than one definition
+  // depends on the same input LOINC code (see
+  // observation.controller.ts's `maybeComputeDependents`, widened this task
+  // to compute every dependent of a trigger, not just the first).
+  {
+    outputLoincCode: "751-8", // Neutrophils Absolute
+    inputLoincCodes: ["770-8", "6690-2"], // Neutrophils %, WBC Count
+    formula: "Neutrophils Absolute = (Neutrophils % / 100) × WBC Count",
+    compute: (inputs) =>
+      computeDifferentialAbsolute({ percentage: inputs["770-8"], wbc: inputs["6690-2"] }),
+  },
+  {
+    outputLoincCode: "731-0", // Lymphocytes Absolute
+    inputLoincCodes: ["736-9", "6690-2"], // Lymphocytes %, WBC Count
+    formula: "Lymphocytes Absolute = (Lymphocytes % / 100) × WBC Count",
+    compute: (inputs) =>
+      computeDifferentialAbsolute({ percentage: inputs["736-9"], wbc: inputs["6690-2"] }),
+  },
+  {
+    outputLoincCode: "742-7", // Monocytes Absolute
+    inputLoincCodes: ["5905-5", "6690-2"], // Monocytes %, WBC Count
+    formula: "Monocytes Absolute = (Monocytes % / 100) × WBC Count",
+    compute: (inputs) =>
+      computeDifferentialAbsolute({ percentage: inputs["5905-5"], wbc: inputs["6690-2"] }),
+  },
+  {
+    outputLoincCode: "711-2", // Eosinophils Absolute
+    inputLoincCodes: ["713-8", "6690-2"], // Eosinophils %, WBC Count
+    formula: "Eosinophils Absolute = (Eosinophils % / 100) × WBC Count",
+    compute: (inputs) =>
+      computeDifferentialAbsolute({ percentage: inputs["713-8"], wbc: inputs["6690-2"] }),
+  },
+  {
+    outputLoincCode: "704-7", // Basophils Absolute
+    inputLoincCodes: ["706-2", "6690-2"], // Basophils %, WBC Count
+    formula: "Basophils Absolute = (Basophils % / 100) × WBC Count",
+    compute: (inputs) =>
+      computeDifferentialAbsolute({ percentage: inputs["706-2"], wbc: inputs["6690-2"] }),
   },
 ] as const;
 

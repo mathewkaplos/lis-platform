@@ -4,8 +4,9 @@ import { getValidAccessToken } from '@/auth/access-token';
 import { createLisApiClient } from '@/lib/api-client';
 
 /** TASK-053 (FEAT-014 revision §2 finding #4): mirrors `finalize()`'s own
- * `calculatedDependent` -- a calculated analyte (eGFR/LDL) that cascaded off
- * this same finalize call, if any.
+ * `calculatedDependents` -- calculated analytes (eGFR/LDL, or five of them
+ * at once for a differential's shared-WBC trigger, TASK-072) that cascaded
+ * off this same finalize call, if any.
  *
  * `observationStatus` widened to include `'verified'` (TASK-055,
  * `packages/domain`'s `observationStatusSchema`) purely to type-check
@@ -34,7 +35,7 @@ export interface ResultActionOutcome {
   // never set either (draft/finalize themselves never write these columns).
   verifierUserId?: string | null;
   verifiedAt?: string | null;
-  calculatedDependent?: CalculatedDependentOutcome | null;
+  calculatedDependents?: CalculatedDependentOutcome[];
 }
 
 const FAILURE: Omit<ResultActionOutcome, 'status' | 'error'> = {
@@ -114,8 +115,11 @@ export async function finalizeResult(
   // Not run through @ZodResponse (same {resourceId, before, after} shape as
   // order/specimen's own create()/cancel() -- observation.controller.ts's
   // own header comment explains why finalize is audited this way).
-  // TASK-053 (FEAT-014 revision §1 finding #4): `after` is now always
-  // `{ observation, calculatedDependent }`, not a flat ObservationResult.
+  // TASK-053 (FEAT-014 revision §1 finding #4): `after` is always
+  // `{ observation, calculatedDependents }`, not a flat ObservationResult.
+  // TASK-072 (FEAT-023): `calculatedDependents` is an array (possibly
+  // empty), not a nullable singular -- a differential's shared WBC trigger
+  // can cascade up to five dependents in one finalize call.
   const after = (
     data as unknown as {
       after: {
@@ -126,14 +130,14 @@ export async function finalizeResult(
           refHigh: number | null;
           status: 'registered' | 'preliminary';
         };
-        calculatedDependent: {
+        calculatedDependents: {
           analyteId: string;
           valueNum: number | null;
           flags: string[];
           refLow: number | null;
           refHigh: number | null;
           status: 'registered' | 'preliminary';
-        } | null;
+        }[];
       };
     }
   ).after;
@@ -144,16 +148,14 @@ export async function finalizeResult(
     refLow: after.observation.refLow,
     refHigh: after.observation.refHigh,
     observationStatus: after.observation.status,
-    calculatedDependent: after.calculatedDependent
-      ? {
-          analyteId: after.calculatedDependent.analyteId,
-          valueNum: after.calculatedDependent.valueNum,
-          flags: after.calculatedDependent.flags,
-          refLow: after.calculatedDependent.refLow,
-          refHigh: after.calculatedDependent.refHigh,
-          observationStatus: after.calculatedDependent.status,
-        }
-      : null,
+    calculatedDependents: after.calculatedDependents.map((dep) => ({
+      analyteId: dep.analyteId,
+      valueNum: dep.valueNum,
+      flags: dep.flags,
+      refLow: dep.refLow,
+      refHigh: dep.refHigh,
+      observationStatus: dep.status,
+    })),
   };
 }
 

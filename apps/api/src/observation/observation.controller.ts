@@ -441,11 +441,22 @@ export class ObservationController {
    * calculated analyte in this revision's registry lives on the same
    * `test_definition` as its own input(s) (revision §1 finding #3), so this
    * never needs to look outside `ctx.orderedTestRow`'s own ordered test.
-   * Returns `null` whenever nothing should be written: no calculated
-   * analyte depends on the just-finalized one, the calculated analyte isn't
-   * seeded/linked on this ordered test, not every input is finalized yet,
-   * or the formula itself suppresses (e.g. Friedewald's triglyceride
-   * guard) -- every one of these is a real, expected state, not an error.
+   *
+   * TASK-072 (FEAT-023) widened this from "compute the one dependent" to
+   * "compute every dependent" -- a real, load-bearing bug found during
+   * implementation, not anticipated by the FEAT-023 proposal: the five new
+   * differential-absolute-count formulas all share WBC Count as an input,
+   * the first time more than one registry definition depends on the same
+   * trigger LOINC code (eGFR/LDL's own three trigger codes each mapped to
+   * exactly one definition). The prior version destructured only
+   * `calculatedAnalytesDependingOn(...)`'s first result -- finalizing WBC
+   * after all five percentages were already entered would have silently
+   * computed only one of five absolute counts. Returns an array (possibly
+   * empty) instead of a single nullable result; each element is skipped
+   * independently (not seeded/linked on this ordered test, not every input
+   * finalized yet, or the formula itself suppresses, e.g. Friedewald's
+   * triglyceride guard or a non-positive WBC) -- every one of these is a
+   * real, expected state, not an error.
    */
   private async maybeComputeDependents(
     tx: Tx,
@@ -453,115 +464,141 @@ export class ObservationController {
     tenantId: string,
     operatorUserId: string,
     at: Date,
-  ): Promise<{
-    before: ObservationResult | null;
-    after: ObservationRow;
-  } | null> {
+  ): Promise<
+    {
+      before: ObservationResult | null;
+      after: ObservationRow;
+    }[]
+  > {
     const [triggeringCsv] = await tx
       .select({ code: codeSystemValue.code })
       .from(codeSystemValue)
       .where(eq(codeSystemValue.id, ctx.analyteRow.codeSystemValueId))
       .limit(1);
-    if (!triggeringCsv) return null;
+    if (!triggeringCsv) return [];
 
-    const [definition] = calculatedAnalytesDependingOn(triggeringCsv.code);
-    if (!definition) return null;
+    const definitions = calculatedAnalytesDependingOn(triggeringCsv.code);
+    if (definitions.length === 0) return [];
 
-    const outputAnalyteRow = await this.findAnalyteByLoincCode(
-      tx,
-      definition.outputLoincCode,
-    );
-    if (!outputAnalyteRow) return null; // not seeded -- real gap, not a crash
+    const results: {
+      before: ObservationResult | null;
+      after: ObservationRow;
+    }[] = [];
 
-    const [outputLinkRow] = await tx
-      .select({ id: testAnalyte.id })
-      .from(testAnalyte)
-      .where(
-        and(
-          eq(testAnalyte.testDefinitionId, ctx.orderedTestRow.testDefinitionId),
-          eq(testAnalyte.analyteId, outputAnalyteRow.id),
-        ),
-      )
-      .limit(1);
-    if (!outputLinkRow) return null; // this ordered test's own panel doesn't include this calculated analyte
+    for (const definition of definitions) {
+      const outputAnalyteRow = await this.findAnalyteByLoincCode(
+        tx,
+        definition.outputLoincCode,
+      );
+      if (!outputAnalyteRow) continue; // not seeded -- real gap, not a crash
 
-    const inputsByCode: Record<string, number> = {};
-    for (const inputCode of definition.inputLoincCodes) {
-      const inputAnalyteRow = await this.findAnalyteByLoincCode(tx, inputCode);
-      if (!inputAnalyteRow) return null;
+      const [outputLinkRow] = await tx
+        .select({ id: testAnalyte.id })
+        .from(testAnalyte)
+        .where(
+          and(
+            eq(
+              testAnalyte.testDefinitionId,
+              ctx.orderedTestRow.testDefinitionId,
+            ),
+            eq(testAnalyte.analyteId, outputAnalyteRow.id),
+          ),
+        )
+        .limit(1);
+      if (!outputLinkRow) continue; // this ordered test's own panel doesn't include this calculated analyte
 
-      const [inputObservationRow] = await tx
-        .select({ valueNum: observation.valueNum, status: observation.status })
+      const inputsByCode: Record<string, number> = {};
+      let missingInput = false;
+      for (const inputCode of definition.inputLoincCodes) {
+        const inputAnalyteRow = await this.findAnalyteByLoincCode(
+          tx,
+          inputCode,
+        );
+        if (!inputAnalyteRow) {
+          missingInput = true;
+          break;
+        }
+
+        const [inputObservationRow] = await tx
+          .select({
+            valueNum: observation.valueNum,
+            status: observation.status,
+          })
+          .from(observation)
+          .where(
+            and(
+              eq(observation.orderedTestId, ctx.orderedTestRow.id),
+              eq(observation.analyteId, inputAnalyteRow.id),
+            ),
+          )
+          .limit(1);
+        if (
+          !inputObservationRow ||
+          inputObservationRow.status !== 'preliminary' ||
+          inputObservationRow.valueNum === null
+        ) {
+          missingInput = true; // not every input finalized yet -- real, expected state
+          break;
+        }
+        inputsByCode[inputCode] = Number(inputObservationRow.valueNum);
+      }
+      if (missingInput) continue;
+
+      const ageYears = ctx.patientBirthDate
+        ? ageYearsAt(ctx.patientBirthDate, at)
+        : null;
+      const result = definition.compute(inputsByCode, {
+        sex: ctx.patientSex,
+        ageYears,
+      });
+      if (isSuppressed(result)) {
+        continue; // KB-15's "no_range never faked as normal," applied to calculated values (revision §5)
+      }
+
+      const [existingCalculated] = await tx
+        .select()
         .from(observation)
         .where(
           and(
             eq(observation.orderedTestId, ctx.orderedTestRow.id),
-            eq(observation.analyteId, inputAnalyteRow.id),
+            eq(observation.analyteId, outputAnalyteRow.id),
           ),
         )
         .limit(1);
-      if (
-        !inputObservationRow ||
-        inputObservationRow.status !== 'preliminary' ||
-        inputObservationRow.valueNum === null
-      ) {
-        return null; // not every input finalized yet -- real, expected state
-      }
-      inputsByCode[inputCode] = Number(inputObservationRow.valueNum);
+      const before = existingCalculated
+        ? toObservationDto(existingCalculated)
+        : null;
+
+      const syntheticBody: ResultEntryInput = {
+        dataType: 'quantity',
+        valueNum: result.value,
+      };
+      const rangeAndFlags = await this.resolveRangeAndFlags(
+        tx,
+        syntheticBody,
+        outputAnalyteRow,
+        ctx.patientSex,
+        ctx.patientBirthDate,
+        at,
+      );
+
+      const after = await this.upsertObservation(tx, {
+        tenantId,
+        orderedTestId: ctx.orderedTestRow.id,
+        analyteId: outputAnalyteRow.id,
+        patientId: ctx.patientId,
+        specimenId: ctx.specimenId,
+        operatorUserId,
+        status: 'preliminary',
+        body: syntheticBody,
+        source: 'calculated',
+        ...rangeAndFlags,
+      });
+
+      results.push({ before, after });
     }
 
-    const ageYears = ctx.patientBirthDate
-      ? ageYearsAt(ctx.patientBirthDate, at)
-      : null;
-    const result = definition.compute(inputsByCode, {
-      sex: ctx.patientSex,
-      ageYears,
-    });
-    if (isSuppressed(result)) {
-      return null; // KB-15's "no_range never faked as normal," applied to calculated values (revision §5)
-    }
-
-    const [existingCalculated] = await tx
-      .select()
-      .from(observation)
-      .where(
-        and(
-          eq(observation.orderedTestId, ctx.orderedTestRow.id),
-          eq(observation.analyteId, outputAnalyteRow.id),
-        ),
-      )
-      .limit(1);
-    const before = existingCalculated
-      ? toObservationDto(existingCalculated)
-      : null;
-
-    const syntheticBody: ResultEntryInput = {
-      dataType: 'quantity',
-      valueNum: result.value,
-    };
-    const rangeAndFlags = await this.resolveRangeAndFlags(
-      tx,
-      syntheticBody,
-      outputAnalyteRow,
-      ctx.patientSex,
-      ctx.patientBirthDate,
-      at,
-    );
-
-    const after = await this.upsertObservation(tx, {
-      tenantId,
-      orderedTestId: ctx.orderedTestRow.id,
-      analyteId: outputAnalyteRow.id,
-      patientId: ctx.patientId,
-      specimenId: ctx.specimenId,
-      operatorUserId,
-      status: 'preliminary',
-      body: syntheticBody,
-      source: 'calculated',
-      ...rangeAndFlags,
-    });
-
-    return { before, after };
+    return results;
   }
 
   /** TASK-053 (FEAT-014 revision §2): two sequential queries, not a joined
@@ -731,16 +768,23 @@ export class ObservationController {
     );
 
     // TASK-053 (FEAT-014 revision §1 finding #4): `before`/`after` are now
-    // always `{ observation, calculatedDependent }` -- a uniform shape
+    // always `{ observation, calculatedDependents }` -- a uniform shape
     // whether or not this call actually cascaded, so the audit trail (and
     // this route's one caller, apps/web's `finalizeResult`) never has to
     // branch on whether a dependent computation happened.
+    // TASK-072 (FEAT-023): pluralized from `calculatedDependent` (singular,
+    // nullable) to `calculatedDependents` (array, possibly empty) --
+    // `maybeComputeDependents` can now return more than one cascaded write
+    // in a single call (see its own comment). Not `@ZodResponse`-bound (same
+    // as QC's `recordResult()` precedent), so this rename needs no
+    // openapi.json/schema.ts regeneration -- its only consumer is this
+    // repo's own `apps/web` `finalizeResult`, updated in the same change.
     //
     // TASK-054 (FEAT-015 proposal §10 Q1/Q2): `criticalDetected` folds a
     // documented critical-detection signal into this SAME already-audited
     // event, rather than a second `writeAuditEvent()` call site -- same
     // "fold into the existing event" precedent TASK-053 set for
-    // `calculatedDependent` immediately above. Reflects only the
+    // `calculatedDependents` immediately above. Reflects only the
     // just-finalized observation's own flags (`row`, the analyte this call
     // actually finalized) -- not `calculated`'s (a dependent computed
     // value's own criticality is that dependent's own finalize event, once
@@ -801,13 +845,11 @@ export class ObservationController {
       resourceId: row.id,
       before: {
         observation: before,
-        calculatedDependent: calculated?.before ?? null,
+        calculatedDependents: calculated.map((c) => c.before),
       },
       after: {
         observation: toObservationDto(row),
-        calculatedDependent: calculated
-          ? toObservationDto(calculated.after)
-          : null,
+        calculatedDependents: calculated.map((c) => toObservationDto(c.after)),
         criticalDetected,
         criticalNotificationId,
       },

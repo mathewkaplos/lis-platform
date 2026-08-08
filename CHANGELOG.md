@@ -290,3 +290,18 @@ frontmatter declaration (this entry's own commit).
   (`gh pr view <n> --json state,mergedAt` over `git fetch`/`git log` for
   confirming a merge landed).
 - **Files:** `~/work/lis-platform/AGENTS.md`
+
+## 2026-08-08 (6)
+
+- **Friction:** `/orient` recommended kicking off FEAT-023 via the `plan`
+  Skill; `Skill(skill: "plan")` failed with "plan is a UI command, not a
+  skill" — no thin `.claude/skills/plan/SKILL.md` entrypoint existed in
+  lis-platform. This is the exact same gap already found and fixed for
+  `develop` earlier this session (PR #388): the entrypoint existed for
+  `close`/`engineering-radar`/`orient`/`retro`/`web-verify`, but not `plan`.
+- **Area:** existing-skill:workflow/plan
+- **Change:** created `.claude/skills/plan/SKILL.md` in lis-platform,
+  mirroring `develop`'s entrypoint pattern exactly, pointing at
+  `~/work/lis-engineering/skills/workflow/plan/SKILL.md`. Confirmed
+  `Skill(skill:"plan")` resolves correctly immediately after.
+- **Files:** `~/work/lis-platform/.claude/skills/plan/SKILL.md`

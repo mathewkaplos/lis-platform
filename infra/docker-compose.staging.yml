@@ -117,6 +117,14 @@ services:
       # (TASK-030) reads APP_DATABASE_URL specifically and requiredEnv()s it;
       # matches local .env/.env.example and pr.yml's naming.
       APP_DATABASE_URL: postgresql://lis_app:${LIS_APP_DB_PASSWORD}@postgres:5432/lis
+      # TASK-066 (ADR-0017): the critical-notification escalation job's own
+      # enumeration-only connection (apps/api/src/critical-notification/
+      # scheduler-db.ts requiredEnv()s this at module load -- its absence
+      # here crash-looped the whole api container on the first deploy after
+      # this env var was added to local dev/pr.yml but not mirrored here,
+      # a real regression found via a failed Deploy to Staging run, not
+      # anticipated when this task's own PR was reviewed).
+      SCHEDULER_DATABASE_URL: postgresql://lis_scheduler:${SCHEDULER_DB_PASSWORD}@postgres:5432/lis
       NODE_ENV: staging
       SENTRY_DSN: ${SENTRY_DSN}
       # #188: must be the same real public URL Keycloak now issues tokens

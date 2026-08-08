@@ -1,5 +1,6 @@
 # Implementation Proposal: FEAT-021 Critical notification, read-back & escalation
-Status: **APPROVED** — TASK-A scope only (TASK-065). TASK-066 (TASK-B) not yet started.
+Status: **APPROVED** — TASK-A (TASK-065) merged. TASK-066 (TASK-B) revision **APPROVED** 2026-08-08
+(ADR-0017 accepted; escalation window 30 min, poll interval 5 min).
 ADR: adr-0016 (accepted 2026-08-07 — see §10 Q1/Q2)    Date: 2026-08-07    Backlog ID: FEAT-021 (#30) / TASK-065 (#360) / TASK-066 (#361)
 
 **Approved 2026-08-07** via the native options-prompt, recommended option chosen for all three §10
@@ -235,3 +236,89 @@ milestone.
    bucket is currently exhausted (`gh api rate_limit` showed `0/5000`, resets ~18:14 UTC) — issue
    creation will need the REST fallback (`gh api repos/.../issues -X POST`) per the breadcrumb's
    already-documented workaround, not `gh issue create` directly.
+
+---
+
+## TASK-066 (Escalation timer & finalization-gate widening) — revision, 2026-08-08
+
+TASK-065 (#360) merged: `critical_notification` exists as a real, tested table with a working
+acknowledge/query surface. This revision covers TASK-066's own two deliverables per its issue text:
+widen `FinalizationRollupInterceptor`'s gate, and add the escalation timer.
+
+**Real, load-bearing finding from this revision's own research, not anticipated by the original
+proposal or ADR-0016:** a scheduled escalation job needs to find overdue `critical_notification`
+rows **across every tenant**, but `apps/api` has no code path that does this anywhere — `lis_app`
+is always bound to exactly one tenant per request (`TenantContextInterceptor`'s `SET LOCAL
+app.tenant_id`), and no `tenant` table exists in Postgres to enumerate from (ADR-0009: tenancy
+lives in Keycloak only). This is a genuine, first-of-its-kind architectural gap, not an
+implementation detail — **ADR-0017** (drafted alongside this revision, Status: proposed) resolves
+it: a new, narrowly-scoped `lis_scheduler` role (`NOBYPASSRLS`, column-scoped `SELECT (tenant_id)`
+via a role-specific RLS policy restricted to `status = 'pending'` rows) used only to discover which
+tenants have outstanding work; the actual escalation `UPDATE`/audit write stays fully `lis_app`/RLS-
+scoped, exactly like every other write in this repo. TASK-066 cannot start until ADR-0017 is
+accepted.
+
+### Gate widening
+
+`FinalizationRollupInterceptor`'s existing guard (`unverifiedCriticals`, the query for any HH/LL
+observation on the panel with `status <> 'verified'`) becomes: any HH/LL observation where
+**either** `status <> 'verified'` **or** it has a `critical_notification` whose `status <>
+'acknowledged'`. A single query using `or()`/`exists()` (a correlated subquery on
+`critical_notification`), not a join — a join would need per-observation `EXISTS`-style dedup logic
+anyway (an observation can accumulate multiple historical `critical_notification` rows across
+corrections, only the current one need be unacknowledged), so a subquery is both simpler and
+directly expresses "does an outstanding notification exist for this observation." The 409 message
+is widened from "pending verification" to "pending verification and/or acknowledgement" — the
+existing regex-based assertion in `observation.e2e-spec.ts`'s own 409 test (`/critical/i`, `/1\b/`)
+is unaffected by this wording change.
+
+### Escalation job
+
+- **New dependency: `@nestjs/schedule`** (official NestJS scheduling module — `ScheduleModule.forRoot()`
+  in `app.module.ts`, `@Interval(ms)` on a new `CriticalNotificationEscalationService`). Not a queue,
+  not pub/sub — a plain polling interval, consistent with `domain/critical-values` Skill entry #4's
+  "no event bus ahead of FEAT-028" rule.
+- **Two-phase per tick** (ADR-0017): (1) connect as `lis_scheduler`, `SELECT DISTINCT tenant_id FROM
+  critical_notification` (already restricted to pending rows by the policy itself); (2) for each
+  tenant id, one `db.transaction()` as `lis_app` with `SET LOCAL app.tenant_id`, select rows past the
+  escalation window, `UPDATE ... SET status = 'escalated', escalation_level = escalation_level + 1,
+  last_escalated_at = now()`, and audit each one (`critical_notification.escalate`,
+  `actorType: 'service'` — the first non-`'human'` audit actor in this repo, per ADR-0017).
+- **No SMS/email/push, no on-call routing** (unchanged from the original proposal's own scope note)
+  — escalating means bumping `escalationLevel`/auditing, re-surfacing more prominently to the same
+  `verify`-capable pool via the existing `GET /v1/critical-notifications` query, not a new delivery
+  channel.
+
+### Affected files
+
+- `lis-engineering/adr/adr-0017-critical-notification-escalation-enumerates-tenants-via-a-scoped-rls-policy-not-bypassrls.md`
+  (new) — must be **accepted** before this task's migration is written.
+- `db/migrations/00XX_lis_scheduler_role.sql` (new, hand-written per `0002_app_role.sql`'s own
+  convention — no password committed) — creates `lis_scheduler`, the column-scoped `GRANT`, and the
+  `scheduler_enumeration` policy on `critical_notification`.
+- `.env`/`.env.example`/`scripts/db-reset.sh` — new `SCHEDULER_DATABASE_URL` (mirrors
+  `APP_DATABASE_URL`'s own `ALTER ROLE ... WITH PASSWORD` step for the new role).
+- `apps/api/src/observation/finalization-rollup.interceptor.ts` (modify) — the widened guard query.
+- `apps/api/src/critical-notification/critical-notification-escalation.service.ts` (new) — the
+  `@Interval` job.
+- `apps/api/src/critical-notification/critical-notification.module.ts` (modify) — register the new
+  service; `apps/api/src/app.module.ts` (modify) — `ScheduleModule.forRoot()`.
+- `apps/api/test/critical-notification.e2e-spec.ts` (extend) — widened-gate coverage (both the
+  already-covered verified-only case and the new acknowledged-required case) and a `lis_scheduler`
+  negative-grant test (ADR-0017's own AC).
+
+### Open questions requiring human approval
+
+1. **Is ADR-0017 (lis_scheduler, scoped RLS policy, not BYPASSRLS) approved as written?** Blocks this
+   entire task. Recommended: accept as drafted — the alternative (BYPASSRLS) directly contradicts
+   `0002_app_role.sql`'s own explicit reasoning for why no role in this schema has ever had it.
+2. **Escalation window: what's the actual threshold** before a pending critical notification
+   escalates? This is a real clinical-workflow parameter, not a technical one — KB-34 names no
+   specific value. Recommended default: **30 minutes**, configurable via a new env var
+   (`CRITICAL_NOTIFICATION_ESCALATION_MINUTES`), not hardcoded — but the number itself is a genuine
+   open question this proposal cannot resolve on its own authority.
+3. **Poll interval** for the `@Interval` job itself (how often it checks for newly-overdue
+   notifications): recommended **5 minutes** — frequent enough that the real escalation delay stays
+   close to the configured window (Q2), infrequent enough to be a trivial background cost. Not
+   independently clinically meaningful the way Q2 is; lower-stakes than Q2 but still worth stating
+   explicitly rather than picking silently.

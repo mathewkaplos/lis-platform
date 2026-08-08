@@ -1,8 +1,6 @@
 # Implementation Proposal: FEAT-019 Levey-Jennings + Westgard engine
-Status: **FULLY IMPLEMENTED** — all three tasks merged. TASK-067 (#372), TASK-068 (#373),
-TASK-069 (#374). FEAT-019 (#28) itself still needs its own manual-comment close — bare `Closes`
-lines don't auto-close a parent feature issue, the same recurring gotcha every prior feature has hit
-(see `AGENTS.md`'s PR conventions, `develop/SKILL.md` step 5).
+Status: **FULLY IMPLEMENTED AND CLOSED** — all three tasks merged (TASK-067 #372/PR #376, TASK-068
+#373/PR #377, TASK-069 #374/PR #378) and FEAT-019 (#28) itself manually closed, 2026-08-08.
 ADR: adr-0018 (accepted 2026-08-08)    Date: 2026-08-08    Backlog ID: FEAT-019 (#28) / TASK-067 (#372) / TASK-068 (#373) / TASK-069 (#374)
 
 **Both §10 questions resolved via the native options-prompt, 2026-08-08** — recommended option
@@ -350,6 +348,6 @@ row's real value/target/SD/z-score/rules. All four states confirmed: populated (
 both fixes above. `pnpm typecheck`/`lint`/`build` green (including a real `next build`, not just
 `next dev`).
 
-**FEAT-019 (#28) is now fully implemented — all three tasks merged.** Not yet closed via the standard
-manual comment (bare `Closes` lines never auto-close a parent feature issue) — a real next step, not
-done as part of this task's own implementation work.
+**FEAT-019 (#28) is now fully implemented — all three tasks merged — and manually closed** via the
+standard comment (bare `Closes` lines never auto-close a parent feature issue), citing all three
+merged PRs.

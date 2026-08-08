@@ -1,6 +1,8 @@
 # Implementation Proposal: FEAT-019 Levey-Jennings + Westgard engine
-Status: **TASK-067 + TASK-068 IMPLEMENTED**. TASK-069 (#374) will get its own revision to this file
-once its preceding task is real, per FEAT-018's own precedent.
+Status: **FULLY IMPLEMENTED** — all three tasks merged. TASK-067 (#372), TASK-068 (#373),
+TASK-069 (#374). FEAT-019 (#28) itself still needs its own manual-comment close — bare `Closes`
+lines don't auto-close a parent feature issue, the same recurring gotcha every prior feature has hit
+(see `AGENTS.md`'s PR conventions, `develop/SKILL.md` step 5).
 ADR: adr-0018 (accepted 2026-08-08)    Date: 2026-08-08    Backlog ID: FEAT-019 (#28) / TASK-067 (#372) / TASK-068 (#373) / TASK-069 (#374)
 
 **Both §10 questions resolved via the native options-prompt, 2026-08-08** — recommended option
@@ -298,3 +300,56 @@ ADR-0015 already relied on).
    the same sequencing every prior M5 feature kickoff in this repo has used? Recommended: yes, now.
 
 ---
+
+## TASK-069 (Levey-Jennings chart UI) — revision, 2026-08-08
+
+The human asked for TASK-069 by name (continuing directly from TASK-068, no new `/orient` cycle), so
+this revision documents the design decisions made during implementation rather than re-running the
+full open-questions options-prompt — none were genuinely ambiguous enough to need one, matching
+TASK-064/TASK-068's own precedent.
+
+**No new dependency for charting.** No chart library exists anywhere in `apps/web`'s dependencies
+(confirmed by inspection). A Levey-Jennings chart is a small, well-defined static plot (a mean line,
+three shaded SD bands, connected points, per-point violation markers) — hand-rolled inline SVG,
+styled entirely through this repo's existing semantic color tokens (`var(--color-danger)` etc., so
+dark mode needs zero extra work), avoids a new dependency for something this simple. `DataTable`
+(already built, TASK-035) serves double duty as the literal "a11y (data-table alternative)"
+requirement Stitch §14.4 itself names, not an afterthought.
+
+**Route:** `/control-lots/:id/chart`, reachable by direct link only. No sidebar nav entry — no
+control-lot list/QC dashboard screen exists yet to link from (FEAT-020/a future QC dashboard's own
+scope), matching `_components/sidebar.tsx`'s own stated "nav grows as later features add routes, not
+invented ahead of them" discipline, applied here for the first time to a route that isn't nav-linked
+at all yet.
+
+**Deliberately not built:** the level selector (L1/L2/L3 multi-plot stacking) and date-range filter
+Stitch §14.4's own fuller design describes. TASK-068's endpoint is scoped to a single control lot with
+no date-range parameter — building either now would mean either silent client-side faking or scope
+creep beyond this task's own AC ("correctly plots"/"visibly flagged"), not a real, approved need yet.
+
+**Two real findings during implementation, both found via actual browser verification
+(`web-verify` Skill), not caught by typecheck/lint/build:**
+1. `DataTable`'s `columns` prop carries functions (`cell`/`sortValue`/`getRowId`); the first draft
+   rendered it from a plain Server Component, which compiles cleanly but throws a real RSC
+   serialization error at request time. Fixed by marking `levey-jennings-chart.tsx` `'use client'`,
+   matching `results-grid.tsx`'s own precedent exactly. Written up as `frontend-design` Skill entry
+   #6 (lis-engineering) so a future `DataTable` caller doesn't rediscover this from a blank page.
+2. `<svg height="auto">` is invalid — SVG length attributes don't accept the CSS keyword `"auto"`,
+   producing a real (easy-to-miss, doesn't break rendering) console error. Fixed via a CSS class
+   (`h-auto w-full`) instead of the attribute. Same Skill entry #6.
+
+Delivered: `apps/web/app/(app)/control-lots/[id]/chart/{page,loading,error,levey-jennings-chart}.tsx`.
+
+Verified: real dev-server run (`apps/web` + `apps/api` + local Postgres/Keycloak), a real control lot
+seeded with 4 QC results (the last a genuine 1-3s rejection via the real API), screenshotted in both
+light and dark mode — mean line, shaded SD bands, the connecting line, and the rejection point
+correctly colored red and annotated "1-3s" all rendered correctly; the `DataTable` below shows every
+row's real value/target/SD/z-score/rules. All four states confirmed: populated (light + dark), empty
+(a fresh lot with zero QC results), 404 (nonexistent/cross-tenant lot, via `notFound()`), and error
+(a synthetic non-quantity control lot's real 400, via `error.tsx`). Zero browser console errors after
+both fixes above. `pnpm typecheck`/`lint`/`build` green (including a real `next build`, not just
+`next dev`).
+
+**FEAT-019 (#28) is now fully implemented — all three tasks merged.** Not yet closed via the standard
+manual comment (bare `Closes` lines never auto-close a parent feature issue) — a real next step, not
+done as part of this task's own implementation work.

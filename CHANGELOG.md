@@ -201,3 +201,30 @@ frontmatter declaration (this entry's own commit).
   since entry #8's own fix — "key on `id` alone" — doesn't apply when a
   composite FK genuinely requires both columns).
 - **Files:** `~/work/lis-engineering/skills/engineering/database-design/SKILL.md`
+
+## 2026-08-08 (2)
+
+- **Friction:** the `lis_scheduler` role's own `scheduler_enumeration`
+  policy (migration 0018, TASK-066/ADR-0017) was designed and reviewed
+  correctly in isolation, but every one of its queries against
+  `critical_notification` failed with `unrecognized configuration parameter
+  "app.tenant_id"` against a real Postgres instance. Root cause: Postgres
+  combines multiple `PERMISSIVE` RLS policies on one table with `OR`, but
+  that only works if every policy's own clause evaluates to a boolean for
+  every role querying the table — `tenant_isolation`'s clause used the
+  1-argument `current_setting('app.tenant_id')` form, which *throws* when
+  unset rather than returning null, and `lis_scheduler` never sets
+  `app.tenant_id` (it has no single tenant — that's the whole point of the
+  role). The exception aborted the whole query before
+  `scheduler_enumeration`'s own, more permissive clause ever got evaluated.
+- **Area:** existing-skill:engineering/rls-multi-tenancy
+- **Change:** added entry #5 to `engineering/rls-multi-tenancy/SKILL.md`
+  (bumping the existing "Not (yet) covered here" section to #6): before
+  adding a second, role-scoped policy to an existing tenant-scoped table,
+  check whether that table's own `tenant_isolation` policy uses the
+  throwing 1-argument `current_setting()` form, and switch just that
+  table's policy to the 2-argument `missing_ok` form if the new role won't
+  always have `app.tenant_id` set — with the accepted tradeoff (that one
+  table now fails quietly, not loudly, on a mis-wired request) stated
+  explicitly.
+- **Files:** `~/work/lis-engineering/skills/engineering/rls-multi-tenancy/SKILL.md`

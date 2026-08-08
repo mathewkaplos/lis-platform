@@ -1,6 +1,6 @@
 # Implementation Proposal: FEAT-019 Levey-Jennings + Westgard engine
-Status: **TASK-067 IMPLEMENTED** — PR pending. TASK-068 (#373)/TASK-069 (#374) will each get their
-own revision to this file once their preceding task is real, per FEAT-018's own precedent.
+Status: **TASK-067 + TASK-068 IMPLEMENTED**. TASK-069 (#374) will get its own revision to this file
+once its preceding task is real, per FEAT-018's own precedent.
 ADR: adr-0018 (accepted 2026-08-08)    Date: 2026-08-08    Backlog ID: FEAT-019 (#28) / TASK-067 (#372) / TASK-068 (#373) / TASK-069 (#374)
 
 **Both §10 questions resolved via the native options-prompt, 2026-08-08** — recommended option
@@ -28,6 +28,47 @@ precedent); repo-wide `typecheck`/`lint`/`build` green, including a real `next b
 `@ZodResponse` binding, per TASK-064's own precedent, so the additive `violations` field doesn't
 surface in the OpenAPI spec at all — not a gap, the route's response was never schema-bound);
 migration applies cleanly on two separate `pnpm db:reset` runs.
+
+**TASK-068 (Levey-Jennings chart data API), 2026-08-08.** The human asked for TASK-068 by name
+(continuing directly from TASK-067, no new `/orient` cycle), so — per FEAT-018's own TASK-064
+precedent — this revision documents the design decisions made during implementation rather than
+re-running the full open-questions options-prompt; none were genuinely ambiguous enough to need one.
+
+**Route/response shape:** `GET v1/control-lots/:id/chart`, per this file's own §2 sketch. Response:
+`{ controlLotId, analyteId, level, targetMean, targetSd, points: [{ id, value, zScore, producedAt,
+createdAt, violations }] }`, ordered **oldest-first** — deliberately the reverse of `listResults`'s
+own most-recent-first convention, since a chart reads left-to-right chronologically; a different
+consumer, not an inconsistency. `zScore` per point is a new, small addition beyond this file's
+original §2 sketch — Stitch §14.2's own QC Charts prompt names a "value, target, SD, z-score, rules
+triggered" table, so computing it server-side (trivial: `(value - targetMean) / targetSd`) avoids
+making the frontend duplicate that arithmetic, not a speculative addition.
+
+**Quantity-only, real scope decision:** a mean/SD band is meaningless for a coded/text control lot
+(no such lot exists in the real chemistry-catalog seed today, but the schema doesn't forbid one) —
+the endpoint 400s if the control lot's own analyte isn't `quantity`-dataType, mirroring
+`loadControlLot`'s existing dataType-mismatch 400 precedent, rather than silently returning an empty
+or nonsensical chart.
+
+**No `@Audit()`** — an unmutating read, same as `listResults` (`engineering/api-design` entry #6).
+
+**Real finding during implementation:** `chemistry-catalog.sql`'s own seed only ever inserts
+`quantity`-dataType analytes (confirmed by inspection, not assumed) — proving the "400 for
+non-quantity" case needed a synthetic, explicitly non-clinical coded-analyte fixture inserted by the
+test itself (a `code_system_value` + `analyte` row), the same "state the gap, don't fabricate real
+data" discipline `domain/qc-westgard` entry #6 and `domain/reference-ranges` entry #4 already
+established.
+
+Delivered: `packages/domain/src/control-lot.ts` (`qcChartPointSchema`/`qcChartSchema`),
+`control-lot.controller.ts`'s `getChart()`. `openapi.json`/`packages/sdk/src/schema.ts` regenerated —
+this route IS `@ZodResponse`-bound (unlike `recordResult()`), so a real diff was expected this time —
+confirmed purely additive (+165 lines `openapi.json`, +72 `schema.ts`, 0 deletions in either).
+
+Verified: 6 new HTTP-level e2e tests in `apps/api/test/qc-chart.e2e-spec.ts` (401 unauthenticated,
+404 nonexistent lot, 404 cross-tenant lot, empty-points band-only response, ordered points with
+per-point z-score/violations matching a real `POST` first, 400 for a non-quantity analyte)); full
+`apps/api` e2e suite 208/208 on a clean DB, zero regression; repo-wide `typecheck`/`lint`/`build`
+green, including a real `next build`/`nest build` (confirming `apps/web` still typechecks against the
+regenerated SDK schema).
 
 ## 1. Goal
 

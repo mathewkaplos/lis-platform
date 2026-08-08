@@ -12,8 +12,10 @@ import {
 } from '@nestjs/common';
 import {
   evaluateWestgardRules,
+  qcChartSchema,
   qcObservationSchema,
   qcResultEntrySchema,
+  type QcChartResult,
   type QcObservationResult,
   type QcResultEntryInput,
   type QcRuleViolationResult,
@@ -38,6 +40,7 @@ import { TenantContextInterceptor } from '../auth/tenant-context.interceptor';
 const controlLotIdParamSchema = z.object({ id: z.uuid() });
 class ControlLotIdParamDto extends createZodDto(controlLotIdParamSchema) {}
 class QcObservationDto extends createZodDto(qcObservationSchema) {}
+class QcChartDto extends createZodDto(qcChartSchema) {}
 
 // Same "bind as a value, not via extends" workaround as ResultEntryDto in
 // observation.controller.ts (engineering/api-design entry #14) --
@@ -360,5 +363,104 @@ export class ControlLotController {
       .orderBy(desc(observation.producedAt), desc(observation.createdAt));
 
     return rows.map(toQcObservationDto);
+  }
+
+  /**
+   * TASK-068 (FEAT-019 revision): the Levey-Jennings chart data for one
+   * control lot -- mean/SD band + ordered points, each with its own z-score
+   * and any TASK-067 violations, per Stitch §14.2/§14.4. Quantity-only: a
+   * mean/SD band is meaningless for a coded/text control lot, the same
+   * boundary `evaluateAndPersistViolations` already draws -- 400s rather
+   * than silently returning an empty or nonsensical chart, matching
+   * `loadControlLot`'s own dataType-mismatch 400 precedent. No `@Audit()` --
+   * an unmutating read (`engineering/api-design` entry #6), same as
+   * `listResults`.
+   */
+  @Get('chart')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(TenantContextInterceptor)
+  @ZodResponse({ type: QcChartDto, status: 200 })
+  async getChart(
+    @Param(new ZodValidationPipe(controlLotIdParamSchema))
+    { id }: ControlLotIdParamDto,
+    @DbTx() tx: Tx,
+  ): Promise<QcChartResult> {
+    const [lotRow] = await tx
+      .select()
+      .from(controlLot)
+      .where(eq(controlLot.id, id))
+      .limit(1);
+    if (!lotRow) {
+      throw new NotFoundException('Control lot not found');
+    }
+
+    const [analyteRow] = await tx
+      .select({ dataType: analyte.dataType })
+      .from(analyte)
+      .where(eq(analyte.id, lotRow.analyteId))
+      .limit(1);
+    if (analyteRow?.dataType !== 'quantity') {
+      throw new BadRequestException(
+        'Levey-Jennings charting is only meaningful for a quantity-dataType analyte',
+      );
+    }
+
+    const observationRows = await tx
+      .select()
+      .from(observation)
+      .where(
+        and(
+          eq(observation.isControl, true),
+          eq(observation.controlLotId, id),
+          eq(observation.dataType, 'quantity'),
+        ),
+      )
+      .orderBy(observation.producedAt, observation.createdAt); // oldest -> newest, a chart's own reading order
+
+    const violationRows =
+      observationRows.length === 0
+        ? []
+        : await tx
+            .select()
+            .from(qcRuleViolation)
+            .where(eq(qcRuleViolation.controlLotId, id));
+    const violationsByObservationId = new Map<
+      string,
+      QcRuleViolationResult[]
+    >();
+    for (const row of violationRows) {
+      const dto = toQcRuleViolationDto(row);
+      const existing = violationsByObservationId.get(dto.observationId);
+      if (existing) {
+        existing.push(dto);
+      } else {
+        violationsByObservationId.set(dto.observationId, [dto]);
+      }
+    }
+
+    const targetMean = Number(lotRow.targetMean);
+    const targetSd = Number(lotRow.targetSd);
+    const points = observationRows
+      .filter((row) => row.valueNum !== null)
+      .map((row) => {
+        const value = Number(row.valueNum);
+        return {
+          id: row.id,
+          value,
+          zScore: (value - targetMean) / targetSd,
+          producedAt: row.producedAt ? row.producedAt.toISOString() : null,
+          createdAt: row.createdAt.toISOString(),
+          violations: violationsByObservationId.get(row.id) ?? [],
+        };
+      });
+
+    return {
+      controlLotId: lotRow.id,
+      analyteId: lotRow.analyteId,
+      level: lotRow.level,
+      targetMean,
+      targetSd,
+      points,
+    };
   }
 }

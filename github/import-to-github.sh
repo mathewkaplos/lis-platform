@@ -62,6 +62,18 @@ ISSUES_DIR="github/issues"
 MANIFEST="$ISSUES_DIR/manifest.json"
 MAP_FILE="$ISSUES_DIR/import-map.json"
 
+# close Skill's Engineering Flow Retrospective (session 2026-08-08, Finding
+# A): populate_fields (Step 6) used to re-fetch gh project field-list/
+# item-list for every item in the whole manifest on every run, not just
+# items actually created this run -- idempotent for issue *creation*, but
+# not for field population, so a 3-issue kickoff burned GraphQL calls for
+# the entire ~130-item backlog and exhausted the shared 5,000/hr quota,
+# blocking gh pr create/checks/merge for the rest of that session. Track
+# which IDs create_one_issue actually creates *this invocation* here, and
+# have populate_fields only process those.
+NEW_IDS_FILE=$(mktemp)
+trap 'rm -f "$NEW_IDS_FILE"' EXIT
+
 for bin in gh jq; do
   command -v "$bin" >/dev/null 2>&1 || { echo "ERROR: '$bin' is required but not installed."; exit 1; }
 done
@@ -281,6 +293,7 @@ create_one_issue() {
           --milestone "$milestone" "${label_args[@]}")
     number=$(basename "$url")
     record_mapping "$id" "$number"
+    echo "$id" >> "$NEW_IDS_FILE"
 
     # Add to project
     gh project item-add "$PROJECT_NUMBER" --owner "$OWNER" --url "$url" >/dev/null 2>&1 || true
@@ -375,6 +388,16 @@ populate_fields() {
     area=$(jq -r '.area // "n/a"' <<<"$row"); effort=$(jq -r '.effort // .size // "n/a"' <<<"$row")
     number=$(resolve_number "$id")
     [[ -z "$number" ]] && continue
+    # Only items actually created THIS run -- an item already imported (and
+    # therefore already field-populated) in a prior run is skipped here, not
+    # re-fetched/re-edited. See this file's own NEW_IDS_FILE comment above.
+    # Dry-run note: NEW_IDS_FILE is only ever populated on a real run (dry-run
+    # never resolves a real issue number to preview field-population against
+    # anyway, per create_one_issue's own dry-run branch), so dry-run mode
+    # prints no "would set project fields" lines -- an accepted, honest gap
+    # in dry-run's own preview fidelity, not a functional regression on a
+    # real run.
+    grep -qxF "$id" "$NEW_IDS_FILE" || continue
     if $DRY_RUN; then
       echo "  [$id] would set project fields: Type=$type_value Priority=$pr Area=$area Effort=$effort"
       continue

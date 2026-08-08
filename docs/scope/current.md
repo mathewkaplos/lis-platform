@@ -1,89 +1,100 @@
-# Status — 2026-08-07 (session 21)
+# Status — 2026-08-08 (session 22)
 
-Last commit on main: `da3322a` — "docs: gh GraphQL rate-limit gotcha + fallback (/retro) (#357)".
+Last commit on main: `810a41d` — "fix: wire SCHEDULER_DATABASE_URL/lis_scheduler into staging deploy pipeline (#368)".
 
 **Earlier sessions' breadcrumb entries are not carried in this file — see git history on this
-exact file (`git log -- docs/scope/current.md`) for full detail back through session 12.** Session
-12 itself already established this same "see git history" convention for anything before it; this
-session's own `/close` truncated the file the rest of the way (it had grown to 139KB/1,784 lines
-across sessions 12-20, flagged as documentation drift by this session's own `/orient` and never
-pruned until now) rather than letting it keep growing unbounded. Nothing about a specific prior
-session's findings is lost — every session's own commits, PR descriptions, and Skill/ADR entries
-already carry the real detail; this file's job is orientation for the *next* session, not a
-permanent archive.
+exact file (`git log -- docs/scope/current.md`) for full detail back through session 12.** Same
+convention session 12/21 already established — every session's own commits, PR descriptions, and
+Skill/ADR entries carry the real detail; this file's job is orientation for the *next* session, not
+a permanent archive.
 
-## M4 (Chemistry Result Loop, the thesis milestone) closed at the start of this session; M5's first
-feature (FEAT-018, #27) was kicked off, fully implemented, and closed — all in this same session
+## FEAT-021 (Critical notification, read-back & escalation) kicked off, fully implemented (both
+tasks), and closed — all in this same session
 
-Session opened via `/orient`: M4 was confirmed genuinely, fully done (FEAT-014/015/016/017 all
-closed, `EPIC-004`'s remaining "open" signal correctly explained by it spanning M5 too, not a real
-gap). M5 ("Make It Dependable — QC, criticals, Haematology") had 8 open features, none started;
-FEAT-018 (QC materials & results as Observations) was recommended and approved as M5's entry point
-— its one dependency (FEAT-016) was already merged.
+Session opened via `/orient`. Three open M5 features had zero unmet dependencies (FEAT-019,
+FEAT-021, FEAT-023); FEAT-021 was chosen because it closes a real, already-identified gap against
+**Constitution Law #3** ("documented notification with read-back"), rather than opening new domain
+breadth or continuing a chain whose safety payoff doesn't land until a later feature ships.
 
-**Real, load-bearing finding from this session's own kickoff research, not present in FEAT-018's
-issue text:** KB-27's own core design — "a QC result is an Observation whose subject is a control
-material, not a patient" — could not be built against the schema as it existed.
-`observation.patientId`/`orderedTestId`/`specimenId` were all `NOT NULL`. **ADR-0015** (accepted)
-resolves it: a new `isControl` discriminator, a new `controlLotId` FK to a new `control_lot` table,
-the three existing columns relaxed to nullable, enforced by a `chk_observation_subject` CHECK
-constraint so every row is unambiguously a patient result or a QC result, never neither, never both.
+**Real, load-bearing finding from kickoff research, not present in FEAT-021's issue text:**
+`finalize()` already computes `criticalDetected` (TASK-054) — detection isn't this feature's gap,
+only the notification/read-back/escalation half is. **ADR-0016** (accepted) resolves the schema
+mechanism: a new, decoupled `critical_notification` entity, not a change to `verify()`'s own shape,
+with the finalization-gate widening deliberately sequenced to a second task.
 
-**TASK-063 (Control lot & QC observation schema), PR #353, closing #350.** Delivered exactly per
-ADR-0015. Real finding during implementation: Postgres only permits table-qualified column
-references (`"observation"."col"`) inside a CHECK clause that's part of the *original* `CREATE
-TABLE` — a CHECK constraint added later via `ALTER TABLE ADD CONSTRAINT` (this one) must use bare
-column names instead, or it fails with `missing FROM-clause entry for table "observation"`. Fixed;
-written up as `domain/qc-westgard` Skill + `database-design` Skill entry #9. A second, real finding:
-the nullability widening broke real, existing type-checking in `observation.controller.ts`'s DTO
-mappers (fixed with a narrow, commented non-null assertion — those routes only ever read
-patient-flow rows). 157/157 `apps/api` e2e suite green on a clean DB; `rls-check`/`golden-check`
-green; repo-wide typecheck/lint/build green.
+**TASK-065 (Critical notification record, read-back capture & query), PR #363, closing #360.**
+`critical_notification` table + `finalize()` creation hook + acknowledge/query endpoints. Three real
+findings: (1) `observation`'s composite PK `(id, created_at)` post-partitioning means any new FK to
+it needs a companion `*_created_at` column, not a plain single-column FK; (2) that companion value
+read back through a JS `Date` never round-trips to Postgres's microsecond `now()`, breaking the
+composite FK — fixed with a server-side subquery instead of the JS-parsed value; (3) a DTO
+unnecessarily used nestjs-zod's discriminated-union workaround, silently corrupting an unrelated
+route's OpenAPI schema — caught by `apps/web`'s own build. 175/175 `apps/api` e2e suite green;
+written up as `database-design` Skill entry #10 (the FK/timestamp finding).
 
-**TASK-064 (Control lot QC result entry & query API), PR #354, closing #351 — FEAT-018 (#27) now
-fully implemented, both tasks done, issue closed.** `GET/POST /v1/control-lots/:id/results`.
-Every POST is a plain INSERT, never an upsert (a control lot's QC history is a real time series,
-not a single current-result concept like a patient analyte); audited unconditionally via the
-existing `enter_result` capability (no new capability). Real finding: `AuditInterceptor` requires
-the handler return `{ resourceId, before?, after? }`, not a flat DTO — a flat return compiles fine
-and only 500s at real request time (`writeAuditEvent`'s `resourceId` column is `NOT NULL`). Fixed;
-written up as `api-design` Skill entry #15. 163/163 `apps/api` e2e suite green on a clean DB
-(6 new HTTP-level tests); `openapi.json`/SDK regenerated (CI-enforced); repo-wide checks green.
+**TASK-066 (Escalation timer & finalization-gate widening), PR #366, closing #361 — FEAT-021 now
+fully implemented, both tasks done, issue closed.** Widened `FinalizationRollupInterceptor`'s gate:
+verification alone no longer unblocks finalization for a critical — its `critical_notification` must
+also be `acknowledged`. Added `CriticalNotificationEscalationService` (`@nestjs/schedule`, 5 min
+poll, 30 min window). **ADR-0017** (accepted): a new `lis_scheduler` DB role, `NOBYPASSRLS`,
+column-scoped `SELECT(tenant_id, created_at)` via a role-specific RLS policy restricted to pending
+rows — the escalation job's only cross-tenant capability; the actual mutating write stays fully
+`lis_app`/RLS-scoped per tenant. Two real findings, both fixed forward as separate migrations (never
+editing a past one): Postgres's 1-arg `current_setting()` throws when unset rather than returning
+null, aborting the whole OR'd-policy query before the new role's own policy ever evaluated
+(migration 0019); Postgres's column-level GRANT model requires `SELECT` on every column referenced
+*anywhere* in a query, including a `WHERE` clause, not just the returned columns (migration 0020).
+182/182 `apps/api` e2e suite green; written up as `rls-multi-tenancy` Skill entry #5.
 
-## `/retro` ran three times this session, one cycle per real finding above plus a tooling gotcha —
-all three fixed and merged
+## A real staging outage happened mid-session, caused by TASK-066's own merge, and was found and
+fixed before this session's `/close`
 
-1. `engineering/api-design` Skill entry #15 (AuditInterceptor return-shape contract) —
-   lis-engineering `09a2ff3`.
-2. `engineering/database-design` Skill entry #9 (CHECK constraint table-qualification) —
-   lis-engineering `8df7a6e`.
-3. `AGENTS.md` (`gh`'s GraphQL-backed subcommands draw from a separate, independently-exhaustible
-   rate-limit bucket from REST — `gh pr create`/`gh pr merge` failed repeatedly with a GraphQL
-   rate-limit error this session while REST still had thousands of calls left; check
-   `gh api rate_limit --jq '.resources.graphql'`, fall back to `gh api ... -X POST`/`-X PUT`) —
-   lis-platform PR #357, merged. Applied at the human's explicit request (`AGENTS.md` edits
-   otherwise skip the autonomous git flow per this project's own standing rule).
+TASK-066's PR wired `SCHEDULER_DATABASE_URL` into local dev (`.env.example`) and `pr.yml`'s CI, but
+not the separate staging deploy pipeline (`deploy-staging.yml`/`docker-compose.staging.yml`) —
+`scheduler-db.ts`'s `requiredEnv()` threw at module load, crash-looping the `api` container the
+moment TASK-066 merged. Found via a failed `Deploy to Staging` run (not proactively — it surfaced
+during this session's own `/close`), diagnosed from the real smoke-test logs (`Container ... is
+restarting`), and fixed same-session: PR #368 mirrors `APP_DATABASE_URL`'s own pattern for the new
+var, adds an `ALTER ROLE lis_scheduler WITH PASSWORD` step, and a new `SCHEDULER_DB_PASSWORD` repo
+secret was set. The resulting redeploy was directly confirmed green (both smoke-test steps passed,
+not just the merge commit's own checkmark).
 
-## `/close` this session: Pre-Close Report found a real stale breadcrumb (this file, now fixed by
-this entry) plus one open process-friction finding
+## `/retro` ran three times this session — all fixed and merged
 
-The Pre-Close Report (`~/work/lis-engineering/session-close-reports/2026-08-07-1945-pre.md`) found
-this file's own "Last commit on main" seven commits stale (not the expected one-commit post-close-out
-lag), and a second, distinct issue: session 20's own breadcrumb prose claimed a `web-verify` fix was
-"not yet applied" when it had actually already shipped in the very same commit that wrote that
-claim — a real self-inconsistency, not a live gap, worth remembering when writing future entries
-("don't describe a pending item your own commit just resolved"). Also drafted, approved, and applied
-a fix for a real, twice-recurring-this-session finding: the Claude Code auto-mode classifier can
-deny a compound Bash command that mixes a read-only git step (`fetch`/`checkout`) with a further
-chained step during the standard merge → confirm → cleanup sequence — `AGENTS.md`'s merge-autonomy
-bullet now says to run those as separate individual tool calls, not chained with `&&`.
+1. `database-design` Skill entry #10 (composite-FK-companion-column precision trap, generalizing
+   entry #8's UPDATE-WHERE finding to INSERT) — `lis-engineering` `d5c4554`.
+2. `rls-multi-tenancy` Skill entry #5 (a second role-scoped RLS policy doesn't help if the table's
+   existing policy throws rather than returns null for that role) — `lis-engineering` `4a782cd`.
+3. (Named above under TASK-065) `database-design` entry #10 covers both real DB findings from that
+   task in one entry, per the retro loop's own "one friction, one fix" discipline applied to the
+   single most generalizable of the two.
 
-**Next milestone/feature not yet identified for a future session** — M5 has 7 more unstarted
-features (FEAT-019 Levey-Jennings/Westgard engine, FEAT-020 QC gating of result release, FEAT-021
-critical notification/read-back/escalation, FEAT-022 worklist v2, FEAT-023 Haematology CBC +
-differential, FEAT-024 peripheral film structured reporting, FEAT-025 delta checks). KB-27's own
-pipeline ordering (QC persistence → Westgard evaluation → release gate) points at FEAT-019 as the
-literal next step in that specific chain, but FEAT-021 (critical notification) has no stated
-dependency on QC at all and could be pulled forward independently — a future `/orient` should run
-real milestone/next-task discovery fresh, not assume FEAT-019 is automatically next just because it
-continues the immediately-preceding thread.
+## `/close` this session: Pre-Close Report found the stale breadcrumb (this file, now fixed) plus
+two Engineering Flow Retrospective findings, both approved and applied
+
+1. **`docker-pnpm-monorepo-deploy` Skill entry #25** (the staging env-var-drift finding above, made
+   reusable): before merging a PR that adds a new `requiredEnv()`'d variable, grep
+   `deploy-staging.yml`/`docker-compose.staging.yml` for it too, not just `pr.yml`/`.env.example` —
+   three independently-maintained env-wiring surfaces, no automated check keeps them in sync (same
+   shape of gap the openapi/sdk drift check already closed for a different surface, session 21's own
+   `/retro`). A full automated check (extract `requiredEnv()` names, cross-reference all three
+   files) was named as the more valuable but more expensive option — not built this session, a real
+   candidate for a future one.
+2. **`close/SKILL.md` item 11's PR-base-staleness note, broadened**: the "a PR needs
+   `update-branch` after a sibling PR merges" mechanism isn't only a close-out-multi-PR-resolution
+   thing — it happened mid-session this time (PR #365 after #364 merged), with no close-out in
+   progress. The note's scope is now stated generally.
+
+**Next milestone/feature not yet identified for a future session** — M5 has 5 more unstarted
+features (FEAT-019 Levey-Jennings/Westgard engine, FEAT-020 QC gating of result release, FEAT-022
+worklist v2, FEAT-023 Haematology CBC + differential, FEAT-024 peripheral film structured reporting,
+FEAT-025 delta checks — FEAT-024 still blocked on FEAT-023, FEAT-020 still blocked on FEAT-019). A
+future `/orient` should run real milestone/next-task discovery fresh, weighing all of these against
+current signals, not assume FEAT-019 is automatically next just because it continues the QC thread
+FEAT-018/021 both touched.
+
+**One item outside this session's own automated verification:** the staging outage-and-fix was
+confirmed via CI's own smoke tests (api `/health`, web+Keycloak over real HTTPS) — a real human
+login/usage check against the actual public staging URL was not performed (no tailnet access or
+staging credentials available from this environment) and is worth a quick look next time a human is
+at a computer, not because anything indicates a problem.

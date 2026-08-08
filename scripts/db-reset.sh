@@ -29,3 +29,7 @@ echo "lis_scheduler role password set."
 # the seed itself; the app connects as lis_app afterward, as it always does.
 docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/chemistry-catalog.sql
 echo "Seed applied: chemistry-catalog.sql (placeholder standard panel — see its header comment)."
+
+# TASK-071 (FEAT-023): second discipline seed, same placeholder framing.
+docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/haematology-catalog.sql
+echo "Seed applied: haematology-catalog.sql (placeholder CBC + differential panel — see its header comment)."

@@ -101,6 +101,8 @@ jobs:
       - run: psql "$DATABASE_URL" -c "ALTER ROLE lis_app WITH PASSWORD 'lis_app_ci_password';"
       - run: psql "$DATABASE_URL" -c "ALTER ROLE lis_scheduler WITH PASSWORD 'lis_scheduler_ci_password';"
       - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/chemistry-catalog.sql
+      # TASK-071 (FEAT-023): second discipline seed, same placeholder framing.
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/haematology-catalog.sql
       - run: pnpm run-golden-datasets
       - run: pnpm test
       # TASK-029: waits here, not right after launch — gives Keycloak's own

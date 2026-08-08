@@ -9,7 +9,12 @@ import {
   testAnalyte,
   testDefinition,
 } from '@lis/db';
-import { ageYearsAt, computeEgfr, computeLdl } from '@lis/domain';
+import {
+  ageYearsAt,
+  computeDifferentialAbsolute,
+  computeEgfr,
+  computeLdl,
+} from '@lis/domain';
 import { eq, sql } from 'drizzle-orm';
 import { AppModule } from './../src/app.module';
 import { getKeycloakToken } from './get-keycloak-token';
@@ -22,6 +27,18 @@ const LDL_LOINC = '13457-7';
 const TC_LOINC = '2093-3';
 const HDL_LOINC = '2085-9';
 const TG_LOINC = '2571-8';
+const CBC_CODE = 'CBC';
+const WBC_LOINC = '6690-2';
+const NEUT_PCT_LOINC = '770-8';
+const NEUT_ABS_LOINC = '751-8';
+const LYMPH_PCT_LOINC = '736-9';
+const LYMPH_ABS_LOINC = '731-0';
+const MONO_PCT_LOINC = '5905-5';
+const MONO_ABS_LOINC = '742-7';
+const EOS_PCT_LOINC = '713-8';
+const EOS_ABS_LOINC = '711-2';
+const BASO_PCT_LOINC = '706-2';
+const BASO_ABS_LOINC = '704-7';
 
 /**
  * TASK-053 (FEAT-014 revision): pure-function coverage for `computeEgfr`/
@@ -118,6 +135,53 @@ describe('Calculated fields (e2e)', () => {
         throw new Error(
           `expected suppression at triglycerides=400, got ${JSON.stringify(result)}`,
         );
+      }
+    });
+  });
+
+  describe('computeDifferentialAbsolute (pure)', () => {
+    it('computes absolute = (percentage / 100) x WBC, rounded to 2 decimal places', () => {
+      const result = computeDifferentialAbsolute({ percentage: 55, wbc: 8.2 });
+      if ('suppressed' in result) {
+        throw new Error(
+          `expected a computed value, got suppressed: ${result.reason}`,
+        );
+      }
+      // 55/100 * 8.2 = 4.51
+      if (result.value !== 4.51) {
+        throw new Error(`expected 4.51, got ${result.value}`);
+      }
+    });
+
+    it('suppresses for WBC = 0 -- no fabricated zero absolute count', () => {
+      const result = computeDifferentialAbsolute({ percentage: 55, wbc: 0 });
+      if (!('suppressed' in result)) {
+        throw new Error(
+          `expected suppression for WBC=0, got ${JSON.stringify(result)}`,
+        );
+      }
+    });
+
+    it('suppresses for a negative WBC (defensive -- not a real clinical input, but never fabricates)', () => {
+      const result = computeDifferentialAbsolute({ percentage: 55, wbc: -1 });
+      if (!('suppressed' in result)) {
+        throw new Error(
+          `expected suppression for negative WBC, got ${JSON.stringify(result)}`,
+        );
+      }
+    });
+
+    it("rounds to exactly 2 decimal places, not chemistry's whole-number convention", () => {
+      const result = computeDifferentialAbsolute({
+        percentage: 33.33,
+        wbc: 6.66,
+      });
+      if ('suppressed' in result) {
+        throw new Error('expected a computed value');
+      }
+      // 33.33/100 * 6.66 = 2.219778 -> rounds to 2.22
+      if (result.value !== 2.22) {
+        throw new Error(`expected 2.22, got ${result.value}`);
       }
     });
   });
@@ -495,6 +559,119 @@ describe('Calculated fields (e2e)', () => {
       if (status === 'resulted') {
         throw new Error(
           'expected LIPID ordered_test to stay short of resulted when the Friedewald guard suppresses LDL',
+        );
+      }
+    });
+
+    /**
+     * TASK-072 (FEAT-023): the regression test for this task's own real
+     * finding -- `maybeComputeDependents` used to destructure only the
+     * FIRST definition returned by `calculatedAnalytesDependingOn`, which
+     * silently computed just one of five absolute counts when WBC (shared
+     * by all five differential formulas) was the triggering finalize.
+     * Finalizing all five percentages first, then WBC last, exercises
+     * exactly that shared-trigger path -- proving all five cascade in the
+     * SAME finalize call, not just one.
+     */
+    it('Differential: finalizing WBC after all five percentages cascades all five absolute counts in one call, not just one', async () => {
+      const patientId = await createPatient('M', '1985-01-01');
+      const { orderId, orderedTestId } = await createOrder(patientId, CBC_CODE);
+      await receive(orderId);
+      const wbcId = await analyteIdForLoincCode(WBC_LOINC);
+      const pctIds = {
+        neut: await analyteIdForLoincCode(NEUT_PCT_LOINC),
+        lymph: await analyteIdForLoincCode(LYMPH_PCT_LOINC),
+        mono: await analyteIdForLoincCode(MONO_PCT_LOINC),
+        eos: await analyteIdForLoincCode(EOS_PCT_LOINC),
+        baso: await analyteIdForLoincCode(BASO_PCT_LOINC),
+      };
+      const absIds = {
+        neut: await analyteIdForLoincCode(NEUT_ABS_LOINC),
+        lymph: await analyteIdForLoincCode(LYMPH_ABS_LOINC),
+        mono: await analyteIdForLoincCode(MONO_ABS_LOINC),
+        eos: await analyteIdForLoincCode(EOS_ABS_LOINC),
+        baso: await analyteIdForLoincCode(BASO_ABS_LOINC),
+      };
+
+      await finalize(orderedTestId, pctIds.neut, 55);
+      await finalize(orderedTestId, pctIds.lymph, 30);
+      await finalize(orderedTestId, pctIds.mono, 6);
+      await finalize(orderedTestId, pctIds.eos, 5);
+      await finalize(orderedTestId, pctIds.baso, 4);
+
+      let rows = await results(orderedTestId);
+      for (const absId of Object.values(absIds)) {
+        if (rows.some((r) => r.analyteId === absId)) {
+          throw new Error(
+            'expected no absolute counts yet -- WBC not finalized',
+          );
+        }
+      }
+
+      await finalize(orderedTestId, wbcId, 8.2);
+      rows = await results(orderedTestId);
+
+      const expected = {
+        neut: 4.51, // 55/100 * 8.2
+        lymph: 2.46, // 30/100 * 8.2
+        mono: 0.49, // 6/100 * 8.2
+        eos: 0.41, // 5/100 * 8.2
+        baso: 0.33, // 4/100 * 8.2
+      };
+      for (const [key, absId] of Object.entries(absIds)) {
+        const row = rows.find((r) => r.analyteId === absId);
+        if (
+          !row ||
+          row.status !== 'preliminary' ||
+          row.source !== 'calculated'
+        ) {
+          throw new Error(
+            `expected a finalized, calculated ${key} absolute count, got ${JSON.stringify(row)}`,
+          );
+        }
+        if (row.valueNum !== expected[key as keyof typeof expected]) {
+          throw new Error(
+            `expected ${key} absolute ${expected[key as keyof typeof expected]}, got ${row.valueNum}`,
+          );
+        }
+      }
+    });
+
+    it('Differential: finalizing WBC first, then one percentage, cascades that single absolute count correctly (single-dependent path still works)', async () => {
+      const patientId = await createPatient('F', '1990-01-01');
+      const { orderId, orderedTestId } = await createOrder(patientId, CBC_CODE);
+      await receive(orderId);
+      const wbcId = await analyteIdForLoincCode(WBC_LOINC);
+      const neutPctId = await analyteIdForLoincCode(NEUT_PCT_LOINC);
+      const neutAbsId = await analyteIdForLoincCode(NEUT_ABS_LOINC);
+
+      await finalize(orderedTestId, wbcId, 10.0);
+      await finalize(orderedTestId, neutPctId, 50);
+
+      const rows = await results(orderedTestId);
+      const row = rows.find((r) => r.analyteId === neutAbsId);
+      if (!row || row.valueNum !== 5.0) {
+        throw new Error(
+          `expected Neutrophils Absolute 5.0, got ${JSON.stringify(row)}`,
+        );
+      }
+    });
+
+    it('Differential: WBC = 0 suppresses every absolute count -- no fabricated zeros', async () => {
+      const patientId = await createPatient('M', '1985-01-01');
+      const { orderId, orderedTestId } = await createOrder(patientId, CBC_CODE);
+      await receive(orderId);
+      const wbcId = await analyteIdForLoincCode(WBC_LOINC);
+      const neutPctId = await analyteIdForLoincCode(NEUT_PCT_LOINC);
+      const neutAbsId = await analyteIdForLoincCode(NEUT_ABS_LOINC);
+
+      await finalize(orderedTestId, neutPctId, 55);
+      await finalize(orderedTestId, wbcId, 0);
+
+      const rows = await results(orderedTestId);
+      if (rows.some((r) => r.analyteId === neutAbsId)) {
+        throw new Error(
+          `expected no absolute count written when WBC=0, got ${JSON.stringify(rows)}`,
         );
       }
     });

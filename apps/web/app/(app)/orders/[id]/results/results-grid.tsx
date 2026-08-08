@@ -101,8 +101,11 @@ function referenceRangeText(low: number | null, high: number | null): string {
  * native `title` attribute on hover (the literal "shown on hover" AC; no
  * `packages/ui` Tooltip primitive exists yet). Finalizing a manual analyte
  * that cascades a calculated dependent (server-side, same transaction)
- * updates that OTHER row's own state too, via `calculatedDependent` in the
+ * updates that OTHER row's own state too, via `calculatedDependents` in the
  * finalize outcome -- no full-page reload needed to see it appear.
+ * TASK-072 (FEAT-023): `calculatedDependents` is an array -- finalizing WBC
+ * after all five differential percentages are already entered cascades all
+ * five absolute-count rows at once, not just one.
  *
  * TASK-057 (FEAT-015 revision §1 finding #4/§2): a "Verify" affordance per
  * row where `observationStatus === 'preliminary'` AND the caller holds the
@@ -259,8 +262,8 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
         refHigh: outcome.refHigh,
         observationStatus: outcome.observationStatus,
       });
-      if (outcome.calculatedDependent) {
-        applyCalculatedDependent(row.orderedTestId, outcome.calculatedDependent);
+      for (const dependent of outcome.calculatedDependents ?? []) {
+        applyCalculatedDependent(row.orderedTestId, dependent);
       }
       focusNextEnterable(index);
     });

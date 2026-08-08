@@ -272,3 +272,21 @@ frontmatter declaration (this entry's own commit).
   manually closed #372/#373 (already-merged, real work) as part of this
   session's `/orient`.
 - **Files:** `~/work/lis-engineering/skills/workflow/develop/SKILL.md`
+
+## 2026-08-08 (5)
+
+- **Friction:** while confirming TASK-070's PR #387 had landed on main, a
+  standalone `git fetch origin main` — already a single, non-compound call,
+  following AGENTS.md's own existing "split into separate calls" guidance —
+  was denied by the auto-mode classifier twice in the same session. That
+  guidance's premise (splitting a compound command into individual calls
+  resolves the denial) didn't hold here: there was no `&&` chain to split
+  in the first place. Worked around with `gh pr view 387 --json
+  state,mergedAt`, which succeeded immediately and answers "did my merge
+  land" more directly than a git-log-based check ever did.
+- **Area:** github-workflow
+- **Change:** extended the existing merge-autonomy bullet in `AGENTS.md`'s
+  Rules of engagement with this recurrence and the preferred alternative
+  (`gh pr view <n> --json state,mergedAt` over `git fetch`/`git log` for
+  confirming a merge landed).
+- **Files:** `~/work/lis-platform/AGENTS.md`

@@ -500,6 +500,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/qc-rule-violations/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["QcRuleViolationController_resolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/qc-rule-violations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["QcRuleViolationController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -769,6 +801,10 @@ export interface components {
             severity: "warning" | "rejection";
             /** Format: date-time */
             detectedAt: string;
+            /** Format: date-time */
+            resolvedAt: string | null;
+            /** Format: uuid */
+            resolvedByUserId: string | null;
         };
         QcChartDto_Output: {
             /** Format: uuid */
@@ -800,6 +836,26 @@ export interface components {
             /** Format: uuid */
             acknowledgedByUserId: string | null;
             readBack: string | null;
+        };
+        QcRuleViolationListItemDto_Output: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            controlLotId: string;
+            /** Format: uuid */
+            observationId: string;
+            /** @enum {string} */
+            ruleCode: "1_2s" | "1_3s" | "2_2s" | "r_4s" | "4_1s" | "10x";
+            /** @enum {string} */
+            severity: "warning" | "rejection";
+            /** Format: date-time */
+            detectedAt: string;
+            /** Format: date-time */
+            resolvedAt: string | null;
+            /** Format: uuid */
+            resolvedByUserId: string | null;
+            /** Format: uuid */
+            analyteId: string;
         };
     };
     responses: never;
@@ -1518,6 +1574,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CriticalNotificationDto_Output"][];
+                };
+            };
+        };
+    };
+    QcRuleViolationController_resolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    QcRuleViolationController_list: {
+        parameters: {
+            query?: {
+                resolved?: "true" | "false";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QcRuleViolationListItemDto_Output"][];
                 };
             };
         };

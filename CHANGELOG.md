@@ -175,3 +175,29 @@ frontmatter declaration (this entry's own commit).
   stage/commit/push/PR-create steps are handed to the human rather than run
   autonomously.**
 - **Files:** `AGENTS.md`
+
+## 2026-08-08
+
+- **Friction:** `critical_notification.observationCreatedAt` (a composite FK
+  companion column into `observation(id, created_at)`, required because
+  `observation`'s primary key is composite post-partitioning, per
+  `database-design` entry #5) first written as `row.createdAt` off
+  `finalize()`'s own `.returning()` result — a real failed INSERT against a
+  real Postgres instance (`insert or update on table "critical_notification"
+  violates foreign key constraint`). Root cause: Postgres `timestamptz`
+  stores microsecond precision; the JS `Date` the driver parses it into only
+  has millisecond precision, so re-serializing it back into the companion
+  column's value never exactly matches what Postgres actually stored. This
+  is the *same* root cause `database-design` entry #8 already documents —
+  but entry #8's own title and rule are scoped to `UPDATE ... WHERE`
+  specifically, so it wasn't recognized as the same bug while writing this
+  new INSERT, and had to be rediscovered the hard way (TASK-053 already hit
+  this once before, per entry #8's own origin).
+- **Area:** existing-skill:engineering/database-design
+- **Change:** added entry #10 to `engineering/database-design/SKILL.md`,
+  generalizing entry #8's finding to INSERT-into-a-composite-FK-companion-
+  column, cross-referencing entries #5 and #8, and recording the fix that
+  applies specifically here (a server-side subquery for the companion value,
+  since entry #8's own fix — "key on `id` alone" — doesn't apply when a
+  composite FK genuinely requires both columns).
+- **Files:** `~/work/lis-engineering/skills/engineering/database-design/SKILL.md`

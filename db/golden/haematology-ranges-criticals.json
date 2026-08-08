@@ -1,0 +1,38 @@
+{
+  "_meta": {
+    "description": "TASK-071 (FEAT-023): golden dataset of expected haematology CBC/differential reference ranges and critical thresholds. Mirrors db/seed/haematology-catalog.sql's reference_range rows 1:1 -- packages/db/src/golden-dataset-check.ts (TASK-026, generalized this task to check multiple golden files) asserts the live reference_range table matches this file exactly, in both directions.",
+    "status": "PLACEHOLDER — NOT PARTNER-VALIDATED. Every entry below is a generic, widely-published adult (M/F only, NOT age-banded) reference interval / panic threshold from standard haematology literature, not reviewed or signed off by a design-partner lab. Do not treat these values as clinically authoritative for a real report.",
+    "tenantId": "00000000-0000-0000-0000-000000000001",
+    "sourceSeed": "db/seed/haematology-catalog.sql"
+  },
+  "entries": [
+    { "analyte": "Hemoglobin", "sex": "M", "condition": null, "rangeType": "normal", "low": 13.5, "high": 17.5, "source": "Standard adult male reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Hemoglobin", "sex": "F", "condition": null, "rangeType": "normal", "low": 12.0, "high": 15.5, "source": "Standard adult female reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Hemoglobin", "sex": null, "condition": null, "rangeType": "critical", "low": null, "high": 7.0, "source": "Generic critical-low (severe anaemia, panic) threshold, widely published -- placeholder" },
+    { "analyte": "RBC Count", "sex": "M", "condition": null, "rangeType": "normal", "low": 4.5, "high": 5.9, "source": "Standard adult male reference interval -- placeholder, not partner-validated" },
+    { "analyte": "RBC Count", "sex": "F", "condition": null, "rangeType": "normal", "low": 4.0, "high": 5.2, "source": "Standard adult female reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Hematocrit", "sex": "M", "condition": null, "rangeType": "normal", "low": 41, "high": 53, "source": "Standard adult male reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Hematocrit", "sex": "F", "condition": null, "rangeType": "normal", "low": 36, "high": 46, "source": "Standard adult female reference interval -- placeholder, not partner-validated" },
+    { "analyte": "MCV", "sex": null, "condition": null, "rangeType": "normal", "low": 80, "high": 100, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "MCH", "sex": null, "condition": null, "rangeType": "normal", "low": 27, "high": 33, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "MCHC", "sex": null, "condition": null, "rangeType": "normal", "low": 32, "high": 36, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "RDW", "sex": null, "condition": null, "rangeType": "normal", "low": 11.5, "high": 14.5, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "WBC Count", "sex": null, "condition": null, "rangeType": "normal", "low": 4.5, "high": 11.0, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "WBC Count", "sex": null, "condition": null, "rangeType": "critical", "low": null, "high": 2.0, "source": "Generic critical-low (severe leukopenia, panic) threshold -- placeholder" },
+    { "analyte": "WBC Count", "sex": null, "condition": null, "rangeType": "critical", "low": 30.0, "high": null, "source": "Generic critical-high (severe leukocytosis, panic) threshold -- placeholder" },
+    { "analyte": "Platelet Count", "sex": null, "condition": null, "rangeType": "normal", "low": 150, "high": 450, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Platelet Count", "sex": null, "condition": null, "rangeType": "critical", "low": null, "high": 20, "source": "Generic critical-low (severe thrombocytopenia, bleeding-risk panic) threshold, widely published -- placeholder" },
+    { "analyte": "Platelet Count", "sex": null, "condition": null, "rangeType": "critical", "low": 1000, "high": null, "source": "Generic critical-high (severe thrombocytosis, panic) threshold -- placeholder" },
+    { "analyte": "MPV", "sex": null, "condition": null, "rangeType": "normal", "low": 7.5, "high": 11.5, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Neutrophils %", "sex": null, "condition": null, "rangeType": "normal", "low": 40, "high": 70, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Neutrophils Absolute", "sex": null, "condition": null, "rangeType": "normal", "low": 1.8, "high": 7.7, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Lymphocytes %", "sex": null, "condition": null, "rangeType": "normal", "low": 20, "high": 40, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Lymphocytes Absolute", "sex": null, "condition": null, "rangeType": "normal", "low": 1.0, "high": 4.8, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Monocytes %", "sex": null, "condition": null, "rangeType": "normal", "low": 2, "high": 8, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Monocytes Absolute", "sex": null, "condition": null, "rangeType": "normal", "low": 0.2, "high": 0.95, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Eosinophils %", "sex": null, "condition": null, "rangeType": "normal", "low": 1, "high": 4, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Eosinophils Absolute", "sex": null, "condition": null, "rangeType": "normal", "low": 0.0, "high": 0.5, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Basophils %", "sex": null, "condition": null, "rangeType": "normal", "low": 0, "high": 1, "source": "Standard adult reference interval -- placeholder, not partner-validated" },
+    { "analyte": "Basophils Absolute", "sex": null, "condition": null, "rangeType": "normal", "low": 0.0, "high": 0.2, "source": "Standard adult reference interval -- placeholder, not partner-validated" }
+  ]
+}

@@ -4,12 +4,20 @@
  * Per the approved FEAT-007 proposal §1/§5, no range-resolution or flagging
  * service exists yet (TASK-049/050, M3) — so this runner validates the
  * *data* those future services will read from: it asserts the live
- * `reference_range` table matches db/golden/chemistry-ranges-criticals.json
- * exactly, in both directions (a row in the DB but not the golden file, or
- * vice versa, is a failure, not just a value mismatch). The golden file
- * mirrors db/seed/chemistry-catalog.sql's own rows 1:1, so this is also a
- * standing regression check that the seed and the "reviewed" dataset
- * haven't silently drifted apart.
+ * `reference_range` table matches each golden file below exactly, in both
+ * directions (a row in the DB but not the golden file, or vice versa, is a
+ * failure, not just a value mismatch). Each golden file mirrors its own
+ * discipline's seed file rows 1:1, so this is also a standing regression
+ * check that a seed and its "reviewed" dataset haven't silently drifted
+ * apart.
+ *
+ * Generalized to a list of golden files by TASK-071 (FEAT-023) — originally
+ * hard-coded to chemistry-ranges-criticals.json only (a real, load-bearing
+ * gap found during TASK-071's own implementation, not anticipated when the
+ * FEAT-023 proposal was drafted: this script, `apps/api/test/reference-
+ * range-resolution.e2e-spec.ts`, `scripts/db-reset.sh`, and `pr.yml` all
+ * separately hard-coded the single chemistry file/path). Add a new
+ * discipline's golden file to `GOLDEN_FILES` below, not a second script.
  *
  * Same shape as rls-isolation-check.ts (TASK-024): a tsx script, not a
  * Vitest suite (no test framework exists in this repo yet — see proposal
@@ -68,8 +76,10 @@ async function setTenant(db: Db, tenantId: string) {
   await db.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, false)`);
 }
 
-function loadGoldenFile(): GoldenEntry[] {
-  const path = join(__dirname, "../../../db/golden/chemistry-ranges-criticals.json");
+const GOLDEN_FILES = ["chemistry-ranges-criticals.json", "haematology-ranges-criticals.json"];
+
+function loadGoldenFile(filename: string): GoldenEntry[] {
+  const path = join(__dirname, "../../../db/golden", filename);
   const raw = readFileSync(path, "utf-8");
   const parsed = JSON.parse(raw) as GoldenFile;
   return parsed.entries;
@@ -95,52 +105,62 @@ async function main() {
   const db = createDb(APP_DATABASE_URL);
   await setTenant(db, TENANT_A);
 
-  console.log("TASK-026: golden-dataset check (chemistry ranges + criticals, connected as lis_app)\n");
+  console.log(`TASK-026/071: golden-dataset check (${GOLDEN_FILES.length} file(s), connected as lis_app)\n`);
   console.log(
-    "NOTE: this proves the golden file and the live reference_range table agree — it does NOT prove\n" +
+    "NOTE: this proves each golden file and the live reference_range table agree — it does NOT prove\n" +
       "the values themselves are clinically correct. Design-partner sign-off is a separate, open item.\n",
   );
 
-  const goldenEntries = loadGoldenFile();
-  const analyteNames = [...new Set(goldenEntries.map((e) => e.analyte))];
-
-  const goldenKeys = new Set(goldenEntries.map(entryKey));
-  const liveKeys = new Set<string>();
   const failures: string[] = [];
+  let totalAnalytes = 0;
+  let totalGoldenEntries = 0;
+  let totalLiveRows = 0;
 
-  for (const name of analyteNames) {
-    const [row] = await db.select({ id: analyte.id }).from(analyte).where(sql`${analyte.display} = ${name}`).limit(1);
-    if (!row) {
-      failures.push(`${name}: no analyte row found in the catalog at all — run \`pnpm db:reset\` first`);
-      continue;
+  for (const file of GOLDEN_FILES) {
+    const goldenEntries = loadGoldenFile(file);
+    const analyteNames = [...new Set(goldenEntries.map((e) => e.analyte))];
+
+    const goldenKeys = new Set(goldenEntries.map(entryKey));
+    const liveKeys = new Set<string>();
+
+    for (const name of analyteNames) {
+      const [row] = await db.select({ id: analyte.id }).from(analyte).where(sql`${analyte.display} = ${name}`).limit(1);
+      if (!row) {
+        failures.push(`[${file}] ${name}: no analyte row found in the catalog at all — run \`pnpm db:reset\` first`);
+        continue;
+      }
+      const liveRows = await fetchLiveRows(db, name);
+      for (const r of liveRows) {
+        liveKeys.add(
+          entryKey({
+            analyte: name,
+            sex: r.sex,
+            condition: r.condition,
+            rangeType: r.range_type,
+            low: r.low === null ? null : Number(r.low),
+            high: r.high === null ? null : Number(r.high),
+          }),
+        );
+      }
     }
-    const liveRows = await fetchLiveRows(db, name);
-    for (const r of liveRows) {
-      liveKeys.add(
-        entryKey({
-          analyte: name,
-          sex: r.sex,
-          condition: r.condition,
-          rangeType: r.range_type,
-          low: r.low === null ? null : Number(r.low),
-          high: r.high === null ? null : Number(r.high),
-        }),
-      );
+
+    for (const key of goldenKeys) {
+      if (!liveKeys.has(key)) {
+        failures.push(`[${file}] in golden dataset but not in DB: ${key}`);
+      }
     }
+    for (const key of liveKeys) {
+      if (!goldenKeys.has(key)) {
+        failures.push(`[${file}] in DB but not in golden dataset: ${key}`);
+      }
+    }
+
+    totalAnalytes += analyteNames.length;
+    totalGoldenEntries += goldenEntries.length;
+    totalLiveRows += liveKeys.size;
   }
 
-  for (const key of goldenKeys) {
-    if (!liveKeys.has(key)) {
-      failures.push(`in golden dataset but not in DB: ${key}`);
-    }
-  }
-  for (const key of liveKeys) {
-    if (!goldenKeys.has(key)) {
-      failures.push(`in DB but not in golden dataset: ${key}`);
-    }
-  }
-
-  console.log(`Checked ${analyteNames.length} analyte(s), ${goldenEntries.length} golden entries, ${liveKeys.size} live rows.\n`);
+  console.log(`Checked ${totalAnalytes} analyte(s), ${totalGoldenEntries} golden entries, ${totalLiveRows} live rows across ${GOLDEN_FILES.length} file(s).\n`);
 
   if (failures.length > 0) {
     failures.forEach((f) => console.error(`FAIL: ${f}`));
@@ -148,7 +168,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log("PASS: golden dataset and live reference_range table agree exactly.");
+  console.log("PASS: every golden dataset and the live reference_range table agree exactly.");
 }
 
 main().catch((err) => {

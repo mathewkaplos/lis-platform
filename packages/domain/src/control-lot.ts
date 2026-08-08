@@ -55,3 +55,44 @@ export const qcRuleViolationSchema = z
   })
   .meta({ id: "QcRuleViolationDto" });
 export type QcRuleViolationResult = z.infer<typeof qcRuleViolationSchema>;
+
+/**
+ * TASK-068 (FEAT-019 revision): one Levey-Jennings chart point -- an
+ * ordinary QC observation plus its own z-score (KB-27's "value, target, SD,
+ * z-score, rules triggered" table, Stitch §14.2) and every violation
+ * TASK-067 detected for it (Stitch §14.4: "Westgard-rule violations
+ * annotated on the offending points"). Ordered oldest -> newest by the
+ * endpoint itself, not this schema -- a chart reads left-to-right
+ * chronologically, deliberately the reverse of `listResults`' own
+ * most-recent-first convention (a different consumer, not an inconsistency).
+ */
+export const qcChartPointSchema = z
+  .object({
+    id: z.uuid(),
+    value: z.number(),
+    zScore: z.number(),
+    producedAt: z.iso.datetime().nullable(),
+    createdAt: z.iso.datetime(),
+    violations: z.array(qcRuleViolationSchema),
+  })
+  .meta({ id: "QcChartPointDto" });
+export type QcChartPointResult = z.infer<typeof qcChartPointSchema>;
+
+/**
+ * The full Levey-Jennings chart for one control lot: the mean/SD band a
+ * chart plots as shaded regions (KB-27: "control values plotted against
+ * mean ± 1/2/3 SD"), plus the ordered points. Quantity-only -- a chart
+ * against a mean/SD is meaningless for a coded/text control lot, the same
+ * boundary TASK-067's own evaluator already draws (§5, `evaluateAndPersistViolations`).
+ */
+export const qcChartSchema = z
+  .object({
+    controlLotId: z.uuid(),
+    analyteId: z.uuid(),
+    level: z.string(),
+    targetMean: z.number(),
+    targetSd: z.number(),
+    points: z.array(qcChartPointSchema),
+  })
+  .meta({ id: "QcChartDto" });
+export type QcChartResult = z.infer<typeof qcChartSchema>;

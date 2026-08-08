@@ -452,6 +452,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/control-lots/{id}/chart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ControlLotController_getChart"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/critical-notifications/{id}/acknowledge": {
         parameters: {
             query?: never;
@@ -728,6 +744,41 @@ export interface components {
             producedAt: string | null;
             /** Format: date-time */
             createdAt: string;
+        };
+        QcChartPointDto_Output: {
+            /** Format: uuid */
+            id: string;
+            value: number;
+            zScore: number;
+            /** Format: date-time */
+            producedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            violations: components["schemas"]["QcRuleViolationDto_Output"][];
+        };
+        QcRuleViolationDto_Output: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            controlLotId: string;
+            /** Format: uuid */
+            observationId: string;
+            /** @enum {string} */
+            ruleCode: "1_2s" | "1_3s" | "2_2s" | "r_4s" | "4_1s" | "10x";
+            /** @enum {string} */
+            severity: "warning" | "rejection";
+            /** Format: date-time */
+            detectedAt: string;
+        };
+        QcChartDto_Output: {
+            /** Format: uuid */
+            controlLotId: string;
+            /** Format: uuid */
+            analyteId: string;
+            level: string;
+            targetMean: number;
+            targetSd: number;
+            points: components["schemas"]["QcChartPointDto_Output"][];
         };
         AcknowledgeDto: {
             readBack: string;
@@ -1403,6 +1454,27 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    ControlLotController_getChart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QcChartDto_Output"];
+                };
             };
         };
     };

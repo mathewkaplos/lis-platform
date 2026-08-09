@@ -10,6 +10,8 @@ import { SentryExceptionCaptured } from '@sentry/nestjs';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ZodValidationException } from 'nestjs-zod';
 import { ZodError } from 'zod';
+import type { UnmatchedReason } from '../gateway-ingest/analyzer-correlation.service';
+import { UnmatchedResultException } from '../gateway-ingest/unmatched-result.exception';
 import { PanelHoldException } from '../observation/finalization-rollup.interceptor';
 
 interface ProblemDetails {
@@ -24,7 +26,10 @@ interface ProblemDetails {
   // consumer (apps/web's finalizeResult()) tell "the write committed, the
   // panel just can't close yet" apart from every other ConflictException,
   // without a second network round-trip to discover the value it already has.
-  reason?: 'unacknowledged_critical' | 'qc_violation';
+  // FEAT-027: also present on UnmatchedResultException, same reasoning --
+  // the gateway forwarder / a future pending-match UI needs the specific
+  // unmatched reason, not just "422".
+  reason?: 'unacknowledged_critical' | 'qc_violation' | UnmatchedReason;
   heldObservation?: ObservationResult;
   heldCalculatedDependents?: ObservationResult[];
 }
@@ -88,6 +93,11 @@ export class ProblemDetailsFilter implements ExceptionFilter {
       problem.reason = exception.reason;
       problem.heldObservation = exception.heldObservation;
       problem.heldCalculatedDependents = exception.heldCalculatedDependents;
+    } else if (exception instanceof UnmatchedResultException) {
+      problem.title = 'Unmatched';
+      problem.detail = exception.message;
+      problem.code = 'unmatched_result';
+      problem.reason = exception.reason;
     } else if (exception instanceof HttpException) {
       const body = exception.getResponse();
       const message =

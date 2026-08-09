@@ -1,40 +1,142 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { rawResultIdempotencyKey, type RawResult } from '@lis/domain';
+import { observationIdempotencyKey, orderedTest } from '@lis/db';
+import { and, eq } from 'drizzle-orm';
+import type { RequestWithTx } from '../auth/tenant-context.interceptor';
+import { ObservationWriteService } from '../observation/observation-write.service';
+import {
+  AnalyzerCorrelationService,
+  type UnmatchedReason,
+} from './analyzer-correlation.service';
+
+type Tx = RequestWithTx['tx'];
+
+export type IngestResult =
+  | {
+      matched: true;
+      idempotencyKey: string;
+      duplicate: boolean;
+      observationId: string;
+    }
+  | { matched: false; reason: UnmatchedReason };
 
 /**
- * In-memory idempotency-key dedupe for the gateway ingestion endpoint.
- *
- * Deliberately not persisted: this phase (FEAT-026) does not write any
- * Observation or other tenant-scoped row, so there is nothing yet that a
- * durable dedupe table would be protecting — see the FEAT-026 proposal §5.
- * Once FEAT-027 wires this endpoint into the real result pipeline, dedupe
- * moves onto (or alongside) whatever persistent write path that feature
- * adds; an api restart resetting this in-memory set is an accepted,
- * temporary gap for this phase only, not a decision this class makes
- * permanent.
- *
- * Bounded (not an unbounded-growth memory leak over a long-running
- * process): oldest keys are evicted once the cap is reached, using a Map's
- * insertion-order iteration.
+ * FEAT-027: correlates, maps, dedupes, and writes an analyzer-ingested raw
+ * result — see `GatewayIngestController`'s own header comment for the full
+ * picture. Runs inside the caller's transaction (`TenantContextInterceptor`
+ * on the controller), so the dedupe-key insert and the Observation write
+ * commit or roll back together.
  */
 @Injectable()
 export class GatewayIngestService {
-  private readonly maxKeys = 10_000;
-  private readonly seen = new Map<string, true>();
+  constructor(
+    @Inject(AnalyzerCorrelationService)
+    private readonly correlation: AnalyzerCorrelationService,
+    @Inject(ObservationWriteService)
+    private readonly writeService: ObservationWriteService,
+  ) {}
 
-  isDuplicate(key: string): boolean {
-    return this.seen.has(key);
-  }
+  async ingest(
+    tx: Tx,
+    tenantId: string,
+    operatorUserId: string,
+    rawResult: RawResult,
+  ): Promise<IngestResult> {
+    const key = rawResultIdempotencyKey(rawResult);
 
-  record(key: string): void {
-    if (this.seen.has(key)) {
-      return;
+    const [existingKey] = await tx
+      .select({ observationId: observationIdempotencyKey.observationId })
+      .from(observationIdempotencyKey)
+      .where(
+        and(
+          eq(observationIdempotencyKey.tenantId, tenantId),
+          eq(observationIdempotencyKey.sourceIdempotencyKey, key),
+        ),
+      )
+      .limit(1);
+    if (existingKey) {
+      return {
+        matched: true,
+        idempotencyKey: key,
+        duplicate: true,
+        observationId: existingKey.observationId,
+      };
     }
-    if (this.seen.size >= this.maxKeys) {
-      const [oldest] = this.seen.keys();
-      if (oldest !== undefined) {
-        this.seen.delete(oldest);
-      }
+
+    const correlated = await this.correlation.correlate(
+      tx,
+      tenantId,
+      rawResult,
+    );
+    if (!correlated.matched) {
+      return { matched: false, reason: correlated.reason };
     }
-    this.seen.set(key, true);
+
+    // Same shape a human draft() call sends -- ObservationWriteService knows
+    // nothing about "analyzer" vs. "human", only ResultEntryInput.
+    const body = {
+      dataType: 'quantity' as const,
+      valueNum: correlated.valueNum,
+    };
+    const at = new Date();
+
+    const ctx = await this.writeService.loadWriteContext(
+      tx,
+      correlated.orderedTestId,
+      correlated.analyteId,
+      body,
+    );
+    const rangeAndFlags = await this.writeService.resolveRangeAndFlags(
+      tx,
+      body,
+      ctx.analyteRow,
+      ctx.patientId,
+      ctx.patientSex,
+      ctx.patientBirthDate,
+      at,
+    );
+
+    // Status 'registered' -- the same status a human draft() call sets, not
+    // 'preliminary'/finalized. No auto-verification exists yet (FEAT-031,
+    // still "Not Started") -- an analyzer result awaits the same human
+    // review every result requires today (FEAT-027 proposal §5).
+    // Deliberately unaudited, same as draft() itself (`@Audit()` is only on
+    // finalize()/verify() -- a per-channel analyzer write is the
+    // high-frequency case draft()'s own precedent already exempts from
+    // audit noise, not a gap introduced here).
+    const row = await this.writeService.upsertObservation(tx, {
+      tenantId,
+      orderedTestId: correlated.orderedTestId,
+      analyteId: correlated.analyteId,
+      patientId: ctx.patientId,
+      specimenId: ctx.specimenId,
+      operatorUserId,
+      status: 'registered',
+      body,
+      source: 'analyzer',
+      sourceIdempotencyKey: key,
+      ...rangeAndFlags,
+    });
+
+    await tx.insert(observationIdempotencyKey).values({
+      tenantId,
+      sourceIdempotencyKey: key,
+      observationId: row.id,
+    });
+
+    // Same 'received' -> 'in_process' advance draft() performs on first entry.
+    if (ctx.orderedTestRow.status === 'received') {
+      await tx
+        .update(orderedTest)
+        .set({ status: 'in_process' })
+        .where(eq(orderedTest.id, correlated.orderedTestId));
+    }
+
+    return {
+      matched: true,
+      idempotencyKey: key,
+      duplicate: false,
+      observationId: row.id,
+    };
   }
 }

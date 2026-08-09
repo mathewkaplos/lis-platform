@@ -364,7 +364,12 @@ export class ObservationController {
     @CurrentUser() user: RequestContext,
     @DbTx() tx: Tx,
   ): Promise<ObservationResult> {
-    const ctx = await this.writeService.loadWriteContext(tx, id, analyteId, body);
+    const ctx = await this.writeService.loadWriteContext(
+      tx,
+      id,
+      analyteId,
+      body,
+    );
     const at = new Date();
     const rangeAndFlags = await this.writeService.resolveRangeAndFlags(
       tx,
@@ -433,7 +438,12 @@ export class ObservationController {
     @CurrentUser() user: RequestContext,
     @DbTx() tx: Tx,
   ) {
-    const ctx = await this.writeService.loadWriteContext(tx, id, analyteId, body);
+    const ctx = await this.writeService.loadWriteContext(
+      tx,
+      id,
+      analyteId,
+      body,
+    );
     const at = new Date();
 
     const [existingBefore] = await tx

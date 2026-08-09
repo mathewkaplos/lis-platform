@@ -56,9 +56,12 @@ SELECT csv.id FROM code_system_value csv
 WHERE csv.system = 'UCUM' AND csv.code IN ('mg/dL', 'mmol/L', 'g/dL', 'U/L')
   AND NOT EXISTS (SELECT 1 FROM unit u WHERE u.code_system_value_id = csv.id);
 
--- 3. Analytes: one per LOINC code, with its default unit.
+-- 3. Analytes: one per LOINC code, with its default unit. DISTINCT ON
+-- (csv.id), tie-broken by u.id -- same defensive guard as step 10's own
+-- comment explains (confirmed live: unit.code_system_value_id can hold more
+-- than one row, no unique constraint on that column).
 INSERT INTO analyte (code_system_value_id, display, data_type, default_unit_id)
-SELECT csv.id, a.display, 'quantity', u.id
+SELECT DISTINCT ON (csv.id) csv.id, a.display, 'quantity', u.id
 FROM (VALUES
   ('2345-7',  'Glucose',                'mg/dL'),
   ('3094-0',  'Urea Nitrogen (BUN)',     'mg/dL'),
@@ -78,7 +81,8 @@ FROM (VALUES
 JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.version = '2.78' AND csv.code = a.loinc_code
 JOIN code_system_value ucsv ON ucsv.system = 'UCUM' AND ucsv.version = '2.2' AND ucsv.code = a.ucum_code
 JOIN unit u ON u.code_system_value_id = ucsv.id
-WHERE NOT EXISTS (SELECT 1 FROM analyte existing WHERE existing.code_system_value_id = csv.id);
+WHERE NOT EXISTS (SELECT 1 FROM analyte existing WHERE existing.code_system_value_id = csv.id)
+ORDER BY csv.id, u.id;
 
 -- 4. One test_definition per analyte (order-able unit), tenant-scoped.
 INSERT INTO test_definition (tenant_id, code, display_name)
@@ -210,9 +214,15 @@ WHERE csv.system = 'UCUM' AND csv.code = 'mL/min/{1.73_m2}'
   AND NOT EXISTS (SELECT 1 FROM unit u WHERE u.code_system_value_id = csv.id);
 
 -- 10. Analytes: eGFR (new unit) and LDL/Total Cholesterol/HDL/Triglycerides
--- (existing mg/dL unit).
+-- (existing mg/dL unit). DISTINCT ON (csv.id), tie-broken by u.id: confirmed
+-- live on staging (2026-08-09, issue #410) that `unit` can hold more than one
+-- row for the same code_system_value_id (no unique constraint on that
+-- column) -- without this, the ucsv/unit JOIN below fans out per duplicate
+-- unit row, producing two source rows for the same analyte within this one
+-- INSERT's own result set, which WHERE NOT EXISTS (checking only
+-- already-committed rows) cannot catch.
 INSERT INTO analyte (code_system_value_id, display, data_type, default_unit_id)
-SELECT csv.id, a.display, 'quantity', u.id
+SELECT DISTINCT ON (csv.id) csv.id, a.display, 'quantity', u.id
 FROM (VALUES
   ('98979-8', 'eGFR (CKD-EPI 2021)',    'mL/min/{1.73_m2}'),
   ('13457-7', 'LDL Cholesterol',         'mg/dL'),
@@ -223,7 +233,8 @@ FROM (VALUES
 JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.version = '2.78' AND csv.code = a.loinc_code
 JOIN code_system_value ucsv ON ucsv.system = 'UCUM' AND ucsv.version = '2.2' AND ucsv.code = a.ucum_code
 JOIN unit u ON u.code_system_value_id = ucsv.id
-WHERE NOT EXISTS (SELECT 1 FROM analyte existing WHERE existing.code_system_value_id = csv.id);
+WHERE NOT EXISTS (SELECT 1 FROM analyte existing WHERE existing.code_system_value_id = csv.id)
+ORDER BY csv.id, u.id;
 
 -- 11. Link eGFR onto the already-seeded CREAT test (a second analyte on an
 -- existing test_definition, not a new one).

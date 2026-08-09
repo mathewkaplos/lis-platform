@@ -1,88 +1,81 @@
-# Status — 2026-08-09 (session 28, continued)
+# Status — 2026-08-09 (session 29)
 
-Last commit on main: `bbc7d86` (`lis-platform`) / `8a16fb8` (`lis-engineering`) — this breadcrumb
+Last commit on main: `0f27c08` (`lis-platform`) / `f7cc408` (`lis-engineering`) — this breadcrumb
 refresh itself lands as a further `lis-platform` commit on top of that, so this line will already be
 one commit behind by construction (a breadcrumb commit can never state its own SHA) — check
-`git log origin/main -5` for the real current tip. Bumped a second time same session: after this
-breadcrumb's own first write, PR #424 (the `web-verify` Skill fixture-reuse gotcha, approved via
-`/close`'s own Engineering Flow Retrospective) merged on top of it -- folded in here rather than
-left stale.
-
-**Manual Verification Checklist items resolved with real evidence, not just re-asserted:** seeded
-live fixtures and captured real screenshots (sent to the human) proving FEAT-025's multi-flag
-rendering (`H`+`D` pills render cleanly side-by-side, no clipping) and FEAT-022's SLA badges (red
-"overdue" and amber "at risk" are clearly distinguishable from each other and from plain on-track
-text, in both light and dark mode). FEAT-024's own visual-density question and the hook-fix
-post-apply confirmation remain genuinely human-only judgment calls -- not resolved here, carried to
-next session.
+`git log origin/main -5` for the real current tip.
 
 **Earlier sessions' breadcrumb entries are not carried in this file — see git history on this
 exact file (`git log -- docs/scope/current.md`) for full detail back through session 12.**
 
-## M5 — "Make It Dependable" is fully closed: all three remaining features shipped this session
+## M6 — "Automate" is open: FEAT-026 (Edge integration gateway) kicked off and shipped this session
 
-Continuing from the previous breadcrumb's note (PR #414 needed a human merge; M5's three remaining
-features — FEAT-022, FEAT-024, FEAT-025 — each still needed their own kickoff), all three shipped
-this session, each following the full `/plan` → ADR → `/develop` → verify → PR → CI-green merge
-pipeline with no shortcuts:
+Session started with a full `/orient`. M5 confirmed fully closed (19/19 issues); M6 confirmed open
+(7 issues: EPIC-005 + 6 features, all "Not Started"). One real drift finding surfaced during
+orientation and was deliberately deferred, not fixed: `lis-engineering/retrospectives/` has only
+`M0-retrospective.md`, despite M1-M5 all being closed — tracked as `lis-platform` issue #427, human
+decision was "defer, note as known gap," not backfill this session.
 
-- **FEAT-025 (Delta checks)** — flags implausible result jumps against a patient's prior verified
-  value. New `delta_check_rule` table (ADR-0023: tenant-scoped, percent-only, unbounded prior
-  lookback), wired into the existing flagging pipeline. Merged `lis-platform` PR #418. Found and
-  fixed a real pre-existing UI bug along the way: the results-grid Flag column only ever rendered
-  `state.flags[0]`, silently dropping a second flag on any multi-flag row — now maps over all
-  recognized flags.
-- **FEAT-022 (Worklist v2)** — SLA status, assignment, bulk actions. Split into Part 1 (API: `
-  sla_target` table, `assignedUserId` on `ordered_test`, bulk-assign/bulk-cancel routes — ADR-0024:
-  assignment is an unvalidated UUID column, v1 UI restricted to self-assign — PR #419) and Part 2
-  (UI: bulk-select checkboxes, SLA-colored badges, inline banner — PR #420). Hit and documented a
-  real CI-wiring gotcha along the way: `pr.yml`'s CI job duplicates `db-reset.sh`'s seed sequence
-  independently, so a new seed file needs wiring into both.
-- **FEAT-024 (Peripheral film structured reporting)** — widened `resultEntrySchema` to a 4th
-  discriminated-union branch (`ordinal`, ADR-0025), added a shared `none/1+/2+/3+` morphology grading
-  vocabulary, wired the previously-unused `observation.notes` column for narrative text (write-scoped
-  to `ordinal` only). New standalone "Peripheral Blood Smear" test with 4 RBC-morphology/platelet-
-  estimate analytes; WBC morphology and image capture explicitly deferred. Merged PR #421. Verified
-  end-to-end with real headless-Chromium passes in both light and dark mode (grade selection, notes,
-  Draft→Finalized transition, zero console errors).
+**FEAT-026 (Edge integration gateway)** — the first M6 feature, per its stated dependency order —
+went through the full `/plan` → open-questions-resolved → ADR → `/develop` → verify → PR →
+CI-green → merge pipeline, no shortcuts. Scope deliberately narrow, matching issue #35's own two
+acceptance criteria (the gateway skeleton, not instrument protocol drivers — those are FEAT-027):
 
-**A `SessionStart:compact` hook gotcha surfaced and was diagnosed via `/retro` mid-session:**
-`.claude/hooks/session-start.sh` re-fires its full fresh-session "Rule #0: do not begin
-implementation until Session Report posted and human responds" gate on every context compaction, not
-just a genuine new session — the script never read the `source` field Claude Code's `SessionStart`
-event actually carries (`startup`/`resume`/`clear`/`compact`). This forced a judgment call mid-task
-(session had already been deep into approved, in-progress FEAT-024 work when it fired). Fix confirmed
-via `/retro` (branch on `source == "compact"`, skip the gate) and logged (`CHANGELOG.md` "2026-08-09
-(4)", PR #422), but the actual hook-script edit could not be applied by the agent — three separate
-attempts (two via `Edit`, one via `Bash cp`) were all blocked by the auto-mode classifier, confirming
-AGENTS.md's own `.claude/hooks/` carve-out applies regardless of which tool attempts the write. The
-exact diff is staged at `~/.claude/jobs/8f390f21/tmp/session-start-new.sh` for the human to `cp` and
-commit directly.
+- **New `apps/gateway` app**: `POST /ingest` (the common ingestion port, persists the raw payload
+  verbatim to a local file-backed durable queue before any parsing — KB-29 step 1), the
+  store-and-forward queue itself (write-temp-then-rename, FIFO, survives a process restart, zero
+  new dependencies), and a forwarder that drains the queue on an interval to the cloud core,
+  authenticating via a Keycloak client-credentials grant (**ADR-0026**, accepted).
+- **New `apps/api` endpoint** `POST /internal/gateway/ingest`, guarded by the existing
+  `JwtAuthGuard`/`CapabilityGuard` with a new `gateway_ingest` capability granted only to a new
+  `gateway-ingest` machine role — never a human role. Dedupes on the shared
+  `(instrument_id, specimen_id, analyte, run_id)` idempotency key. Deliberately does not write any
+  `Observation` yet — proposal §5/§9 scopes that hand-off to FEAT-027.
+- Idempotency-key/schema logic lives once in `@lis/domain` (`raw-result.ts`) so gateway and api can
+  never independently drift on what "the same result" means.
+- `infra/keycloak/lis-realm.json`: new `lis-gateway` confidential client + `gateway-ingest` realm
+  role + pre-seeded service-account user, verified end-to-end against the real local dev Keycloak
+  (restarted the container to re-import — `docker compose up -d --force-recreate keycloak`, since a
+  plain `docker restart` failed on a stale WSL/Docker-Desktop bind-mount path).
+- Merged `lis-platform` PR #428, closing issue #35. `apps/gateway/Dockerfile` verified locally:
+  builds, runs standalone, serves `/health` with `apps/api`/`apps/web` both stopped — proving the
+  "deploys and runs independently" AC at the container level, not just via the test suite.
 
-**`/close`'s own Engineering Flow Retrospective (this breadcrumb's own close-out pass) found one
-further real gap, drafted, not yet landed:** verifying FEAT-024's morphology UI reused the *same*
-seeded order across a light-mode pass and a separate dark-mode pass. Light mode's own pass correctly
-clicked **Finalize** — a one-time, irreversible transition — before the dark-mode pass ran against
-the same fixture, producing a misleading 30-second Playwright timeout (an already-disabled button,
-not a UI bug) with no hint of the real cause. Suggested fix (drafted, pending human approval): a
-gotcha entry in the `web-verify` Skill — any verification of a one-time/irreversible UI transition
-across more than one browser context/pass needs its own independent fixture per pass.
+**Four open questions from the Implementation Proposal were resolved with the human before
+`/develop` began** (not left for a later session): deployment topology (we provision it, extending
+the existing Tailscale/OpenTofu staging pattern — not yet done, see below), M2M auth (Keycloak
+client-credentials, → ADR-0026), issue #260 priority (fix before FEAT-027, not independently
+scheduled), and `domain/analyzer-integration` Skill timing (draft after this feature's `/develop`
+pass, not ahead of code — **still outstanding, carried to next session**, see below).
 
-**Manual Verification Checklist carried into next session (none done by a human yet, agent-verified
-only via automated tests / Playwright screenshots):**
-- FEAT-024: a live technologist pass through the Peripheral Film grade/notes/Finalize flow — worth a
-  human visual-density judgment call on the notes-textarea/grade-button spacing in the finalized
-  state, which reads slightly tight in the agent's own screenshots.
-- FEAT-022: a live technologist pass confirming the SLA amber/red badges are distinguishable at a
-  glance, not just in a screenshot.
-- FEAT-025: confirm a real multi-flag row (e.g. `D` + `H` together) renders both flag pills cleanly
-  in the actual grid, not clipped.
-- Once the hook fix above is applied: confirm on the next real compaction that the short "SESSION
-  CONTINUED" message appears instead of the full Rule #0 gate.
+**Hit and fixed, for real, the exact vitest/esbuild `design:paramtypes` gap `engineering/testing`
+Skill entry #6 already documents** — both the constructor-DI instance and the metatype-based-DTO-
+validation instance, in the new gateway/api code. Caught via real e2e tests against live
+Postgres/Keycloak before merge, not shipped. No Skill update needed: the existing entry already
+covered and correctly predicted both fixes (`@Inject(Service)` explicit; `@Body(new
+ZodValidationPipe(schema))` explicit) — a case of the discipline working exactly as designed, not a
+new gotcha.
 
-**Next session:** M5 is closed (19/19 issues). M6 — Automate (analyzer + workflow engine) is next,
-6 features in dependency order per `EPIC-005`: **FEAT-026 (Edge integration gateway)** first, then
-FEAT-027 (Analyzer #1 driver), FEAT-028 (transactional outbox), FEAT-029 (workflow engine), FEAT-030
-(reflex rules), FEAT-031 (auto-verification). None has a ready-to-`/develop` task yet — each still
-needs its own kickoff (research → `/plan` proposal → ADR if warranted) before implementation, same as
-every M5 feature did this session.
+**Explicitly not done this session, needs a human:** the actual on-prem/edge infrastructure
+provisioning (extending Tailscale/OpenTofu to a lab-simulated edge node) is a real, billable,
+hard-to-reverse `tofu apply` — outside this session's autonomy boundary (same Level 3 gate the
+`engineering-radar` Skill's own SSH-IP auto-remediation section draws). The Dockerfile is the
+artifact a human deploys once that infra exists.
+
+**Carried into next session:**
+- Draft the `domain/analyzer-integration` Skill from KB-29, now that the gateway skeleton's real
+  shape (ingest/queue/forward split) is proven — per the resolved Q4 above, this was deliberately
+  deferred to *after* FEAT-026 landed, not skipped.
+- Issue #260 (`observation.ordered_test_id`/`specimen_id` has no DB-enforced FK) should be treated
+  as a prerequisite when FEAT-027 (Analyzer #1 driver) is kicked off, not independently scheduled —
+  FEAT-027 is the feature that actually starts writing Observations from analyzer data.
+- Issue #427 (missing M1-M5 milestone retrospectives) remains open, deferred, not yet actioned.
+- The real Tailscale/OpenTofu edge-node provisioning for `apps/gateway` (see above) needs a human's
+  `tofu apply` before any live analyzer traffic can actually reach it.
+- Carried from session 28, still not done by a human: a live technologist pass on FEAT-024's
+  notes-textarea/grade-button spacing (reads slightly tight in agent screenshots), and a live pass
+  confirming FEAT-022's SLA amber/red badges read clearly at a glance (not just in a screenshot).
+
+**Next after that:** FEAT-027 (Analyzer #1 driver + idempotent ingestion) is next in M6's dependency
+order — needs its own kickoff (research → `/plan` proposal → ADR if warranted), same as FEAT-026
+this session, including the #260 prerequisite noted above.

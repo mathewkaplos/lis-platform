@@ -14,3 +14,5 @@ export * from "./order";
 export * from "./specimen";
 export * from "./audit";
 export * from "./report";
+export * from "./instrument-mapping";
+export * from "./observation-idempotency";

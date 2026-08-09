@@ -183,6 +183,13 @@
       "when": 1786290556391,
       "tag": "0025_observation_ordered_test_specimen_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1786293297193,
+      "tag": "0026_instrument_analyte_mapping_and_observation_idempotency_key",
+      "breakpoints": true
     }
   ]
 }

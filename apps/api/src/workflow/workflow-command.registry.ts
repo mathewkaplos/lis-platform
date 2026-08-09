@@ -4,6 +4,20 @@ import type { WorkflowRule } from './workflow-types';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+// FEAT-031 (ADR-0031): which rule/definition version fired, and whether it
+// fired in dry-run mode. Threaded through so a handler can (a) record which
+// rule set released a result (KB-25's own "each auto-verified result
+// records the rule set version that released it") and (b) honor dry-run
+// itself -- the engine still calls the handler for a dryRun rule; it is the
+// handler's own job to run its real checks and skip only the mutating write,
+// since dry-run's whole value is proving what WOULD have happened, not just
+// that a rule's `when` matched.
+export interface WorkflowFiringContext {
+  workflowDefinitionId: string;
+  ruleId: string;
+  dryRun: boolean;
+}
+
 // The transaction is WorkflowEngineService's own already-open one, threaded
 // through -- not a separate transaction the handler opens itself. FEAT-030
 // (ADR-0030) found the hard way that a handler opening its own
@@ -19,6 +33,7 @@ export type WorkflowCommandHandler = (
   eventPayload: unknown,
   tenantId: string,
   tx: Tx,
+  firingContext: WorkflowFiringContext,
 ) => Promise<void>;
 
 /**

@@ -43,6 +43,13 @@ export class WorkflowEngineService implements OnModuleInit {
     this.outboxHandlers.register('ObservationVerified', (payload, tenantId) =>
       this.handleEvent('ObservationVerified', payload, tenantId),
     );
+    // FEAT-031: the auto-verify trigger point -- fires when a result becomes
+    // eligible for verification (finalize()), unlike ObservationVerified
+    // which fires too late (after verification already happened) to trigger
+    // anything that decides whether to verify.
+    this.outboxHandlers.register('ObservationFinalized', (payload, tenantId) =>
+      this.handleEvent('ObservationFinalized', payload, tenantId),
+    );
   }
 
   async handleEvent(
@@ -81,11 +88,17 @@ export class WorkflowEngineService implements OnModuleInit {
         const matched = evaluateCondition(rule.when, context);
         let dispatched: boolean | null = null;
 
+        const dryRun = rule.dryRun === true;
+
         if (matched) {
           const handler = this.commands.handlerFor(rule.do.command);
           dispatched = handler !== undefined;
           if (handler) {
-            await handler(rule.do, context, tenantId, tx);
+            await handler(rule.do, context, tenantId, tx, {
+              workflowDefinitionId: definition.id,
+              ruleId: rule.id,
+              dryRun,
+            });
           }
         }
 
@@ -97,6 +110,7 @@ export class WorkflowEngineService implements OnModuleInit {
           matched,
           command: rule.do.command,
           dispatched,
+          dryRun,
         });
       }
     });

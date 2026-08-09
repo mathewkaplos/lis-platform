@@ -25,6 +25,7 @@ const workflowRuleSchema = z.object({
   on: z.string().min(1),
   when: conditionNodeSchema,
   do: z.object({ command: z.string().min(1) }).catchall(z.unknown()),
+  dryRun: z.boolean().optional(),
 });
 
 export const workflowDefinitionCreateSchema = z.object({

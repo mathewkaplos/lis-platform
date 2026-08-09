@@ -2904,6 +2904,9 @@
                     "command"
                   ],
                   "additionalProperties": {}
+                },
+                "dryRun": {
+                  "type": "boolean"
                 }
               },
               "required": [

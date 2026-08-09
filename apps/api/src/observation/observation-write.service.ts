@@ -365,4 +365,31 @@ export class ObservationWriteService {
       .returning();
     return inserted;
   }
+
+  /**
+   * FEAT-031: the raw verification UPDATE, hoisted out of
+   * `ObservationController.verify()`'s own body so both the human HTTP route
+   * and `AutoVerifyObservation` (system-triggered, no HTTP request) call the
+   * identical write -- a small, surgical extraction (unlike ADR-0027's),
+   * since `verify()`'s own 404/409 precondition checks stay exactly where
+   * they are; only this final UPDATE moves. `verifierUserId` is left
+   * `null` for a system verification -- there is no human to attribute it
+   * to; the audit trail's own `actorType: 'service'` carries that instead.
+   */
+  async applyVerification(
+    tx: Tx,
+    existing: ObservationRow,
+    verifierUserId: string | null,
+  ): Promise<ObservationRow> {
+    const [updated] = await tx
+      .update(observation)
+      .set({
+        status: 'verified',
+        verifierUserId,
+        verifiedAt: new Date(),
+      })
+      .where(eq(observation.id, existing.id))
+      .returning();
+    return updated;
+  }
 }

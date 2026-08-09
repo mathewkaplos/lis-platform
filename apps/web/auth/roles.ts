@@ -33,3 +33,17 @@ export function hasVerifierRole(session: SessionPayload | undefined): boolean {
 export function hasQaRole(session: SessionPayload | undefined): boolean {
   return Boolean(session && Array.isArray(session.roles) && session.roles.includes('qa'));
 }
+
+/**
+ * FEAT-022 Part 2 (worklist bulk-select/assign/cancel UI): gates the
+ * bulk-select checkboxes and bulk-action bar entirely. `manage_orders`
+ * (`apps/api/src/auth/capabilities.ts`) -- the real capability guarding both
+ * `POST /v1/worklist/bulk-assign`/`bulk-cancel` -- is granted only to
+ * `technologist`, not `verifier`. Same fail-closed shape and same
+ * "UI-visibility convenience only" caveat as `hasVerifierRole`/`hasQaRole`
+ * above -- `apps/api`'s own `CapabilityGuard` is the real enforcement point;
+ * this only decides whether the bulk controls render at all.
+ */
+export function hasTechnologistRole(session: SessionPayload | undefined): boolean {
+  return Boolean(session && Array.isArray(session.roles) && session.roles.includes('technologist'));
+}

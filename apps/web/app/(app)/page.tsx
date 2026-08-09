@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { Button, Card, CardContent, CardHeader, CardTitle, StatCard } from '@lis/ui';
 import { getValidAccessToken } from '@/auth/access-token';
+import { getSession } from '@/auth/get-session';
+import { hasTechnologistRole } from '@/auth/roles';
 import { createLisApiClient } from '@/lib/api-client';
 import { ActiveFilters } from './active-filters';
 import { WorklistView } from './worklist-view';
@@ -38,11 +40,16 @@ export default async function Home({
     : undefined;
   const normalizedPriority = priority ? (priority as 'routine' | 'stat') : undefined;
 
-  const accessToken = await getValidAccessToken();
+  const [accessToken, session] = await Promise.all([getValidAccessToken(), getSession()]);
   if (!accessToken) {
     throw new Error('Your session has expired — please log in again.');
   }
   const client = createLisApiClient(accessToken);
+  // FEAT-022 Part 2: gates the bulk-select checkboxes/bulk-action bar
+  // entirely -- manage_orders (the real API-level gate on both bulk routes)
+  // is granted only to `technologist`, matching `isVerifier`'s own "hidden
+  // entirely, not just disabled" precedent (TASK-057 §10 Q3).
+  const canManageOrders = hasTechnologistRole(session);
 
   const { data, response } = await client.GET('/v1/worklist', {
     params: {
@@ -172,7 +179,11 @@ export default async function Home({
         </CardContent>
       </Card>
 
-      <WorklistView items={data.items} />
+      <WorklistView
+        items={data.items}
+        canManageOrders={canManageOrders}
+        currentUserId={session?.sub}
+      />
     </div>
   );
 }

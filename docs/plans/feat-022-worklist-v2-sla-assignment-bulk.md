@@ -215,3 +215,203 @@ concept stays uuid-only through a future push-model feature, or gets revisited t
 - (a) **[Recommended]** Yes — draft it now, alongside this proposal, same pattern as ADR-0023.
 - (b) No — treat Q1 as a proposal-level decision only, revisit via a future ADR only if/when a real
   directory feature is proposed.
+
+---
+
+# Revision: FEAT-022 Part 2 — Worklist v2 UI (bulk-select, SLA indicator, self-assign)
+
+Status: APPROVED
+ADR: none new (extends adr-0024's own accepted decisions 2/3 unchanged — this revision is the "v1
+UI restricted to self-assign only" half of that decision, not a new one)    Date: 2026-08-09
+Backlog ID: FEAT-022 (#31)
+
+§10's open questions were resolved by the human via the native options-prompt, both recommended
+options chosen: **Q1** inline summary banner for partial bulk-cancel feedback. **Q2** bulk-action
+bar scoped to assign/cancel only, no results-screen shortcut.
+
+## 1. Goal
+
+Part 1 (merged, PR #419) built the API: `slaStatus`/`assignedUserId` on every `GET /v1/worklist`
+item, `POST /v1/worklist/bulk-assign`, `POST /v1/worklist/bulk-cancel`. FEAT-022's own AC needs a
+real screen driving them: "TAT/SLA indicator correctly shows at-risk and overdue states" and "Bulk
+assign and bulk transition work correctly on multi-selected rows" — both currently true of the API
+alone, unreachable from the UI.
+
+**Real, load-bearing finding #1 — `DataTable`'s own header comment already named exactly this
+gap, unprompted.** `packages/ui/src/components/data-table.tsx:10-14`: *"pagination/infinite
+scroll, column show/hide/reorder/resize, and the bulk-action bar are real Pattern A requirements
+not yet built here ... revisit when a screen actually needs them."* Row selection itself
+(`selectedRowIds`/`onSelectedRowIdsChange`, a checkbox column, select-all) is **already fully
+built and unused anywhere in `apps/web`** — grepped every non-Storybook consumer; only
+`data-table.stories.tsx` exercises it. This screen is the first real consumer, the same
+"built but never consumed until X" pattern `StatusPill` and `FilterBar`/`StatCard` each went
+through before their own first real task (`frontend-design` entries #1, and TASK-062's own finding
+#2). **The bulk-action bar itself (buttons that appear once rows are selected) is not built
+anywhere — this revision builds it locally in `worklist-view.tsx`, not as a new `packages/ui`
+primitive**, matching this repo's own "promote to a shared primitive only once a second consumer
+needs it" precedent (no second bulk-selectable screen exists yet to justify one).
+
+**Real, load-bearing finding #2 — ADR-0024's own decision 3 already resolved the assignee-display
+question; this task must not quietly re-litigate it.** No user directory exists (ADR-0024). The
+only honest states this screen can show for `assignedUserId` are: unassigned (`null`), assigned to
+the viewer (`assignedUserId === session.sub`), or assigned to someone else (a real uuid the UI
+cannot resolve to a name). The bulk-assign *action* is self-assign only ("Assign to me"), per
+ADR-0024 decision 3 — this revision does not add a colleague picker, free-text uuid entry, or any
+other path to assigning to someone other than the caller.
+
+**Real, load-bearing finding #3 — bulk-cancel's own API eligibility (only `'ordered'`-status rows)
+means a bulk selection spanning stages will report partial results, and the UI must surface that
+honestly, not silently.** `POST /v1/worklist/bulk-cancel`'s response is
+`{cancelledIds, ineligibleIds}` specifically so a caller can distinguish "did nothing" from
+"did the eligible subset" — a UI that only checks "did the call succeed" and refreshes blindly
+would hide a real, common case (a tech selects a mixed-stage batch, expects all of it cancelled,
+and needs to know some rows were skipped and why).
+
+**Real, load-bearing finding #4 — this repo has two different established UI-refresh patterns
+after a mutation, and they fit different mutation shapes; this task must pick the one that
+actually matches bulk actions, not default to whichever is closest by proximity.**
+`results-grid.tsx` (single-row, in-place value edits) patches local row state directly.
+`violations-table.tsx` (TASK-070, a same-shaped "select an item, resolve it, it leaves the current
+filtered view") does the same: `setRows((prev) => prev.filter(...))`, no `router.refresh()`, no
+full Server Component re-fetch. Bulk-assign/bulk-cancel are the same shape as the latter (an
+action that changes which rows belong in the *current* filtered view — a cancelled row must leave
+the view the same way a resolved QC violation does) — this revision follows `violations-table.tsx`'s
+own local-state-patch precedent, not a page reload.
+
+## 2. Affected files
+
+New:
+- `apps/web/app/(app)/worklist-actions.ts` — `'use server'`, mirrors
+  `orders/[id]/results/actions.ts`'s exact shape: `bulkAssignToMe(orderedTestIds: string[])` (sends
+  the caller's own `sub` — the only value ADR-0024's v1 UI ever sends) and
+  `bulkCancelSelected(orderedTestIds: string[])`, both calling `client.POST('/v1/worklist/bulk-assign'
+  | '/v1/worklist/bulk-cancel', ...)`.
+
+Modified:
+- `apps/web/auth/roles.ts` — new `hasTechnologistRole(session)`, identical fail-closed shape to
+  `hasVerifierRole`/`hasQaRole`. Gates the bulk-select checkboxes and bulk-action bar entirely
+  (hidden, not just disabled) for a non-`technologist` session — `manage_orders` (the API's own
+  capability gate on both bulk routes) is granted only to `technologist`
+  (`apps/api/src/auth/capabilities.ts`), so a `verifier`-only session would otherwise see controls
+  that always 403.
+- `apps/web/app/(app)/page.tsx` — fetch `session` (`getSession()`, same helper
+  `orders/[id]/results/page.tsx` already uses), compute `canManageOrders =
+  hasTechnologistRole(session)`, pass both `canManageOrders` and `currentUserId={session.sub}` into
+  `WorklistView`.
+- `apps/web/app/(app)/worklist-view.tsx` — add: a checkbox column (wire `DataTable`'s existing
+  `selectedRowIds`/`onSelectedRowIdsChange`, only when `canManageOrders`), a bulk-action bar shown
+  when `selectedRowIds.length > 0` ("Assign to me" / "Cancel selected", each reporting real
+  per-row outcomes per finding #3), an Assignee column (unassigned / "You" / "Assigned", per
+  finding #2), and an SLA indicator on the existing TAT column (a `Badge` — not `StatusPill`,
+  `frontend-design` entry #1 reserves that for clinical result flags — colored per `slaStatus`:
+  `at_risk` amber, `overdue` red/destructive, `on_track` unstyled).
+
+## 3. Architecture consulted
+
+Google Stitch Prompt Library §8.0-8.7 (Work Queue) — read narrowly, same discipline TASK-062's own
+proposal already applied against this same document: the full spec names 7 tabs, an avatar-based
+assignee picker, live row updates, and a density toggle, none of which this revision builds (no
+real data/infra backs any of them, same gap TASK-062 already found and this revision re-confirms
+unchanged). What it does take from §8.0/the data-table backbone spec: the checkbox-column +
+bulk-action-bar shape itself, and the amber-at-risk/red-overdue color semantics (§0's own palette:
+`#D97706`/`#DC2626`, already the exact `--warning`/`--danger` tokens this app's Tailwind theme
+defines). `frontend-design` Skill entries #1 (StatusPill reserved for clinical flags),
+#6 (`observation.flags` multi-value rendering discipline — not directly applicable here since
+`slaStatus` is a single enum, not an array, but the same "render the real computed value, don't
+assume a single fixed shape" spirit applies to not hardcoding an on_track-only assumption).
+ADR-0024 (accepted) — decisions 2/3 directly govern this revision's assignee UI scope.
+
+## 4. Skills loaded
+
+`engineering/frontend-design` (StatusPill-vs-Badge scoping, WCAG-contrast precedent for colored
+chips — TASK-037's own finding on `StatCard`'s delta chip, relevant to the at-risk/overdue Badge
+coloring). `engineering/api-design` (read of the two new bulk routes' real request/response shapes,
+already implemented in Part 1 — no new backend Skill entry needed, this revision consumes them
+as-is).
+
+## 5. Assumptions & autonomous decisions
+
+- Bulk-action bar is built locally in `worklist-view.tsx`, not a new `packages/ui` primitive
+  (finding #1) — promoted to a shared component only if a second bulk-selectable screen needs one.
+- Assignee column shows exactly three states (unassigned / you / assigned-to-someone-else), no
+  attempt to resolve a name for the third state (finding #2, ADR-0024 decision 2).
+- "Cancel selected" sends every currently-selected row id in one `bulkCancelSelected` call,
+  regardless of stage — the API's own eligibility check (finding #3) is the real filter; the UI
+  does not pre-filter the selection to "only ordered-status rows" client-side, since that would
+  hide the real ineligible-row feedback the API is specifically designed to report.
+- Local state patch on success (finding #4), not `router.refresh()` — cancelled rows are removed
+  from the current view; assigned rows have their `assignedUserId` updated in place; both mirror
+  `violations-table.tsx`'s exact pattern.
+- Selection state (`selectedRowIds`) is cleared after any bulk action completes (success or partial
+  success) — a stale selection referencing now-cancelled/removed rows would be confusing to act on
+  again.
+
+## 6. Risks
+
+- Real UX gap named plainly, not silently: a partial bulk-cancel (some rows ineligible) needs a
+  clear, specific message ("3 of 5 cancelled — 2 were already past the ordered stage"), not a bare
+  success/failure toast — get this reviewed in `web-verify`, not just asserted correct from the
+  response shape.
+- The Assignee column's "Assigned" (third-party) state is a real, known UX dead-end until a
+  directory exists (ADR-0024's own named limitation) — worth a one-line tooltip/title attribute
+  explaining why no name shows, not left silently unexplained.
+- `manage_orders`-gating the whole bulk UI means a `verifier`-only session sees no bulk controls at
+  all, not a disabled state — matches `isVerifier`'s own "hidden entirely" precedent (TASK-057
+  §10 Q3) deliberately, but worth confirming that reads as "not for your role" rather than "broken"
+  in a real `web-verify` pass.
+
+## 7. Acceptance criteria
+
+- [ ] A `technologist`-roled session sees a checkbox column and can select one or more rows;
+      a `verifier`-only session sees neither the checkboxes nor the bulk-action bar at all.
+- [ ] Selecting rows reveals a bulk-action bar with "Assign to me" and "Cancel selected"; both
+      report real per-row outcomes (counts of what succeeded vs. was skipped and why).
+- [ ] "Assign to me" updates the Assignee column to "You" for every successfully-assigned row,
+      without a full page reload.
+- [ ] "Cancel selected" removes successfully-cancelled rows from the current view immediately,
+      leaves ineligible rows visible and unchanged, and states clearly which rows were skipped.
+- [ ] The TAT column visibly distinguishes `at_risk` (amber) and `overdue` (red) from `on_track`,
+      matching the real `slaStatus` value from the API — provable against a real seeded fixture,
+      not just visual inspection.
+- [ ] Dark mode, keyboard navigation (checkbox selection and bulk-action buttons reachable and
+      operable without a mouse), and zero console/page errors confirmed via a real `web-verify`
+      pass.
+
+## 8. Testing plan
+
+No new `apps/api` e2e coverage (Part 1 already covers the API surface this revision consumes
+as-is). A real `web-verify` headless-browser pass (Docker/Postgres/Keycloak): seed a real
+multi-status, multi-priority worklist fixture including at-risk/overdue-aged STAT rows (backdated
+`createdAt`, same technique `worklist.e2e-spec.ts`'s own SLA tests already use); as a
+`technologist`-roled session, select a mixed batch (some `ordered`, some `in_process`), run
+"Cancel selected," confirm the `ordered` rows disappear and the response correctly reports the
+`in_process` ones as skipped; run "Assign to me" on a fresh selection, confirm the Assignee column
+updates to "You" without a reload; confirm the at-risk/overdue Badge colors render correctly in
+both light and dark mode; as a `verifier`-only session, confirm no checkboxes or bulk-action bar
+render at all; confirm zero console errors throughout. `packages/ui`'s existing Storybook/axe CI
+check is unaffected (no new `packages/ui` primitive added, per §5).
+
+## 9. Rollback plan
+
+Purely additive/UI-layer — no schema, no API, no migration (Part 1 already merged and is
+unaffected by reverting this revision). Revert the PR; the worklist screen returns to Part 1's own
+read-only shape (SLA/assignee data still present in the API response, just not rendered or
+actionable).
+
+## 10. Questions requiring human approval
+
+**Q1 — Partial bulk-cancel feedback: an inline summary banner, or a per-row indicator?**
+- (a) **[Recommended]** An inline summary banner above the table after the action completes (e.g.
+  "3 cancelled, 2 skipped — already past the ordered stage"), auto-dismissing or dismissible —
+  simplest, matches `violations-table.tsx`'s own per-row inline error precedent scaled to a batch
+  result, no new persistent UI state to manage.
+- (b) A per-row indicator (e.g. a small icon/tooltip on each skipped row) — more precise but a
+  real new UI pattern this table doesn't have anywhere else yet.
+
+**Q2 — Should the bulk-action bar also expose the individual per-row Verify/finalize actions
+`results-grid.tsx` already has, or stay scoped to assign/cancel only?**
+- (a) **[Recommended]** Scoped to assign/cancel only — the only two bulk actions this feature's own
+  AC and Part 1's own API actually support; per-row result entry/verification already has its own
+  real, dedicated screen (`results-grid.tsx`) this revision doesn't duplicate or shortcut.
+- (b) Add a "Go to results" bulk shortcut for the current selection (e.g., open the first selected
+  row's results screen) — a real, if minor, convenience not asked for by this feature's AC.

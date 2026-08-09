@@ -6,32 +6,55 @@ import type { ConditionNode } from './workflow-types';
 
 describe('evaluateCondition', () => {
   it('eq matches an equal value', () => {
-    const node: ConditionNode = { field: 'status', op: 'eq', value: 'verified' };
+    const node: ConditionNode = {
+      field: 'status',
+      op: 'eq',
+      value: 'verified',
+    };
     expect(evaluateCondition(node, { status: 'verified' })).toBe(true);
     expect(evaluateCondition(node, { status: 'preliminary' })).toBe(false);
   });
 
   it('neq matches a different value', () => {
-    const node: ConditionNode = { field: 'status', op: 'neq', value: 'verified' };
+    const node: ConditionNode = {
+      field: 'status',
+      op: 'neq',
+      value: 'verified',
+    };
     expect(evaluateCondition(node, { status: 'preliminary' })).toBe(true);
     expect(evaluateCondition(node, { status: 'verified' })).toBe(false);
   });
 
   it('gt/gte/lt/lte compare numbers, false for non-numbers', () => {
     expect(
-      evaluateCondition({ field: 'valueNum', op: 'gt', value: 5 }, { valueNum: 6 }),
+      evaluateCondition(
+        { field: 'valueNum', op: 'gt', value: 5 },
+        { valueNum: 6 },
+      ),
     ).toBe(true);
     expect(
-      evaluateCondition({ field: 'valueNum', op: 'gt', value: 5 }, { valueNum: 5 }),
+      evaluateCondition(
+        { field: 'valueNum', op: 'gt', value: 5 },
+        { valueNum: 5 },
+      ),
     ).toBe(false);
     expect(
-      evaluateCondition({ field: 'valueNum', op: 'gte', value: 5 }, { valueNum: 5 }),
+      evaluateCondition(
+        { field: 'valueNum', op: 'gte', value: 5 },
+        { valueNum: 5 },
+      ),
     ).toBe(true);
     expect(
-      evaluateCondition({ field: 'valueNum', op: 'lt', value: 5 }, { valueNum: 4 }),
+      evaluateCondition(
+        { field: 'valueNum', op: 'lt', value: 5 },
+        { valueNum: 4 },
+      ),
     ).toBe(true);
     expect(
-      evaluateCondition({ field: 'valueNum', op: 'lte', value: 5 }, { valueNum: 5 }),
+      evaluateCondition(
+        { field: 'valueNum', op: 'lte', value: 5 },
+        { valueNum: 5 },
+      ),
     ).toBe(true);
     expect(
       evaluateCondition(
@@ -41,7 +64,7 @@ describe('evaluateCondition', () => {
     ).toBe(false);
   });
 
-  it('in matches membership in the rule\'s own value array', () => {
+  it("in matches membership in the rule's own value array", () => {
     const node: ConditionNode = {
       field: 'status',
       op: 'in',
@@ -51,7 +74,7 @@ describe('evaluateCondition', () => {
     expect(evaluateCondition(node, { status: 'registered' })).toBe(false);
   });
 
-  it('includes matches membership in the context\'s own array field', () => {
+  it("includes matches membership in the context's own array field", () => {
     const node: ConditionNode = { field: 'flags', op: 'includes', value: 'HH' };
     expect(evaluateCondition(node, { flags: ['HH', 'D'] })).toBe(true);
     expect(evaluateCondition(node, { flags: ['N'] })).toBe(false);

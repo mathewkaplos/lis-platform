@@ -5,7 +5,6 @@ import {
   Controller,
   Get,
   HttpCode,
-  Inject,
   NotFoundException,
   Param,
   Post,
@@ -113,14 +112,18 @@ export class WorkflowDefinitionController {
       throw new ConflictException('Workflow definition is already published');
     }
 
-    const errors = validateWorkflowDefinition(
-      existing.rules as WorkflowRule[],
-    );
+    const errors = validateWorkflowDefinition(existing.rules as WorkflowRule[]);
     if (errors.length > 0) {
-      throw new BadRequestException({
-        message: 'Workflow definition failed guardrail validation',
-        errors,
-      });
+      // A plain string message, not { message, errors } -- ProblemDetailsFilter's
+      // generic HttpException branch only ever reads `.message` off a bare
+      // exception's response body (see UnmatchedResultException's own header
+      // comment for the identical gap, found the same way there: a custom
+      // payload field is silently discarded in favor of the RFC 9457 shape
+      // unless the exception gets its own filter branch, which a one-off
+      // validation-error list doesn't warrant here).
+      throw new BadRequestException(
+        `Workflow definition failed guardrail validation: ${errors.join('; ')}`,
+      );
     }
 
     await tx

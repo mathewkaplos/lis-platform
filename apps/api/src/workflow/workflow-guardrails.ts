@@ -20,9 +20,7 @@ const DENYLISTED_COMMANDS = ['VerifyObservation'] as const;
 export function validateWorkflowDefinition(rules: WorkflowRule[]): string[] {
   const errors: string[] = [];
   for (const rule of rules) {
-    if (
-      (DENYLISTED_COMMANDS as readonly string[]).includes(rule.do.command)
-    ) {
+    if ((DENYLISTED_COMMANDS as readonly string[]).includes(rule.do.command)) {
       errors.push(
         `Rule '${rule.id}': command '${rule.do.command}' is not yet permitted -- denylisted until its own feature/ADR reviews and registers it`,
       );

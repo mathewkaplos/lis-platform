@@ -75,12 +75,24 @@ export class OutboxRelayService {
   }
 
   private async processForTenant(tenantId: string): Promise<void> {
-    await db.transaction(async (tx) => {
+    // Deliberately three separate transactions per event, not one wrapping
+    // transaction: a handler (WorkflowEngineService's own handleEvent(), the
+    // first real one registered -- FEAT-029) opens its own db.transaction()
+    // against this same singleton `db` pool, by design decoupled from the
+    // relay's own bookkeeping (see WorkflowEngineService's header comment).
+    // Calling a handler from *inside* an already-open transaction on that
+    // same pool is a nested-checkout deadlock -- fatal under this repo's own
+    // DB_POOL_MAX=1 e2e config (the outer transaction holds the pool's only
+    // connection while the inner one waits forever for a second), and a
+    // latent starvation risk under any pool size in production. Reading
+    // pending rows and writing the status update are each their own short
+    // transaction so the connection is always released before a handler
+    // (which may need one of its own) runs.
+    const pending = await db.transaction(async (tx) => {
       await tx.execute(
         sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`,
       );
-
-      const pending = await tx
+      return tx
         .select()
         .from(outboxEvent)
         .where(
@@ -89,18 +101,28 @@ export class OutboxRelayService {
             eq(outboxEvent.status, 'pending'),
           ),
         );
+    });
 
-      for (const event of pending) {
-        const handlers = this.handlers.handlersFor(event.eventType);
-        try {
-          for (const handler of handlers) {
-            await handler(event.payload, tenantId);
-          }
+    for (const event of pending) {
+      const handlers = this.handlers.handlersFor(event.eventType);
+      try {
+        for (const handler of handlers) {
+          await handler(event.payload, tenantId);
+        }
+        await db.transaction(async (tx) => {
+          await tx.execute(
+            sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`,
+          );
           await tx
             .update(outboxEvent)
             .set({ status: 'processed', processedAt: new Date() })
             .where(eq(outboxEvent.id, event.id));
-        } catch (err) {
+        });
+      } catch (err) {
+        await db.transaction(async (tx) => {
+          await tx.execute(
+            sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`,
+          );
           await tx
             .update(outboxEvent)
             .set({
@@ -108,8 +130,8 @@ export class OutboxRelayService {
               lastError: err instanceof Error ? err.message : String(err),
             })
             .where(eq(outboxEvent.id, event.id));
-        }
+        });
       }
-    });
+    }
   }
 }

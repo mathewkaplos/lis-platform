@@ -580,6 +580,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workflow-definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["WorkflowDefinitionController_list"];
+        put?: never;
+        post: operations["WorkflowDefinitionController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflow-definitions/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["WorkflowDefinitionController_publish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -941,6 +973,30 @@ export interface components {
             unit?: string;
             flag?: string;
             rawPayload: string;
+        };
+        WorkflowDefinitionCreateDto__schema0: {
+            and: components["schemas"]["WorkflowDefinitionCreateDto__schema0"][];
+        } | {
+            or: components["schemas"]["WorkflowDefinitionCreateDto__schema0"][];
+        } | {
+            not: components["schemas"]["WorkflowDefinitionCreateDto__schema0"];
+        } | {
+            field: string;
+            /** @enum {string} */
+            op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "includes";
+            value: unknown;
+        };
+        WorkflowDefinitionCreateDto: {
+            rules: {
+                id: string;
+                on: string;
+                when: components["schemas"]["WorkflowDefinitionCreateDto__schema0"];
+                do: {
+                    command: string;
+                } & {
+                    [key: string]: unknown;
+                };
+            }[];
         };
     };
     responses: never;
@@ -1763,6 +1819,63 @@ export interface operations {
         };
         responses: {
             202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowDefinitionController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowDefinitionController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowDefinitionCreateDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowDefinitionController_publish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

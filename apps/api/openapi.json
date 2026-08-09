@@ -1243,6 +1243,67 @@
           "GatewayIngest"
         ]
       }
+    },
+    "/v1/workflow-definitions": {
+      "post": {
+        "operationId": "WorkflowDefinitionController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowDefinitionCreateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "WorkflowDefinition"
+        ]
+      },
+      "get": {
+        "operationId": "WorkflowDefinitionController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "WorkflowDefinition"
+        ]
+      }
+    },
+    "/v1/workflow-definitions/{id}/publish": {
+      "post": {
+        "operationId": "WorkflowDefinitionController_publish",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "WorkflowDefinition"
+        ]
+      }
     }
   },
   "info": {
@@ -2736,6 +2797,126 @@
           "runId",
           "value",
           "rawPayload"
+        ]
+      },
+      "WorkflowDefinitionCreateDto__schema0": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "and": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionCreateDto__schema0"
+                }
+              }
+            },
+            "required": [
+              "and"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "or": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionCreateDto__schema0"
+                }
+              }
+            },
+            "required": [
+              "or"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "not": {
+                "$ref": "#/components/schemas/WorkflowDefinitionCreateDto__schema0"
+              }
+            },
+            "required": [
+              "not"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "minLength": 1
+              },
+              "op": {
+                "type": "string",
+                "enum": [
+                  "eq",
+                  "neq",
+                  "gt",
+                  "gte",
+                  "lt",
+                  "lte",
+                  "in",
+                  "includes"
+                ]
+              },
+              "value": {}
+            },
+            "required": [
+              "field",
+              "op",
+              "value"
+            ]
+          }
+        ]
+      },
+      "WorkflowDefinitionCreateDto": {
+        "type": "object",
+        "properties": {
+          "rules": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "on": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "when": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionCreateDto__schema0"
+                },
+                "do": {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "command"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
+              "required": [
+                "id",
+                "on",
+                "when",
+                "do"
+              ]
+            }
+          }
+        },
+        "required": [
+          "rules"
         ]
       }
     }

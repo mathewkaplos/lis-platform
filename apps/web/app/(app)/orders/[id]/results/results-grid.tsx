@@ -3,8 +3,19 @@
 import { useRef, useState, useTransition, type KeyboardEvent } from 'react';
 import Link from 'next/link';
 import { Button, DataTable, Input, StatusPill, type ResultFlag } from '@lis/ui';
-import { getCalculatedAnalyteDefinition, isCalculatedAnalyteCode } from '@lis/domain';
-import { draftResult, finalizeResult, verifyResult, type CalculatedDependentOutcome } from './actions';
+import { getCalculatedAnalyteDefinition, isCalculatedAnalyteCode, type MorphologyGrade } from '@lis/domain';
+import {
+  draftMorphologyResult,
+  draftResult,
+  finalizeMorphologyResult,
+  finalizeResult,
+  verifyResult,
+  type CalculatedDependentOutcome,
+} from './actions';
+
+/** FEAT-024 (ADR-0025): the shared grading vocabulary rendered as a small
+ * button group -- mirrors `morphologyGradeSchema` (`@lis/domain`) exactly. */
+const MORPHOLOGY_GRADES: MorphologyGrade[] = ['none', '1+', '2+', '3+'];
 
 /** TASK-057 (FEAT-015 revision §2/§10 Q1): mirrors the API's own
  * `PriorObservation` shape (`packages/domain/src/observation.ts`) -- the
@@ -32,8 +43,15 @@ export interface ResultRow {
    * `isCalculatedAnalyteCode`), without a new schema flag. */
   analyteCode: string;
   analyteDisplay: string;
+  /** FEAT-024 (ADR-0025): the only two dataTypes the parent Server Component
+   * ever lets through (`page.tsx`'s own filter) -- selects which control
+   * this grid's "Result" column renders. */
+  dataType: 'quantity' | 'ordinal';
   unit: string | null;
   initialValueNum: number | null;
+  /** FEAT-024 (ADR-0025): only ever non-null for an `ordinal` row. */
+  initialValueCode: string | null;
+  initialNotes: string | null;
   initialFlags: string[];
   initialRefLow: number | null;
   initialRefHigh: number | null;
@@ -57,6 +75,9 @@ export interface ResultRow {
 
 interface RowState {
   text: string;
+  /** FEAT-024 (ADR-0025): only meaningful for an `ordinal` row. */
+  valueCode: string | null;
+  notes: string;
   flags: string[];
   refLow: number | null;
   refHigh: number | null;
@@ -138,6 +159,8 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
         rowKey(row),
         {
           text: row.initialValueNum === null ? '' : String(row.initialValueNum),
+          valueCode: row.initialValueCode,
+          notes: row.initialNotes ?? '',
           flags: row.initialFlags,
           refLow: row.initialRefLow,
           refHigh: row.initialRefHigh,
@@ -306,6 +329,84 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
     });
   }
 
+  /**
+   * FEAT-024 (ADR-0025): a morphology grade is a discrete, complete choice
+   * the moment it's clicked -- unlike a partially-typed number, there's no
+   * natural "still mid-edit" state to wait out with a blur event. Autosaves
+   * (drafts) immediately on click, same semantic role as `handleBlur` above,
+   * reacting to a click instead of a blur. Carries whatever `notes` text is
+   * currently in the row's own local state, so a note typed before a grade
+   * is chosen isn't lost.
+   */
+  function handleGradeSelect(row: ResultRow, grade: MorphologyGrade) {
+    const key = rowKey(row);
+    const state = rowStates[key];
+    updateRow(key, { valueCode: grade, pending: true, error: null, heldMessage: null, heldReason: null });
+    startTransition(async () => {
+      const outcome = await draftMorphologyResult(row.orderedTestId, row.analyteId, grade, state.notes || undefined);
+      if (outcome.status === 'error') {
+        updateRow(key, { pending: false, error: outcome.error ?? 'Something went wrong.' });
+        return;
+      }
+      updateRow(key, {
+        pending: false,
+        valueCode: outcome.valueCode ?? grade,
+        notes: outcome.notes ?? state.notes,
+        flags: outcome.flags,
+        refLow: outcome.refLow,
+        refHigh: outcome.refHigh,
+        observationStatus: outcome.observationStatus,
+      });
+    });
+  }
+
+  /**
+   * FEAT-024 (ADR-0025): the `ordinal` counterpart to `handleKeyDown` above
+   * -- a dedicated button rather than an `Enter` keystroke, since there's no
+   * text field whose `Enter` press would naturally mean "finalize" for a
+   * button-group control. Mirrors the same `held`/error/calculatedDependents
+   * handling.
+   */
+  function handleMorphologyFinalize(row: ResultRow, index: number) {
+    const key = rowKey(row);
+    const state = rowStates[key];
+    if (!state.valueCode) return; // nothing graded yet -- button is hidden in this case, defensive only
+    const grade = state.valueCode as MorphologyGrade;
+    updateRow(key, { pending: true, error: null, heldMessage: null, heldReason: null });
+    startTransition(async () => {
+      const outcome = await finalizeMorphologyResult(row.orderedTestId, row.analyteId, grade, state.notes || undefined);
+      if (outcome.status === 'error') {
+        updateRow(key, { pending: false, error: outcome.error ?? 'Something went wrong.' });
+        return;
+      }
+      if (outcome.status === 'held') {
+        updateRow(key, {
+          pending: false,
+          valueCode: outcome.valueCode ?? state.valueCode,
+          notes: outcome.notes ?? state.notes,
+          flags: outcome.flags,
+          refLow: outcome.refLow,
+          refHigh: outcome.refHigh,
+          observationStatus: outcome.observationStatus,
+          heldMessage: outcome.heldMessage ?? 'panel held pending an unrelated result.',
+          heldReason: outcome.heldReason ?? null,
+        });
+        focusNextEnterable(index);
+        return;
+      }
+      updateRow(key, {
+        pending: false,
+        valueCode: outcome.valueCode ?? state.valueCode,
+        notes: outcome.notes ?? state.notes,
+        flags: outcome.flags,
+        refLow: outcome.refLow,
+        refHigh: outcome.refHigh,
+        observationStatus: outcome.observationStatus,
+      });
+      focusNextEnterable(index);
+    });
+  }
+
   return (
     <DataTable
       columns={[
@@ -378,6 +479,75 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
 
             const index = rows.indexOf(row);
             const enterable = isEnterable(row);
+
+            // FEAT-024 (ADR-0025): a graded button-group + optional
+            // narrative, not a numeric input -- KB-19's own "ordinal graded
+            // controls" framing, Stitch §12.2. `Button` (already used
+            // elsewhere in this file/app for a toggle-like control, e.g.
+            // `page.tsx`'s own stage tabs), not a new `packages/ui`
+            // primitive -- no second consumer to justify one yet.
+            if (row.dataType === 'ordinal') {
+              return (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex gap-1" role="group" aria-label={`${row.analyteDisplay} grade`}>
+                    {MORPHOLOGY_GRADES.map((grade) => (
+                      <Button
+                        key={grade}
+                        type="button"
+                        size="sm"
+                        variant={state.valueCode === grade ? 'default' : 'outline'}
+                        aria-pressed={state.valueCode === grade}
+                        disabled={!enterable || state.pending}
+                        onClick={() => handleGradeSelect(row, grade)}
+                      >
+                        {grade}
+                      </Button>
+                    ))}
+                  </div>
+                  <textarea
+                    aria-label={`${row.analyteDisplay} notes`}
+                    placeholder="Notes (optional)"
+                    value={state.notes}
+                    disabled={!enterable || state.pending}
+                    onChange={(e) => updateRow(key, { notes: e.target.value })}
+                    rows={2}
+                    className="w-48 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  />
+                  {enterable && state.valueCode ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={state.pending}
+                      onClick={() => handleMorphologyFinalize(row, index)}
+                    >
+                      Finalize
+                    </Button>
+                  ) : null}
+                  {!enterable && row.orderedTestStatus === 'ordered' ? (
+                    <span className="text-xs text-text-secondary">Not yet received</span>
+                  ) : null}
+                  {state.error ? (
+                    <span role="alert" className="text-xs text-danger">
+                      {state.error}
+                    </span>
+                  ) : null}
+                  {state.heldMessage && state.heldReason === 'qc_violation' ? (
+                    <span role="status" className="text-xs text-warning">
+                      Saved — held on a QC violation.{' '}
+                      <Link href="/qc-violations" className="underline">
+                        See QC violations →
+                      </Link>
+                    </span>
+                  ) : state.heldMessage ? (
+                    <span role="status" className="text-xs text-warning">
+                      Saved — {state.heldMessage}
+                    </span>
+                  ) : null}
+                </div>
+              );
+            }
+
             return (
               <div className="flex flex-col gap-1">
                 <Input

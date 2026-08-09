@@ -1,10 +1,10 @@
 import {
-  BadRequestException,
   Body,
   ConflictException,
   Controller,
   Get,
   HttpCode,
+  Inject,
   NotFoundException,
   Param,
   Post,
@@ -27,18 +27,11 @@ import {
 import {
   analyte,
   codeSystemValue,
-  computeFlags,
   criticalNotification,
-  mergeDeltaFlag,
   observation,
   order,
   orderedTest,
-  patient,
-  resolveDeltaCheck,
-  resolveObservationRange,
-  specimenFulfillment,
   testAnalyte,
-  unit,
 } from '@lis/db';
 import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
@@ -54,6 +47,7 @@ import type { RequestContext } from '../auth/request-context';
 import type { RequestWithTx } from '../auth/tenant-context.interceptor';
 import { TenantContextInterceptor } from '../auth/tenant-context.interceptor';
 import { FinalizationRollupInterceptor } from './finalization-rollup.interceptor';
+import { ObservationWriteService } from './observation-write.service';
 
 const orderedTestIdParamSchema = z.object({ id: z.uuid() });
 const resultParamSchema = z.object({ id: z.uuid(), analyteId: z.uuid() });
@@ -78,8 +72,6 @@ type ResultEntryDto = InstanceType<typeof ResultEntryDto>;
 
 type Tx = RequestWithTx['tx'];
 type ObservationRow = typeof observation.$inferSelect;
-
-const ENTERABLE_ORDERED_TEST_STATUSES = ['received', 'in_process'] as const;
 
 function toObservationDto(row: ObservationRow): ObservationResult {
   return {
@@ -151,327 +143,10 @@ function toPriorObservationDto(row: ObservationRow): PriorObservation {
  */
 @Controller('v1/ordered-tests/:id')
 export class ObservationController {
-  /**
-   * Shared by both write routes (proposal §2): resolves and validates the
-   * orderedTest/analyte/specimen/patient context a result write needs.
-   * Throws the same errors either route would need to throw on its own.
-   */
-  private async loadWriteContext(
-    tx: Tx,
-    orderedTestId: string,
-    analyteId: string,
-    body: ResultEntryInput,
-  ) {
-    const [orderedTestRow] = await tx
-      .select()
-      .from(orderedTest)
-      .where(eq(orderedTest.id, orderedTestId))
-      .limit(1);
-    // RLS makes a cross-tenant row structurally invisible (engineering/api-design entry #7).
-    if (!orderedTestRow) {
-      throw new NotFoundException('Ordered test not found');
-    }
-
-    if (
-      !ENTERABLE_ORDERED_TEST_STATUSES.includes(
-        orderedTestRow.status as (typeof ENTERABLE_ORDERED_TEST_STATUSES)[number],
-      )
-    ) {
-      throw new ConflictException(
-        `Ordered test status '${orderedTestRow.status}' does not accept result entry (must be 'received' or 'in_process')`,
-      );
-    }
-
-    const [analyteRow] = await tx
-      .select()
-      .from(analyte)
-      .where(eq(analyte.id, analyteId))
-      .limit(1);
-    if (!analyteRow) {
-      throw new BadRequestException(`Unknown analyte id: ${analyteId}`);
-    }
-
-    const [linkRow] = await tx
-      .select({ id: testAnalyte.id })
-      .from(testAnalyte)
-      .where(
-        and(
-          eq(testAnalyte.testDefinitionId, orderedTestRow.testDefinitionId),
-          eq(testAnalyte.analyteId, analyteId),
-        ),
-      )
-      .limit(1);
-    if (!linkRow) {
-      throw new BadRequestException(
-        `Analyte ${analyteId} is not part of this ordered test's test definition`,
-      );
-    }
-
-    if (body.dataType !== analyteRow.dataType) {
-      throw new BadRequestException(
-        `dataType mismatch: analyte is '${analyteRow.dataType}', request was '${body.dataType}'`,
-      );
-    }
-
-    const [fulfillmentRow] = await tx
-      .select({ specimenId: specimenFulfillment.specimenId })
-      .from(specimenFulfillment)
-      .where(eq(specimenFulfillment.orderedTestId, orderedTestId))
-      .limit(1);
-    if (!fulfillmentRow) {
-      // Should be unreachable given the status guard above (TASK-047 only
-      // ever sets 'received' when a specimen_fulfillment row is created in
-      // the same transaction) -- a real inconsistency, not a validation gap.
-      throw new ConflictException(
-        'Ordered test has no associated specimen (specimen_fulfillment) despite its status',
-      );
-    }
-
-    const [orderRow] = await tx
-      .select({ patientId: order.patientId })
-      .from(order)
-      .where(eq(order.id, orderedTestRow.orderId))
-      .limit(1);
-    if (!orderRow) {
-      throw new ConflictException('Ordered test has no associated order');
-    }
-
-    const [patientRow] = await tx
-      .select({ sex: patient.sex, birthDate: patient.birthDate })
-      .from(patient)
-      .where(eq(patient.id, orderRow.patientId))
-      .limit(1);
-    if (!patientRow) {
-      throw new ConflictException('Order has no associated patient');
-    }
-
-    return {
-      orderedTestRow,
-      analyteRow,
-      specimenId: fulfillmentRow.specimenId,
-      patientId: orderRow.patientId,
-      patientSex: patientRow.sex as 'M' | 'F' | 'U',
-      patientBirthDate: patientRow.birthDate,
-    };
-  }
-
-  /**
-   * `resolveObservationRange`/`computeFlags` (TASK-049/050) run on every
-   * write, draft or final (proposal §5) -- live flags, not deferred. Only
-   * `'quantity'` gets a resolved range; `'coded'`/`'text'` have no
-   * reference-range concept (KB-15).
-   *
-   * FEAT-025 (ADR-0023): `resolveDeltaCheck` runs alongside the range/flag
-   * resolution above, same "every write" cadence -- `previousObservationId`
-   * is returned here so callers can set it on the same insert/update that
-   * already carries `flags`, rather than a second write.
-   */
-  private async resolveRangeAndFlags(
-    tx: Tx,
-    body: ResultEntryInput,
-    analyteRow: typeof analyte.$inferSelect,
-    patientId: string,
-    patientSex: 'M' | 'F' | 'U',
-    patientBirthDate: Date | null,
-    at: Date,
-  ) {
-    if (body.dataType !== 'quantity' || !analyteRow.defaultUnitId) {
-      return {
-        flags: [] as string[],
-        unitId: null as string | null,
-        unitDisplay: null as string | null,
-        refLow: null,
-        refHigh: null,
-        refCondition: null,
-        refSource: null,
-        previousObservationId: null as string | null,
-      };
-    }
-
-    const [unitRow] = await tx
-      .select({
-        code: codeSystemValue.code,
-        displayOverride: unit.displayOverride,
-      })
-      .from(unit)
-      .innerJoin(
-        codeSystemValue,
-        eq(unit.codeSystemValueId, codeSystemValue.id),
-      )
-      .where(eq(unit.id, analyteRow.defaultUnitId))
-      .limit(1);
-
-    const range = await resolveObservationRange(tx, {
-      analyteId: analyteRow.id,
-      unitId: analyteRow.defaultUnitId,
-      patientSex,
-      patientBirthDate,
-      at,
-    });
-    const severityFlags = computeFlags(
-      body.valueNum,
-      range.normal,
-      range.critical,
-    );
-
-    const deltaCheck = await resolveDeltaCheck(tx, {
-      patientId,
-      analyteId: analyteRow.id,
-      valueNum: body.valueNum,
-    });
-    const flags = mergeDeltaFlag(severityFlags, deltaCheck.flagged);
-
-    return {
-      flags,
-      unitId: analyteRow.defaultUnitId,
-      unitDisplay: unitRow ? (unitRow.displayOverride ?? unitRow.code) : null,
-      refLow: range.normal.matched ? range.normal.low : null,
-      refHigh: range.normal.matched ? range.normal.high : null,
-      refCondition: range.normal.matched ? range.normal.condition : null,
-      refSource: range.normal.matched ? range.normal.source : null,
-      previousObservationId: deltaCheck.previousObservationId,
-    };
-  }
-
-  private async upsertObservation(
-    tx: Tx,
-    params: {
-      tenantId: string;
-      orderedTestId: string;
-      analyteId: string;
-      patientId: string;
-      specimenId: string;
-      operatorUserId: string;
-      status: 'registered' | 'preliminary';
-      body: ResultEntryInput;
-      flags: string[];
-      unitId: string | null;
-      unitDisplay: string | null;
-      refLow: string | null;
-      refHigh: string | null;
-      refCondition: string | null;
-      refSource: string | null;
-      // FEAT-025 (ADR-0023): the row this write's delta check compared
-      // against, or null if none was eligible. Part of sharedFields (below),
-      // so it's recomputed on every write, draft or final, same cadence as
-      // `flags` -- previousObservationCreatedAt is filled in automatically by
-      // the fn_observation_link_created_at trigger (observation.ts's own
-      // comment), never set directly here.
-      previousObservationId: string | null;
-      /** TASK-053 (FEAT-014 revision §2): was hardcoded 'manual' on insert;
-       * the calculated-dependent write (maybeComputeDependents) passes
-       * 'calculated' instead. Never touched on an UPDATE (sharedFields
-       * doesn't include it), matching the column's own "set once at
-       * creation" nature -- an existing manual observation never becomes
-       * 'calculated' by being re-drafted, and vice versa. */
-      source: 'manual' | 'calculated';
-    },
-  ): Promise<ObservationRow> {
-    const [existing] = await tx
-      .select()
-      .from(observation)
-      .where(
-        and(
-          eq(observation.orderedTestId, params.orderedTestId),
-          eq(observation.analyteId, params.analyteId),
-        ),
-      )
-      .limit(1);
-
-    // TASK-055 (FEAT-015 revision §1 finding #3): `fn_observation_append_only`
-    // (0007 migration) rejects any top-level UPDATE to a row whose current
-    // status is 'verified', with exactly one narrow, system-internal
-    // exception this call never takes (fn_observation_supersede's own nested
-    // superseded_by backfill). Without this pre-check, calling the UPDATE
-    // branch below against an already-verified row would surface as an
-    // unhandled 500 from the trigger's RAISE EXCEPTION -- this turns that
-    // into the proper 409 the DB constraint is really expressing. Applies to
-    // every caller of upsertObservation (draft, finalize, and the calculated-
-    // dependent write in maybeComputeDependents) uniformly, since none of
-    // them may ever mutate a verified row in place; a correction must insert
-    // a new row with amendment_of set instead (not built by this task -- see
-    // the trigger-proof e2e test / proposal §10 Q3).
-    if (existing && existing.status === 'verified') {
-      throw new ConflictException(
-        `Observation ${existing.id} is verified and append-only (Constitution Law #2); ` +
-          'a correction must create a new version, not update this one',
-      );
-    }
-
-    // FEAT-024 (ADR-0025 decision 1/3): 'ordinal' shares valueCode's column
-    // with 'coded' (both are KB-14 valueCode-backed dataTypes) but is the
-    // only branch that also ever sets notes -- narrative *in addition* to
-    // the graded value, never a substitute for it.
-    const valueFields = {
-      valueNum:
-        params.body.dataType === 'quantity'
-          ? String(params.body.valueNum)
-          : null,
-      valueCode:
-        params.body.dataType === 'coded' || params.body.dataType === 'ordinal'
-          ? params.body.valueCode
-          : null,
-      valueText: params.body.dataType === 'text' ? params.body.valueText : null,
-      notes:
-        params.body.dataType === 'ordinal' ? (params.body.notes ?? null) : null,
-    };
-
-    const sharedFields = {
-      dataType: params.body.dataType,
-      ...valueFields,
-      unitId: params.unitId,
-      unit: params.unitDisplay,
-      refLow: params.refLow,
-      refHigh: params.refHigh,
-      refCondition: params.refCondition,
-      refSource: params.refSource,
-      flags: params.flags,
-      previousObservationId: params.previousObservationId,
-      status: params.status,
-      operatorUserId: params.operatorUserId,
-      producedAt: new Date(),
-    };
-
-    if (existing) {
-      // TASK-053 (FEAT-014 revision) real finding, not part of this task's
-      // own scope but directly blocking it: re-`draft`ing or re-`finalize`ing
-      // the SAME analyte twice (any analyte, unrelated to calculated fields)
-      // crashed with a 500 -- `existing.createdAt` (read back as a
-      // millisecond-precision JS `Date`) never round-trips exactly back to
-      // the real microsecond-precision `timestamptz` Postgres actually
-      // stored (from `defaultNow()`), so `eq(observation.createdAt,
-      // existing.createdAt)` matched zero rows and `.returning()` returned
-      // `undefined`. No existing TASK-051/052 test ever called draft/finalize
-      // twice on the same (orderedTestId, analyteId) pair, so this was a
-      // real, latent, previously-unexercised bug in already-merged code, not
-      // something this task introduced. Fixed by keying the UPDATE on `id`
-      // alone (a random UUID, globally unique in practice, zero precision-
-      // loss risk) -- loses `created_at`'s partition-pruning benefit
-      // (ADR-0008), an efficiency cost only, not a correctness one, and not
-      // a real cost at this data scale (same "don't build ahead of a real
-      // need" precedent used elsewhere in this repo).
-      const [updated] = await tx
-        .update(observation)
-        .set(sharedFields)
-        .where(eq(observation.id, existing.id))
-        .returning();
-      return updated;
-    }
-
-    const [inserted] = await tx
-      .insert(observation)
-      .values({
-        tenantId: params.tenantId,
-        orderedTestId: params.orderedTestId,
-        analyteId: params.analyteId,
-        specimenId: params.specimenId,
-        patientId: params.patientId,
-        source: params.source,
-        ...sharedFields,
-      })
-      .returning();
-    return inserted;
-  }
+  constructor(
+    @Inject(ObservationWriteService)
+    private readonly writeService: ObservationWriteService,
+  ) {}
 
   /**
    * TASK-053 (FEAT-014 revision §1 finding #3/§10 Q2): runs only from
@@ -499,7 +174,7 @@ export class ObservationController {
    */
   private async maybeComputeDependents(
     tx: Tx,
-    ctx: Awaited<ReturnType<ObservationController['loadWriteContext']>>,
+    ctx: Awaited<ReturnType<ObservationWriteService['loadWriteContext']>>,
     tenantId: string,
     operatorUserId: string,
     at: Date,
@@ -612,7 +287,7 @@ export class ObservationController {
         dataType: 'quantity',
         valueNum: result.value,
       };
-      const rangeAndFlags = await this.resolveRangeAndFlags(
+      const rangeAndFlags = await this.writeService.resolveRangeAndFlags(
         tx,
         syntheticBody,
         outputAnalyteRow,
@@ -622,7 +297,7 @@ export class ObservationController {
         at,
       );
 
-      const after = await this.upsertObservation(tx, {
+      const after = await this.writeService.upsertObservation(tx, {
         tenantId,
         orderedTestId: ctx.orderedTestRow.id,
         analyteId: outputAnalyteRow.id,
@@ -689,9 +364,14 @@ export class ObservationController {
     @CurrentUser() user: RequestContext,
     @DbTx() tx: Tx,
   ): Promise<ObservationResult> {
-    const ctx = await this.loadWriteContext(tx, id, analyteId, body);
+    const ctx = await this.writeService.loadWriteContext(
+      tx,
+      id,
+      analyteId,
+      body,
+    );
     const at = new Date();
-    const rangeAndFlags = await this.resolveRangeAndFlags(
+    const rangeAndFlags = await this.writeService.resolveRangeAndFlags(
       tx,
       body,
       ctx.analyteRow,
@@ -701,7 +381,7 @@ export class ObservationController {
       at,
     );
 
-    const row = await this.upsertObservation(tx, {
+    const row = await this.writeService.upsertObservation(tx, {
       tenantId: user.tenantId,
       orderedTestId: id,
       analyteId,
@@ -758,7 +438,12 @@ export class ObservationController {
     @CurrentUser() user: RequestContext,
     @DbTx() tx: Tx,
   ) {
-    const ctx = await this.loadWriteContext(tx, id, analyteId, body);
+    const ctx = await this.writeService.loadWriteContext(
+      tx,
+      id,
+      analyteId,
+      body,
+    );
     const at = new Date();
 
     const [existingBefore] = await tx
@@ -773,7 +458,7 @@ export class ObservationController {
       .limit(1);
     const before = existingBefore ? toObservationDto(existingBefore) : null;
 
-    const rangeAndFlags = await this.resolveRangeAndFlags(
+    const rangeAndFlags = await this.writeService.resolveRangeAndFlags(
       tx,
       body,
       ctx.analyteRow,
@@ -783,7 +468,7 @@ export class ObservationController {
       at,
     );
 
-    const row = await this.upsertObservation(tx, {
+    const row = await this.writeService.upsertObservation(tx, {
       tenantId: user.tenantId,
       orderedTestId: id,
       analyteId,

@@ -119,6 +119,19 @@ export const observation = pgTable(
     supersededBy: uuid("superseded_by"),
     supersededByCreatedAt: timestamp("superseded_by_created_at", { withTimezone: true }), // set atomically with supersededBy, see previousObservationCreatedAt comment
     notes: text("notes"),
+    // FEAT-027 (ADR-0026, analyzer-integration Skill entry #3): the
+    // driver-computed idempotency key (instrument_id:specimen_id:analyte:
+    // run_id, @lis/domain's rawResultIdempotencyKey), set only on
+    // analyzer-originated writes -- null for manual/calculated ones.
+    // Traceability only -- NOT uniquely constrained here: Postgres requires
+    // every unique index on a partitioned table to include the partition key
+    // (created_at), which would let two duplicate-key rows with different
+    // created_at values both insert, defeating the point. Real dedupe is
+    // enforced by `observationIdempotencyKey` (observation-idempotency.ts),
+    // a separate, non-partitioned table with a plain (tenant_id,
+    // source_idempotency_key) unique constraint, written in the same
+    // transaction as the Observation it guards.
+    sourceIdempotencyKey: text("source_idempotency_key"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

@@ -7,11 +7,14 @@ import {
   analyte,
   auditEvent,
   codeSystemValue,
+  controlLot,
   createDb,
   observation,
+  patient,
   resultHistory,
   testAnalyte,
   testDefinition,
+  unit,
 } from '@lis/db';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { AppModule } from './../src/app.module';
@@ -1768,6 +1771,103 @@ describe('Result entry API (e2e)', () => {
           `expected previousObservationId null with no eligible prior, got ${JSON.stringify(row)}`,
         );
       }
+    });
+  });
+
+  describe('observation.ordered_test_id/specimen_id FK (issue #260, ADR-0005)', () => {
+    // Issue #260's own stated bar: Postgres must actually reject the insert
+    // -- not just "the migration file contains the ALTER TABLE statement".
+    // randomUUID() here is guaranteed not to match any real ordered_test/
+    // specimen row. A real patientId is required on every insert below so
+    // chk_observation_subject's own patient-shaped branch (is_control=false
+    // AND patient_id IS NOT NULL) is satisfied first -- otherwise Postgres
+    // rejects on that CHECK before ever reaching the FK being tested here.
+    async function realPatientId(db: ReturnType<typeof createDb>) {
+      const [pat] = await db
+        .insert(patient)
+        .values({
+          tenantId: TENANT_A,
+          mrn: `FK-260-CHECK-${Date.now()}-${randomUUID()}`,
+          firstName: 'FK260',
+          lastName: 'Check',
+          sex: 'U',
+        })
+        .returning();
+      return pat.id;
+    }
+
+    it('rejects a direct insert with a non-existent ordered_test_id', async () => {
+      const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+
+      await expect(
+        db.insert(observation).values({
+          tenantId: TENANT_A,
+          patientId: await realPatientId(db),
+          orderedTestId: randomUUID(),
+          analyteId: await glucoseAnalyteId(),
+          dataType: 'quantity',
+          valueNum: '5.0',
+          source: 'manual',
+        }),
+      ).rejects.toMatchObject({ cause: { code: '23503' } });
+    });
+
+    it('rejects a direct insert with a non-existent specimen_id', async () => {
+      const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+
+      await expect(
+        db.insert(observation).values({
+          tenantId: TENANT_A,
+          patientId: await realPatientId(db),
+          specimenId: randomUUID(),
+          analyteId: await glucoseAnalyteId(),
+          dataType: 'quantity',
+          valueNum: '5.0',
+          source: 'manual',
+        }),
+      ).rejects.toMatchObject({ cause: { code: '23503' } });
+    });
+
+    it('still accepts a QC-shaped row with both columns null (ADR-0015 unaffected)', async () => {
+      const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+
+      const [lot] = await db
+        .insert(controlLot)
+        .values({
+          tenantId: TENANT_A,
+          analyteId: await glucoseAnalyteId(),
+          level: 'normal',
+          unitId: (await db.select({ id: unit.id }).from(unit).limit(1))[0].id,
+          targetMean: '5.0',
+          targetSd: '0.2',
+          lotNumber: `FK-260-CHECK-${Date.now()}`,
+        })
+        .returning();
+
+      const [row] = await db
+        .insert(observation)
+        .values({
+          tenantId: TENANT_A,
+          isControl: true,
+          controlLotId: lot.id,
+          analyteId: await glucoseAnalyteId(),
+          dataType: 'quantity',
+          valueNum: '5.0',
+          source: 'manual',
+        })
+        .returning();
+
+      expect(row.orderedTestId).toBeNull();
+      expect(row.specimenId).toBeNull();
     });
   });
 });

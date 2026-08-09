@@ -3,6 +3,8 @@ import { sql } from "drizzle-orm";
 import { analyte, unit } from "./catalog";
 import { patient } from "./patient";
 import { controlLot } from "./control-lot";
+import { orderedTest } from "./order";
+import { specimen } from "./specimen";
 
 // Tenant-scoped per ADR-0004: this is operational, tenant-varying clinical
 // data, not global reference data like analyte/unit.
@@ -28,13 +30,8 @@ export const observationDataType = pgEnum("observation_data_type", [
 ]);
 
 // KB-06's canonical `observation` DDL ("heart of the schema"). ordered_test_id
-// / specimen_id are plain uuid columns with no FK per ADR-0005 (their natural
-// target, ordered_test/specimen, was built by TASK-023 in a later feature by
-// design — the FK backfill ADR-0005 requires for these two was never
-// actually done; tracked as issue #260, found during FEAT-011's proposal
-// research, not fixed here since it's an unrelated pre-existing gap).
-// patient_id's own forward-reference FK is backfilled below, by TASK-038,
-// per ADR-0005 and FEAT-011 proposal §2.
+// / specimen_id's forward-reference FK (ADR-0005) is backfilled here (issue
+// #260's fix), same as patient_id's own backfill below (TASK-038).
 //
 // patient_id/ordered_test_id/specimen_id are nullable per ADR-0015: a QC
 // Observation (is_control = true) has none of these -- it has a control_lot
@@ -55,11 +52,11 @@ export const observation = pgTable(
     id: uuid("id").notNull().defaultRandom(),
     tenantId: uuid("tenant_id").notNull(),
 
-    orderedTestId: uuid("ordered_test_id"), // FK backfilled by TASK-023, see ADR-0005; nullable per ADR-0015 (null for QC rows)
+    orderedTestId: uuid("ordered_test_id").references(() => orderedTest.id), // nullable per ADR-0015 (null for QC rows)
     analyteId: uuid("analyte_id")
       .notNull()
       .references(() => analyte.id),
-    specimenId: uuid("specimen_id"), // FK backfill still pending, see #260; nullable per ADR-0015 (null for QC rows)
+    specimenId: uuid("specimen_id").references(() => specimen.id), // nullable per ADR-0015 (null for QC rows)
     patientId: uuid("patient_id").references(() => patient.id), // FK backfilled by TASK-038, see ADR-0005; nullable per ADR-0015 (null for QC rows)
 
     // ADR-0015 (FEAT-018/TASK-063): QC subject columns. isControl is an

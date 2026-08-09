@@ -142,6 +142,9 @@ jobs:
             db/seed/chemistry-catalog.sql \
             root@${{ secrets.DEPLOY_HOST }}:/opt/lis/seed/chemistry-catalog.sql
           scp -i deploy_key -o StrictHostKeyChecking=no \
+            db/seed/haematology-catalog.sql \
+            root@${{ secrets.DEPLOY_HOST }}:/opt/lis/seed/haematology-catalog.sql
+          scp -i deploy_key -o StrictHostKeyChecking=no \
             infra/scripts/backup-staging-db.sh \
             root@${{ secrets.DEPLOY_HOST }}:/opt/lis/scripts/backup-staging-db.sh
 
@@ -299,20 +302,20 @@ jobs:
           ALTER ROLE lis_scheduler WITH PASSWORD '$SCHEDULER_DB_PASSWORD';
           PSQLEOF
 
-          # chemistry-catalog.sql is plain INSERTs with no idempotency guard
-          # -- fine for CI/local, which always wipe the DB first
-          # (docker compose down -v / a fresh container), but staging never
-          # does that and now runs this step on every deploy. Re-running it
-          # against already-seeded data hit a duplicate-key error (run
-          # 30637495583). Check first rather than editing the shared seed
-          # file's behavior for every environment.
-          seed_count=$(docker compose exec -T postgres psql -U postgres -d lis -tAc "SELECT count(*) FROM analyte;" < /dev/null)
-          if [ "$seed_count" = "0" ]; then
-            docker compose exec -T postgres psql -U postgres -d lis \
-              -v ON_ERROR_STOP=1 -f - < seed/chemistry-catalog.sql
-          else
-            echo "Seed data already present ($seed_count analyte rows), skipping seed."
-          fi
+          # #397 / ADR-0022: every discipline seed file now guards its own
+          # inserts with WHERE NOT EXISTS (chemistry-catalog.sql and
+          # haematology-catalog.sql both do), so this step runs every file
+          # unconditionally on every deploy instead of gating on "does any
+          # seed data exist at all" -- that gate silently skipped every
+          # discipline past the first ever since it couldn't tell "chemistry
+          # is seeded" from "haematology is seeded". Re-running an
+          # already-seeded file previously hit a duplicate-key error (run
+          # 30637495583) before these per-file guards existed; do not remove
+          # a file's own guards without re-adding an equivalent one.
+          docker compose exec -T postgres psql -U postgres -d lis \
+            -v ON_ERROR_STOP=1 -f - < seed/chemistry-catalog.sql
+          docker compose exec -T postgres psql -U postgres -d lis \
+            -v ON_ERROR_STOP=1 -f - < seed/haematology-catalog.sql
 
           docker compose up -d valkey keycloak < /dev/null
 

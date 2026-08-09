@@ -47,9 +47,14 @@ INSERT INTO code_system_value (system, code, version, display) VALUES
   ('UCUM', 'U/L', '2.2', 'unit per liter')
 ON CONFLICT (system, code, version) DO NOTHING;
 
--- 2. Units, keyed off the UCUM code_system_value rows just inserted.
+-- 2. Units, keyed off the UCUM code_system_value rows just inserted. No
+-- unique constraint on unit.code_system_value_id (see haematology-catalog.sql
+-- step 2's own note), so an explicit NOT EXISTS guard is required here --
+-- staging never wipes its DB between deploys, unlike CI/local.
 INSERT INTO unit (code_system_value_id)
-SELECT id FROM code_system_value WHERE system = 'UCUM' AND code IN ('mg/dL', 'mmol/L', 'g/dL', 'U/L');
+SELECT csv.id FROM code_system_value csv
+WHERE csv.system = 'UCUM' AND csv.code IN ('mg/dL', 'mmol/L', 'g/dL', 'U/L')
+  AND NOT EXISTS (SELECT 1 FROM unit u WHERE u.code_system_value_id = csv.id);
 
 -- 3. Analytes: one per LOINC code, with its default unit.
 INSERT INTO analyte (code_system_value_id, display, data_type, default_unit_id)
@@ -72,7 +77,8 @@ FROM (VALUES
 ) AS a(loinc_code, display, ucum_code)
 JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.code = a.loinc_code
 JOIN code_system_value ucsv ON ucsv.system = 'UCUM' AND ucsv.code = a.ucum_code
-JOIN unit u ON u.code_system_value_id = ucsv.id;
+JOIN unit u ON u.code_system_value_id = ucsv.id
+WHERE NOT EXISTS (SELECT 1 FROM analyte existing WHERE existing.code_system_value_id = csv.id);
 
 -- 4. One test_definition per analyte (order-able unit), tenant-scoped.
 INSERT INTO test_definition (tenant_id, code, display_name)
@@ -153,7 +159,16 @@ FROM (VALUES
   ('AST (SGOT)',             NULL, NULL,      'normal',   8,    48,  1, 'Standard adult reference interval -- placeholder, not partner-validated'),
   ('ALT (SGPT)',             NULL, NULL,      'normal',   7,    56,  1, 'Standard adult reference interval -- placeholder, not partner-validated')
 ) AS r(analyte_display, sex, condition, range_type, low, high, priority, source)
-JOIN analyte a ON a.display = r.analyte_display;
+JOIN analyte a ON a.display = r.analyte_display
+WHERE NOT EXISTS (
+  SELECT 1 FROM reference_range existing
+  WHERE existing.tenant_id = '00000000-0000-0000-0000-000000000001'
+    AND existing.analyte_id = a.id
+    AND existing.range_type = r.range_type
+    AND existing.sex IS NOT DISTINCT FROM r.sex
+    AND existing.low IS NOT DISTINCT FROM r.low
+    AND existing.high IS NOT DISTINCT FROM r.high
+);
 
 -- TASK-053 (FEAT-014): calculated fields (eGFR, LDL). Same placeholder
 -- framing as the rest of this file -- LOINC codes are good-faith picks, not
@@ -185,10 +200,14 @@ ON CONFLICT (system, code, version) DO NOTHING;
 
 -- 9. Units: the new eGFR unit, keyed off the code_system_value row just
 -- inserted; LDL/Total Cholesterol/HDL/Triglycerides reuse the existing
--- mg/dL unit already inserted in step 2 above.
+-- mg/dL unit already inserted in step 2 above. `ON CONFLICT DO NOTHING`
+-- (no target) is a no-op here -- unit.code_system_value_id has no unique
+-- constraint (step 2's own note) -- so this needs the same explicit NOT
+-- EXISTS guard step 2 uses.
 INSERT INTO unit (code_system_value_id)
-SELECT id FROM code_system_value WHERE system = 'UCUM' AND code = 'mL/min/{1.73_m2}'
-ON CONFLICT DO NOTHING;
+SELECT csv.id FROM code_system_value csv
+WHERE csv.system = 'UCUM' AND csv.code = 'mL/min/{1.73_m2}'
+  AND NOT EXISTS (SELECT 1 FROM unit u WHERE u.code_system_value_id = csv.id);
 
 -- 10. Analytes: eGFR (new unit) and LDL/Total Cholesterol/HDL/Triglycerides
 -- (existing mg/dL unit).

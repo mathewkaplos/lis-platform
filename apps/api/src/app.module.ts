@@ -16,6 +16,7 @@ import { WorklistModule } from './worklist/worklist.module';
 import { ControlLotModule } from './control-lot/control-lot.module';
 import { CriticalNotificationModule } from './critical-notification/critical-notification.module';
 import { QcRuleViolationModule } from './qc-rule-violation/qc-rule-violation.module';
+import { GatewayIngestModule } from './gateway-ingest/gateway-ingest.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
 @Module({
@@ -36,6 +37,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     ControlLotModule,
     CriticalNotificationModule,
     QcRuleViolationModule,
+    GatewayIngestModule,
   ],
   controllers: [AppController],
   providers: [

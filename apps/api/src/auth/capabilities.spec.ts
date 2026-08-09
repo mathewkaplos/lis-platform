@@ -63,6 +63,29 @@ describe('resolveGrantingRole', () => {
     expect(resolveGrantingRole(['qa'], 'verify')).toBeUndefined();
   });
 
+  it('grants gateway_ingest only to gateway-ingest, never to a human role (ADR-0026)', () => {
+    expect(resolveGrantingRole(['gateway-ingest'], 'gateway_ingest')).toBe(
+      'gateway-ingest',
+    );
+    expect(
+      resolveGrantingRole(['technologist'], 'gateway_ingest'),
+    ).toBeUndefined();
+    expect(
+      resolveGrantingRole(['verifier'], 'gateway_ingest'),
+    ).toBeUndefined();
+    expect(resolveGrantingRole(['qa'], 'gateway_ingest')).toBeUndefined();
+  });
+
+  it('denies every human capability to a gateway-ingest-only principal', () => {
+    expect(
+      resolveGrantingRole(['gateway-ingest'], 'enter_result'),
+    ).toBeUndefined();
+    expect(resolveGrantingRole(['gateway-ingest'], 'verify')).toBeUndefined();
+    expect(
+      resolveGrantingRole(['gateway-ingest'], 'resolve_qc'),
+    ).toBeUndefined();
+  });
+
   it('resolves deterministically when multiple held roles grant the same capability', () => {
     // Both technologist and verifier grant enter_result — the result must
     // always be the same role for the same input, not arbitrary, since two

@@ -29,6 +29,14 @@
  * from `technologist`/`verifier`). Unlike `manage_patients`/`manage_orders`/
  * `manage_specimens` above, this is a genuine new role, not a grant onto an
  * existing one — see `infra/keycloak/lis-realm.json`.
+ *
+ * `gateway_ingest` (FEAT-026 proposal, ADR-0026): granted only to
+ * `gateway-ingest`, a machine role held exclusively by the edge gateway's
+ * Keycloak service-account client — never assigned to a human user. Kept as
+ * its own capability/role pair, not folded into an existing human role, so
+ * the ingestion endpoint's authorization is legible on its own (a human
+ * role gaining this capability would be a real, reviewable change, not an
+ * accidental side effect of some other role's grant list changing).
  */
 export type Capability =
   | 'enter_result'
@@ -36,7 +44,8 @@ export type Capability =
   | 'manage_patients'
   | 'manage_orders'
   | 'manage_specimens'
-  | 'resolve_qc';
+  | 'resolve_qc'
+  | 'gateway_ingest';
 
 const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
   technologist: [
@@ -53,6 +62,7 @@ const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
     'manage_specimens',
   ],
   qa: ['resolve_qc'],
+  'gateway-ingest': ['gateway_ingest'],
 };
 
 /**

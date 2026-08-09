@@ -296,3 +296,74 @@ WHERE NOT EXISTS (
     AND existing.analyte_id = a.id
     AND existing.range_type = r.range_type
 );
+
+-- FEAT-030 (Reflex rules): TSH and Free T4, standalone tests, added
+-- specifically to give the reflex sub-engine a real, standard, well-known
+-- reflex pair (TSH > threshold -> reflex to Free T4 -- KB-25's own
+-- illustrative example) to configure a workflow_definition rule against,
+-- rather than inventing a reflex relationship between two unrelated CMP
+-- analytes. Same "not partner-validated" placeholder framing as the rest of
+-- this file -- do not treat these reference ranges as clinically
+-- authoritative for a real report.
+
+-- 14. Code system values: TSH/Free T4 LOINC codes, plus their UCUM units.
+INSERT INTO code_system_value (system, code, version, display) VALUES
+  ('LOINC', '3016-3', '2.78', 'Thyrotropin [Units/volume] in Serum or Plasma'),
+  ('LOINC', '3024-7', '2.78', 'Thyroxine (T4) free [Mass/volume] in Serum or Plasma')
+ON CONFLICT (system, code, version) DO NOTHING;
+
+INSERT INTO code_system_value (system, code, version, display) VALUES
+  ('UCUM', 'm[IU]/L', '2.2', 'milli-international unit per liter'),
+  ('UCUM', 'ng/dL', '2.2', 'nanogram per deciliter')
+ON CONFLICT (system, code, version) DO NOTHING;
+
+-- 15. Units, same NOT EXISTS guard as steps 2/9 (no unique constraint on
+-- unit.code_system_value_id).
+INSERT INTO unit (code_system_value_id)
+SELECT csv.id FROM code_system_value csv
+WHERE csv.system = 'UCUM' AND csv.code IN ('m[IU]/L', 'ng/dL')
+  AND NOT EXISTS (SELECT 1 FROM unit u WHERE u.code_system_value_id = csv.id);
+
+-- 16. Analytes: TSH and Free T4.
+INSERT INTO analyte (code_system_value_id, display, data_type, default_unit_id)
+SELECT DISTINCT ON (csv.id) csv.id, a.display, 'quantity', u.id
+FROM (VALUES
+  ('3016-3', 'TSH',      'm[IU]/L'),
+  ('3024-7', 'Free T4',  'ng/dL')
+) AS a(loinc_code, display, ucum_code)
+JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.version = '2.78' AND csv.code = a.loinc_code
+JOIN code_system_value ucsv ON ucsv.system = 'UCUM' AND ucsv.version = '2.2' AND ucsv.code = a.ucum_code
+JOIN unit u ON u.code_system_value_id = ucsv.id
+WHERE NOT EXISTS (SELECT 1 FROM analyte existing WHERE existing.code_system_value_id = csv.id)
+ORDER BY csv.id, u.id;
+
+-- 17. Test definitions + test_analyte links: standalone tests, no panel
+-- (matching the Lipid Panel precedent -- neither is part of the CMP).
+INSERT INTO test_definition (tenant_id, code, display_name)
+VALUES
+  ('00000000-0000-0000-0000-000000000001', 'TSH', 'TSH'),
+  ('00000000-0000-0000-0000-000000000001', 'FT4', 'Free T4')
+ON CONFLICT (tenant_id, code) DO NOTHING;
+
+INSERT INTO test_analyte (tenant_id, test_definition_id, analyte_id)
+SELECT '00000000-0000-0000-0000-000000000001', td.id, a.id
+FROM (VALUES ('TSH', '3016-3'), ('FT4', '3024-7')) AS m(test_code, loinc_code)
+JOIN test_definition td ON td.tenant_id = '00000000-0000-0000-0000-000000000001' AND td.code = m.test_code
+JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.version = '2.78' AND csv.code = m.loinc_code
+JOIN analyte a ON a.code_system_value_id = csv.id
+ON CONFLICT (test_definition_id, analyte_id) DO NOTHING;
+
+-- 18. Reference ranges: generic published adult intervals.
+INSERT INTO reference_range (tenant_id, analyte_id, unit_id, sex, condition, range_type, low, high, priority, source)
+SELECT '00000000-0000-0000-0000-000000000001', a.id, a.default_unit_id, r.sex, r.condition, r.range_type, r.low, r.high, r.priority, r.source
+FROM (VALUES
+  ('TSH',     NULL, NULL, 'normal', 0.4, 4.0, 1, 'Standard adult reference interval -- placeholder, not partner-validated'),
+  ('Free T4', NULL, NULL, 'normal', 0.8, 1.8, 1, 'Standard adult reference interval -- placeholder, not partner-validated')
+) AS r(analyte_display, sex, condition, range_type, low, high, priority, source)
+JOIN analyte a ON a.display = r.analyte_display
+WHERE NOT EXISTS (
+  SELECT 1 FROM reference_range existing
+  WHERE existing.tenant_id = '00000000-0000-0000-0000-000000000001'
+    AND existing.analyte_id = a.id
+    AND existing.range_type = r.range_type
+);

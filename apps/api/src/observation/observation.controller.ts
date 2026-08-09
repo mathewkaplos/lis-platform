@@ -32,6 +32,7 @@ import {
   order,
   orderedTest,
   testAnalyte,
+  writeOutboxEvent,
 } from '@lis/db';
 import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
@@ -655,6 +656,17 @@ export class ObservationController {
       })
       .where(eq(observation.id, existing.id))
       .returning();
+
+    // FEAT-028 (ADR-0028): same transaction as the status update above --
+    // commits atomically with it or not at all (this feature's own literal
+    // AC). KB-25's own example workflow rule reacts to exactly this event
+    // ("on": "ObservationVerified"); no consumer exists yet (FEAT-029), this
+    // is the one real producer FEAT-028 wires up.
+    await writeOutboxEvent(tx, {
+      tenantId: user.tenantId,
+      eventType: 'ObservationVerified',
+      payload: toObservationDto(updated),
+    });
 
     return {
       resourceId: updated.id,

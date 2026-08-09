@@ -82,7 +82,8 @@ describe('Gateway store-and-forward survives a network interruption (e2e)', () =
 
   it('buffers ingested results while the cloud core is unreachable, then drains them exactly once on reconnect', async () => {
     // Cloud core unreachable for the whole ingest phase.
-    process.env.GATEWAY_FORWARD_URL = 'http://127.0.0.1:1/internal/gateway/ingest';
+    process.env.GATEWAY_FORWARD_URL =
+      'http://127.0.0.1:1/internal/gateway/ingest';
 
     const payloads = [1, 2, 3].map((n) => ({
       instrumentId: 'ANALYZER-E2E',

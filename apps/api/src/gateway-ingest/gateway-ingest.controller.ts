@@ -47,15 +47,14 @@ export class GatewayIngestController {
   // constructs the class directly). Same gotcha CapabilityGuard's own
   // constructor already documents and works around.
   constructor(
-    @Inject(GatewayIngestService) private readonly service: GatewayIngestService,
+    @Inject(GatewayIngestService)
+    private readonly service: GatewayIngestService,
   ) {}
 
   @Post('ingest')
   @HttpCode(202)
   @RequireCapability('gateway_ingest')
-  ingest(
-    @Body(new ZodValidationPipe(rawResultSchema)) body: RawResultDto,
-  ) {
+  ingest(@Body(new ZodValidationPipe(rawResultSchema)) body: RawResultDto) {
     const key = rawResultIdempotencyKey(body);
     const duplicate = this.service.isDuplicate(key);
     this.service.record(key);

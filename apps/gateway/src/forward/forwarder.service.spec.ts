@@ -31,19 +31,19 @@ describe('ForwarderService.drain', () => {
     const items = [item(1), item(2)];
     const removed: string[] = [];
     const queue = {
-      listPending: async () => items,
-      remove: async (id: string) => {
+      listPending: () => Promise.resolve(items),
+      remove: (id: string) => {
         removed.push(id);
+        return Promise.resolve();
       },
-      size: async () => items.length - removed.length,
+      size: () => Promise.resolve(items.length - removed.length),
     } as unknown as LocalQueueService;
     const auth = {
-      getToken: async () => 'test-token',
+      getToken: () => Promise.resolve('test-token'),
       invalidate: () => {},
     } as unknown as GatewayAuthService;
 
-    global.fetch = (async () =>
-      new Response(null, { status: 202 })) as typeof fetch;
+    global.fetch = () => Promise.resolve(new Response(null, { status: 202 }));
 
     const forwarder = new ForwarderService(queue, auth);
     forwarder.onModuleInit();
@@ -59,25 +59,26 @@ describe('ForwarderService.drain', () => {
     const items = [item(1), item(2), item(3)];
     const removed: string[] = [];
     const queue = {
-      listPending: async () => items,
-      remove: async (id: string) => {
+      listPending: () => Promise.resolve(items),
+      remove: (id: string) => {
         removed.push(id);
+        return Promise.resolve();
       },
-      size: async () => items.length - removed.length,
+      size: () => Promise.resolve(items.length - removed.length),
     } as unknown as LocalQueueService;
     const auth = {
-      getToken: async () => 'test-token',
+      getToken: () => Promise.resolve('test-token'),
       invalidate: () => {},
     } as unknown as GatewayAuthService;
 
     let call = 0;
-    global.fetch = (async () => {
+    global.fetch = () => {
       call++;
       if (call === 2) {
-        throw new Error('network unreachable');
+        return Promise.reject(new Error('network unreachable'));
       }
-      return new Response(null, { status: 202 });
-    }) as typeof fetch;
+      return Promise.resolve(new Response(null, { status: 202 }));
+    };
 
     const forwarder = new ForwarderService(queue, auth);
     const result = await forwarder.drain();
@@ -91,22 +92,22 @@ describe('ForwarderService.drain', () => {
     const items = [item(1)];
     const removed: string[] = [];
     const queue = {
-      listPending: async () => items,
-      remove: async (id: string) => {
+      listPending: () => Promise.resolve(items),
+      remove: (id: string) => {
         removed.push(id);
+        return Promise.resolve();
       },
-      size: async () => items.length - removed.length,
+      size: () => Promise.resolve(items.length - removed.length),
     } as unknown as LocalQueueService;
     let invalidated = false;
     const auth = {
-      getToken: async () => 'stale-token',
+      getToken: () => Promise.resolve('stale-token'),
       invalidate: () => {
         invalidated = true;
       },
     } as unknown as GatewayAuthService;
 
-    global.fetch = (async () =>
-      new Response(null, { status: 401 })) as typeof fetch;
+    global.fetch = () => Promise.resolve(new Response(null, { status: 401 }));
 
     const forwarder = new ForwarderService(queue, auth);
     const result = await forwarder.drain();

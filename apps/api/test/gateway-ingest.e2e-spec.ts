@@ -74,7 +74,9 @@ describe('Gateway ingest (e2e)', () => {
 
     const body = res.body as { duplicate: boolean; idempotencyKey: string };
     expect(body.duplicate).toBe(false);
-    expect(body.idempotencyKey).toBe('ANALYZER-1:SPEC-e2e-1:GLU:RUN-e2e-accept');
+    expect(body.idempotencyKey).toBe(
+      'ANALYZER-1:SPEC-e2e-1:GLU:RUN-e2e-accept',
+    );
   });
 
   it('flags a replay of the same idempotency key as a duplicate, not an error', async () => {
@@ -96,7 +98,8 @@ describe('Gateway ingest (e2e)', () => {
   });
 
   it('rejects a payload missing rawPayload — 400 (KB-29: raw retention is mandatory)', () => {
-    const { rawPayload: _rawPayload, ...withoutRawPayload } = rawResult();
+    const withoutRawPayload: Record<string, unknown> = rawResult();
+    delete withoutRawPayload.rawPayload;
     return request(app.getHttpServer())
       .post('/internal/gateway/ingest')
       .set('Authorization', `Bearer ${gatewayToken}`)

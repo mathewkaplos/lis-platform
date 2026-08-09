@@ -30,7 +30,7 @@ export class GatewayIngestService {
       return;
     }
     if (this.seen.size >= this.maxKeys) {
-      const oldest = this.seen.keys().next().value;
+      const [oldest] = this.seen.keys();
       if (oldest !== undefined) {
         this.seen.delete(oldest);
       }

@@ -70,9 +70,7 @@ describe('resolveGrantingRole', () => {
     expect(
       resolveGrantingRole(['technologist'], 'gateway_ingest'),
     ).toBeUndefined();
-    expect(
-      resolveGrantingRole(['verifier'], 'gateway_ingest'),
-    ).toBeUndefined();
+    expect(resolveGrantingRole(['verifier'], 'gateway_ingest')).toBeUndefined();
     expect(resolveGrantingRole(['qa'], 'gateway_ingest')).toBeUndefined();
   });
 

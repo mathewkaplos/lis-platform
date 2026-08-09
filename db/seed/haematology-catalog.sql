@@ -180,3 +180,49 @@ WHERE NOT EXISTS (
     AND existing.low IS NOT DISTINCT FROM r.low
     AND existing.high IS NOT DISTINCT FROM r.high
 );
+
+-- FEAT-024 (ADR-0025): Peripheral film morphology -- 4 `ordinal`-dataType
+-- analytes (RBC morphology: Anisocytosis, Poikilocytosis, Polychromasia;
+-- Platelet Estimate), v1 scope per the approved proposal §10 Q2 (WBC
+-- morphology deferred -- larger, more varied vocabulary, no partner data to
+-- seed it responsibly). No `default_unit_id`/reference_range rows for these
+-- -- an ordinal grade has no UCUM unit and no numeric range to resolve
+-- against (unlike every other analyte in this file). LOINC codes are
+-- good-faith picks, not verified against a live LOINC server -- same
+-- disclaimer this file's own header and chemistry-catalog.sql's eGFR/LDL
+-- section already carry.
+
+INSERT INTO code_system_value (system, code, version, display) VALUES
+  ('LOINC', '32242-7', '2.78', 'Anisocytosis [Interpretation] in Blood by Automated count'),
+  ('LOINC', '32248-4', '2.78', 'Poikilocytosis [Interpretation] in Blood by Automated count'),
+  ('LOINC', '32261-7', '2.78', 'Polychromasia [Interpretation] in Blood by Automated count'),
+  ('LOINC', '49056-0', '2.78', 'Platelets [Presence] in Blood by Estimate')
+ON CONFLICT (system, code, version) DO NOTHING;
+
+INSERT INTO analyte (code_system_value_id, display, data_type)
+SELECT csv.id, a.display, 'ordinal'
+FROM (VALUES
+  ('32242-7', 'Anisocytosis'),
+  ('32248-4', 'Poikilocytosis'),
+  ('32261-7', 'Polychromasia'),
+  ('49056-0', 'Platelet Estimate')
+) AS a(loinc_code, display)
+JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.version = '2.78' AND csv.code = a.loinc_code
+WHERE NOT EXISTS (SELECT 1 FROM analyte existing WHERE existing.code_system_value_id = csv.id);
+
+-- One 'PBS' test_definition (Peripheral Blood Smear), all 4 morphology
+-- analytes linked via test_analyte -- a standalone orderable test, not
+-- gated behind a reflex/auto-order mechanism (none exists yet, per
+-- proposal finding #5). Reuses the same blood_edta specimen type CBC
+-- already uses -- a smear is made from the same draw, no new specimen type.
+INSERT INTO test_definition (tenant_id, code, display_name)
+VALUES ('00000000-0000-0000-0000-000000000001', 'PBS', 'Peripheral Blood Smear (Morphology)')
+ON CONFLICT (tenant_id, code) DO NOTHING;
+
+INSERT INTO test_analyte (tenant_id, test_definition_id, analyte_id)
+SELECT '00000000-0000-0000-0000-000000000001', td.id, a.id
+FROM (VALUES ('32242-7'), ('32248-4'), ('32261-7'), ('49056-0')) AS m(loinc_code)
+JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.version = '2.78' AND csv.code = m.loinc_code
+JOIN analyte a ON a.code_system_value_id = csv.id
+JOIN test_definition td ON td.tenant_id = '00000000-0000-0000-0000-000000000001' AND td.code = 'PBS'
+ON CONFLICT (test_definition_id, analyte_id) DO NOTHING;

@@ -62,6 +62,10 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
     {
       analyteId: string;
       valueNum: number | null;
+      // FEAT-024 (ADR-0025): present on the real list() response for any
+      // dataType, simply always null for a quantity row.
+      valueCode: string | null;
+      notes: string | null;
       flags: string[];
       refLow: number | null;
       refHigh: number | null;
@@ -80,9 +84,10 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
     const test = testById.get(orderedTest.testDefinitionId);
     if (!test) continue;
     for (const analyte of test.analytes) {
-      // Quantity-only UI this task (proposal §5) -- no real coded/text
-      // analyte exists in the seeded catalog to render either shape against.
-      if (analyte.dataType !== 'quantity') continue;
+      // Quantity + ordinal UI (FEAT-024/ADR-0025 widens this from
+      // quantity-only, proposal §5) -- coded/text still have no real catalog
+      // data to render either shape against, so they stay filtered out.
+      if (analyte.dataType !== 'quantity' && analyte.dataType !== 'ordinal') continue;
       const existing = resultsByOrderedTestId.get(orderedTest.id)?.find((o) => o.analyteId === analyte.id);
       rowsWithoutPrior.push({
         orderedTestId: orderedTest.id,
@@ -91,8 +96,11 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
         analyteId: analyte.id,
         analyteCode: analyte.code,
         analyteDisplay: analyte.display,
+        dataType: analyte.dataType,
         unit: analyte.unit,
         initialValueNum: existing?.valueNum ?? null,
+        initialValueCode: existing?.valueCode ?? null,
+        initialNotes: existing?.notes ?? null,
         initialFlags: existing?.flags ?? [],
         initialRefLow: existing?.refLow ?? null,
         initialRefHigh: existing?.refHigh ?? null,

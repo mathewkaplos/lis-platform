@@ -37,6 +37,13 @@
  * fetch/key logic branches on it — same "add to the list, not a second
  * script" principle TASK-071 already established, extended to a second
  * table rather than only a second file of the same table's shape.
+ *
+ * Generalized to a third shape by FEAT-024 (ADR-0025): `analyte_catalog`
+ * proves the seeded Peripheral Film morphology analytes exist with the
+ * correct `data_type` (`'ordinal'`) — unlike `reference_range`/
+ * `delta_check_rule`, this isn't a config table joined *from* `analyte`,
+ * it's `analyte` itself, so its own "live rows" fetch reads `analyte`
+ * directly rather than a second table.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -73,6 +80,11 @@ interface DeltaCheckGoldenEntry {
   source?: string;
 }
 
+interface AnalyteCatalogGoldenEntry {
+  analyte: string;
+  dataType: string;
+}
+
 interface GoldenFile<E> {
   _meta: unknown;
   entries: E[];
@@ -90,12 +102,20 @@ interface DeltaCheckLiveRow extends Record<string, unknown> {
   threshold_percent: string;
 }
 
-type GoldenFileConfig = { file: string; table: "reference_range" } | { file: string; table: "delta_check_rule" };
+interface AnalyteCatalogLiveRow extends Record<string, unknown> {
+  data_type: string;
+}
+
+type GoldenFileConfig =
+  | { file: string; table: "reference_range" }
+  | { file: string; table: "delta_check_rule" }
+  | { file: string; table: "analyte_catalog" };
 
 const GOLDEN_FILES: GoldenFileConfig[] = [
   { file: "chemistry-ranges-criticals.json", table: "reference_range" },
   { file: "haematology-ranges-criticals.json", table: "reference_range" },
   { file: "delta-check-thresholds.json", table: "delta_check_rule" },
+  { file: "peripheral-film-morphology.json", table: "analyte_catalog" },
 ];
 
 async function setTenant(db: Db, tenantId: string) {
@@ -126,6 +146,10 @@ function deltaCheckEntryKey(e: { analyte: string; thresholdPercent: number | str
   return `${e.analyte}|${Number(e.thresholdPercent)}`;
 }
 
+function analyteCatalogEntryKey(e: { analyte: string; dataType: string }): string {
+  return `${e.analyte}|${e.dataType}`;
+}
+
 async function fetchLiveReferenceRangeRows(db: Db, analyteDisplay: string): Promise<ReferenceRangeLiveRow[]> {
   const result = await db.execute<ReferenceRangeLiveRow>(sql`
     SELECT rr.sex, rr.condition, rr.range_type, rr.low::text AS low, rr.high::text AS high
@@ -141,6 +165,15 @@ async function fetchLiveDeltaCheckRows(db: Db, analyteDisplay: string): Promise<
     SELECT d.threshold_percent::text AS threshold_percent
     FROM delta_check_rule d
     JOIN analyte a ON a.id = d.analyte_id
+    WHERE a.display = ${analyteDisplay}
+  `);
+  return result.rows;
+}
+
+async function fetchLiveAnalyteCatalogRows(db: Db, analyteDisplay: string): Promise<AnalyteCatalogLiveRow[]> {
+  const result = await db.execute<AnalyteCatalogLiveRow>(sql`
+    SELECT a.data_type
+    FROM analyte a
     WHERE a.display = ${analyteDisplay}
   `);
   return result.rows;
@@ -163,13 +196,19 @@ async function main() {
 
   for (const { file, table } of GOLDEN_FILES) {
     const goldenEntries =
-      table === "reference_range" ? loadGoldenFile<ReferenceRangeGoldenEntry>(file) : loadGoldenFile<DeltaCheckGoldenEntry>(file);
+      table === "reference_range"
+        ? loadGoldenFile<ReferenceRangeGoldenEntry>(file)
+        : table === "delta_check_rule"
+          ? loadGoldenFile<DeltaCheckGoldenEntry>(file)
+          : loadGoldenFile<AnalyteCatalogGoldenEntry>(file);
     const analyteNames = [...new Set(goldenEntries.map((e) => e.analyte))];
 
     const goldenKeys = new Set(
       table === "reference_range"
         ? (goldenEntries as ReferenceRangeGoldenEntry[]).map(referenceRangeEntryKey)
-        : (goldenEntries as DeltaCheckGoldenEntry[]).map(deltaCheckEntryKey),
+        : table === "delta_check_rule"
+          ? (goldenEntries as DeltaCheckGoldenEntry[]).map(deltaCheckEntryKey)
+          : (goldenEntries as AnalyteCatalogGoldenEntry[]).map(analyteCatalogEntryKey),
     );
     const liveKeys = new Set<string>();
 
@@ -193,10 +232,15 @@ async function main() {
             }),
           );
         }
-      } else {
+      } else if (table === "delta_check_rule") {
         const liveRows = await fetchLiveDeltaCheckRows(db, name);
         for (const r of liveRows) {
           liveKeys.add(deltaCheckEntryKey({ analyte: name, thresholdPercent: Number(r.threshold_percent) }));
+        }
+      } else {
+        const liveRows = await fetchLiveAnalyteCatalogRows(db, name);
+        for (const r of liveRows) {
+          liveKeys.add(analyteCatalogEntryKey({ analyte: name, dataType: r.data_type }));
         }
       }
     }

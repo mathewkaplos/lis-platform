@@ -90,7 +90,7 @@ function toObservationDto(row: ObservationRow): ObservationResult {
     // so it's always actually present here.
     orderedTestId: row.orderedTestId!,
     analyteId: row.analyteId,
-    dataType: row.dataType as ObservationResult['dataType'], // restricted to this task's 3 dataTypes by the write path itself
+    dataType: row.dataType as ObservationResult['dataType'], // restricted to this task's 4 dataTypes by the write path itself (FEAT-024/ADR-0025 adds 'ordinal')
     valueNum: row.valueNum === null ? null : Number(row.valueNum),
     valueCode: row.valueCode,
     valueText: row.valueText,
@@ -108,6 +108,8 @@ function toObservationDto(row: ObservationRow): ObservationResult {
     // null on every row draft()/finalize() ever write; only verify() sets them.
     verifierUserId: row.verifierUserId,
     verifiedAt: row.verifiedAt ? row.verifiedAt.toISOString() : null,
+    // FEAT-024 (ADR-0025 decision 3): null on every non-ordinal row.
+    notes: row.notes,
   };
 }
 
@@ -396,14 +398,22 @@ export class ObservationController {
       );
     }
 
+    // FEAT-024 (ADR-0025 decision 1/3): 'ordinal' shares valueCode's column
+    // with 'coded' (both are KB-14 valueCode-backed dataTypes) but is the
+    // only branch that also ever sets notes -- narrative *in addition* to
+    // the graded value, never a substitute for it.
     const valueFields = {
       valueNum:
         params.body.dataType === 'quantity'
           ? String(params.body.valueNum)
           : null,
       valueCode:
-        params.body.dataType === 'coded' ? params.body.valueCode : null,
+        params.body.dataType === 'coded' || params.body.dataType === 'ordinal'
+          ? params.body.valueCode
+          : null,
       valueText: params.body.dataType === 'text' ? params.body.valueText : null,
+      notes:
+        params.body.dataType === 'ordinal' ? (params.body.notes ?? null) : null,
     };
 
     const sharedFields = {

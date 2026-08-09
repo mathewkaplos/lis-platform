@@ -6,15 +6,27 @@ import { z } from "zod";
  * (engineering/api-design Skill entry #1), same as every other domain file.
  *
  * `observation.data_type` (packages/db/src/schema/observation.ts) is a
- * native Postgres enum with 10 values (KB-14) — this schema deliberately
- * covers only 3 of them (proposal §10 Q2, resolved 2026-08-06), matching
- * the AC's own literal "Numeric, coded, and text" wording. The other 7
- * (ordinal, boolean, ratio, datetime, table, structured, attachment) are
- * real, described in KB-14, and genuinely out of scope until a task needs
- * them — not representable through this endpoint today.
+ * native Postgres enum with 10 values (KB-14) — this schema originally
+ * covered only 3 of them (proposal §10 Q2, resolved 2026-08-06), matching
+ * that AC's own literal "Numeric, coded, and text" wording. FEAT-024
+ * (ADR-0025) adds the 4th, `ordinal` -- the first of the remaining 6
+ * (boolean, ratio, datetime, table, structured, attachment) to become real;
+ * those stay genuinely out of scope until a task needs them, per
+ * ADR-0025's own "one new branch per dataType, not built ahead of a real
+ * need" precedent.
  */
-export const resultEntryDataTypeSchema = z.enum(["quantity", "coded", "text"]);
+export const resultEntryDataTypeSchema = z.enum(["quantity", "coded", "text", "ordinal"]);
 export type ResultEntryDataType = z.infer<typeof resultEntryDataTypeSchema>;
+
+/**
+ * FEAT-024 (ADR-0025): the shared grading vocabulary for every seeded
+ * morphology analyte (Anisocytosis, Poikilocytosis, Polychromasia, Platelet
+ * Estimate) -- KB-19's own literal example ("graded none/1+/2+/3+"), one
+ * scale for all of them rather than inventing per-analyte variation with no
+ * real clinical source to justify it (ADR-0025 decision 2).
+ */
+export const morphologyGradeSchema = z.enum(["none", "1+", "2+", "3+"]);
+export type MorphologyGrade = z.infer<typeof morphologyGradeSchema>;
 
 /**
  * The request body shared by both the draft (`PUT .../results/:analyteId`)
@@ -23,12 +35,23 @@ export type ResultEntryDataType = z.infer<typeof resultEntryDataTypeSchema>;
  * other is accepted, per `dataType` (proposal §2). The server independently
  * checks the submitted `dataType` matches the target analyte's own catalog
  * `dataType` — this schema alone cannot know that, it only shapes the body.
+ *
+ * FEAT-024 (ADR-0025 decision 1/3): the new `ordinal` branch requires a
+ * validated grade (`morphologyGradeSchema`, never an arbitrary string) and
+ * accepts an optional `notes` -- narrative *in addition* to the graded
+ * value, never a substitute for it (KB-14's own "narrative text is allowed
+ * in addition, never instead" principle; a note with no grade is rejected
+ * by this same discriminated union, since `valueCode` is required on this
+ * branch regardless of whether `notes` is present). `notes` is scoped to
+ * this one branch only (ADR-0025 decision 3) -- not exposed for
+ * quantity/coded/text writes, which no AC asks for.
  */
 export const resultEntrySchema = z
   .discriminatedUnion("dataType", [
     z.object({ dataType: z.literal("quantity"), valueNum: z.number() }),
     z.object({ dataType: z.literal("coded"), valueCode: z.string().min(1) }),
     z.object({ dataType: z.literal("text"), valueText: z.string().min(1) }),
+    z.object({ dataType: z.literal("ordinal"), valueCode: morphologyGradeSchema, notes: z.string().max(2000).optional() }),
   ])
   .meta({ id: "ResultEntryDto" }); // nestjs-zod docs: names the OpenAPI/SDK schema -- otherwise a generic "AugmentedZodDto"
 export type ResultEntryInput = z.infer<typeof resultEntrySchema>;
@@ -86,6 +109,10 @@ export const observationSchema = z.object({
   // draft()/finalize()).
   verifierUserId: z.uuid().nullable(),
   verifiedAt: z.iso.datetime().nullable(),
+  // FEAT-024 (ADR-0025 decision 3): exposed generally on the read side for
+  // every dataType, but only ever set on write via the `ordinal` branch of
+  // `resultEntrySchema` -- null on every quantity/coded/text row today.
+  notes: z.string().nullable(),
 });
 export type ObservationResult = z.infer<typeof observationSchema>;
 

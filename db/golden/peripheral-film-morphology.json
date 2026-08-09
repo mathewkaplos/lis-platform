@@ -1,0 +1,12 @@
+{
+  "_meta": {
+    "status": "PLACEHOLDER — NOT PARTNER-VALIDATED",
+    "description": "FEAT-024 (ADR-0025): the 4 seeded Peripheral Blood Smear morphology analytes (RBC morphology: Anisocytosis, Poikilocytosis, Polychromasia; Platelet Estimate). This file proves the seed and the live analyte catalog agree on display name and dataType ('ordinal') -- it does NOT prove the LOINC codes or grading vocabulary are clinically authoritative. Design-partner sign-off is a separate, open item, same status as chemistry-ranges-criticals.json's own."
+  },
+  "entries": [
+    { "analyte": "Anisocytosis", "dataType": "ordinal" },
+    { "analyte": "Poikilocytosis", "dataType": "ordinal" },
+    { "analyte": "Polychromasia", "dataType": "ordinal" },
+    { "analyte": "Platelet Estimate", "dataType": "ordinal" }
+  ]
+}

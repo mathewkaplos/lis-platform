@@ -1,5 +1,6 @@
 'use server';
 
+import type { MorphologyGrade } from '@lis/domain';
 import { getValidAccessToken } from '@/auth/access-token';
 import { createLisApiClient } from '@/lib/api-client';
 
@@ -45,6 +46,10 @@ export interface ResultActionOutcome {
   verifierUserId?: string | null;
   verifiedAt?: string | null;
   calculatedDependents?: CalculatedDependentOutcome[];
+  // FEAT-024 (ADR-0025): only ever set by draftMorphologyResult()/
+  // finalizeMorphologyResult() -- quantity actions never populate either.
+  valueCode?: string | null;
+  notes?: string | null;
 }
 
 // The subset of `ProblemDetails` (apps/api's problem-details.filter.ts)
@@ -52,6 +57,11 @@ export interface ResultActionOutcome {
 interface HeldObservationDto {
   analyteId: string;
   valueNum: number | null;
+  // FEAT-024 (ADR-0025): present on the real echoed body for any dataType,
+  // simply always null for a quantity row -- widened so a held morphology
+  // result's grade/notes survive the panel_hold path too.
+  valueCode: string | null;
+  notes: string | null;
   flags: string[];
   refLow: number | null;
   refHigh: number | null;
@@ -118,6 +128,45 @@ export async function draftResult(
   return {
     status: 'ok',
     valueNum: data.valueNum,
+    flags: data.flags,
+    refLow: data.refLow,
+    refHigh: data.refHigh,
+    observationStatus: data.status,
+  };
+}
+
+/**
+ * FEAT-024 (ADR-0025): the `ordinal` counterpart to `draftResult` above --
+ * same shape, `dataType: 'ordinal'` with a validated grade (`valueCode`,
+ * `morphologyGradeSchema` server-side) plus an optional `notes`. `draft()`
+ * (PUT) returns the flat `ObservationResult` directly (`toObservationDto`),
+ * so `data.valueCode`/`data.notes` are already typed, no manual cast needed
+ * (unlike `finalizeMorphologyResult` below).
+ */
+export async function draftMorphologyResult(
+  orderedTestId: string,
+  analyteId: string,
+  valueCode: MorphologyGrade,
+  notes?: string,
+): Promise<ResultActionOutcome> {
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    return { status: 'error', error: 'Your session has expired — please log in again.', ...FAILURE };
+  }
+  const client = createLisApiClient(accessToken);
+
+  const { data, response } = await client.PUT('/v1/ordered-tests/{id}/results/{analyteId}', {
+    params: { path: { id: orderedTestId, analyteId } },
+    body: { dataType: 'ordinal', valueCode, notes },
+  });
+  if (!response.ok || !data) {
+    return { status: 'error', error: writeErrorMessage(response.status), ...FAILURE };
+  }
+  return {
+    status: 'ok',
+    valueNum: null,
+    valueCode: data.valueCode,
+    notes: data.notes,
     flags: data.flags,
     refLow: data.refLow,
     refHigh: data.refHigh,
@@ -213,6 +262,75 @@ export async function finalizeResult(
       refHigh: dep.refHigh,
       observationStatus: dep.status,
     })),
+  };
+}
+
+/**
+ * FEAT-024 (ADR-0025): the `ordinal` counterpart to `finalizeResult` above
+ * -- same panel_hold/`held` handling (a morphology grade participates in
+ * the same finalize/roll-up path as any other analyte; no reason to expect
+ * a peripheral film panel could never itself hold, e.g. an unrelated
+ * co-ordered analyte's own critical), same manual `after` cast (finalize's
+ * response isn't run through `@ZodResponse`, see `finalizeResult`'s own
+ * comment above).
+ */
+export async function finalizeMorphologyResult(
+  orderedTestId: string,
+  analyteId: string,
+  valueCode: MorphologyGrade,
+  notes?: string,
+): Promise<ResultActionOutcome> {
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    return { status: 'error', error: 'Your session has expired — please log in again.', ...FAILURE };
+  }
+  const client = createLisApiClient(accessToken);
+
+  const { data, error, response } = await client.POST('/v1/ordered-tests/{id}/results/{analyteId}/finalize', {
+    params: { path: { id: orderedTestId, analyteId } },
+    body: { dataType: 'ordinal', valueCode, notes },
+  });
+  if (!response.ok || !data) {
+    const problem = error as PanelHoldProblem | undefined;
+    if (response.status === 409 && problem?.code === 'panel_hold') {
+      return {
+        status: 'held',
+        heldMessage: problem.detail,
+        heldReason: problem.reason,
+        valueNum: problem.heldObservation.valueNum,
+        valueCode: problem.heldObservation.valueCode,
+        notes: problem.heldObservation.notes,
+        flags: problem.heldObservation.flags,
+        refLow: problem.heldObservation.refLow,
+        refHigh: problem.heldObservation.refHigh,
+        observationStatus: problem.heldObservation.status,
+      };
+    }
+    return { status: 'error', error: writeErrorMessage(response.status), ...FAILURE };
+  }
+  const after = (
+    data as unknown as {
+      after: {
+        observation: {
+          valueCode: string | null;
+          notes: string | null;
+          flags: string[];
+          refLow: number | null;
+          refHigh: number | null;
+          status: 'registered' | 'preliminary';
+        };
+      };
+    }
+  ).after;
+  return {
+    status: 'ok',
+    valueNum: null,
+    valueCode: after.observation.valueCode,
+    notes: after.observation.notes,
+    flags: after.observation.flags,
+    refLow: after.observation.refLow,
+    refHigh: after.observation.refHigh,
+    observationStatus: after.observation.status,
   };
 }
 

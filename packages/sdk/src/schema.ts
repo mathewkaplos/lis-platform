@@ -716,6 +716,12 @@ export interface components {
             /** @enum {string} */
             dataType: "text";
             valueText: string;
+        } | {
+            /** @enum {string} */
+            dataType: "ordinal";
+            /** @enum {string} */
+            valueCode: "none" | "1+" | "2+" | "3+";
+            notes?: string;
         };
         ObservationDto_Output: {
             /** Format: uuid */
@@ -725,7 +731,7 @@ export interface components {
             /** Format: uuid */
             analyteId: string;
             /** @enum {string} */
-            dataType: "quantity" | "coded" | "text";
+            dataType: "quantity" | "coded" | "text" | "ordinal";
             valueNum: number | null;
             valueCode: string | null;
             valueText: string | null;
@@ -746,6 +752,7 @@ export interface components {
             verifierUserId: string | null;
             /** Format: date-time */
             verifiedAt: string | null;
+            notes: string | null;
         };
         PriorObservationDto_Output: {
             /** Format: uuid */
@@ -818,7 +825,7 @@ export interface components {
             /** Format: uuid */
             analyteId: string;
             /** @enum {string} */
-            dataType: "quantity" | "coded" | "text";
+            dataType: "quantity" | "coded" | "text" | "ordinal";
             valueNum: number | null;
             valueCode: string | null;
             valueText: string | null;

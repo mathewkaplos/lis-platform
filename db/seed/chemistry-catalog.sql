@@ -174,6 +174,25 @@ WHERE NOT EXISTS (
     AND existing.high IS NOT DISTINCT FROM r.high
 );
 
+-- FEAT-025 (ADR-0023): delta-check thresholds, percent-only, one row per
+-- analyte, scoped to the four analytes that already have a critical
+-- threshold above (Glucose, Sodium, Potassium, Calcium) -- proposal §2's own
+-- scoping decision, not every analyte in this file. Generic, widely-cited
+-- delta-check percent limits, same "placeholder, not partner-validated"
+-- framing as every other threshold in this file (see this file's own header
+-- comment) -- do not treat as clinically authoritative.
+INSERT INTO delta_check_rule (tenant_id, analyte_id, threshold_percent, source)
+SELECT '00000000-0000-0000-0000-000000000001', a.id, r.threshold_percent, r.source
+FROM (VALUES
+  -- analyte display, threshold_percent, source
+  ('Glucose',   50, 'Generic placeholder delta-check threshold -- not partner-validated'),
+  ('Sodium',    10, 'Generic placeholder delta-check threshold -- not partner-validated'),
+  ('Potassium', 30, 'Generic placeholder delta-check threshold -- not partner-validated'),
+  ('Calcium',   15, 'Generic placeholder delta-check threshold -- not partner-validated')
+) AS r(analyte_display, threshold_percent, source)
+JOIN analyte a ON a.display = r.analyte_display
+ON CONFLICT (tenant_id, analyte_id) DO NOTHING; -- ux_delta_check_rule_tenant_analyte, a real unique index (unlike reference_range)
+
 -- TASK-053 (FEAT-014): calculated fields (eGFR, LDL). Same placeholder
 -- framing as the rest of this file -- LOINC codes are good-faith picks, not
 -- verified against a live LOINC server (docs/plans/feat-014-result-entry-

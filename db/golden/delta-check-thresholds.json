@@ -1,0 +1,12 @@
+{
+  "_meta": {
+    "status": "PLACEHOLDER — NOT PARTNER-VALIDATED",
+    "description": "Generic, widely-cited delta-check percent thresholds for the four chemistry analytes that already have a critical threshold seeded (db/seed/chemistry-catalog.sql). FEAT-025 (ADR-0023). This file proves the seed and the live delta_check_rule table agree -- it does NOT prove the values themselves are clinically correct. Design-partner sign-off is a separate, open item, same status as chemistry-ranges-criticals.json's own."
+  },
+  "entries": [
+    { "analyte": "Glucose", "thresholdPercent": 50, "source": "Generic placeholder delta-check threshold -- not partner-validated" },
+    { "analyte": "Sodium", "thresholdPercent": 10, "source": "Generic placeholder delta-check threshold -- not partner-validated" },
+    { "analyte": "Potassium", "thresholdPercent": 30, "source": "Generic placeholder delta-check threshold -- not partner-validated" },
+    { "analyte": "Calcium", "thresholdPercent": 15, "source": "Generic placeholder delta-check threshold -- not partner-validated" }
+  ]
+}

@@ -51,3 +51,16 @@ export function computeFlags(value: number, normal: ResolvedRange | NoRangeResul
   }
   return ["N"];
 }
+
+/**
+ * FEAT-025 (ADR-0023): appends `D` to `computeFlags`'s output when a delta
+ * check flagged, without changing `computeFlags`'s own severity-flag
+ * behavior -- exactly the "future task can still append A/D/R alongside"
+ * extension point this file's own doc comment anticipated. `D` is additive:
+ * a value can be simultaneously `H`/`HH` (out of normal/critical range) and
+ * `D` (an implausible jump from the prior value), matching KB-14's own
+ * worked example.
+ */
+export function mergeDeltaFlag(flags: string[], deltaFlagged: boolean): string[] {
+  return deltaFlagged ? [...flags, "D"] : flags;
+}

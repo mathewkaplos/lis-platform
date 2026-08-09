@@ -21,6 +21,7 @@ const TENANT_A = '00000000-0000-0000-0000-000000000001';
 const GLUCOSE_CODE = 'GLU';
 const BUN_CODE = 'BUN';
 const SODIUM_CODE = 'NA';
+const POTASSIUM_CODE = 'K';
 // TASK-055: LIPID (db/seed/chemistry-catalog.sql step 12) is the one seeded
 // test_definition with more than one test_analyte link (Total Cholesterol,
 // HDL, Triglycerides, plus the calculated LDL) -- needed so an ordered test
@@ -1611,6 +1612,162 @@ describe('Result entry API (e2e)', () => {
         .get(`/v1/ordered-tests/${randomUUID()}/results/${glucoseId}/prior`)
         .set('Authorization', `Bearer ${tokenA}`)
         .expect(404);
+    });
+  });
+
+  /**
+   * FEAT-025 (ADR-0023): the full write-path proof that `resolveDeltaCheck`
+   * (unit-covered directly against `@lis/db` in delta-check.e2e-spec.ts,
+   * mirroring flagging.e2e-spec.ts's own pattern) is actually wired into the
+   * real HTTP finalize path -- a real prior VERIFIED result, a real second
+   * order, a real 'D' in the HTTP response's own `flags`. Potassium (seeded
+   * `delta_check_rule.thresholdPercent = 30`, normal range 3.5-5.1): 3.9 ->
+   * 5.07 is a +30% change (flags 'D') while staying inside the normal range
+   * (flags 'N', not 'H') -- deliberately isolates the delta flag from any
+   * severity flag, proving `mergeDeltaFlag` is additive, not just "D instead
+   * of a severity flag would also happen to pass."
+   */
+  describe('Delta check (FEAT-025, ADR-0023)', () => {
+    it("a result exceeding the configured delta threshold from the patient's prior verified result flags 'D' and sets previousObservationId", async () => {
+      const potassiumId = await analyteIdForTestCode(POTASSIUM_CODE);
+
+      const order1 = await createOrder([POTASSIUM_CODE]);
+      await receive(order1.orderId);
+      const [orderedTestId1] = order1.orderedTestIds;
+      await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId1}/results/${potassiumId}/finalize`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 3.9 })
+        .expect(200);
+      const verifyRes = await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId1}/results/${potassiumId}/verify`,
+        )
+        .set('Authorization', `Bearer ${verifierToken}`)
+        .expect(200);
+      const verifiedObservationId = (verifyRes.body as { resourceId: string })
+        .resourceId;
+
+      const order2 = await createOrder([POTASSIUM_CODE]);
+      await receive(order2.orderId);
+      const [orderedTestId2] = order2.orderedTestIds;
+      const res = await request(app.getHttpServer())
+        .post(
+          `/v1/ordered-tests/${orderedTestId2}/results/${potassiumId}/finalize`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 5.07 })
+        .expect(200);
+      const body = res.body as {
+        resourceId: string;
+        after: { observation: { flags: string[] } };
+      };
+
+      if (!body.after.observation.flags.includes('D')) {
+        throw new Error(
+          `expected 'D' in flags for a +30% change against a 30% threshold, got ${JSON.stringify(body.after.observation.flags)}`,
+        );
+      }
+      if (
+        body.after.observation.flags.includes('H') ||
+        body.after.observation.flags.includes('HH')
+      ) {
+        throw new Error(
+          `expected no severity flag (5.07 is within the normal 3.5-5.1 range) -- this test isolates 'D' deliberately, got ${JSON.stringify(body.after.observation.flags)}`,
+        );
+      }
+
+      const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+      const [row] = await db
+        .select({ previousObservationId: observation.previousObservationId })
+        .from(observation)
+        .where(eq(observation.id, body.resourceId))
+        .limit(1);
+      if (row?.previousObservationId !== verifiedObservationId) {
+        throw new Error(
+          `expected previousObservationId to link to order1's verified observation (${verifiedObservationId}), got ${JSON.stringify(row)}`,
+        );
+      }
+    });
+
+    it('a draft with no eligible prior verified observation for this patient/analyte never flags D, and previousObservationId stays null on the row', async () => {
+      // A brand-new patient (not the shared `patientId` fixture) has, by
+      // construction, zero verified Potassium history -- the cleanest real
+      // proof of the "no eligible prior" branch, no ordering-of-tests
+      // assumption needed against the shared fixture's own growing history.
+      const freshPatientRes = await request(app.getHttpServer())
+        .post('/v1/patients')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          firstName: 'DeltaCheck',
+          lastName: 'NoPrior',
+          sex: 'F',
+          birthDate: '1990-01-01',
+        })
+        .expect(201);
+      const freshPatientId = (freshPatientRes.body as { resourceId: string })
+        .resourceId;
+
+      const potassiumId = await analyteIdForTestCode(POTASSIUM_CODE);
+      const catalogRes = await request(app.getHttpServer())
+        .get('/v1/catalog')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const testDefinitionId = (
+        catalogRes.body as { tests: { id: string; code: string }[] }
+      ).tests.find((t) => t.code === POTASSIUM_CODE)?.id;
+      if (!testDefinitionId) {
+        throw new Error(`expected catalog fixture '${POTASSIUM_CODE}'`);
+      }
+      const orderRes = await request(app.getHttpServer())
+        .post('/v1/orders')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          patientId: freshPatientId,
+          testDefinitionIds: [testDefinitionId],
+        })
+        .expect(201);
+      const orderBody = orderRes.body as {
+        resourceId: string;
+        after: { orderedTests: { id: string }[] };
+      };
+      await receive(orderBody.resourceId);
+      const orderedTestId = orderBody.after.orderedTests[0].id;
+
+      const res = await request(app.getHttpServer())
+        .put(`/v1/ordered-tests/${orderedTestId}/results/${potassiumId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ dataType: 'quantity', valueNum: 4.0 })
+        .expect(200);
+      // draft() (PUT) returns the flat ObservationDto directly (`id`), not
+      // finalize()/verify()'s `{resourceId, before, after}` action-response
+      // shape -- draft is a plain resource upsert, not an action.
+      const body = res.body as { id: string; flags: string[] };
+      if (body.flags.includes('D')) {
+        throw new Error(
+          `expected no 'D' flag with no eligible prior verified observation, got ${JSON.stringify(body.flags)}`,
+        );
+      }
+
+      const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+      const [row] = await db
+        .select({ previousObservationId: observation.previousObservationId })
+        .from(observation)
+        .where(eq(observation.id, body.id))
+        .limit(1);
+      if (row?.previousObservationId !== null) {
+        throw new Error(
+          `expected previousObservationId null with no eligible prior, got ${JSON.stringify(row)}`,
+        );
+      }
     });
   });
 });

@@ -29,6 +29,14 @@
  * and the live table agree, not that the values themselves are clinically
  * correct. That sign-off is tracked as a separate, open follow-up (see the
  * proposal's §10 resolution).
+ *
+ * Generalized to a second table shape by FEAT-025 (ADR-0023):
+ * `delta_check_rule` has a genuinely different column set (no sex/age/
+ * condition dimensions, one row per analyte) from `reference_range`, so
+ * `GOLDEN_FILES` entries now carry an explicit `table` discriminator and the
+ * fetch/key logic branches on it — same "add to the list, not a second
+ * script" principle TASK-071 already established, extended to a second
+ * table rather than only a second file of the same table's shape.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -49,7 +57,7 @@ if (!APP_DATABASE_URL) {
 // doesn't include refactoring that already-merged file.
 const TENANT_A = "00000000-0000-0000-0000-000000000001";
 
-interface GoldenEntry {
+interface ReferenceRangeGoldenEntry {
   analyte: string;
   sex: string | null;
   condition: string | null;
@@ -59,12 +67,18 @@ interface GoldenEntry {
   source?: string;
 }
 
-interface GoldenFile {
-  _meta: unknown;
-  entries: GoldenEntry[];
+interface DeltaCheckGoldenEntry {
+  analyte: string;
+  thresholdPercent: number;
+  source?: string;
 }
 
-interface LiveRow extends Record<string, unknown> {
+interface GoldenFile<E> {
+  _meta: unknown;
+  entries: E[];
+}
+
+interface ReferenceRangeLiveRow extends Record<string, unknown> {
   sex: string | null;
   condition: string | null;
   range_type: string;
@@ -72,30 +86,61 @@ interface LiveRow extends Record<string, unknown> {
   high: string | null;
 }
 
+interface DeltaCheckLiveRow extends Record<string, unknown> {
+  threshold_percent: string;
+}
+
+type GoldenFileConfig = { file: string; table: "reference_range" } | { file: string; table: "delta_check_rule" };
+
+const GOLDEN_FILES: GoldenFileConfig[] = [
+  { file: "chemistry-ranges-criticals.json", table: "reference_range" },
+  { file: "haematology-ranges-criticals.json", table: "reference_range" },
+  { file: "delta-check-thresholds.json", table: "delta_check_rule" },
+];
+
 async function setTenant(db: Db, tenantId: string) {
   await db.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, false)`);
 }
 
-const GOLDEN_FILES = ["chemistry-ranges-criticals.json", "haematology-ranges-criticals.json"];
-
-function loadGoldenFile(filename: string): GoldenEntry[] {
+function loadGoldenFile<E>(filename: string): E[] {
   const path = join(__dirname, "../../../db/golden", filename);
   const raw = readFileSync(path, "utf-8");
-  const parsed = JSON.parse(raw) as GoldenFile;
+  const parsed = JSON.parse(raw) as GoldenFile<E>;
   return parsed.entries;
 }
 
-function entryKey(e: { analyte: string; sex: string | null; condition: string | null; rangeType: string; low: number | string | null; high: number | string | null }): string {
+function referenceRangeEntryKey(e: {
+  analyte: string;
+  sex: string | null;
+  condition: string | null;
+  rangeType: string;
+  low: number | string | null;
+  high: number | string | null;
+}): string {
   const low = e.low === null ? "null" : Number(e.low);
   const high = e.high === null ? "null" : Number(e.high);
   return `${e.analyte}|${e.sex ?? "null"}|${e.condition ?? "null"}|${e.rangeType}|${low}|${high}`;
 }
 
-async function fetchLiveRows(db: Db, analyteDisplay: string): Promise<LiveRow[]> {
-  const result = await db.execute<LiveRow>(sql`
+function deltaCheckEntryKey(e: { analyte: string; thresholdPercent: number | string }): string {
+  return `${e.analyte}|${Number(e.thresholdPercent)}`;
+}
+
+async function fetchLiveReferenceRangeRows(db: Db, analyteDisplay: string): Promise<ReferenceRangeLiveRow[]> {
+  const result = await db.execute<ReferenceRangeLiveRow>(sql`
     SELECT rr.sex, rr.condition, rr.range_type, rr.low::text AS low, rr.high::text AS high
     FROM reference_range rr
     JOIN analyte a ON a.id = rr.analyte_id
+    WHERE a.display = ${analyteDisplay}
+  `);
+  return result.rows;
+}
+
+async function fetchLiveDeltaCheckRows(db: Db, analyteDisplay: string): Promise<DeltaCheckLiveRow[]> {
+  const result = await db.execute<DeltaCheckLiveRow>(sql`
+    SELECT d.threshold_percent::text AS threshold_percent
+    FROM delta_check_rule d
+    JOIN analyte a ON a.id = d.analyte_id
     WHERE a.display = ${analyteDisplay}
   `);
   return result.rows;
@@ -116,11 +161,16 @@ async function main() {
   let totalGoldenEntries = 0;
   let totalLiveRows = 0;
 
-  for (const file of GOLDEN_FILES) {
-    const goldenEntries = loadGoldenFile(file);
+  for (const { file, table } of GOLDEN_FILES) {
+    const goldenEntries =
+      table === "reference_range" ? loadGoldenFile<ReferenceRangeGoldenEntry>(file) : loadGoldenFile<DeltaCheckGoldenEntry>(file);
     const analyteNames = [...new Set(goldenEntries.map((e) => e.analyte))];
 
-    const goldenKeys = new Set(goldenEntries.map(entryKey));
+    const goldenKeys = new Set(
+      table === "reference_range"
+        ? (goldenEntries as ReferenceRangeGoldenEntry[]).map(referenceRangeEntryKey)
+        : (goldenEntries as DeltaCheckGoldenEntry[]).map(deltaCheckEntryKey),
+    );
     const liveKeys = new Set<string>();
 
     for (const name of analyteNames) {
@@ -129,18 +179,25 @@ async function main() {
         failures.push(`[${file}] ${name}: no analyte row found in the catalog at all — run \`pnpm db:reset\` first`);
         continue;
       }
-      const liveRows = await fetchLiveRows(db, name);
-      for (const r of liveRows) {
-        liveKeys.add(
-          entryKey({
-            analyte: name,
-            sex: r.sex,
-            condition: r.condition,
-            rangeType: r.range_type,
-            low: r.low === null ? null : Number(r.low),
-            high: r.high === null ? null : Number(r.high),
-          }),
-        );
+      if (table === "reference_range") {
+        const liveRows = await fetchLiveReferenceRangeRows(db, name);
+        for (const r of liveRows) {
+          liveKeys.add(
+            referenceRangeEntryKey({
+              analyte: name,
+              sex: r.sex,
+              condition: r.condition,
+              rangeType: r.range_type,
+              low: r.low === null ? null : Number(r.low),
+              high: r.high === null ? null : Number(r.high),
+            }),
+          );
+        }
+      } else {
+        const liveRows = await fetchLiveDeltaCheckRows(db, name);
+        for (const r of liveRows) {
+          liveKeys.add(deltaCheckEntryKey({ analyte: name, thresholdPercent: Number(r.threshold_percent) }));
+        }
       }
     }
 
@@ -168,7 +225,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log("PASS: every golden dataset and the live reference_range table agree exactly.");
+  console.log("PASS: every golden dataset and its live table agree exactly.");
 }
 
 main().catch((err) => {

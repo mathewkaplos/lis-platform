@@ -322,3 +322,21 @@ frontmatter declaration (this entry's own commit).
   e2e invocation; renumbered the existing closing "Not (yet) covered here" section from #12 to
   #13 to keep it last.
 - **Files:** `~/work/lis-engineering/skills/engineering/testing/SKILL.md`
+
+## 2026-08-09
+
+- **Friction:** `AGENTS.md`'s own merge-autonomy rule contradicted itself. Line 67 told the
+  agent to confirm a merge landed via `git log origin/main`, but the very same rule's own note
+  9 lines below (added 2026-08-08) already explains that a standalone `git log origin/main` gets
+  denied by the auto-mode classifier and says to prefer `gh pr view <n> --json state,mergedAt`
+  instead. Hit for real this session confirming PR #408's merge: a chained
+  `git fetch origin && git log origin/main -3` was denied, then a standalone, unchained
+  `git log origin/main -3 --oneline` was denied too (even after a separate `git fetch origin`
+  had already succeeded) — worked around with `gh pr view 408 --json state,mergedAt,mergeCommit`,
+  matching what the file already recommends further down, just not where the instruction is
+  actually given first.
+- **Area:** github-workflow
+- **Change:** line 67's confirm-merge example swapped from `git log origin/main` to
+  `gh pr view <n> --json state,mergedAt,mergeCommit`, with a forward pointer to the existing
+  explanation instead of a second copy of it.
+- **Files:** `AGENTS.md`

@@ -17,14 +17,18 @@ import { ControlLotModule } from './control-lot/control-lot.module';
 import { CriticalNotificationModule } from './critical-notification/critical-notification.module';
 import { QcRuleViolationModule } from './qc-rule-violation/qc-rule-violation.module';
 import { GatewayIngestModule } from './gateway-ingest/gateway-ingest.module';
+import { OutboxModule } from './outbox/outbox.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
 @Module({
   imports: [
     SentryModule.forRoot(),
-    // TASK-066 (ADR-0017): the critical-notification escalation job's own
-    // @Interval scheduling. No queue, no event bus -- a plain polling
-    // interval (domain/critical-values Skill entry #4).
+    // TASK-066 (ADR-0017)/FEAT-028 (ADR-0028): both the critical-notification
+    // escalation job and OutboxRelayService use @Interval polling -- no
+    // message broker exists (KB-05's own "REST sync + events async +
+    // outbox" choice). FEAT-028 built the actual outbox/event-bus mechanism
+    // domain/critical-values Skill entry #4 once flagged as not existing
+    // yet; that caveat no longer applies.
     ScheduleModule.forRoot(),
     AuthModule,
     PatientModule,
@@ -38,6 +42,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     CriticalNotificationModule,
     QcRuleViolationModule,
     GatewayIngestModule,
+    OutboxModule,
   ],
   controllers: [AppController],
   providers: [

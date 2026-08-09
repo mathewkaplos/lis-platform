@@ -3,7 +3,7 @@ import { Interval } from '@nestjs/schedule';
 import { criticalNotification, writeAuditEvent } from '@lis/db';
 import { and, eq, lt, sql } from 'drizzle-orm';
 import { db } from '../auth/db';
-import { schedulerDb } from './scheduler-db';
+import { schedulerDb } from '../auth/scheduler-db';
 import {
   toCriticalNotificationDto,
   type CriticalNotificationRow,

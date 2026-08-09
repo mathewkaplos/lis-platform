@@ -1,9 +1,20 @@
 # Status — 2026-08-09 (session 28, continued)
 
-Last commit on main: `39ced31` (`lis-platform`) / `8a16fb8` (`lis-engineering`) — this breadcrumb
+Last commit on main: `bbc7d86` (`lis-platform`) / `8a16fb8` (`lis-engineering`) — this breadcrumb
 refresh itself lands as a further `lis-platform` commit on top of that, so this line will already be
 one commit behind by construction (a breadcrumb commit can never state its own SHA) — check
-`git log origin/main -5` for the real current tip.
+`git log origin/main -5` for the real current tip. Bumped a second time same session: after this
+breadcrumb's own first write, PR #424 (the `web-verify` Skill fixture-reuse gotcha, approved via
+`/close`'s own Engineering Flow Retrospective) merged on top of it -- folded in here rather than
+left stale.
+
+**Manual Verification Checklist items resolved with real evidence, not just re-asserted:** seeded
+live fixtures and captured real screenshots (sent to the human) proving FEAT-025's multi-flag
+rendering (`H`+`D` pills render cleanly side-by-side, no clipping) and FEAT-022's SLA badges (red
+"overdue" and amber "at risk" are clearly distinguishable from each other and from plain on-track
+text, in both light and dark mode). FEAT-024's own visual-density question and the hook-fix
+post-apply confirmation remain genuinely human-only judgment calls -- not resolved here, carried to
+next session.
 
 **Earlier sessions' breadcrumb entries are not carried in this file — see git history on this
 exact file (`git log -- docs/scope/current.md`) for full detail back through session 12.**

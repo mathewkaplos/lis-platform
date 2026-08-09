@@ -18,6 +18,7 @@ import { CriticalNotificationModule } from './critical-notification/critical-not
 import { QcRuleViolationModule } from './qc-rule-violation/qc-rule-violation.module';
 import { GatewayIngestModule } from './gateway-ingest/gateway-ingest.module';
 import { OutboxModule } from './outbox/outbox.module';
+import { WorkflowModule } from './workflow/workflow.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
 @Module({
@@ -43,6 +44,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     QcRuleViolationModule,
     GatewayIngestModule,
     OutboxModule,
+    WorkflowModule,
   ],
   controllers: [AppController],
   providers: [

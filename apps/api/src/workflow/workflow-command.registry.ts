@@ -1,10 +1,24 @@
 import { Injectable } from '@nestjs/common';
+import { db } from '../auth/db';
 import type { WorkflowRule } from './workflow-types';
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+// The transaction is WorkflowEngineService's own already-open one, threaded
+// through -- not a separate transaction the handler opens itself. FEAT-030
+// (ADR-0030) found the hard way that a handler opening its own
+// db.transaction() while called from inside handleEvent()'s still-open
+// transaction, on the same singleton `db` pool, is the identical
+// nested-checkout deadlock database-design Skill entry #14 already
+// documents for OutboxRelayService -- one layer of the same call stack
+// deeper. Threading `tx` through here is the fix: a command handler's own
+// writes are part of the same one atomic per-event transaction as the rule
+// evaluation and firing record, never a nested one.
 export type WorkflowCommandHandler = (
   command: WorkflowRule['do'],
   eventPayload: unknown,
   tenantId: string,
+  tx: Tx,
 ) => Promise<void>;
 
 /**

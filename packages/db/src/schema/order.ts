@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, index, pgPolicy, check } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, index, pgPolicy, check, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { testDefinition } from "./test-catalog";
 import { patient } from "./patient";
@@ -77,10 +77,16 @@ export const orderedTest = pgTable(
     // sends the caller's own JWT sub (self-assign), though the column/API
     // accept any uuid (ADR-0024 decision 2).
     assignedUserId: uuid("assigned_user_id"),
+    // FEAT-030 (ADR-0030): reflex lineage -- non-null means this row was
+    // created by AddReflexTest, pointing at the ordered_test whose verified
+    // result triggered it. Self-FK, same AnyPgColumn-typed pattern
+    // specimen.parentSpecimenId already established for aliquot lineage.
+    parentOrderedTestId: uuid("parent_ordered_test_id").references((): AnyPgColumn => orderedTest.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("ix_ordered_test_order").on(table.orderId),
+    index("ix_ordered_test_parent").on(table.parentOrderedTestId),
     check(
       "ck_ordered_test_status",
       sql`${table.status} IN ('ordered','collected','received','in_process','resulted','verified','reported','cancelled','rejected')`,

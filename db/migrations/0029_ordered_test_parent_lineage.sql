@@ -1,0 +1,3 @@
+ALTER TABLE "ordered_test" ADD COLUMN "parent_ordered_test_id" uuid;--> statement-breakpoint
+ALTER TABLE "ordered_test" ADD CONSTRAINT "ordered_test_parent_ordered_test_id_ordered_test_id_fk" FOREIGN KEY ("parent_ordered_test_id") REFERENCES "public"."ordered_test"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "ix_ordered_test_parent" ON "ordered_test" USING btree ("parent_ordered_test_id");

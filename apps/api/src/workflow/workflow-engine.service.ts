@@ -11,14 +11,22 @@ import type { WorkflowRule } from './workflow-types';
  * FEAT-029 (ADR-0029/KB-25 execution model). Registers itself as an
  * `ObservationVerified` handler in `OutboxHandlerRegistry` (FEAT-028) --
  * this is the engine's whole "consume a domain event" step. Runs in its own
- * transaction (not the outbox relay's own), since the handler contract
- * (`OutboxHandler`) doesn't thread a `tx` through -- workflow evaluation is
- * a side effect of an already-committed event, not something that needs to
- * be atomic with the outbox's own delivery bookkeeping.
+ * transaction (not the outbox relay's own), since the `OutboxHandler`
+ * contract doesn't thread a `tx` through -- workflow evaluation is a side
+ * effect of an already-committed event, not something that needs to be
+ * atomic with the outbox's own delivery bookkeeping.
  *
  * Every rule evaluated (matched or not) is recorded in
  * `workflow_rule_firing` -- KB-25's own explicit requirement ("every
  * automated action is as traceable as a human one").
+ *
+ * `WorkflowCommandRegistry`'s own handler contract, unlike `OutboxHandler`,
+ * DOES thread this transaction through (FEAT-030/ADR-0030) -- a command
+ * handler's own writes are part of this same one atomic per-event
+ * transaction, never a separate nested one on the same singleton `db` pool.
+ * See `WorkflowCommandRegistry`'s own header comment for why: that nesting
+ * is the identical deadlock database-design Skill entry #14 already
+ * documents for `OutboxRelayService`, one call-stack layer deeper.
  */
 @Injectable()
 export class WorkflowEngineService implements OnModuleInit {
@@ -77,7 +85,7 @@ export class WorkflowEngineService implements OnModuleInit {
           const handler = this.commands.handlerFor(rule.do.command);
           dispatched = handler !== undefined;
           if (handler) {
-            await handler(rule.do, context, tenantId);
+            await handler(rule.do, context, tenantId, tx);
           }
         }
 

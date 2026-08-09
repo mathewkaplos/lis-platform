@@ -103,6 +103,14 @@ jobs:
       - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/chemistry-catalog.sql
       # TASK-071 (FEAT-023): second discipline seed, same placeholder framing.
       - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/haematology-catalog.sql
+      # FEAT-022 Part 1 (ADR-0024): SLA targets per priority, not discipline-
+      # scoped -- a real gap this workflow's own seed sequence didn't mirror
+      # from scripts/db-reset.sh initially (only the local script was
+      # updated at first; this step was missing here, causing every
+      # worklist.e2e-spec.ts SLA-status test to see no configured sla_target
+      # row and silently fall back to 'on_track', a real CI failure this
+      # exact addition fixes).
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/sla-targets.sql
       - run: pnpm run-golden-datasets
       - run: pnpm test
       # TASK-029: waits here, not right after launch — gives Keycloak's own

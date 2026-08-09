@@ -1,5 +1,5 @@
 # Implementation Proposal: FEAT-031 — Auto-verification (deny-by-default)
-Status: APPROVED
+Status: IMPLEMENTED (merged 2026-08-09, PR #443, commit 0c98acd4ccce4fcd473f9edb1b37341610c0ea2d)
 ADR: adr-0031 (auto-verification safety design: four hard-coded gates, AutoVerifyObservation as a
 new command with VerifyObservation staying denylisted forever, handler-level dry-run — see §10)
 Date: 2026-08-09    Backlog ID: FEAT-031 (issue #40)

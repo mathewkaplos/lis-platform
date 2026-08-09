@@ -1,18 +1,19 @@
 # Status — 2026-08-09 (session 29, continued)
 
-Last commit on main: `5fe46ce` (`lis-platform`) / `93d7ef7` (`lis-engineering`) — this breadcrumb
+Last commit on main: `0c98acd` (`lis-platform`) / `7ca27ee` (`lis-engineering`) — this breadcrumb
 refresh itself lands as a further `lis-platform` commit on top of that, so this line will already be
 one commit behind by construction — check `git log origin/main -5` for the real current tip.
 
 **Earlier sessions' breadcrumb entries are not carried in this file — see git history on this
 exact file (`git log -- docs/scope/current.md`) for full detail back through session 12.**
 
-## M6 — "Automate": FEAT-026, FEAT-028, FEAT-029, FEAT-030 shipped; FEAT-027 partially shipped; all one session
+## M6 — "Automate": 5 of 6 features shipped, all in one session; only FEAT-027's real driver remains, blocked on an external fact
 
 Session started with a full `/orient`. M5 confirmed fully closed (19/19 issues); M6 confirmed open
 (7 issues: EPIC-005 + 6 features, all "Not Started" at session start). By end of session: FEAT-026
-(#35), FEAT-028 (#37), FEAT-030 (#39) closed; FEAT-029 (#38) shipped but deliberately left open (AC
-#2 deferred, see below); FEAT-027 (#36) shipped a protocol-agnostic skeleton only, stays open, blocked on a
+(#35), FEAT-028 (#37), FEAT-030 (#39), FEAT-031 (#40) closed; FEAT-029 (#38) shipped but
+deliberately left open (AC #2 deferred, see below); FEAT-027 (#36) shipped a protocol-agnostic
+skeleton only, stays open, blocked on a
 real-world fact. FEAT-030 (#39, Reflex rules) and FEAT-031 (#40, Auto-verification) remain
 "Not Started" — natural next M6 work, see below.
 
@@ -192,21 +193,75 @@ testing against unmodified code before attributing them to this session's change
 instances, recurring across FEAT-027/028/029's own new code) — caught via real e2e tests before
 merge each time. No Skill update needed; it already covered and correctly predicted every instance.
 
+### FEAT-031 (Auto-verification, deny-by-default) — fully shipped, issue #40 closed, merged PR #443
+
+**ADR-0031**: `AutoVerifyObservation`, the second real `WorkflowCommandRegistry` handler, releases
+an Observation to `verified` without a human — the "safety core" KB-25 names by that phrase, and
+this repo's most safety-critical automation to date (Constitution Law #3 by name, issue priority
+`critical`). Triggers on a new `ObservationFinalized` outbox event (emitted from `finalize()`, same
+transaction, mirroring `verify()`'s own `ObservationVerified` emission — `ObservationVerified`
+itself fires too late to trigger anything that decides *whether* to verify). Before ever writing,
+unconditionally re-checks four hard-coded gates against live DB state, regardless of what the
+triggering rule's own `when` condition claims: clean-normal (`flags` exactly `['N']`), an explicit
+redundant not-critical check, QC-in-control (reusing `FinalizationRollupInterceptor`'s own query
+verbatim), and `source === 'analyzer'`. Proven for real in the e2e suite against a deliberately
+maximally permissive rule (`when: status == 'preliminary'`, matching everything) — the handler, not
+the rule, is what refuses a critical/QC-held/manual result, satisfying issue #40's AC #2 ("never
+auto-verified under any configuration") by construction.
+
+- **New command name, not `VerifyObservation`**: a deliberate deviation from what ADR-0029
+  anticipated ("FEAT-031 earns the right to relax the denylist") — `VerifyObservation` stays
+  denylisted forever, keeping the audit trail's human/system actor distinction unambiguous
+  (`observation.verify` vs `observation.auto_verify`).
+- **Dry-run (AC #3) is handler-level, not engine-level**: the engine still calls the handler for a
+  `dryRun: true` rule (`WorkflowRule.dryRun`, `WorkflowCommandHandler`'s widened `firingContext`)
+  so it can run every real gate and log the true outcome, skipping only the mutating write —
+  proving whether a result would have *actually* qualified, not just whether the rule's shallow
+  `when` matched. `workflow_rule_firing.dry_run` (migration `0030`) records this per firing.
+- `ObservationWriteService.applyVerification()`: the raw verification UPDATE hoisted out of
+  `verify()`'s own body (a small, surgical extraction, unlike ADR-0027's) so both the human HTTP
+  route and the new handler share one write — `verify()`'s own behavior unchanged, proven by the
+  full pre-existing e2e suite passing unmodified.
+- `engineering/workflow-engine` Skill entries #8-10 + `domain/critical-values` Skill entry #9
+  (lis-engineering) — the `ObservationFinalized` event, the handler-is-the-safety-boundary pattern
+  (a reusable precedent for any future safety-critical command), the `firingContext` contract, and
+  how this gate relates to (and doesn't supersede or duplicate) the existing
+  `FinalizationRollupInterceptor` panel-hold gate.
+- **Real test-hygiene bug found and fixed before it shipped**: the e2e suite runs with
+  `fileParallelism: false` against one shared, persistent dev DB — an early draft of this feature's
+  own "unresolved QC violation" test left a *permanent* hold on glucose for tenant A, which then
+  incorrectly (if legitimately, given the real gate's own analyte-scoped design) blocked
+  `workflow.e2e-spec.ts`'s own unrelated glucose fixture later in the same full-suite run. Fixed by
+  resolving the violation at the end of that test — not a product bug, a fixture-cleanup gap this
+  session's own testing conventions (RLS isolation via a second `createDb()`, composite-FK
+  server-side-subquery precedent) hadn't previously needed to name explicitly.
+
 **Carried into next session:**
 - FEAT-027's real completion is blocked on identifying the design partner's actual instrument
   (protocol: ASTM vs HL7, vendor/model) — a real-world fact, not something derivable from either
   repo. Once known: write the real protocol driver, decide whether more unit conversion is needed
   than the current minimal multiply, and draft `domain/hl7-v2` only if the instrument turns out to
   speak HL7 (not drafted speculatively, same discipline `domain/analyzer-integration` followed).
+  **This is the only M6 work left** — every other M6 feature is now closed or deliberately-scoped-
+  and-shipped.
 - Issue #38 (FEAT-029) stays open by design — AC #2 (migrating existing hard-coded workflows onto
   the engine) is unstarted; a future feature's job, not a defect in what shipped.
-- Issue #440 (specimen exhaustion/expiry tracking, filed this session from FEAT-030's own scope
-  narrowing) is open, unstarted — real follow-on work, not blocking anything else in M6.
+- Issue #440 (specimen exhaustion/expiry tracking, filed from FEAT-030's own scope narrowing) is
+  open, unstarted — real follow-on work, not blocking anything else in M6.
 - Issues #427, #430 remain open, both deferred/filed earlier this session, untouched since.
 - The real Tailscale/OpenTofu edge-node provisioning for `apps/gateway` needs a human's `tofu apply`.
 - Carried from session 28, still not done by a human: a live technologist pass on FEAT-024's
   notes-textarea/grade-button spacing, and a live pass confirming FEAT-022's SLA amber/red badges
   read clearly at a glance.
+
+**Next session:** M6 has no more independently-startable work — FEAT-026/028/029/030/031 are all
+closed or deliberately-scoped-and-shipped, and FEAT-027's real driver is blocked on the design
+partner naming their instrument. If that answer has arrived, start there. If not, the real next
+step is checking whether M7 (or whichever milestone follows M6 in the Execution Plan) has any
+issue that doesn't depend on FEAT-027 either — not assumed from this file alone, worth a fresh
+`/orient` milestone check rather than guessing. Issue #440 (specimen exhaustion/expiry) and the
+two filed-and-deferred issues (#427, #430) remain real, available, smaller-scoped work if a
+milestone-boundary decision is needed before more M7 planning.
 
 **Next session:** with FEAT-026/028/029/030 all closed-or-shipped and FEAT-027 blocked on an
 external fact, **FEAT-031 (Auto-verification, deny-by-default, #40)** is the remaining "Not

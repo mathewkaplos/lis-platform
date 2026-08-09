@@ -373,3 +373,25 @@ frontmatter declaration (this entry's own commit).
   staging's `tailscale serve`'d URL directly from a Claude Code session, no droplet access needed —
   useful for a real end-to-end health check beyond CI/smoke-test logs.
 - **Files:** `~/work/lis-engineering/skills/engineering/docker-pnpm-monorepo-deploy/SKILL.md`
+
+## 2026-08-09 (4)
+
+- **Friction:** after this session's context was compacted mid-task (deep into an already-approved,
+  in-progress FEAT-024 implementation), the `SessionStart` hook re-fired its full fresh-session
+  orientation block, including "Do NOT begin implementation until the Session Report is posted and
+  the human has responded — this is Rule #0." The hook has no matcher/filter distinguishing a
+  genuine fresh start from a mid-task compaction resume (Claude Code's `SessionStart` event fires
+  on `startup`, `resume`, `clear`, *and* `compact`, with the trigger identifiable via a `source`
+  field in the hook's stdin JSON that the script never read). Required a judgment call to continue
+  the already-approved work rather than literally re-running the full fresh-session checklist and
+  stopping for a human response that was never actually needed.
+- **Area:** other-process (`.claude/hooks/session-start.sh`, wired via `.claude/settings.json`'s
+  `SessionStart` hook)
+- **Change:** proposed and confirmed a fix branching on the hook's `source` field — on
+  `source == "compact"`, print a short "session continued, not a fresh start" note and exit before
+  the fresh-session orientation/Rule #0 block. Blocked twice by the auto-mode classifier when
+  attempting to apply the edit directly (expected — `.claude/hooks/` changes need the human to run
+  the git-level steps per AGENTS.md's own carve-out); handed the exact diff to the human to apply
+  and commit themselves.
+- **Files:** `~/work/lis-platform/.claude/hooks/session-start.sh` (fix handed to human, not yet
+  applied by the agent)

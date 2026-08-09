@@ -1,6 +1,6 @@
-# Status — 2026-08-09 (session 27)
+# Status — 2026-08-09 (session 28)
 
-Last commit on main: `09b621f` (`lis-platform`) / `efa98a5` (`lis-engineering`) — this breadcrumb
+Last commit on main: `c84568f` (`lis-platform`) / `3375211` (`lis-engineering`) — this breadcrumb
 refresh itself lands as a further `lis-platform` commit on top of that, so this line will already be
 one commit behind by construction (a breadcrumb commit can never state its own SHA) — check
 `git log origin/main -5` for the real current tip.
@@ -8,60 +8,83 @@ one commit behind by construction (a breadcrumb commit can never state its own S
 **Earlier sessions' breadcrumb entries are not carried in this file — see git history on this
 exact file (`git log -- docs/scope/current.md`) for full detail back through session 12.**
 
-## `/orient` picked issue #390 over kicking off any of M5's three unstarted features — small,
-self-contained, and now cheap because of TASK-400's already-shipped mechanism
+## TASK-397 merged clean, then exposed a genuine three-attempt production incident (#410) — resolved,
+but only once the human's own direct droplet query broke the guessing
 
-Session opened with `/orient`. M5's milestone signals agreed cleanly this time (breadcrumb, GitHub
-Milestones, and each of FEAT-022/#31, FEAT-024/#33, FEAT-025/#34 confirmed still "Not Started," zero
-comments, no drift) — unlike prior sessions, no stale-signal correction was needed. `engineering-radar` found no new load-bearing gap this time (tech-debt grep, SSH IP, doc-path
-drift all clean; GraphQL quota had briefly hit 0/5000 mid-orientation from other sessions' usage, but
-the hourly window reset before it blocked anything real).
+Session opened with `/orient`. Picked issue #397 (staging deploy's seed step silently skipped
+`haematology-catalog.sql` forever past the first deploy, because the old `seed_count` gate checked
+"does any seed data exist" rather than "does *this file's* data exist") — ADR-0022 drafted and
+accepted same session, Implementation Proposal approved, implemented, verified locally (fresh seed +
+re-seed idempotency check), merged as `lis-platform` PR #408.
 
-Rather than start any of M5's three remaining feature kickoffs (each still needs its own multi-step
-research → proposal → ADR cycle, no ready-to-`/develop` task for any of them), the session picked
-issue #390 ("No 'QC-held' indicator on the result-entry screen") — small, self-contained, and
-**already cheap**: TASK-400 (session 26) had made `FinalizationRollupInterceptor`'s QC-hold branch
-throw the same `panel_hold`/`reason: 'qc_violation'` signal as the critical-hold branch, but
-`apps/web` never consumed `reason` at all — a pure frontend follow-up, no backend change, no new ADR.
+**That merge triggered a real automatic staging deploy, which failed** — a pre-existing, previously
+dormant bug in `chemistry-catalog.sql`'s eGFR/LDL analyte insert (never having actually run against
+staging before, since the old gate had been silently skipping the whole file) hit a genuine
+`duplicate key value violates unique constraint "analyte_code_system_value_id_unique"`. Because the
+remote deploy script runs under `set -euo pipefail`, this aborted the whole script before
+`docker compose up -d api web` could run — a real outage, `api`/`web` stopped and not restarted.
+Filed as `lis-platform` issue #410.
 
-**TASK-390 (docs/plans/task-390-qc-held-indicator-result-entry.md, APPROVED same session) implemented
-and merged — `lis-platform` PR #405, closing #390.** `actions.ts`'s `PanelHoldProblem`/
-`ResultActionOutcome` now parse and thread `reason` through `finalizeResult()`; `results-grid.tsx`'s
-held caption branches on it — `qc_violation` gets a new "Saved — held on a QC violation. See QC
-violations →" caption with a working `next/link` to `/qc-violations` (confirmed reachable by a
-technologist-roled session — that route has no capability gate, only `resolve_qc` itself does);
-`unacknowledged_critical` is byte-for-byte unchanged from TASK-400's own caption (its own resolution
-affordance, Verify, is already on the same grid — no cross-page pointer needed there).
+**First fix attempt (PR #411) was wrong.** Hypothesized version-drift in `code_system_value` (no
+`version` filter on several JOINs), fixed and verified thoroughly *locally* — including deliberately
+reproducing a plausible failure shape and confirming the fix held — merged with real confidence. The
+resulting second automatic deploy **failed identically**. The true cause was a different table
+entirely.
 
-Verified via a live headless-browser pass (real dev server, real Postgres/Keycloak, technologist-
-roled session): a fresh synthetic-analyte QC violation held a panel, the new caption + link appeared
-and correctly navigated to `/qc-violations` showing the real violation; a Sodium critical-hold panel
-confirmed the unacknowledged-critical caption is unchanged. Both in light and dark mode, zero console
-errors. `pnpm typecheck`/`lint`/`test` (web) all pass; no backend files touched (`qc-gate.e2e-spec.ts`
-already asserted `reason: 'qc_violation'` at the API level, from TASK-400).
+**Second fix attempt (PR #412) was right, because it started from a confirmed fact, not a guess.**
+The human ran a direct read-only query against the real staging droplet
+(`SELECT id, code_system_value_id FROM unit WHERE code_system_value_id = (...)`) and found two `unit`
+rows genuinely referencing the same `code_system_value_id` for `mg/dL` — `unit.code_system_value_id`
+has no unique constraint. The eGFR/LDL insert's JOIN through `unit` fanned out against those two rows,
+producing two source rows for the same analyte within one `INSERT`'s own result set. Fixed with
+`SELECT DISTINCT ON (csv.id)` on all three analyte-insert statements across both seed files (only the
+eGFR/LDL one was currently exercised; the other two fixed defensively for the same latent risk).
+Reproduced the *exact confirmed* failure locally before merging this time — injected a second `unit`
+row matching the real query result, got the identical error against the unfixed code, then confirmed
+the fix resolved it against that same corrupted state. The resulting third automatic deploy
+**succeeded**, confirmed via direct log inspection (`INSERT 0 5` for the previously-failing statement,
+zero errors, `api`/`web` recreated and started, smoke test passed) — not just a green checkmark.
 
-## `/close`'s own Engineering Flow Retrospective found one real process gap, fixed the same session
+**Real friction along the way, not just the SQL bug itself:** interactively debugging via
+`docker compose exec -T postgres psql ...` (no `-c`) looked completely hung twice during the incident
+— `-T` suppresses the TTY `psql`'s interactive prompt needs. Root-caused and documented same session
+(`docker-pnpm-monorepo-deploy` Skill entry #26, via a dedicated `/retro` invocation) — sibling gotcha
+to that Skill's existing entry #10 (the same flag's *stdin-forwarding* effect inside CI heredocs, a
+distinct consequence of the same root cause).
 
-**A `web-verify` script that pre-seeds a "held"/transient UI outcome via direct API calls, then just
-loads the page, will never see it.** TASK-390's held caption is a pure `useState` set only inside
-`handleKeyDown`'s `finalizeResult()` callback — a fresh Server Component render reads the row's real
-persisted `observationStatus` from the DB, which has no memory of *why* a panel is held. A first
-verification attempt pre-seeded the QC violation *and* called `finalize()` directly via HTTP, then
-navigated fresh — the caption never appeared, not because the fix was broken, but because nothing
-ever exercised the client-side code path that sets it. Fixed by seeding only the precondition (a
-fresh not-yet-finalized order) and driving the real interaction (`input.fill()`/`press('Enter')`)
-through Playwright itself. Documented as a new gotcha in `web-verify`'s own SKILL.md (this generalizes
-to any client-only, non-persisted UI state — a toast, an inline "just saved" banner, any
-optimistic-update flash) — `lis-platform` PR #406.
+## Issue #381 reconciled — already resolved by TASK-070, just never closed
 
-**Manual Verification Checklist:** TASK-390's QC-held caption (the new "See QC violations →" link)
-was verified this session via a scripted headless-browser pass in both light and dark mode
-(screenshots taken, zero console errors) — a human's own independent click-through of a real QC-held
-panel on `/orders/:id/results` is still recommended, not yet confirmed done as of this breadcrumb.
+`/orient` found `/qc-violations` (TASK-070, FEAT-020) already links out to the Levey-Jennings chart
+(TASK-069) that #381 complained was only reachable by a hand-typed URL — confirmed by reading that
+page's own header comment ("folding in issue #381"). Commented and closed with the exact evidence.
 
-**Next session:** M5's three remaining open features (FEAT-022 Worklist v2, FEAT-024 Peripheral film
-structured reporting, FEAT-025 Delta checks) each still need their own kickoff (research → proposal →
-ADR) before implementation — none has a ready-to-`/develop` task yet. Issue #381 (no QC/control-lot
-list screen) may already be effectively resolved by TASK-070's `/qc-violations` screen (its own filed
-text says as much, "folding in #381") but is still open on GitHub — worth reconciling (close or
-re-scope) at the next session's own `/orient` rather than assuming either way.
+## `/close`'s own Engineering Flow Retrospective found three real process gaps this session — one
+fixed via `/retro` mid-incident, three more resolved at close via explicit human approval
+
+- **`AGENTS.md`'s own confirm-merge instruction contradicted itself** (line 67 said `git log
+  origin/main`, a note nine lines below already explained that gets denied by the auto-mode
+  classifier and said to prefer `gh pr view` instead) — found and fixed via `/retro`, `lis-platform`
+  PR #409.
+- **Finding A** (GraphQL quota exhaustion hit `gh pr merge`/`gh issue create`/`gh pr list`
+  independently this session, beyond what AGENTS.md named) and **Finding C** (a bug's root-cause
+  hypothesis about *live-environment drift* needs a direct confirming query before the fix is
+  written, not after a first guess fails — the exact lesson PR #411's failure taught the hard way) —
+  both approved and landed in `AGENTS.md`, `lis-platform` PR #414 (CI green as of this breadcrumb,
+  **still awaiting the human's own merge** — `AGENTS.md` changes need the human to run the git-level
+  steps directly, per this file's own standing rule).
+- **Finding B** (the deploy script's seed step was fatal under `set -e`, while the Keycloak block a
+  few lines below it was deliberately made non-fatal after an almost identical 2026-08-03 incident —
+  this session's own #410 outage was the exact failure class that fix was written to prevent, just
+  never applied to the seed step) — approved and landed, `lis-platform` PR #415, confirmed via a real
+  subsequent deploy that the happy path is unaffected (zero output/behavior change on success).
+
+**Manual Verification Checklist:** this session's own confirmation that staging is healthy came from
+CI log inspection (seed step SQL output, container start messages, smoke-test-inclusive job success),
+not a human loading the real staging URL in a browser — still worth an independent look before fully
+trusting it, same discipline `web-verify` already applies elsewhere.
+
+**Next session:** PR #414 needs a human merge (small, docs-only, CI already green — the only reason
+it's not already landed is `AGENTS.md`'s own sensitive-file carve-out). M5's three remaining open
+features (FEAT-022 Worklist v2, FEAT-024 Peripheral film structured reporting, FEAT-025 Delta checks)
+each still need their own kickoff (research → proposal → ADR) before implementation — none has a
+ready-to-`/develop` task yet, unchanged from session 27's own note.

@@ -58,4 +58,23 @@ describe('LocalQueueService', () => {
     const items = await restarted.listPending<{ n: number }>();
     expect(items.map((i) => i.payload.n)).toEqual([1, 2]);
   });
+
+  it('preserves FIFO order for calls landing in the same millisecond (issue #433 regression)', async () => {
+    // Date.now() has only millisecond resolution -- a fixed clock
+    // reproduces the same-millisecond collision deterministically, rather
+    // than relying on the test runner happening to be fast enough (which
+    // is exactly how this bug went undetected: it only failed
+    // intermittently, on a real CI run, not on every run).
+    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+    try {
+      for (let n = 1; n <= 5; n++) {
+        await queue.enqueue({ n });
+      }
+    } finally {
+      vi.restoreAllMocks();
+    }
+
+    const items = await queue.listPending<{ n: number }>();
+    expect(items.map((i) => i.payload.n)).toEqual([1, 2, 3, 4, 5]);
+  });
 });

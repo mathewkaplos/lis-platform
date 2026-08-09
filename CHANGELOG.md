@@ -340,3 +340,21 @@ frontmatter declaration (this entry's own commit).
   `gh pr view <n> --json state,mergedAt,mergeCommit`, with a forward pointer to the existing
   explanation instead of a second copy of it.
 - **Files:** `AGENTS.md`
+
+## 2026-08-09 (2)
+
+- **Friction:** `docker compose exec -T postgres psql -U postgres -d lis`, run interactively
+  (no `-c "..."`) directly at a real terminal on the staging droplet, produced zero visible
+  output and looked exactly like a hung command — hit twice during the live #410 outage
+  investigation while asking the human to run a diagnostic query directly on staging, costing
+  real back-and-forth mid-incident before being correctly diagnosed as a missing-TTY issue
+  (`-T` suppresses the pseudo-TTY `psql`'s interactive prompt needs), not an actual hang.
+  `docker-pnpm-monorepo-deploy` Skill entry #10 already documents a *different* effect of the
+  same `-T` flag (stdin forwarding inside a CI heredoc script) but not this one.
+- **Area:** existing-skill:engineering/docker-pnpm-monorepo-deploy
+- **Change:** added entry #26 to the `docker-pnpm-monorepo-deploy` Skill: `-T` + bare
+  interactive `psql` looks hung; fix is `-c "..."` for one-shot queries (matching every
+  deploy-script invocation of this pattern already) or dropping `-T` entirely for a genuine
+  interactive session; suspect a missing TTY before suspecting the database, confirmed via a
+  TTY-independent `pg_isready` check first.
+- **Files:** `~/work/lis-engineering/skills/engineering/docker-pnpm-monorepo-deploy/SKILL.md`

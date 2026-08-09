@@ -125,6 +125,10 @@ jobs:
           docker logs keycloak
           exit 1
       - run: pnpm --filter api test:e2e
+      # FEAT-026: the gateway's own e2e spec needs the same live Keycloak
+      # (client-credentials grant, ADR-0026) as apps/api's e2e specs above,
+      # but no Postgres -- it doesn't touch the database.
+      - run: pnpm --filter gateway test:e2e
       # retro (2026-08-07): enforce that apps/api/openapi.json and
       # packages/sdk/src/schema.ts never silently drift from the code
       # (ADR-0013 §1) -- previously relied entirely on whoever happened to

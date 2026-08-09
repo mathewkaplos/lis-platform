@@ -20,6 +20,10 @@
       {
         "name": "qa",
         "description": "Quality/lab-manager role: may resolve QC rule violations, may not enter or verify patient results (TASK-070)"
+      },
+      {
+        "name": "gateway-ingest",
+        "description": "Machine role for the edge integration gateway's service account (FEAT-026, ADR-0026) -- scoped to the internal ingestion endpoint only, never granted to a human user"
       }
     ]
   },
@@ -146,6 +150,25 @@
         "basic",
         "roles"
       ]
+    },
+    {
+      "clientId": "lis-gateway",
+      "name": "LIS Edge Integration Gateway",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "dev-only-lis-gateway-secret",
+      "defaultClientScopes": [
+        "tenant",
+        "openid",
+        "basic",
+        "roles"
+      ]
     }
   ],
   "users": [
@@ -261,6 +284,15 @@
           "credentialData": "{\"hashIterations\": 210000, \"algorithm\": \"pbkdf2-sha512\", \"additionalParameters\": {}}"
         }
       ]
+    },
+    {
+      "username": "service-account-lis-gateway",
+      "enabled": true,
+      "serviceAccountClientId": "lis-gateway",
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+      },
+      "realmRoles": ["gateway-ingest"]
     }
   ]
 }

@@ -1,9 +1,11 @@
-# Status — 2026-08-09 (session 29)
+# Status — 2026-08-09 (session 29, continued)
 
-Last commit on main: `0f27c08` (`lis-platform`) / `f7cc408` (`lis-engineering`) — this breadcrumb
+Last commit on main: `fafa5d4` (`lis-platform`) / `f7cc408` (`lis-engineering`) — this breadcrumb
 refresh itself lands as a further `lis-platform` commit on top of that, so this line will already be
 one commit behind by construction (a breadcrumb commit can never state its own SHA) — check
-`git log origin/main -5` for the real current tip.
+`git log origin/main -5` for the real current tip. Bumped a second time same session: after FEAT-026
+merged, issue #260 (flagged as a FEAT-027 prerequisite) was picked up and closed too — folded in
+here rather than left stale.
 
 **Earlier sessions' breadcrumb entries are not carried in this file — see git history on this
 exact file (`git log -- docs/scope/current.md`) for full detail back through session 12.**
@@ -62,20 +64,36 @@ hard-to-reverse `tofu apply` — outside this session's autonomy boundary (same 
 `engineering-radar` Skill's own SSH-IP auto-remediation section draws). The Dockerfile is the
 artifact a human deploys once that infra exists.
 
+## Issue #260 closed (the FEAT-027 prerequisite flagged above)
+
+Picked up immediately after FEAT-026 merged, same session. `observation.ordered_test_id`/
+`specimen_id` now carry real Postgres FK constraints (migration `0025`), backfilling ADR-0005's own
+already-decided acceptance criteria — no new judgment call, no ADR needed. Per
+`database-design` Skill entry #4's explicit rule, grepped every `.insert(observation)` call site
+across the repo before considering it done: all 12 either insert QC-shaped rows (these columns
+never set) or already pass a real row's id — nothing needed to change in any caller, unlike
+`patient_id`'s historical sentinel-UUID breakage. New e2e tests prove Postgres actually rejects a
+bad id (23503), not just that the migration file contains the statement. Merged `lis-platform` PR
+#431, closing #260.
+
+**Found and filed along the way, not fixed (out of scope, pre-existing, unrelated):** issue #430 —
+`rls-isolation-check.ts` fails deterministically on a clean `db-reset` (`report: tenant A has 0
+rows`), reproduces on `main` from *before* this session's changes too, confirmed by testing the
+unmodified code against an identical fresh DB. The script isn't CI-wired, so nothing currently gates
+on it.
+
 **Carried into next session:**
 - Draft the `domain/analyzer-integration` Skill from KB-29, now that the gateway skeleton's real
   shape (ingest/queue/forward split) is proven — per the resolved Q4 above, this was deliberately
   deferred to *after* FEAT-026 landed, not skipped.
-- Issue #260 (`observation.ordered_test_id`/`specimen_id` has no DB-enforced FK) should be treated
-  as a prerequisite when FEAT-027 (Analyzer #1 driver) is kicked off, not independently scheduled —
-  FEAT-027 is the feature that actually starts writing Observations from analyzer data.
 - Issue #427 (missing M1-M5 milestone retrospectives) remains open, deferred, not yet actioned.
+- Issue #430 (`rls-isolation-check.ts` `report` fixture gap) remains open, filed this session.
 - The real Tailscale/OpenTofu edge-node provisioning for `apps/gateway` (see above) needs a human's
   `tofu apply` before any live analyzer traffic can actually reach it.
 - Carried from session 28, still not done by a human: a live technologist pass on FEAT-024's
   notes-textarea/grade-button spacing (reads slightly tight in agent screenshots), and a live pass
   confirming FEAT-022's SLA amber/red badges read clearly at a glance (not just in a screenshot).
 
-**Next after that:** FEAT-027 (Analyzer #1 driver + idempotent ingestion) is next in M6's dependency
-order — needs its own kickoff (research → `/plan` proposal → ADR if warranted), same as FEAT-026
-this session, including the #260 prerequisite noted above.
+**Next:** FEAT-027 (Analyzer #1 driver + idempotent ingestion) is next in M6's dependency order —
+needs its own kickoff (research → `/plan` proposal → ADR if warranted), same as FEAT-026 this
+session. Its own prerequisite (#260) is now clear.

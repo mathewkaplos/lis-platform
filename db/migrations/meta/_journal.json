@@ -162,6 +162,13 @@
       "when": 1786198380829,
       "tag": "0022_qc_rule_violation_resolve",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1786269887297,
+      "tag": "0023_delta_check_rule",
+      "breakpoints": true
     }
   ]
 }

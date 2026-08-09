@@ -1,11 +1,13 @@
 import * as React from "react";
-import { AlertTriangle, ArrowDown, ArrowUp } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, TrendingUp } from "lucide-react";
 
 import { cn } from "../lib/cn";
 
 // Clinical result flags. Per Stitch Prompt Library §0: never encode result status with color
 // alone -- always paired with a letter flag and an icon.
-export type ResultFlag = "N" | "H" | "L" | "HH" | "LL" | "A";
+// `D` (delta -- FEAT-025, ADR-0023): an implausible jump from the patient's prior verified
+// result, independent of severity -- can appear alongside H/HH/L/LL, not instead of them.
+export type ResultFlag = "N" | "H" | "L" | "HH" | "LL" | "A" | "D";
 
 const FLAG_META: Record<
   ResultFlag,
@@ -44,6 +46,11 @@ const FLAG_META: Record<
     label: "Abnormal",
     icon: AlertTriangle,
     className: "border-warning/30 bg-warning/10 text-warning",
+  },
+  D: {
+    label: "Delta",
+    icon: TrendingUp,
+    className: "border-info/30 bg-info/10 text-info",
   },
 };
 

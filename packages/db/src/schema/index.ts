@@ -1,6 +1,7 @@
 export * from "./catalog";
 export * from "./test-catalog";
 export * from "./reference-range";
+export * from "./delta-check-rule";
 export * from "./control-lot";
 export * from "./qc-rule-violation";
 export * from "./patient";

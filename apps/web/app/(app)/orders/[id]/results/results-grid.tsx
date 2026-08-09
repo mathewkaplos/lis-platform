@@ -81,7 +81,9 @@ function rowKey(row: Pick<ResultRow, 'orderedTestId' | 'analyteId'>): string {
 }
 
 function isFlag(value: string): value is ResultFlag {
-  return value === 'N' || value === 'H' || value === 'L' || value === 'HH' || value === 'LL' || value === 'A';
+  return (
+    value === 'N' || value === 'H' || value === 'L' || value === 'HH' || value === 'LL' || value === 'A' || value === 'D'
+  );
 }
 
 function referenceRangeText(low: number | null, high: number | null): string {
@@ -329,8 +331,11 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
           id: 'prior',
           header: 'Prior result',
           // TASK-057 (FEAT-015 revision §1 finding #3/§10 Q1): the patient's
-          // own most recent prior result for this analyte -- raw value only,
-          // no computed delta/percent-change (unconditionally out of scope).
+          // own most recent prior result for this analyte -- raw value only.
+          // FEAT-025 (ADR-0023) now computes a real delta check server-side,
+          // but surfaces it as a `D` flag in the adjacent Flag column, not as
+          // percent-change text in this column -- this column's own scope
+          // stays a plain prior-value display (proposal §10 scope decision).
           cell: (row) => {
             const [mostRecent] = row.priorResults;
             if (!mostRecent) {
@@ -418,8 +423,22 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
           header: 'Flag',
           cell: (row) => {
             const state = rowStates[rowKey(row)];
-            const [flag] = state.flags;
-            return flag && isFlag(flag) ? <StatusPill flag={flag} /> : null;
+            // FEAT-025 (ADR-0023): a result can carry more than one flag at
+            // once (e.g. `HH` + `D` -- a critical value that's also an
+            // implausible jump from the prior result, KB-14's own worked
+            // example). Render every recognized flag, not just the first --
+            // a single-pill `[flag] = state.flags` read would silently drop
+            // any flag after the first, same class of bug as an unrecognized
+            // flag being dropped by `isFlag` itself.
+            const flags = state.flags.filter(isFlag);
+            if (flags.length === 0) return null;
+            return (
+              <div className="flex flex-wrap items-center gap-1">
+                {flags.map((flag) => (
+                  <StatusPill key={flag} flag={flag} />
+                ))}
+              </div>
+            );
           },
         },
         {

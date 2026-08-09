@@ -12,4 +12,5 @@ export {
   type ObservationRangeParams,
   type ObservationRangeResult,
 } from "./reference-range";
-export { computeFlags } from "./flagging";
+export { computeFlags, mergeDeltaFlag } from "./flagging";
+export { resolveDeltaCheck, type DeltaCheckParams, type DeltaCheckResult } from "./delta-check";

@@ -29,10 +29,12 @@ import {
   codeSystemValue,
   computeFlags,
   criticalNotification,
+  mergeDeltaFlag,
   observation,
   order,
   orderedTest,
   patient,
+  resolveDeltaCheck,
   resolveObservationRange,
   specimenFulfillment,
   testAnalyte,
@@ -256,11 +258,17 @@ export class ObservationController {
    * write, draft or final (proposal §5) -- live flags, not deferred. Only
    * `'quantity'` gets a resolved range; `'coded'`/`'text'` have no
    * reference-range concept (KB-15).
+   *
+   * FEAT-025 (ADR-0023): `resolveDeltaCheck` runs alongside the range/flag
+   * resolution above, same "every write" cadence -- `previousObservationId`
+   * is returned here so callers can set it on the same insert/update that
+   * already carries `flags`, rather than a second write.
    */
   private async resolveRangeAndFlags(
     tx: Tx,
     body: ResultEntryInput,
     analyteRow: typeof analyte.$inferSelect,
+    patientId: string,
     patientSex: 'M' | 'F' | 'U',
     patientBirthDate: Date | null,
     at: Date,
@@ -274,6 +282,7 @@ export class ObservationController {
         refHigh: null,
         refCondition: null,
         refSource: null,
+        previousObservationId: null as string | null,
       };
     }
 
@@ -297,7 +306,18 @@ export class ObservationController {
       patientBirthDate,
       at,
     });
-    const flags = computeFlags(body.valueNum, range.normal, range.critical);
+    const severityFlags = computeFlags(
+      body.valueNum,
+      range.normal,
+      range.critical,
+    );
+
+    const deltaCheck = await resolveDeltaCheck(tx, {
+      patientId,
+      analyteId: analyteRow.id,
+      valueNum: body.valueNum,
+    });
+    const flags = mergeDeltaFlag(severityFlags, deltaCheck.flagged);
 
     return {
       flags,
@@ -307,6 +327,7 @@ export class ObservationController {
       refHigh: range.normal.matched ? range.normal.high : null,
       refCondition: range.normal.matched ? range.normal.condition : null,
       refSource: range.normal.matched ? range.normal.source : null,
+      previousObservationId: deltaCheck.previousObservationId,
     };
   }
 
@@ -328,6 +349,13 @@ export class ObservationController {
       refHigh: string | null;
       refCondition: string | null;
       refSource: string | null;
+      // FEAT-025 (ADR-0023): the row this write's delta check compared
+      // against, or null if none was eligible. Part of sharedFields (below),
+      // so it's recomputed on every write, draft or final, same cadence as
+      // `flags` -- previousObservationCreatedAt is filled in automatically by
+      // the fn_observation_link_created_at trigger (observation.ts's own
+      // comment), never set directly here.
+      previousObservationId: string | null;
       /** TASK-053 (FEAT-014 revision §2): was hardcoded 'manual' on insert;
        * the calculated-dependent write (maybeComputeDependents) passes
        * 'calculated' instead. Never touched on an UPDATE (sharedFields
@@ -388,6 +416,7 @@ export class ObservationController {
       refCondition: params.refCondition,
       refSource: params.refSource,
       flags: params.flags,
+      previousObservationId: params.previousObservationId,
       status: params.status,
       operatorUserId: params.operatorUserId,
       producedAt: new Date(),
@@ -577,6 +606,7 @@ export class ObservationController {
         tx,
         syntheticBody,
         outputAnalyteRow,
+        ctx.patientId,
         ctx.patientSex,
         ctx.patientBirthDate,
         at,
@@ -655,6 +685,7 @@ export class ObservationController {
       tx,
       body,
       ctx.analyteRow,
+      ctx.patientId,
       ctx.patientSex,
       ctx.patientBirthDate,
       at,
@@ -736,6 +767,7 @@ export class ObservationController {
       tx,
       body,
       ctx.analyteRow,
+      ctx.patientId,
       ctx.patientSex,
       ctx.patientBirthDate,
       at,

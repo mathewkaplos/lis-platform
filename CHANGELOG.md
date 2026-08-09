@@ -358,3 +358,18 @@ frontmatter declaration (this entry's own commit).
   interactive session; suspect a missing TTY before suspecting the database, confirmed via a
   TTY-independent `pg_isready` check first.
 - **Files:** `~/work/lis-engineering/skills/engineering/docker-pnpm-monorepo-deploy/SKILL.md`
+
+## 2026-08-09 (3)
+
+- **Friction (positive finding, not a complaint):** after closing the #410 incident, tried to give
+  the human's requested "check staging" a real answer beyond CI logs, despite the session having no
+  SSH/Tailscale access to the droplet (confirmed earlier the same session). Assumed `WebFetch`
+  couldn't reach `https://lis-staging.taila0fbf9.ts.net` either, since it's a Tailscale MagicDNS
+  hostname normally only routable to tailnet members — tried anyway, and it worked: followed a real
+  multi-hop redirect (`/` → `/api/auth/login` → Keycloak's own OIDC auth endpoint) to a genuine
+  rendered login form. A capability worth remembering, not rediscovering per session.
+- **Area:** existing-skill:engineering/docker-pnpm-monorepo-deploy
+- **Change:** added entry #27 to the `docker-pnpm-monorepo-deploy` Skill: `WebFetch` can reach
+  staging's `tailscale serve`'d URL directly from a Claude Code session, no droplet access needed —
+  useful for a real end-to-end health check beyond CI/smoke-test logs.
+- **Files:** `~/work/lis-engineering/skills/engineering/docker-pnpm-monorepo-deploy/SKILL.md`

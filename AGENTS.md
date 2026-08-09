@@ -56,6 +56,19 @@ packages/ui (design system) · packages/sdk (generated API client)
   (docs/plans/<id>-<slug>.md) and wait for explicit approval (Status: APPROVED).
 - If a load-bearing decision is missing (data model, provider, clinical rule),
   STOP and ask. Do not invent it.
+- **The same discipline applies to state, not just design.** If a bug's own
+  root-cause hypothesis depends on unconfirmed drift in a live environment's
+  data (staging's actual DB contents, a droplet's actual file state) — as
+  opposed to a code-only bug fully reproducible from source — get a direct
+  read-only query/log/state-dump from that live environment *before* writing
+  the fix, not after a first guess fails. Confirmed costly 2026-08-09
+  (session 28, issue #410): a first fix was verified thoroughly by
+  reproducing a *plausible* drift shape locally and confirming it held —
+  merged with real confidence, then failed identically against real
+  staging, because the actual drift was in a different table than the one
+  hypothesized. No amount of local reproduction of a guessed shape
+  substitutes for reading the actual one when the bug is specifically about
+  that state having silently diverged.
 - Follow existing module patterns; mirror the most similar existing module.
 - Every schema change is a migration in db/migrations. Never edit a past migration.
 - Claude Code may run `gh pr merge <n> --squash` autonomously once CI is green,
@@ -242,7 +255,17 @@ packages/ui (design system) · packages/sdk (generated API client)
   exhausted — `gh api repos/<owner>/<repo>/pulls -X POST -f title=... -f
   head=... -f base=... -f body=...` for `pr create`,
   `gh api repos/<owner>/<repo>/pulls/<n>/merge -X PUT -f
-  merge_method=squash` for `pr merge`.
+  merge_method=squash` for `pr merge`. Confirmed again 2026-08-09 (session
+  28, a live staging-incident response): quota exhaustion also took out
+  `gh issue create` and `gh pr list` independently, at different points in
+  the same session — same fallback pattern applies: `gh api
+  repos/<owner>/<repo>/issues -f title=... -F body=@<file>` for `issue
+  create` (use `-F body=@file` rather than `-f body=...` for any body with
+  real newlines), `gh api repos/<owner>/<repo>/pulls?state=open` for `pr
+  list`. Treat this as general to `gh`'s GraphQL-backed surface, not a
+  fixed list of four commands — check the quota proactively
+  (`engineering-radar` already does this every `/orient`) rather than
+  waiting to discover the next affected command by a failed call.
 - If a `gh issue`/`gh pr` write command (comment, close, edit) is denied by
   the permission classifier, the equivalent `mcp__github__*` tool
   (`add_issue_comment`, `issue_write`, `pull_request_review_write`, etc.)

@@ -102,8 +102,8 @@ FROM (VALUES
   ('706-2',   'Basophils %',             '%'),
   ('704-7',   'Basophils Absolute',      '10*3/uL')
 ) AS a(loinc_code, display, ucum_code)
-JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.code = a.loinc_code
-JOIN code_system_value ucsv ON ucsv.system = 'UCUM' AND ucsv.code = a.ucum_code
+JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.version = '2.78' AND csv.code = a.loinc_code
+JOIN code_system_value ucsv ON ucsv.system = 'UCUM' AND ucsv.version = '2.2' AND ucsv.code = a.ucum_code
 JOIN unit u ON u.code_system_value_id = ucsv.id
 WHERE NOT EXISTS (SELECT 1 FROM analyte existing WHERE existing.code_system_value_id = csv.id);
 
@@ -122,7 +122,7 @@ FROM (VALUES
   ('770-8'), ('751-8'), ('736-9'), ('731-0'), ('5905-5'), ('742-7'),
   ('713-8'), ('711-2'), ('706-2'), ('704-7')
 ) AS m(loinc_code)
-JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.code = m.loinc_code
+JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.version = '2.78' AND csv.code = m.loinc_code
 JOIN analyte a ON a.code_system_value_id = csv.id
 JOIN test_definition td ON td.tenant_id = '00000000-0000-0000-0000-000000000001' AND td.code = 'CBC'
 ON CONFLICT (test_definition_id, analyte_id) DO NOTHING;

@@ -75,8 +75,8 @@ FROM (VALUES
   ('1920-8',  'AST (SGOT)',              'U/L'),
   ('1742-6',  'ALT (SGPT)',              'U/L')
 ) AS a(loinc_code, display, ucum_code)
-JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.code = a.loinc_code
-JOIN code_system_value ucsv ON ucsv.system = 'UCUM' AND ucsv.code = a.ucum_code
+JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.version = '2.78' AND csv.code = a.loinc_code
+JOIN code_system_value ucsv ON ucsv.system = 'UCUM' AND ucsv.version = '2.2' AND ucsv.code = a.ucum_code
 JOIN unit u ON u.code_system_value_id = ucsv.id
 WHERE NOT EXISTS (SELECT 1 FROM analyte existing WHERE existing.code_system_value_id = csv.id);
 
@@ -109,7 +109,7 @@ FROM (VALUES
   ('AST',   '1920-8'), ('ALT', '1742-6')
 ) AS m(test_code, loinc_code)
 JOIN test_definition td ON td.tenant_id = '00000000-0000-0000-0000-000000000001' AND td.code = m.test_code
-JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.code = m.loinc_code
+JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.version = '2.78' AND csv.code = m.loinc_code
 JOIN analyte a ON a.code_system_value_id = csv.id
 ON CONFLICT (test_definition_id, analyte_id) DO NOTHING;
 
@@ -220,8 +220,8 @@ FROM (VALUES
   ('2085-9',  'HDL Cholesterol',         'mg/dL'),
   ('2571-8',  'Triglycerides',           'mg/dL')
 ) AS a(loinc_code, display, ucum_code)
-JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.code = a.loinc_code
-JOIN code_system_value ucsv ON ucsv.system = 'UCUM' AND ucsv.code = a.ucum_code
+JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.version = '2.78' AND csv.code = a.loinc_code
+JOIN code_system_value ucsv ON ucsv.system = 'UCUM' AND ucsv.version = '2.2' AND ucsv.code = a.ucum_code
 JOIN unit u ON u.code_system_value_id = ucsv.id
 WHERE NOT EXISTS (SELECT 1 FROM analyte existing WHERE existing.code_system_value_id = csv.id);
 
@@ -231,7 +231,7 @@ INSERT INTO test_analyte (tenant_id, test_definition_id, analyte_id)
 SELECT '00000000-0000-0000-0000-000000000001', td.id, a.id
 FROM test_definition td, code_system_value csv, analyte a
 WHERE td.tenant_id = '00000000-0000-0000-0000-000000000001' AND td.code = 'CREAT'
-  AND csv.system = 'LOINC' AND csv.code = '98979-8'
+  AND csv.system = 'LOINC' AND csv.version = '2.78' AND csv.code = '98979-8'
   AND a.code_system_value_id = csv.id
 ON CONFLICT (test_definition_id, analyte_id) DO NOTHING;
 
@@ -244,7 +244,7 @@ ON CONFLICT (tenant_id, code) DO NOTHING;
 INSERT INTO test_analyte (tenant_id, test_definition_id, analyte_id)
 SELECT '00000000-0000-0000-0000-000000000001', td.id, a.id
 FROM (VALUES ('13457-7'), ('2093-3'), ('2085-9'), ('2571-8')) AS m(loinc_code)
-JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.code = m.loinc_code
+JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.version = '2.78' AND csv.code = m.loinc_code
 JOIN analyte a ON a.code_system_value_id = csv.id
 JOIN test_definition td ON td.tenant_id = '00000000-0000-0000-0000-000000000001' AND td.code = 'LIPID'
 ON CONFLICT (test_definition_id, analyte_id) DO NOTHING;

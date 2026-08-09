@@ -312,10 +312,26 @@ jobs:
           # already-seeded file previously hit a duplicate-key error (run
           # 30637495583) before these per-file guards existed; do not remove
           # a file's own guards without re-adding an equivalent one.
-          docker compose exec -T postgres psql -U postgres -d lis \
-            -v ON_ERROR_STOP=1 -f - < seed/chemistry-catalog.sql
-          docker compose exec -T postgres psql -U postgres -d lis \
-            -v ON_ERROR_STOP=1 -f - < seed/haematology-catalog.sql
+          #
+          # Non-fatal by design (close report Finding B, session 28,
+          # 2026-08-09): this step used to be a bare command under this
+          # script's own `set -e`, which -- combined with api/web already
+          # being stopped above -- meant a single seed-data bug took the
+          # *entire* site down (issue #410, two real outages the same day)
+          # rather than just leaving catalog data incomplete for that one
+          # deploy. Same category of failure the Keycloak block below this
+          # one was already fixed for on 2026-08-03, for the identical
+          # reason -- this step just never got the same treatment until now.
+          # `if ! <cmd>; then ...; fi` -- not a bare command -- is what
+          # survives under `set -e` here, same idiom the Keycloak block uses.
+          if ! docker compose exec -T postgres psql -U postgres -d lis \
+              -v ON_ERROR_STOP=1 -f - < seed/chemistry-catalog.sql; then
+            echo "WARNING: chemistry-catalog.sql seed failed -- catalog data may be incomplete this deploy, api/web will still restart" >&2
+          fi
+          if ! docker compose exec -T postgres psql -U postgres -d lis \
+              -v ON_ERROR_STOP=1 -f - < seed/haematology-catalog.sql; then
+            echo "WARNING: haematology-catalog.sql seed failed -- catalog data may be incomplete this deploy, api/web will still restart" >&2
+          fi
 
           docker compose up -d valkey keycloak < /dev/null
 

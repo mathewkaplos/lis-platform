@@ -77,9 +77,12 @@ WHERE csv.system = 'UCUM' AND csv.code IN ('10*6/uL', '10*3/uL', '%', 'fL', 'pg'
 
 -- 3. Analytes: one per LOINC code, with its default unit. 'g/dL'-unit
 -- analytes (Hemoglobin, MCHC) join directly to chemistry-catalog.sql's
--- already-seeded unit row instead of a freshly inserted one.
+-- already-seeded unit row instead of a freshly inserted one. DISTINCT ON
+-- (csv.id), tie-broken by u.id -- confirmed live (issue #410) that
+-- unit.code_system_value_id can hold more than one row (no unique
+-- constraint), which fans out this JOIN otherwise.
 INSERT INTO analyte (code_system_value_id, display, data_type, default_unit_id)
-SELECT csv.id, a.display, 'quantity', u.id
+SELECT DISTINCT ON (csv.id) csv.id, a.display, 'quantity', u.id
 FROM (VALUES
   ('718-7',   'Hemoglobin',              'g/dL'),
   ('789-8',   'RBC Count',               '10*6/uL'),
@@ -105,7 +108,8 @@ FROM (VALUES
 JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.version = '2.78' AND csv.code = a.loinc_code
 JOIN code_system_value ucsv ON ucsv.system = 'UCUM' AND ucsv.version = '2.2' AND ucsv.code = a.ucum_code
 JOIN unit u ON u.code_system_value_id = ucsv.id
-WHERE NOT EXISTS (SELECT 1 FROM analyte existing WHERE existing.code_system_value_id = csv.id);
+WHERE NOT EXISTS (SELECT 1 FROM analyte existing WHERE existing.code_system_value_id = csv.id)
+ORDER BY csv.id, u.id;
 
 -- 4. One 'CBC' test_definition, all 20 analytes linked via test_analyte --
 -- see this file's header note on why there is no per-analyte test or panel

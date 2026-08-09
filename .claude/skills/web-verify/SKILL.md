@@ -356,6 +356,25 @@ optimistic-update flash) and never rehydrated on render, seed the
 precondition only and drive the real interaction; a plain `page.goto()`
 will never show it.
 
+**Gotcha (2026-08-09, FEAT-024 verification): reusing one seeded fixture
+across more than one browser context/pass will silently exhaust it if the
+UI action under test is one-time/irreversible, producing a misleading
+timeout that looks like a UI bug.** Verifying FEAT-024's morphology-grade
+UI in both light and dark mode, a first script reused the *same* seeded
+order for both passes. The light-mode pass correctly drafted a grade,
+added notes, and clicked **Finalize** -- an irreversible transition
+(`Draft` -> `Finalized`, the grade buttons then permanently disabled for
+that row). The dark-mode pass, run second against the identical fixture,
+then hit a 30-second Playwright timeout trying to click an
+already-disabled grade button (`element is not enabled`), with nothing in
+the error pointing at the real cause -- it read exactly like a broken
+button, not an already-finalized row. Fixed by seeding a second,
+independent order for the dark-mode pass. **Before reusing one seeded
+fixture across multiple verification passes (e.g. a light-mode pass and a
+separate dark-mode pass), check whether the interaction under test is
+one-time/irreversible (draft->finalize, submit, delete) -- if so, seed an
+independent fixture per pass rather than replaying the same one.**
+
 **Gotcha (2026-08-07, TASK-062 verification): after clicking a Next.js
 client-side `<Link>` or a `router.push()` call, `page.waitForLoadState('networkidle')`
 can resolve *before* the resulting RSC fetch/navigation even starts --

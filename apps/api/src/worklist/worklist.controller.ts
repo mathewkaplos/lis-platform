@@ -1,28 +1,61 @@
 import {
   Controller,
   Get,
+  HttpCode,
+  Post,
+  Body,
   Query,
+  Req,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import {
   worklistQuerySchema,
   worklistResponseSchema,
+  worklistBulkAssignSchema,
+  worklistBulkAssignResponseSchema,
+  worklistBulkCancelSchema,
+  worklistBulkCancelResponseSchema,
+  computeSlaStatus,
   WORKLIST_RESULT_LIMIT,
   type WorklistCounts,
   type WorklistItem,
   type WorklistResponse,
+  type WorklistBulkAssignResult,
+  type WorklistBulkCancelResult,
 } from '@lis/domain';
-import { order, orderedTest, patient, testDefinition } from '@lis/db';
+import {
+  order,
+  orderedTest,
+  patient,
+  slaTarget,
+  testDefinition,
+  writeAuditEvent,
+} from '@lis/db';
 import { and, asc, count, eq, gte, inArray, lte, type SQL } from 'drizzle-orm';
 import { ZodResponse, ZodValidationPipe, createZodDto } from 'nestjs-zod';
+import {
+  CapabilityGuard,
+  type RequestWithGrantingRole,
+} from '../auth/capability.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
 import { DbTx } from '../auth/db-tx.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RequireCapability } from '../auth/require-capability.decorator';
+import type { RequestContext } from '../auth/request-context';
 import type { RequestWithTx } from '../auth/tenant-context.interceptor';
 import { TenantContextInterceptor } from '../auth/tenant-context.interceptor';
 
 class WorklistQueryDto extends createZodDto(worklistQuerySchema) {}
 class WorklistResponseDto extends createZodDto(worklistResponseSchema) {}
+class WorklistBulkAssignDto extends createZodDto(worklistBulkAssignSchema) {}
+class WorklistBulkAssignResponseDto extends createZodDto(
+  worklistBulkAssignResponseSchema,
+) {}
+class WorklistBulkCancelDto extends createZodDto(worklistBulkCancelSchema) {}
+class WorklistBulkCancelResponseDto extends createZodDto(
+  worklistBulkCancelResponseSchema,
+) {}
 
 /** The 4 real, currently-written statuses that make up "active" work — see
  * docs/plans/feat-017-minimal-worklist.md finding #1. 'collected'/'reported'
@@ -188,6 +221,19 @@ export class WorklistController {
         : [];
     const patientById = new Map(patientRows.map((row) => [row.id, row]));
 
+    // FEAT-022 Part 1: exactly 2 real priority values (routine|stat) -- a
+    // plain unfiltered select, no inArray() batching needed, same reasoning
+    // this method already applies to small fixed sets elsewhere.
+    const slaTargetRows = await tx
+      .select({
+        priority: slaTarget.priority,
+        targetMinutes: slaTarget.targetMinutes,
+      })
+      .from(slaTarget);
+    const targetMinutesByPriority = new Map(
+      slaTargetRows.map((row) => [row.priority, row.targetMinutes]),
+    );
+
     const now = Date.now();
     return rows.map((row): WorklistItem => {
       const orderRow = orderById.get(row.orderId);
@@ -195,23 +241,31 @@ export class WorklistController {
       const patientRow = orderRow
         ? patientById.get(orderRow.patientId)
         : undefined;
+      const priority = (orderRow?.priority ??
+        'routine') as WorklistItem['priority']; // CHECK-constrained (ck_order_priority)
+      const ageMinutes = Math.max(
+        0,
+        Math.floor((now - row.createdAt.getTime()) / 60_000),
+      );
       return {
         id: row.id,
         orderId: row.orderId,
         testDefinitionId: row.testDefinitionId,
         testDisplayName: testDefinitionRow?.displayName ?? 'Unknown test',
         status: row.status as WorklistItem['status'], // CHECK-constrained (ck_ordered_test_status), not reflected in drizzle's plain `text` column type
-        priority: (orderRow?.priority ?? 'routine') as WorklistItem['priority'], // CHECK-constrained (ck_order_priority)
+        priority,
         patient: {
           firstName: patientRow?.firstName ?? 'Unknown',
           lastName: patientRow?.lastName ?? 'Unknown',
           mrn: patientRow?.mrn ?? '',
         },
         createdAt: row.createdAt.toISOString(),
-        ageMinutes: Math.max(
-          0,
-          Math.floor((now - row.createdAt.getTime()) / 60_000),
+        ageMinutes,
+        slaStatus: computeSlaStatus(
+          ageMinutes,
+          targetMinutesByPriority.get(priority),
         ),
+        assignedUserId: row.assignedUserId,
       };
     });
   }
@@ -243,5 +297,182 @@ export class WorklistController {
     if (query.stage === 'in_progress') return ['in_process'];
     if (query.stage === 'verified') return ['resulted'];
     return ACTIVE_STATUSES;
+  }
+
+  /**
+   * FEAT-022 Part 1 (ADR-0024): sets `assignedUserId` on every id in the
+   * request that resolves to a real, tenant-visible `ordered_test` row --
+   * RLS makes a cross-tenant id structurally invisible to the `inArray()`
+   * lookup below (same "RLS, not a manual filter" pattern this repo uses
+   * everywhere), so a wrong-tenant id lands in `notFoundIds`, not a
+   * cross-tenant mutation. `assignedUserId: null` clears the assignment
+   * (bulk-unassign) -- a real, explicit request shape, not an omitted field.
+   * No status-transition side effect, so (unlike bulk-cancel) every status
+   * is a valid target for this action.
+   *
+   * Deliberately NOT `@Audit()`/`AuditInterceptor` -- that mechanism writes
+   * exactly one `audit_event` row per call, driven by a single
+   * `resourceId: string` on the handler's return value (a real, non-null
+   * `uuid` column, `packages/db/src/schema/audit.ts`). This is this repo's
+   * first genuinely multi-resource action with no single natural parent id
+   * (unlike `order.cancel()`'s own cascade, which is scoped to one order) --
+   * a real, previously-undiscovered gap in `AuditInterceptor`'s own
+   * single-resource shape, found by a real 500 (a `NOT NULL` violation on
+   * `resource_id`) during this task's own implementation, not anticipated
+   * in the proposal. Fixed here by calling `writeAuditEvent` directly, once
+   * per actually-updated id, still inside the same transaction
+   * `TenantContextInterceptor` already opened (Constitution Law #5's "same
+   * transaction as the change" is satisfied by `tx` itself, not by which
+   * mechanism issues the write).
+   */
+  @Post('bulk-assign')
+  @HttpCode(200) // an action, not a creation
+  @UseGuards(JwtAuthGuard, CapabilityGuard)
+  @RequireCapability('manage_orders')
+  @UseInterceptors(TenantContextInterceptor)
+  @ZodResponse({ type: WorklistBulkAssignResponseDto, status: 200 })
+  async bulkAssign(
+    @Body(new ZodValidationPipe(worklistBulkAssignSchema))
+    body: WorklistBulkAssignDto,
+    @CurrentUser() user: RequestContext,
+    @Req() req: RequestWithGrantingRole,
+    @DbTx() tx: RequestWithTx['tx'],
+  ): Promise<WorklistBulkAssignResult> {
+    const existing = await tx
+      .select({
+        id: orderedTest.id,
+        assignedUserId: orderedTest.assignedUserId,
+      })
+      .from(orderedTest)
+      .where(inArray(orderedTest.id, body.orderedTestIds));
+    const existingById = new Map(existing.map((row) => [row.id, row]));
+    const updatedIds = body.orderedTestIds.filter((id) => existingById.has(id));
+    const notFoundIds = body.orderedTestIds.filter(
+      (id) => !existingById.has(id),
+    );
+
+    if (updatedIds.length > 0) {
+      await tx
+        .update(orderedTest)
+        .set({ assignedUserId: body.assignedUserId })
+        .where(inArray(orderedTest.id, updatedIds));
+
+      for (const id of updatedIds) {
+        await writeAuditEvent(tx, {
+          tenantId: user.tenantId,
+          actorPrincipalId: user.sub,
+          actorRole: req.grantingRole,
+          actorType: 'human',
+          action: 'worklist.bulk_assign',
+          resourceType: 'ordered_test',
+          resourceId: id,
+          before: { assignedUserId: existingById.get(id)!.assignedUserId },
+          after: { assignedUserId: body.assignedUserId },
+        });
+      }
+    }
+
+    return { updatedIds, notFoundIds };
+  }
+
+  /**
+   * FEAT-022 Part 1 (proposal §1 finding #2/#3): the ONE status transition
+   * with no real domain side effect to bypass -- deliberately not a generic
+   * `toStatus` endpoint. Eligibility mirrors `order.controller.ts`'s own
+   * single-order `cancel()` exactly (`status === 'ordered'` only), extended
+   * across potentially many orders in one call. Each affected order's own
+   * cascade-to-`'cancelled'` rule ("only if *every* test on that order ends
+   * up cancelled") is evaluated per order, not globally -- a bulk selection
+   * spanning two orders where only one order's tests are all cancelled must
+   * cascade that one order only.
+   */
+  @Post('bulk-cancel')
+  @HttpCode(200) // an action, not a creation
+  @UseGuards(JwtAuthGuard, CapabilityGuard)
+  @RequireCapability('manage_orders')
+  @UseInterceptors(TenantContextInterceptor)
+  @ZodResponse({ type: WorklistBulkCancelResponseDto, status: 200 })
+  async bulkCancel(
+    @Body(new ZodValidationPipe(worklistBulkCancelSchema))
+    body: WorklistBulkCancelDto,
+    @CurrentUser() user: RequestContext,
+    @Req() req: RequestWithGrantingRole,
+    @DbTx() tx: RequestWithTx['tx'],
+  ): Promise<WorklistBulkCancelResult> {
+    const candidates = await tx
+      .select({
+        id: orderedTest.id,
+        orderId: orderedTest.orderId,
+        status: orderedTest.status,
+      })
+      .from(orderedTest)
+      .where(inArray(orderedTest.id, body.orderedTestIds));
+    const candidateById = new Map(candidates.map((row) => [row.id, row]));
+
+    const cancelledIds: string[] = [];
+    const ineligibleIds: string[] = [];
+    for (const id of body.orderedTestIds) {
+      const row = candidateById.get(id);
+      if (row && row.status === 'ordered') {
+        cancelledIds.push(id);
+      } else {
+        ineligibleIds.push(id);
+      }
+    }
+
+    if (cancelledIds.length === 0) {
+      return { cancelledIds, ineligibleIds };
+    }
+
+    await tx
+      .update(orderedTest)
+      .set({ status: 'cancelled' })
+      .where(inArray(orderedTest.id, cancelledIds));
+
+    // Same "no single natural resourceId" gap as bulkAssign above -- direct
+    // writeAuditEvent per cancelled id, not @Audit()/AuditInterceptor.
+    for (const id of cancelledIds) {
+      await writeAuditEvent(tx, {
+        tenantId: user.tenantId,
+        actorPrincipalId: user.sub,
+        actorRole: req.grantingRole,
+        actorType: 'human',
+        action: 'worklist.bulk_cancel',
+        resourceType: 'ordered_test',
+        resourceId: id,
+        before: { status: candidateById.get(id)!.status },
+        after: { status: 'cancelled' },
+      });
+    }
+
+    // Per-order cascade (finding #2/#3): re-evaluate only the orders this
+    // call actually touched, each independently -- mirrors
+    // `order.controller.ts`'s own single-order cascade rule, not a new one.
+    const affectedOrderIds = Array.from(
+      new Set(cancelledIds.map((id) => candidateById.get(id)!.orderId)),
+    );
+    const allTestsOnAffectedOrders = await tx
+      .select({ orderId: orderedTest.orderId, status: orderedTest.status })
+      .from(orderedTest)
+      .where(inArray(orderedTest.orderId, affectedOrderIds));
+    const testsByOrder = new Map<string, string[]>();
+    for (const row of allTestsOnAffectedOrders) {
+      const statuses = testsByOrder.get(row.orderId) ?? [];
+      statuses.push(row.status);
+      testsByOrder.set(row.orderId, statuses);
+    }
+    const fullyCancelledOrderIds = affectedOrderIds.filter((orderId) =>
+      (testsByOrder.get(orderId) ?? []).every(
+        (status) => status === 'cancelled',
+      ),
+    );
+    if (fullyCancelledOrderIds.length > 0) {
+      await tx
+        .update(order)
+        .set({ status: 'cancelled' })
+        .where(inArray(order.id, fullyCancelledOrderIds));
+    }
+
+    return { cancelledIds, ineligibleIds };
   }
 }

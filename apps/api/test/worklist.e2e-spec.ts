@@ -1,15 +1,27 @@
+import { randomUUID } from 'node:crypto';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { createDb, testAnalyte, testDefinition } from '@lis/db';
-import { sql } from 'drizzle-orm';
+import {
+  createDb,
+  order,
+  orderedTest,
+  patient,
+  testAnalyte,
+  testDefinition,
+} from '@lis/db';
+import { eq, sql } from 'drizzle-orm';
 import { AppModule } from './../src/app.module';
 import { getKeycloakToken } from './get-keycloak-token';
 
 // Seeded by db/seed/chemistry-catalog.sql; test-user (technologist) and
 // test-user-2 (verifier), per infra/keycloak/lis-realm.json.
 const TENANT_A = '00000000-0000-0000-0000-000000000001';
+// test-user-2's own tenant (rls-isolation-check.ts's own convention) --
+// deliberately never seeded with a catalog, so a real tenant-B order fixture
+// needs a direct @lis/db insert, not the HTTP order-creation path.
+const TENANT_B = '00000000-0000-0000-0000-000000000002';
 
 /**
  * TASK-061 (FEAT-017 proposal, docs/plans/feat-017-minimal-worklist.md):
@@ -86,6 +98,28 @@ describe('Worklist API (e2e)', () => {
       .limit(1);
     if (!row) throw new Error(`no analyte found for test code '${testCode}'`);
     return row.analyteId;
+  }
+
+  /**
+   * FEAT-022 Part 1: no HTTP path controls `ordered_test.createdAt` directly
+   * (it's a real, defaulted-at-insert timestamp) -- backdating it via a
+   * direct DB write is the only way to prove `slaStatus`'s real boundary
+   * behavior deterministically, without a fragile "wait N real minutes" test.
+   * The row's own status/existence is still produced entirely by the real
+   * order-creation endpoint (`createOrder` above); only its age is adjusted.
+   */
+  async function backdateCreatedAt(
+    orderedTestId: string,
+    minutesAgo: number,
+  ): Promise<void> {
+    const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+    await db.execute(
+      sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+    );
+    await db
+      .update(orderedTest)
+      .set({ createdAt: new Date(Date.now() - minutesAgo * 60_000) })
+      .where(eq(orderedTest.id, orderedTestId));
   }
 
   // Single-analyte quantity tests from the seeded CMP panel (db/seed/
@@ -386,5 +420,333 @@ describe('Worklist API (e2e)', () => {
         `expected tenant B's worklist to never see tenant A's ordered_test rows`,
       );
     }
+  });
+
+  /**
+   * FEAT-022 Part 1 (ADR-0024, proposal §7 AC): `slaStatus` boundary
+   * correctness, against the real seeded `sla_target` row for 'stat'
+   * (60 minutes, `db/seed/sla-targets.sql`) -- 80% of 60 = 48 (at_risk),
+   * 60 (overdue), both inclusive per `computeSlaStatus`'s own precedent.
+   */
+  describe('SLA status (FEAT-022 Part 1, ADR-0024)', () => {
+    it('a fresh stat item is on_track', async () => {
+      const { orderedTestId } = await createOrder('K', 'stat');
+      const res = await request(app.getHttpServer())
+        .get('/v1/worklist')
+        .query({ priority: 'stat' })
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const item = (
+        res.body as { items: { id: string; slaStatus: string }[] }
+      ).items.find((i) => i.id === orderedTestId);
+      if (item?.slaStatus !== 'on_track') {
+        throw new Error(`expected on_track, got ${JSON.stringify(item)}`);
+      }
+    });
+
+    it('exactly at the 80% at-risk threshold (48 of 60 min) is at_risk; exactly at the target (60 min) is overdue', async () => {
+      const atRisk = await createOrder('CL', 'stat');
+      await backdateCreatedAt(atRisk.orderedTestId, 48);
+      const overdue = await createOrder('NA', 'stat');
+      await backdateCreatedAt(overdue.orderedTestId, 60);
+
+      const res = await request(app.getHttpServer())
+        .get('/v1/worklist')
+        .query({ priority: 'stat' })
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const items = (res.body as { items: { id: string; slaStatus: string }[] })
+        .items;
+
+      const atRiskItem = items.find((i) => i.id === atRisk.orderedTestId);
+      if (atRiskItem?.slaStatus !== 'at_risk') {
+        throw new Error(
+          `expected at_risk at exactly 48/60 min, got ${JSON.stringify(atRiskItem)}`,
+        );
+      }
+      const overdueItem = items.find((i) => i.id === overdue.orderedTestId);
+      if (overdueItem?.slaStatus !== 'overdue') {
+        throw new Error(
+          `expected overdue at exactly 60/60 min, got ${JSON.stringify(overdueItem)}`,
+        );
+      }
+    });
+  });
+
+  /**
+   * FEAT-022 Part 1 (ADR-0024): `POST /v1/worklist/bulk-assign` sets
+   * `assignedUserId` on every real, tenant-visible id in the request and
+   * reports the rest back (§7 AC) -- proven with a mixed batch (real +
+   * wrong-tenant + nonexistent), not just the all-valid happy path.
+   */
+  describe('Bulk assign (FEAT-022 Part 1, ADR-0024)', () => {
+    it('updates valid tenant-visible ids and reports wrong-tenant/nonexistent ids as notFound, not a silent drop or a 500', async () => {
+      const fixture = await makeOrderedFixture();
+      // A minimal tenant-B fixture via direct @lis/db insert -- TENANT_B is
+      // deliberately never seeded with a catalog (rls-isolation-check.ts's
+      // own convention, this file's header comment), so no HTTP path can
+      // create a real order for it. The FK on ordered_test.testDefinitionId
+      // doesn't itself check tenant consistency, so reusing a real TENANT_A
+      // test_definition id here is a valid, minimal fixture -- same "direct
+      // DB insert for a spec-local cross-tenant fixture" pattern
+      // flagging.e2e-spec.ts/delta-check.e2e-spec.ts already establish.
+      const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_B}, false)`,
+      );
+      const [tenantBTestDef] = await db
+        .select({ id: testDefinition.id })
+        .from(testDefinition)
+        .limit(1);
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+      const [aTestDef] = await db
+        .select({ id: testDefinition.id })
+        .from(testDefinition)
+        .limit(1);
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_B}, false)`,
+      );
+      const [tenantBPatient] = await db
+        .insert(patient)
+        .values({
+          tenantId: TENANT_B,
+          mrn: `WORKLIST-TENANT-B-${Date.now()}`,
+          firstName: 'TenantB',
+          lastName: 'Fixture',
+          sex: 'U',
+        })
+        .returning({ id: patient.id });
+      const [tenantBOrder] = await db
+        .insert(order)
+        .values({ tenantId: TENANT_B, patientId: tenantBPatient.id })
+        .returning({ id: order.id });
+      const [tenantBOrderedTest] = await db
+        .insert(orderedTest)
+        .values({
+          tenantId: TENANT_B,
+          orderId: tenantBOrder.id,
+          testDefinitionId: (tenantBTestDef ?? aTestDef).id,
+        })
+        .returning({ id: orderedTest.id });
+      const tenantBFixture = tenantBOrderedTest.id;
+      const nonexistentId = randomUUID();
+      const assigneeId = randomUUID();
+
+      const res = await request(app.getHttpServer())
+        .post('/v1/worklist/bulk-assign')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestIds: [
+            fixture.orderedId,
+            fixture.receivedId,
+            tenantBFixture,
+            nonexistentId,
+          ],
+          assignedUserId: assigneeId,
+        })
+        .expect(200);
+      const body = res.body as {
+        updatedIds: string[];
+        notFoundIds: string[];
+      };
+
+      if (
+        !body.updatedIds.includes(fixture.orderedId) ||
+        !body.updatedIds.includes(fixture.receivedId)
+      ) {
+        throw new Error(
+          `expected both real TENANT_A ids in updatedIds, got ${JSON.stringify(body)}`,
+        );
+      }
+      if (
+        !body.notFoundIds.includes(tenantBFixture) ||
+        !body.notFoundIds.includes(nonexistentId)
+      ) {
+        throw new Error(
+          `expected the wrong-tenant and nonexistent ids both in notFoundIds (RLS makes tenant B's row structurally invisible, same as a nonexistent id), got ${JSON.stringify(body)}`,
+        );
+      }
+
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+      const [updatedRow] = await db
+        .select({ assignedUserId: orderedTest.assignedUserId })
+        .from(orderedTest)
+        .where(eq(orderedTest.id, fixture.orderedId));
+      if (updatedRow?.assignedUserId !== assigneeId) {
+        throw new Error(
+          `expected assignedUserId persisted on the row, got ${JSON.stringify(updatedRow)}`,
+        );
+      }
+
+      // Clean up the tenant-B fixture: rls-isolation-check.ts's own live
+      // leak check asserts TENANT_B sees zero rows of *any* kind under its
+      // own session (it is "deliberately never written to by anything," per
+      // that script's own header comment) -- a real, load-bearing test
+      // invariant this spec must not leave broken for a later run of that
+      // check, in this session or a future one.
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_B}, false)`,
+      );
+      await db.delete(orderedTest).where(eq(orderedTest.id, tenantBFixture));
+      await db.delete(order).where(eq(order.id, tenantBOrder.id));
+      await db.delete(patient).where(eq(patient.id, tenantBPatient.id));
+    });
+
+    it('assignedUserId: null clears an assignment (bulk-unassign)', async () => {
+      const fixture = await makeOrderedFixture();
+      const assigneeId = randomUUID();
+      await request(app.getHttpServer())
+        .post('/v1/worklist/bulk-assign')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestIds: [fixture.orderedId],
+          assignedUserId: assigneeId,
+        })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post('/v1/worklist/bulk-assign')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ orderedTestIds: [fixture.orderedId], assignedUserId: null })
+        .expect(200);
+
+      // Direct DB read, not the list endpoint: this local DB has accumulated
+      // well over WORKLIST_RESULT_LIMIT (100) 'ordered'-status rows across
+      // many prior sessions' own e2e runs, a real, already-accepted
+      // limitation (FEAT-017 proposal §6) unrelated to this feature -- the
+      // default view's own createdAt-ascending cap can genuinely omit a
+      // fresh fixture. Reading the row directly proves the persisted state
+      // regardless of list pagination/ordering.
+      const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+      const [row] = await db
+        .select({ assignedUserId: orderedTest.assignedUserId })
+        .from(orderedTest)
+        .where(eq(orderedTest.id, fixture.orderedId));
+      if (row?.assignedUserId !== null) {
+        throw new Error(
+          `expected assignedUserId cleared, got ${JSON.stringify(row)}`,
+        );
+      }
+    });
+  });
+
+  /**
+   * FEAT-022 Part 1 (proposal §1 finding #2/#3, §7 AC): `POST
+   * /v1/worklist/bulk-cancel` cancels only `'ordered'`-status ids, reports
+   * the rest as ineligible, and cascades each affected order's own status
+   * independently -- proven across a genuine multi-order selection, not
+   * just the single-order case `order.controller.ts`'s own `cancel()`
+   * already covers.
+   */
+  describe('Bulk cancel (FEAT-022 Part 1)', () => {
+    it('cancels only ordered-status ids and reports in_process/resulted ids as ineligible, not silently skipped or a 500', async () => {
+      const fixture = await makeOrderedFixture();
+
+      const res = await request(app.getHttpServer())
+        .post('/v1/worklist/bulk-cancel')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestIds: [
+            fixture.orderedId,
+            fixture.inProcessId,
+            fixture.resultedId,
+          ],
+        })
+        .expect(200);
+      const body = res.body as {
+        cancelledIds: string[];
+        ineligibleIds: string[];
+      };
+
+      if (!body.cancelledIds.includes(fixture.orderedId)) {
+        throw new Error(
+          `expected the 'ordered' fixture cancelled, got ${JSON.stringify(body)}`,
+        );
+      }
+      if (
+        !body.ineligibleIds.includes(fixture.inProcessId) ||
+        !body.ineligibleIds.includes(fixture.resultedId)
+      ) {
+        throw new Error(
+          `expected 'in_process'/'resulted' fixtures reported ineligible, got ${JSON.stringify(body)}`,
+        );
+      }
+
+      const statusRes = await request(app.getHttpServer())
+        .get('/v1/worklist')
+        .query({ status: 'cancelled' })
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const cancelledIds = (
+        statusRes.body as { items: { id: string }[] }
+      ).items.map((i) => i.id);
+      if (!cancelledIds.includes(fixture.orderedId)) {
+        throw new Error(
+          `expected the cancelled fixture to now show status=cancelled`,
+        );
+      }
+    });
+
+    it("cascades each affected order's own status to 'cancelled' independently across a multi-order bulk selection", async () => {
+      // Order 1: single test, fully cancelled by this call -> order cascades.
+      const solo = await createOrder('K');
+      // Order 2: two tests, only one included in this call -> order must
+      // NOT cascade (the other test is still 'ordered', untouched).
+      const catalogRes = await request(app.getHttpServer())
+        .get('/v1/catalog')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const catalog = catalogRes.body as {
+        tests: { id: string; code: string }[];
+      };
+      const clId = catalog.tests.find((t) => t.code === 'CL')!.id;
+      const co2Id = catalog.tests.find((t) => t.code === 'CO2')!.id;
+      const partialOrderRes = await request(app.getHttpServer())
+        .post('/v1/orders')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ patientId, testDefinitionIds: [clId, co2Id] })
+        .expect(201);
+      const partialOrderBody = partialOrderRes.body as {
+        resourceId: string;
+        after: { orderedTests: { id: string }[] };
+      };
+      const [partialTestA] = partialOrderBody.after.orderedTests;
+
+      await request(app.getHttpServer())
+        .post('/v1/worklist/bulk-cancel')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ orderedTestIds: [solo.orderedTestId, partialTestA.id] })
+        .expect(200);
+
+      const soloOrderRes = await request(app.getHttpServer())
+        .get(`/v1/orders/${solo.orderId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      if ((soloOrderRes.body as { status: string }).status !== 'cancelled') {
+        throw new Error(
+          `expected the fully-cancelled solo order to cascade to status 'cancelled', got ${JSON.stringify(soloOrderRes.body)}`,
+        );
+      }
+
+      const partialOrderStatusRes = await request(app.getHttpServer())
+        .get(`/v1/orders/${partialOrderBody.resourceId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      if (
+        (partialOrderStatusRes.body as { status: string }).status ===
+        'cancelled'
+      ) {
+        throw new Error(
+          `expected the partially-cancelled order to NOT cascade (its second test is still 'ordered'), got ${JSON.stringify(partialOrderStatusRes.body)}`,
+        );
+      }
+    });
   });
 });

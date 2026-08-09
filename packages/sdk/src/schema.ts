@@ -436,6 +436,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worklist/bulk-assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["WorklistController_bulkAssign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worklist/bulk-cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["WorklistController_bulkCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/control-lots/{id}/results": {
         parameters: {
             query?: never;
@@ -756,7 +788,27 @@ export interface components {
                 /** Format: date-time */
                 createdAt: string;
                 ageMinutes: number;
+                /** @enum {string} */
+                slaStatus: "on_track" | "at_risk" | "overdue";
+                /** Format: uuid */
+                assignedUserId: string | null;
             }[];
+        };
+        WorklistBulkAssignDto: {
+            orderedTestIds: string[];
+            /** Format: uuid */
+            assignedUserId: string | null;
+        };
+        WorklistBulkAssignResponseDto_Output: {
+            updatedIds: string[];
+            notFoundIds: string[];
+        };
+        WorklistBulkCancelDto: {
+            orderedTestIds: string[];
+        };
+        WorklistBulkCancelResponseDto_Output: {
+            cancelledIds: string[];
+            ineligibleIds: string[];
         };
         QcObservationDto_Output: {
             /** Format: uuid */
@@ -1465,6 +1517,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorklistResponseDto_Output"];
+                };
+            };
+        };
+    };
+    WorklistController_bulkAssign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorklistBulkAssignDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorklistBulkAssignResponseDto_Output"];
+                };
+            };
+        };
+    };
+    WorklistController_bulkCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorklistBulkCancelDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorklistBulkCancelResponseDto_Output"];
                 };
             };
         };

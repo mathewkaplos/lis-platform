@@ -169,6 +169,13 @@
       "when": 1786269887297,
       "tag": "0023_delta_check_rule",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1786272880354,
+      "tag": "0024_sla_target_and_assigned_user_id",
+      "breakpoints": true
     }
   ]
 }

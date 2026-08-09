@@ -71,6 +71,12 @@ export const orderedTest = pgTable(
       .notNull()
       .references(() => testDefinition.id),
     status: text("status").notNull().default("ordered"), // TASK-042; see header comment for the full canonical set
+    // FEAT-022 (ADR-0024): no FK -- no user table exists yet (M2), same
+    // established precedent as observation.operatorUserId/verifierUserId.
+    // Set only via POST /v1/worklist/bulk-assign; v1's own UI only ever
+    // sends the caller's own JWT sub (self-assign), though the column/API
+    // accept any uuid (ADR-0024 decision 2).
+    assignedUserId: uuid("assigned_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

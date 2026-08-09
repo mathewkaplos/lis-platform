@@ -17,3 +17,4 @@ export * from "./report";
 export * from "./instrument-mapping";
 export * from "./observation-idempotency";
 export * from "./outbox-event";
+export * from "./workflow-definition";

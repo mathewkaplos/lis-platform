@@ -37,6 +37,12 @@
  * the ingestion endpoint's authorization is legible on its own (a human
  * role gaining this capability would be a real, reviewable change, not an
  * accidental side effect of some other role's grant list changing).
+ *
+ * `manage_workflow` (FEAT-029 proposal §2): granted to `qa`, not
+ * `technologist`/`verifier` — authoring/publishing a workflow definition
+ * changes what automated behavior applies to every future result, a
+ * lab-oversight action matching `resolve_qc`'s own persona (`qa` /
+ * lab-manager), not day-to-day result entry/verification.
  */
 export type Capability =
   | 'enter_result'
@@ -45,7 +51,8 @@ export type Capability =
   | 'manage_orders'
   | 'manage_specimens'
   | 'resolve_qc'
-  | 'gateway_ingest';
+  | 'gateway_ingest'
+  | 'manage_workflow';
 
 const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
   technologist: [
@@ -61,7 +68,7 @@ const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
     'manage_orders',
     'manage_specimens',
   ],
-  qa: ['resolve_qc'],
+  qa: ['resolve_qc', 'manage_workflow'],
   'gateway-ingest': ['gateway_ingest'],
 };
 

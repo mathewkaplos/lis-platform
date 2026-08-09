@@ -84,6 +84,16 @@ describe('resolveGrantingRole', () => {
     ).toBeUndefined();
   });
 
+  it('grants manage_workflow to qa but not to technologist or verifier (FEAT-029)', () => {
+    expect(resolveGrantingRole(['qa'], 'manage_workflow')).toBe('qa');
+    expect(
+      resolveGrantingRole(['technologist'], 'manage_workflow'),
+    ).toBeUndefined();
+    expect(
+      resolveGrantingRole(['verifier'], 'manage_workflow'),
+    ).toBeUndefined();
+  });
+
   it('resolves deterministically when multiple held roles grant the same capability', () => {
     // Both technologist and verifier grant enter_result — the result must
     // always be the same role for the same input, not arbitrary, since two

@@ -297,6 +297,28 @@ stderr lines (`org.freedesktop.UPower...ServiceUnknown`) on launch are
 harmless sandbox noise, not a real failure -- ignore them, don't debug
 them.
 
+**Gotcha (2026-08-09, TASK-390 verification): seeding a "held"/transient
+outcome via direct API calls, then just loading the page, will never show
+it -- check whether the state you're verifying is persisted or client-only
+before choosing a seeding strategy.** TASK-390's own held-caption fix lives
+entirely in `results-grid.tsx`'s own `useState` (`heldMessage`/`heldReason`),
+set only inside `handleKeyDown`'s `finalizeResult()` callback -- a fresh
+Server Component render of the same order reads the row's real persisted
+`observationStatus` from the DB, which has no memory of *why* a panel is
+held. A first verification attempt pre-seeded the QC violation *and* called
+`finalize()` directly via HTTP, then navigated fresh -- the caption never
+appeared (`caption: null`), not because the fix was broken, but because
+nothing ever exercised the client-side code path that sets it. Fixed by
+seeding only the *precondition* via API (fixtures, a fresh not-yet-finalized
+order) and driving the actual triggering interaction
+(`input.fill()`/`input.press('Enter')`) through Playwright itself.
+**Before seeding a scenario via direct API calls, grep the component for
+where the field you're checking is set** -- if it's only ever set inside an
+event handler's own response (a toast, an inline "just saved" banner, any
+optimistic-update flash) and never rehydrated on render, seed the
+precondition only and drive the real interaction; a plain `page.goto()`
+will never show it.
+
 **Gotcha (2026-08-07, TASK-062 verification): after clicking a Next.js
 client-side `<Link>` or a `router.push()` call, `page.waitForLoadState('networkidle')`
 can resolve *before* the resulting RSC fetch/navigation even starts --

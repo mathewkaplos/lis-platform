@@ -1,0 +1,1 @@
+ALTER TABLE "workflow_rule_firing" ADD COLUMN "dry_run" boolean DEFAULT false NOT NULL;

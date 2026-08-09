@@ -74,7 +74,11 @@ type ResultEntryDto = InstanceType<typeof ResultEntryDto>;
 type Tx = RequestWithTx['tx'];
 type ObservationRow = typeof observation.$inferSelect;
 
-function toObservationDto(row: ObservationRow): ObservationResult {
+// Exported for AutoVerifyObservation (FEAT-031) -- it re-emits this exact
+// shape (with status overridden to 'verified') as the ObservationVerified
+// payload, same as this route's own verify() below, so both the human and
+// system verification paths produce identical event shapes.
+export function toObservationDto(row: ObservationRow): ObservationResult {
   return {
     id: row.id,
     // orderedTestId is nullable on the row per ADR-0015 (QC rows have none)
@@ -520,6 +524,19 @@ export class ObservationController {
     const criticalDetected =
       row.flags.includes('HH') || row.flags.includes('LL');
 
+    // FEAT-031 (ADR-0031): the auto-verify trigger point -- fires when a
+    // result becomes eligible for verification, same transaction as the
+    // write, mirroring verify()'s own ObservationVerified emission exactly.
+    // Reflects only the just-finalized observation (`row`), same scoping
+    // `criticalDetected` above already uses -- not `calculated`'s dependent
+    // writes, which are their own future finalize event if/when anything
+    // needs to react to those specifically (not built speculatively here).
+    await writeOutboxEvent(tx, {
+      tenantId: user.tenantId,
+      eventType: 'ObservationFinalized',
+      payload: toObservationDto(row),
+    });
+
     // TASK-065 (FEAT-021, ADR-0016): a plain, synchronous insert inside this
     // SAME transaction -- no event bus, no queue (domain/critical-values
     // Skill entry #4: no infra exists to build one ahead of FEAT-028). At
@@ -647,15 +664,11 @@ export class ObservationController {
     }
 
     const before = toObservationDto(existing);
-    const [updated] = await tx
-      .update(observation)
-      .set({
-        status: 'verified',
-        verifierUserId: user.sub,
-        verifiedAt: new Date(),
-      })
-      .where(eq(observation.id, existing.id))
-      .returning();
+    const updated = await this.writeService.applyVerification(
+      tx,
+      existing,
+      user.sub,
+    );
 
     // FEAT-028 (ADR-0028): same transaction as the status update above --
     // commits atomically with it or not at all (this feature's own literal

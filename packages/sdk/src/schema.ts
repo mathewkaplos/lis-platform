@@ -996,6 +996,7 @@ export interface components {
                 } & {
                     [key: string]: unknown;
                 };
+                dryRun?: boolean;
             }[];
         };
     };

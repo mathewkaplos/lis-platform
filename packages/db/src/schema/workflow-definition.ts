@@ -60,6 +60,11 @@ export const workflowRuleFiring = pgTable(
     matched: boolean("matched").notNull(),
     command: text("command"),
     dispatched: boolean("dispatched"), // null when matched=false (no command attempted)
+    // FEAT-031 (ADR-0031): true when the firing rule's own dryRun:true --
+    // the handler still ran (dispatched can be true) but was told to skip
+    // any real write. Lets a review query distinguish "would have qualified"
+    // firings from live ones without guessing from dispatched alone.
+    dryRun: boolean("dry_run").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [tenantIsolation()],

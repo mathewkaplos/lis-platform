@@ -155,6 +155,7 @@ run):
 ```bash
 cd ~/work/lis-platform/apps/web && node --input-type=module -e '
 import { SignJWT } from "jose";
+import { randomUUID } from "node:crypto";
 
 const tokenRes = await fetch("http://localhost:8080/realms/lis/protocol/openid-connect/token", {
   method: "POST",
@@ -170,7 +171,7 @@ const tokenBody = await tokenRes.json();
 
 const secret = new TextEncoder().encode("dev-only-session-secret-change-in-production");
 const session = await new SignJWT({
-  sub: "test-user",
+  sub: randomUUID(),            // must be UUID-shaped -- see gotcha below, do not use a bare username
   tenantId: "00000000-0000-0000-0000-000000000001",
   roles: ["technologist"],
   idToken: tokenBody.id_token ?? "fake-id-token-for-local-verification-only",
@@ -216,6 +217,42 @@ recipe against the real interface before trusting it -- a stale recipe
 fails silently (a rejected cookie looks identical to "not logged in" or,
 worse, to the target page's own unrelated not-found state), not with an
 error pointing back here.
+
+**Gotcha (2026-08-09, FEAT-022 Part 2 verification): a bare username string
+as `sub` (this recipe's own earlier version, `sub: "test-user"`) breaks any
+feature that ever sends `session.sub` on as a payload value expecting a real
+uuid -- a real Keycloak-issued access token's own `sub` claim is always a
+uuid, so a readable placeholder here is a test-harness-only divergence from
+production shape that nothing catches until a feature actually depends on
+it.** First surfaced verifying FEAT-022 Part 2's "Assign to me" action
+(`POST /v1/worklist/bulk-assign` with `assignedUserId: session.sub`) --
+the request failed a real, correct `z.uuid()` validation with a 400,
+which looked like an app bug until traced back to this recipe's own
+placeholder value. Fixed above: use `randomUUID()` (or any real uuid) for
+`sub`, never a bare username -- the exact value doesn't matter (nothing
+validates it against a real Keycloak user, same as the whole point of a
+locally-signed session cookie), only its shape does.
+
+**Gotcha (2026-08-09, FEAT-022 Part 2 verification): a session cookie
+minted early in a verification run can expire before a later step in the
+*same* run actually uses it, producing a misleading generic error that
+looks like a real app bug, not an expired-token problem.** A run that mints
+two cookies up front (e.g. one technologist, one verifier, to compare
+role-gated UI) and then spends real wall-clock time driving the first
+session through several interactions before ever loading a page with the
+second cookie can hit the access token's own real Keycloac-issued expiry
+(often ~5 minutes) by the time the second cookie is finally used --
+`getValidAccessToken()`'s refresh path depends on request-scoped `cookies()`
+write access a plain background script doesn't have, so it cannot self-heal
+here the way a real browser session would. Surfaced as a generic "Something
+went wrong loading..." page error with a `500` in the browser console --
+indistinguishable from a real server bug without checking `apps/api`'s own
+request log (which showed a clean, unrelated success for the *same* route
+hit moments later with a **freshly re-minted** cookie for the same user).
+**Mint each cookie immediately before the browser run that actually uses
+it, not all cookies up front for a multi-session verification pass** -- if
+a run must compare multiple sessions/roles, mint and use them one at a
+time, sequentially, not batched.
 
 ## 3. Real headless Chromium in this sandbox
 

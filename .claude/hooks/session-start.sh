@@ -1,4 +1,19 @@
 #!/usr/bin/env bash
+INPUT=$(cat)
+SOURCE=$(echo "$INPUT" | jq -r '.source // "startup"' 2>/dev/null)
+
+if [ "$SOURCE" = "compact" ]; then
+  echo "=== SESSION CONTINUED (context compacted, not a fresh start) ==="
+  echo "This SessionStart fired because context was compacted mid-task, not"
+  echo "because a new session began -- the compaction summary above already"
+  echo "carries what was in progress. Continue that work directly. Do NOT"
+  echo "re-run the fresh-session Rule #0 gate (CHECKLIST items 7-18 / Session"
+  echo "Report / wait for human response) for a compaction resume -- that"
+  echo "gate is for genuine new sessions only."
+  echo "=== END SESSION CONTINUED ==="
+  exit 0
+fi
+
 echo "IMPORTANT: Your FIRST message in this session must repeat the block below back to the user verbatim, so they can see it — do not just silently hold it as context."
 echo "=== AUTO-ORIENTATION (injected by SessionStart hook) ==="
 echo "--- lis-platform ---"

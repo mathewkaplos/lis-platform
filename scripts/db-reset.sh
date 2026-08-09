@@ -33,3 +33,7 @@ echo "Seed applied: chemistry-catalog.sql (placeholder standard panel — see it
 # TASK-071 (FEAT-023): second discipline seed, same placeholder framing.
 docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/haematology-catalog.sql
 echo "Seed applied: haematology-catalog.sql (placeholder CBC + differential panel — see its header comment)."
+
+# FEAT-022 Part 1 (ADR-0024): SLA targets per priority, not discipline-scoped.
+docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/sla-targets.sql
+echo "Seed applied: sla-targets.sql (placeholder routine/STAT turnaround targets — see its header comment)."

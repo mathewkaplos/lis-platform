@@ -923,6 +923,68 @@
         ]
       }
     },
+    "/v1/worklist/bulk-assign": {
+      "post": {
+        "operationId": "WorklistController_bulkAssign",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorklistBulkAssignDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorklistBulkAssignResponseDto_Output"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Worklist"
+        ]
+      }
+    },
+    "/v1/worklist/bulk-cancel": {
+      "post": {
+        "operationId": "WorklistController_bulkCancel",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorklistBulkCancelDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorklistBulkCancelResponseDto_Output"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Worklist"
+        ]
+      }
+    },
     "/v1/control-lots/{id}/results": {
       "post": {
         "operationId": "ControlLotController_recordResult",
@@ -2065,6 +2127,20 @@
                   "type": "integer",
                   "minimum": 0,
                   "maximum": 9007199254740991
+                },
+                "slaStatus": {
+                  "type": "string",
+                  "enum": [
+                    "on_track",
+                    "at_risk",
+                    "overdue"
+                  ]
+                },
+                "assignedUserId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "nullable": true
                 }
               },
               "required": [
@@ -2076,7 +2152,9 @@
                 "priority",
                 "patient",
                 "createdAt",
-                "ageMinutes"
+                "ageMinutes",
+                "slaStatus",
+                "assignedUserId"
               ],
               "additionalProperties": false
             }
@@ -2085,6 +2163,101 @@
         "required": [
           "counts",
           "items"
+        ],
+        "additionalProperties": false
+      },
+      "WorklistBulkAssignDto": {
+        "type": "object",
+        "properties": {
+          "orderedTestIds": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          "assignedUserId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "nullable": true
+          }
+        },
+        "required": [
+          "orderedTestIds",
+          "assignedUserId"
+        ]
+      },
+      "WorklistBulkAssignResponseDto_Output": {
+        "type": "object",
+        "properties": {
+          "updatedIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          "notFoundIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        },
+        "required": [
+          "updatedIds",
+          "notFoundIds"
+        ],
+        "additionalProperties": false
+      },
+      "WorklistBulkCancelDto": {
+        "type": "object",
+        "properties": {
+          "orderedTestIds": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        },
+        "required": [
+          "orderedTestIds"
+        ]
+      },
+      "WorklistBulkCancelResponseDto_Output": {
+        "type": "object",
+        "properties": {
+          "cancelledIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          "ineligibleIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        },
+        "required": [
+          "cancelledIds",
+          "ineligibleIds"
         ],
         "additionalProperties": false
       },

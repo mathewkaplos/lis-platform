@@ -305,3 +305,20 @@ frontmatter declaration (this entry's own commit).
   `~/work/lis-engineering/skills/workflow/plan/SKILL.md`. Confirmed
   `Skill(skill:"plan")` resolves correctly immediately after.
 - **Files:** `~/work/lis-platform/.claude/skills/plan/SKILL.md`
+
+## 2026-08-08 (7)
+
+- **Friction:** while verifying TASK-400 (finalize() panel-hold 409 fix), running `apps/api`'s
+  e2e suite directly (`pnpm --filter api test:e2e` / `vitest run --config
+  ./test/vitest.e2e.config.ts`) failed immediately with `Error: APP_DATABASE_URL is not set`.
+  `test/vitest.e2e.config.ts` does no dotenv loading of its own, and CI never hits this since
+  `pr.yml` sets the required env vars directly as job-level env, not from a `.env` file — nothing
+  in the `engineering/testing` Skill documented how to run this locally. Found the fix (source the
+  repo-root `.env` into the shell first) only by grepping `.github/workflows/pr.yml` and
+  `.env.example` for `APP_DATABASE_URL`.
+- **Area:** existing-skill:engineering/testing
+- **Change:** added entry #12 to the `engineering/testing` Skill documenting the
+  `set -a && source .env && set +a` fix, run once per shell session before any local `apps/api`
+  e2e invocation; renumbered the existing closing "Not (yet) covered here" section from #12 to
+  #13 to keep it last.
+- **Files:** `~/work/lis-engineering/skills/engineering/testing/SKILL.md`

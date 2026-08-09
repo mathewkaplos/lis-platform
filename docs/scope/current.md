@@ -1,18 +1,18 @@
 # Status — 2026-08-09 (session 29, continued)
 
-Last commit on main: `9dbd8ab` (`lis-platform`) / `bac2ab0` (`lis-engineering`) — this breadcrumb
+Last commit on main: `5fe46ce` (`lis-platform`) / `93d7ef7` (`lis-engineering`) — this breadcrumb
 refresh itself lands as a further `lis-platform` commit on top of that, so this line will already be
 one commit behind by construction — check `git log origin/main -5` for the real current tip.
 
 **Earlier sessions' breadcrumb entries are not carried in this file — see git history on this
 exact file (`git log -- docs/scope/current.md`) for full detail back through session 12.**
 
-## M6 — "Automate": FEAT-026, FEAT-028, FEAT-029 shipped; FEAT-027 partially shipped; all one session
+## M6 — "Automate": FEAT-026, FEAT-028, FEAT-029, FEAT-030 shipped; FEAT-027 partially shipped; all one session
 
 Session started with a full `/orient`. M5 confirmed fully closed (19/19 issues); M6 confirmed open
 (7 issues: EPIC-005 + 6 features, all "Not Started" at session start). By end of session: FEAT-026
-(#35), FEAT-028 (#37) closed; FEAT-029 (#38) shipped but deliberately left open (AC #2 deferred,
-see below); FEAT-027 (#36) shipped a protocol-agnostic skeleton only, stays open, blocked on a
+(#35), FEAT-028 (#37), FEAT-030 (#39) closed; FEAT-029 (#38) shipped but deliberately left open (AC
+#2 deferred, see below); FEAT-027 (#36) shipped a protocol-agnostic skeleton only, stays open, blocked on a
 real-world fact. FEAT-030 (#39, Reflex rules) and FEAT-031 (#40, Auto-verification) remain
 "Not Started" — natural next M6 work, see below.
 
@@ -143,6 +143,43 @@ traceability. Gated by a new `manage_workflow` capability (`qa` role only).
   against a real `ObservationVerified` event (matched and non-matched rules both recorded), RLS
   isolation.
 
+### FEAT-030 (Reflex rules) — fully shipped, issue #39 closed, merged PR #441
+
+**ADR-0030**: `AddReflexTest`, the first real `WorkflowCommandRegistry` handler (FEAT-029's own
+registry shipped empty for exactly this). A published rule matching a real `ObservationVerified`
+event and naming `do: {command: 'AddReflexTest', testCode}` creates a follow-on `ordered_test` on
+the **same existing specimen** (no recollection — KB-25's own stated preference), linked via a new
+`ordered_test.parent_ordered_test_id` self-FK (migration `0029`, same `AnyPgColumn` self-FK pattern
+`specimen.parentSpecimenId` already established) so lineage is traceable end-to-end — issue #39's
+literal AC. Idempotent on `(parentOrderedTestId, testDefinitionId)`; a bounded cycle/depth guardrail
+(max depth 5, `apps/api/src/reflex/reflex-guardrails.ts`, a pure unit-tested function); every
+guardrail violation and an unresolvable `testCode` is a **logged no-op, never a thrown error**
+(ADR-0030's own reasoning: throwing would retry-storm the whole event forever under ADR-0028's
+no-dead-letter-queue design). Audited via a direct `writeAuditEvent()` call, mirroring
+`CriticalNotificationEscalationService`'s own system-actor pattern.
+
+- **Real bug found and fixed while implementing, before it shipped**: `WorkflowCommandRegistry`'s
+  handler contract originally passed no transaction, on the assumption a handler would open its
+  own. `WorkflowEngineService.handleEvent()` (FEAT-029) actually calls each matched rule's command
+  handler *from inside* its own already-open transaction on the singleton `db` pool — a handler
+  opening a second, separate transaction there is the identical nested-checkout deadlock
+  `database-design` Skill entry #14 already documents for `OutboxRelayService`, one call-stack layer
+  deeper. Fixed at the root: the engine's own transaction is now threaded through to every handler
+  (`(command, eventPayload, tenantId, tx)`), verified concretely under this repo's own
+  `DB_POOL_MAX=1` e2e config, which turns that class of bug into a deterministic timeout rather than
+  a rare production-only race. Folded into ADR-0030 alongside the guardrail decisions, since it's
+  the same root-cause safety concern.
+- `db/seed/chemistry-catalog.sql` gained TSH/Free T4 as new standalone, LOINC/UCUM-coded tests — a
+  real, well-known reflex pair (KB-25's own illustrative example), so a real rule could be
+  configured and tested against it rather than an artificial pairing between unrelated CMP analytes.
+- Specimen exhaustion/expiry ("raise a recollection task instead of silently failing," KB-25) is
+  explicitly out of scope — `specimen` has no volume/expiry/stability-window field anywhere in this
+  schema (confirmed by grep during planning). Filed as issue #440, not silently dropped.
+- `engineering/workflow-engine` Skill drafted (lis-engineering) from KB-25 + FEAT-029/030's real
+  findings — 7 entries covering the condition/action model, the transaction-threading fix, the
+  no-op-not-throw handler-error pattern, reflex lineage semantics, and the two-registry layering
+  (`OutboxHandlerRegistry` vs `WorkflowCommandRegistry`).
+
 **Found and filed along the way this session, not fixed (all pre-existing, unrelated, confirmed by
 testing against unmodified code before attributing them to this session's changes):**
 - Issue #427 — `lis-engineering/retrospectives/` has only `M0-retrospective.md` despite M1-M5 all
@@ -163,16 +200,22 @@ merge each time. No Skill update needed; it already covered and correctly predic
   speak HL7 (not drafted speculatively, same discipline `domain/analyzer-integration` followed).
 - Issue #38 (FEAT-029) stays open by design — AC #2 (migrating existing hard-coded workflows onto
   the engine) is unstarted; a future feature's job, not a defect in what shipped.
+- Issue #440 (specimen exhaustion/expiry tracking, filed this session from FEAT-030's own scope
+  narrowing) is open, unstarted — real follow-on work, not blocking anything else in M6.
 - Issues #427, #430 remain open, both deferred/filed earlier this session, untouched since.
 - The real Tailscale/OpenTofu edge-node provisioning for `apps/gateway` needs a human's `tofu apply`.
 - Carried from session 28, still not done by a human: a live technologist pass on FEAT-024's
   notes-textarea/grade-button spacing, and a live pass confirming FEAT-022's SLA amber/red badges
   read clearly at a glance.
 
-**Next session:** with FEAT-026/028/029 all closed-or-shipped and FEAT-027 blocked on an external
-fact, the two candidates that can proceed independently are **FEAT-030 (Reflex rules, #39)** and
-**FEAT-031 (Auto-verification, deny-by-default, #40)** — both "Not Started," both natural next M6
-work, and FEAT-030 in particular may turn out to be a first real consumer of FEAT-029's
-`WorkflowCommandRegistry` (currently empty) worth checking during that feature's own planning pass
-rather than assuming. If the design partner has responded by then, FEAT-027's real driver work
-takes priority over either.
+**Next session:** with FEAT-026/028/029/030 all closed-or-shipped and FEAT-027 blocked on an
+external fact, **FEAT-031 (Auto-verification, deny-by-default, #40)** is the remaining "Not
+Started" M6 feature that can proceed independently — it now has two real precedents to build from:
+FEAT-029's engine mechanism and FEAT-030's own `WorkflowCommandRegistry`/no-op-not-throw/
+transaction-threading patterns (`engineering/workflow-engine` Skill covers both). Auto-verification
+is explicitly the safety-critical one (KB-25: "criticals never auto-verify... a hard invariant, not
+a configurable rule") — expect its planning pass to need real, careful attention to the guardrail
+validator's own design (it currently just denylists `VerifyObservation` outright; FEAT-031 is the
+feature that earns the right to register that command, per ADR-0029's own §10 resolution, and
+should re-examine the validator's design when it does, not just add itself to an allowlist). If the
+design partner has responded by then, FEAT-027's real driver work takes priority.

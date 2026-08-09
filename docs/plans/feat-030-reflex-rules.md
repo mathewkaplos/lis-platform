@@ -1,7 +1,8 @@
 # Implementation Proposal: FEAT-030 — Reflex rules
-Status: APPROVED
+Status: IMPLEMENTED (merged 2026-08-09, PR #441, commit 5fe46cea0bc25996208741c7c7f9964be4286463)
 ADR: adr-0030 (reflex safety guardrails: cycle/depth bound, no-op-not-throw on unresolvable
-command inputs — see §10 Q1)    Date: 2026-08-09    Backlog ID: FEAT-030 (issue #39)
+command inputs, plus the WorkflowCommandRegistry transaction-threading fix found while
+implementing — see §10 Q1)    Date: 2026-08-09    Backlog ID: FEAT-030 (issue #39, closed)
 
 ## 1. Goal
 

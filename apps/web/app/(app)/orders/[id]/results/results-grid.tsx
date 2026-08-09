@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState, useTransition, type KeyboardEvent } from 'react';
+import Link from 'next/link';
 import { Button, DataTable, Input, StatusPill, type ResultFlag } from '@lis/ui';
 import { getCalculatedAnalyteDefinition, isCalculatedAnalyteCode } from '@lis/domain';
 import { draftResult, finalizeResult, verifyResult, type CalculatedDependentOutcome } from './actions';
@@ -68,6 +69,11 @@ interface RowState {
   // status: 'held' -- the write succeeded, distinct from `error` so it never
   // renders with `error`'s danger styling over a value that wasn't lost.
   heldMessage: string | null;
+  // TASK-390 (issue #390): which post-commit branch held the panel -- only
+  // 'qc_violation' gets a /qc-violations pointer; 'unacknowledged_critical'
+  // keeps TASK-400's original caption unchanged (its own resolution affordance,
+  // Verify, is already on this same grid).
+  heldReason: 'unacknowledged_critical' | 'qc_violation' | null;
 }
 
 function rowKey(row: Pick<ResultRow, 'orderedTestId' | 'analyteId'>): string {
@@ -139,6 +145,7 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
           pending: false,
           error: null,
           heldMessage: null,
+          heldReason: null,
         } satisfies RowState,
       ]),
     ),
@@ -186,7 +193,7 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
 
   function handleVerify(row: ResultRow, index: number) {
     const key = rowKey(row);
-    updateRow(key, { pending: true, error: null, heldMessage: null });
+    updateRow(key, { pending: true, error: null, heldMessage: null, heldReason: null });
     startTransition(async () => {
       const outcome = await verifyResult(row.orderedTestId, row.analyteId);
       if (outcome.status === 'error') {
@@ -213,7 +220,7 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
     if (parsed === null || Number.isNaN(parsed)) {
       return; // nothing entered yet, or mid-edit -- draft only on a real number
     }
-    updateRow(key, { pending: true, error: null, heldMessage: null });
+    updateRow(key, { pending: true, error: null, heldMessage: null, heldReason: null });
     startTransition(async () => {
       const outcome = await draftResult(row.orderedTestId, row.analyteId, parsed);
       if (outcome.status === 'error') {
@@ -242,6 +249,7 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
       pending: false,
       error: null,
       heldMessage: null,
+      heldReason: null,
     });
   }
 
@@ -254,7 +262,7 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
     if (parsed === null || Number.isNaN(parsed)) {
       return;
     }
-    updateRow(key, { pending: true, error: null, heldMessage: null });
+    updateRow(key, { pending: true, error: null, heldMessage: null, heldReason: null });
     startTransition(async () => {
       const outcome = await finalizeResult(row.orderedTestId, row.analyteId, parsed);
       if (outcome.status === 'error') {
@@ -274,6 +282,7 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
           refHigh: outcome.refHigh,
           observationStatus: outcome.observationStatus,
           heldMessage: outcome.heldMessage ?? 'panel held pending an unrelated result.',
+          heldReason: outcome.heldReason ?? null,
         });
         for (const dependent of outcome.calculatedDependents ?? []) {
           applyCalculatedDependent(row.orderedTestId, dependent);
@@ -388,7 +397,14 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
                     {state.error}
                   </span>
                 ) : null}
-                {state.heldMessage ? (
+                {state.heldMessage && state.heldReason === 'qc_violation' ? (
+                  <span role="status" className="text-xs text-warning">
+                    Saved — held on a QC violation.{' '}
+                    <Link href="/qc-violations" className="underline">
+                      See QC violations →
+                    </Link>
+                  </span>
+                ) : state.heldMessage ? (
                   <span role="status" className="text-xs text-warning">
                     Saved — {state.heldMessage}
                   </span>

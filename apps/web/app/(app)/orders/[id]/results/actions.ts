@@ -30,6 +30,10 @@ export interface ResultActionOutcome {
   status: 'ok' | 'error' | 'held';
   error?: string;
   heldMessage?: string;
+  // TASK-390 (issue #390): distinguishes which post-commit branch held the
+  // panel, so the UI can point a QC hold at /qc-violations without touching
+  // the unrelated unacknowledged-critical caption (TASK-400's own scope).
+  heldReason?: 'unacknowledged_critical' | 'qc_violation';
   valueNum: number | null;
   flags: string[];
   refLow: number | null;
@@ -56,6 +60,11 @@ interface HeldObservationDto {
 interface PanelHoldProblem {
   code: 'panel_hold';
   detail: string;
+  // ADR-0021 Decision 1: always present on a panel_hold body -- which of
+  // FinalizationRollupInterceptor's two post-commit branches fired, so the
+  // frontend doesn't need to re-derive it from `detail`'s free-text message
+  // (issue #390's own QC-held indicator is the first real consumer of this).
+  reason?: 'unacknowledged_critical' | 'qc_violation';
   heldObservation: HeldObservationDto;
   heldCalculatedDependents?: HeldObservationDto[];
 }
@@ -142,6 +151,7 @@ export async function finalizeResult(
       return {
         status: 'held',
         heldMessage: problem.detail,
+        heldReason: problem.reason,
         valueNum: problem.heldObservation.valueNum,
         flags: problem.heldObservation.flags,
         refLow: problem.heldObservation.refLow,

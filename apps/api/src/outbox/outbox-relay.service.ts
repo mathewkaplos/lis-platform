@@ -55,10 +55,22 @@ export class OutboxRelayService {
   }
 
   private async enumerateTenantsWithPendingEvents(): Promise<string[]> {
+    // No explicit .where() on status: lis_scheduler's column-scoped GRANT
+    // covers only tenant_id (this table's own migration) -- referencing
+    // `status` directly in an app-level WHERE clause requires its own
+    // column grant, even though the RLS policy's USING clause (evaluated
+    // with the table's own rights, not the querying role's column grants)
+    // already restricts every visible row to status='pending'. Confirmed
+    // the hard way, against real Postgres: `SELECT DISTINCT tenant_id ...
+    // WHERE status = 'pending'` fails "permission denied for table" for
+    // lis_scheduler even though the identical query with no status filter
+    // succeeds -- exactly matching CriticalNotificationEscalationService's
+    // own enumeration query, which likewise never filters on the column
+    // (`status`) its own RLS policy already restricts, only on a genuinely
+    // granted one (createdAt).
     const rows = await schedulerDb
       .selectDistinct({ tenantId: outboxEvent.tenantId })
-      .from(outboxEvent)
-      .where(eq(outboxEvent.status, 'pending'));
+      .from(outboxEvent);
     return rows.map((row) => row.tenantId);
   }
 

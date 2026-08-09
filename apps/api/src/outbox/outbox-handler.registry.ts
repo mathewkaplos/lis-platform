@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-export type OutboxHandler = (payload: unknown, tenantId: string) => Promise<void>;
+export type OutboxHandler = (
+  payload: unknown,
+  tenantId: string,
+) => Promise<void>;
 
 /**
  * FEAT-028 (ADR-0028): a plain in-process `Map<eventType, handler[]>` --

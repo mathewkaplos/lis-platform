@@ -1219,6 +1219,30 @@
           "QcRuleViolation"
         ]
       }
+    },
+    "/internal/gateway/ingest": {
+      "post": {
+        "operationId": "GatewayIngestController_ingest",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RawResultDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "GatewayIngest"
+        ]
+      }
     }
   },
   "info": {
@@ -2665,6 +2689,54 @@
           "analyteId"
         ],
         "additionalProperties": false
+      },
+      "RawResultDto": {
+        "type": "object",
+        "properties": {
+          "instrumentId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "specimenId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "analyte": {
+            "type": "string",
+            "minLength": 1
+          },
+          "runId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "unit": {
+            "type": "string"
+          },
+          "flag": {
+            "type": "string"
+          },
+          "rawPayload": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "instrumentId",
+          "specimenId",
+          "analyte",
+          "runId",
+          "value",
+          "rawPayload"
+        ]
       }
     }
   }

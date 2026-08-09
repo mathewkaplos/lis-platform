@@ -564,6 +564,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/gateway/ingest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["GatewayIngestController_ingest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -915,6 +931,16 @@ export interface components {
             resolvedByUserId: string | null;
             /** Format: uuid */
             analyteId: string;
+        };
+        RawResultDto: {
+            instrumentId: string;
+            specimenId: string;
+            analyte: string;
+            runId: string;
+            value: number | string;
+            unit?: string;
+            flag?: string;
+            rawPayload: string;
         };
     };
     responses: never;
@@ -1720,6 +1746,27 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["QcRuleViolationListItemDto_Output"][];
                 };
+            };
+        };
+    };
+    GatewayIngestController_ingest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RawResultDto"];
+            };
+        };
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

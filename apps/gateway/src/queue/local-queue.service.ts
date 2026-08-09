@@ -28,13 +28,25 @@ export class LocalQueueService implements OnModuleInit {
     'pending',
   );
 
+  // Issue #433: Date.now() alone has only millisecond resolution, so two
+  // enqueue() calls landing in the same millisecond (real, reproduced --
+  // not hypothetical, both on a real CI run and locally) sorted by their
+  // random UUID suffix instead of call order, breaking the queue's own
+  // FIFO guarantee. A monotonic in-process counter, zero-padded so it
+  // still sorts lexically, fixes this without needing sub-millisecond
+  // clock resolution -- resets on restart, which is fine: this only needs
+  // to hold within one gateway process's own lifetime, matching how the
+  // file-based directory listing itself is already scoped.
+  private sequence = 0;
+
   async onModuleInit() {
     await mkdir(this.pendingDir, { recursive: true });
   }
 
   async enqueue<T>(payload: T): Promise<string> {
     await mkdir(this.pendingDir, { recursive: true });
-    const id = `${Date.now().toString().padStart(15, '0')}-${randomUUID()}`;
+    const seq = (this.sequence++).toString().padStart(6, '0');
+    const id = `${Date.now().toString().padStart(15, '0')}-${seq}-${randomUUID()}`;
     const item: QueuedItem<T> = {
       id,
       enqueuedAt: new Date().toISOString(),

@@ -1,5 +1,5 @@
 # Implementation Proposal: FEAT-037 — FHIR R4 façade
-Status: APPROVED
+Status: IMPLEMENTED (merged PR #464, 7429e58c7938e35dc398aad1260f8c53261879d8, closed issue #46)
 ADR: none required — library adoption is verified but not a load-bearing architectural decision on the scale of ADR-0011/0026/0027 (a mapper + one read-only route, no new data model)   Date: 2026-08-10   Backlog ID: FEAT-037
 
 ## 1. Goal

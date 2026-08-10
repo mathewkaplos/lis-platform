@@ -1,11 +1,19 @@
 # Implementation Proposal: FEAT-035 Admin catalog UI
-Status: **APPROVED** (2026-08-10) — §10's open questions resolved by the human via the native
-options-prompt (2026-08-10), all three decided as the recommended option; proposal approved the
-same session.
-ADR: none yet — §10 Q1 (below) is a genuinely load-bearing, ADR-shaped decision (a tenant-scoped
-admin action reaching into global, cross-tenant-visible data) that this proposal deliberately does
-not decide unilaterally; if the human resolves it toward allowing analyte authoring, that resolution
-should be its own ADR before implementation, not folded silently into this feature's own docs.
+Status: **IMPLEMENTED** — merged PR #449 (`60e0078`), closing #44. §10's open questions resolved by
+the human via the native options-prompt (2026-08-10), all three decided as the recommended option
+(analyte creation and the §20.5 Templates screen stayed descoped; reference ranges are add-only).
+Full apps/api e2e suite (30 files / 312 tests) green against a freshly reset DB; repo-wide
+typecheck/lint/build clean; golden-dataset check PASS. A real `web-verify` browser pass (both `qa`
+and non-`qa` sessions) caught and fixed one real bug during implementation: `actions.ts` exporting a
+plain `initialState` object alongside its `'use server'` action function, which Next.js rejects only
+at real request time (invisible to typecheck/lint/build) — fixed by splitting each screen's state
+into its own `types.ts`, matching `patients/new/types.ts`'s own precedent; now also captured at
+`engineering/frontend-design` Skill entry #8 (lis-engineering) so a third feature doesn't rediscover
+it.
+ADR: none — §10 Q1 stayed descoped (analyte creation not built), so the ADR-shaped decision this
+proposal flagged never actually arose in this implementation. Still real, unresolved future work if
+a design-partner need for tenant-scoped analyte authoring is ever confirmed (see ADR-0004's own
+"Alternatives rejected" section).
 Date: 2026-08-10    Backlog ID: FEAT-035 (#44)
 
 **§10 resolved 2026-08-10, all three questions decided as the recommended option:** Q1 (analyte

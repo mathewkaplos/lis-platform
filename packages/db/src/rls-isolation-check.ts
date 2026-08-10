@@ -35,6 +35,8 @@ import { controlLot } from "./schema/control-lot";
 import { criticalNotification } from "./schema/critical-notification";
 import { qcRuleViolation } from "./schema/qc-rule-violation";
 import { careRelationship } from "./schema/care-relationship";
+import { patientPortalAccount } from "./schema/patient-portal-account";
+import { resultReleasePolicy } from "./schema/result-release-policy";
 import { writeAuditEvent } from "./audit";
 
 type Db = ReturnType<typeof createDb>;
@@ -179,6 +181,20 @@ async function insertFixtures(db: Db) {
     tenantId: TENANT_A,
     clinicianUserId: "99999999-9999-9999-9999-999999999999",
     patientId: pat.id,
+  });
+
+  // FEAT-039: patient_portal_account + result_release_policy fixtures, same
+  // reasoning as care_relationship's own above -- two genuinely new tenant
+  // tables this task introduces.
+  await db.insert(patientPortalAccount).values({
+    tenantId: TENANT_A,
+    patientUserId: "99999999-9999-9999-9999-999999999999",
+    patientId: pat.id,
+  });
+  await db.insert(resultReleasePolicy).values({
+    tenantId: TENANT_A,
+    mode: "immediate",
+    delayHours: 0,
   });
 
   const [ord] = await db.insert(order).values({ tenantId: TENANT_A, patientId: pat.id }).returning();

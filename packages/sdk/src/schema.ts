@@ -788,6 +788,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/portal/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PortalController_getResults"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workflow-definitions": {
         parameters: {
             query?: never;
@@ -1374,6 +1390,33 @@ export interface components {
             flags: string[];
             /** Format: date-time */
             verifiedAt: string;
+        };
+        PortalResultsResponseDto_Output: {
+            analytes: {
+                /** Format: uuid */
+                analyteId: string;
+                analyteDisplay: string;
+                latest: {
+                    /** Format: uuid */
+                    observationId: string;
+                    producedAt: string;
+                    value: string;
+                    unit: string;
+                    flags: string[];
+                    referenceRangeText: string;
+                    isCritical: boolean;
+                };
+                trend: {
+                    /** Format: uuid */
+                    observationId: string;
+                    producedAt: string;
+                    value: string;
+                    unit: string;
+                    flags: string[];
+                    referenceRangeText: string;
+                    isCritical: boolean;
+                }[];
+            }[];
         };
         WorkflowDefinitionCreateDto__schema0: {
             and: components["schemas"]["WorkflowDefinitionCreateDto__schema0"][];
@@ -2551,6 +2594,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    PortalController_getResults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalResultsResponseDto_Output"];
+                };
             };
         };
     };

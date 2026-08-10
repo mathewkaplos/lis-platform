@@ -14,3 +14,4 @@ export * from "./operational-reports";
 export * from "./sla-breach";
 export * from "./interop-order";
 export * from "./interop-oru";
+export * from "./portal";

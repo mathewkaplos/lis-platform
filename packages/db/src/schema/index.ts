@@ -21,3 +21,5 @@ export * from "./workflow-definition";
 export * from "./report-template";
 export * from "./sla-breach";
 export * from "./care-relationship";
+export * from "./patient-portal-account";
+export * from "./result-release-policy";

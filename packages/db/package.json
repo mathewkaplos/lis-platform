@@ -10,7 +10,8 @@
     "generate": "drizzle-kit generate",
     "migrate": "tsx src/migrate.ts",
     "rls-check": "tsx src/rls-isolation-check.ts",
-    "golden-check": "tsx src/golden-dataset-check.ts"
+    "golden-check": "tsx src/golden-dataset-check.ts",
+    "audit-concurrency-check": "tsx src/audit-chain-concurrency-check.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

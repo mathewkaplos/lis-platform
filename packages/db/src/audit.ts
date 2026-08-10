@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { createDb } from "./client";
 import { auditEvent } from "./schema/audit";
 
@@ -109,6 +109,16 @@ function computeHash(canonical: string, prevHash: Buffer | null): Buffer {
  * flagged here rather than silently assumed away.
  */
 export async function writeAuditEvent(db: DbOrTx, input: AuditEventInput) {
+  // ADR-0036: without this, two concurrent writers for the same tenant (e.g.
+  // SlaBreachDetectorService and CriticalNotificationEscalationService, both
+  // independent @Interval jobs) can both read the same "last row" below
+  // before either commits, corrupting the chain -- confirmed live against a
+  // real long-lived container (lis-platform#459). The lock is xact-scoped
+  // (auto-released at COMMIT/ROLLBACK) and taken on the caller's own
+  // already-open transaction, not a new one -- it does not risk the
+  // DB_POOL_MAX=1 nested-transaction deadlock (database-design Skill #14).
+  await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${input.tenantId}))`);
+
   const [prev] = await db
     .select({ hash: auditEvent.hash })
     .from(auditEvent)

@@ -1,7 +1,16 @@
 # Implementation Proposal: FEAT-034 Operational reports (TAT, workload)
-Status: **APPROVED** (2026-08-10) — §10's open questions resolved by the human via the native
-options-prompt (2026-08-10), all three decided as the recommended option; proposal approved the
-same session.
+Status: **IMPLEMENTED** — merged PR #453 (`2a21303`), closing #43. §10's open questions resolved by
+the human via the native options-prompt (2026-08-10), all three decided as the recommended option.
+Full apps/api e2e suite (32 files / 324 tests) green against a freshly reset DB, confirmed stable
+across 3 consecutive full-suite runs; repo-wide typecheck/lint/build clean; golden-dataset check
+PASS. Two real test-fixture-isolation bugs were found and fixed during implementation: a "safely
+wide" TAT window silently summed in every other spec file's own real-time `routine`-priority
+fixtures once run as part of the full suite (fixed by excluding real "now" from the window
+entirely), and the workload window (even after a first, DB-clock-anchored tightening) remained
+intermittently contaminated by other specs' own `test-user-4` activity (fixed by deriving the
+window directly from the fixture's own two real `observation` row timestamps, not any wall-clock
+estimate). `ordered_test.status` was also confirmed to never reach a literal `'verified'` value --
+verification is tracked exclusively via `observation.status`.
 ADR: none yet — write one if a load-bearing decision is discovered during planning (none surfaced
 here that isn't already settled by direct precedent or by KB-44's own explicit scope boundary).
 Date: 2026-08-10    Backlog ID: FEAT-034 (#43)

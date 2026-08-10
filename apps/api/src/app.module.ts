@@ -19,6 +19,7 @@ import { CriticalNotificationModule } from './critical-notification/critical-not
 import { QcRuleViolationModule } from './qc-rule-violation/qc-rule-violation.module';
 import { GatewayIngestModule } from './gateway-ingest/gateway-ingest.module';
 import { InteropBridgeModule } from './interop-bridge/interop-bridge.module';
+import { FhirModule } from './fhir/fhir.module';
 import { OutboxModule } from './outbox/outbox.module';
 import { WorkflowModule } from './workflow/workflow.module';
 import { ReflexModule } from './reflex/reflex.module';
@@ -50,6 +51,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     QcRuleViolationModule,
     GatewayIngestModule,
     InteropBridgeModule,
+    FhirModule,
     OutboxModule,
     WorkflowModule,
     ReflexModule,

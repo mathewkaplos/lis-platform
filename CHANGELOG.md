@@ -395,3 +395,21 @@ frontmatter declaration (this entry's own commit).
   and commit themselves.
 - **Files:** `~/work/lis-platform/.claude/hooks/session-start.sh` (fix handed to human, not yet
   applied by the agent)
+
+## 2026-08-10
+
+- **Friction:** across three consecutive PR merges this session (#441, #443, #444), a `Monitor`
+  loop polling `gh pr checks <n> --json name,bucket` every 30s under a 1800000ms ceiling hit its
+  own timeout ("Monitor timed out — re-arm if needed") all three times, even though the checks had
+  actually finished in ~4 minutes each — a manual `gh pr checks <n>` run immediately after showed
+  everything already `pass`. AGENTS.md's existing "Waiting for CI to go green before merging"
+  bullet already documents this exact class of problem (session 26's `gh pr checks --watch`
+  GraphQL rate-limit failure) and prescribes a REST-polling `Bash run_in_background` + `until` loop
+  instead — but doesn't name the `Monitor` tool itself, which was used instead this session and
+  showed the same "never reliably detects completion, just times out" failure shape.
+- **Area:** github-workflow (`AGENTS.md`'s "Rules of engagement" section)
+- **Change:** proposed and confirmed an addition to the existing bullet, naming `Monitor` as
+  unsuitable for this specific wait and pointing back at the already-documented `Bash` + `until`
+  alternative. `AGENTS.md` edits need the human to run the git-level steps per its own carve-out
+  (line ~138); the edit is applied locally but not yet committed/pushed/PR'd.
+- **Files:** `~/work/lis-platform/AGENTS.md` (fix applied locally, not yet committed by the agent)

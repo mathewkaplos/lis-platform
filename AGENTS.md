@@ -114,6 +114,16 @@ packages/ui (design system) · packages/sdk (generated API client)
   'until <REST check-runs query returns true>; do sleep 20; done'",
   run_in_background: true})` — this both avoids a disallowed blocking
   foreground sleep and doesn't depend on `ScheduleWakeup` being available.
+  **The `Monitor` tool is not a safe substitute for this either** —
+  confirmed 2026-08-09 (session 29, PRs #441/#443/#444): a `Monitor` loop
+  polling `gh pr checks <n> --json name,bucket` every 30s under a
+  1800000ms ceiling hit its own timeout ("Monitor timed out — re-arm if
+  needed") all three times, even though the checks had actually finished
+  in ~4 minutes each — `gh pr checks <n>` run manually right after showed
+  everything already `pass`. Stick to the plain backgrounded `Bash` +
+  `until` loop above for this specific wait; it has none of `Monitor`'s
+  own detection-reliability risk for a short, bounded, one-shot condition
+  like "these checks are all terminal."
 - Before deleting any branch, check whether it is the **base** branch of a
   different, still-open PR (a stacked-PR setup) — deleting it **permanently
   closes** that PR; GitHub refuses to reopen it or change its base once the

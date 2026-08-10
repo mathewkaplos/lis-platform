@@ -1,5 +1,5 @@
 # Implementation Proposal: FEAT-036 — HL7 v2 inbound/outbound via ACL
-Status: APPROVED
+Status: IMPLEMENTED (merged PR #460, a8f316f7f15a8427ec731d8701cf2ed02806d007, closed issue #45)
 ADR: adr-0034 (apps/interop placement), adr-0035 (auth bridge into ADR-0026)   Date: 2026-08-10   Backlog ID: FEAT-036
 
 ## 1. Goal

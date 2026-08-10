@@ -161,12 +161,18 @@ packages/ui (design system) · packages/sdk (generated API client)
   confirm no open PR uses the branch as its base, before deleting it.
 - PRs or commits that modify `AGENTS.md`, `.claude/settings*.json`, or hook
   scripts under `.claude/hooks/` should be expected to need the human to run
-  the git-level stage/commit/push/PR-create steps directly, even when the
-  merge-autonomy rule above would otherwise apply — the classifier applies
-  additional, not fully predictable, scrutiny to changes touching the
-  agent's own authorization surface. Confirmed 2026-08-02: nearly every git/
-  gh write step on the PR that added the merge-autonomy rule itself (#275)
-  was denied at least once, some resolving on an immediate retry, some
+  the git-level stage/commit/**branch/PR-create**/push steps directly — the
+  *same* branch+PR flow used everywhere else in this repo, never a direct
+  push to `main` (which branch protection rejects regardless of who runs
+  it: confirmed 2026-08-10, a direct `git push` to `main` for exactly this
+  kind of AGENTS.md edit was rejected outright, "Changes must be made
+  through a pull request," needing a follow-up branch+PR anyway). This
+  applies even when the merge-autonomy rule above would otherwise apply —
+  the classifier applies additional, not fully predictable, scrutiny to
+  changes touching the agent's own authorization surface. Confirmed
+  2026-08-02: nearly every git/ gh write step on the PR that added the
+  merge-autonomy rule itself (#275) was denied at least once, some
+  resolving on an immediate retry, some
   requiring the human to run the identical command. Retry a blocked step
   once; if it repeats, hand the exact command to the human rather than
   continuing to retry.

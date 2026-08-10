@@ -1,7 +1,15 @@
 # Implementation Proposal: FEAT-032 Template engine (config-driven, versioned)
-Status: **APPROVED** (2026-08-10) — §10's open questions resolved by the human via the native
-options-prompt (2026-08-10), all four decided as the recommended option; proposal approved the
-same session.
+Status: **IMPLEMENTED** — merged PR #447 (`6989007`), closing #41. §10's open questions resolved by
+the human via the native options-prompt (2026-08-10), all four decided as the recommended option.
+Full apps/api e2e suite (29 files / 304 tests) green against a freshly reset DB; repo-wide
+typecheck/lint/build clean; golden-dataset check PASS; the two new tables show zero RLS leaks
+(pre-existing failures on unrelated tables match already-filed issue #430, unaffected by this PR).
+ADR-0032 (lis-engineering) records the three load-bearing decisions (versioning/lifecycle mirrors
+`workflow_definition`, `evaluateCondition` reused verbatim across subsystems, snapshot-by-id not
+by-value). `engineering/pdf-generation` Skill entry #7 and `engineering/workflow-engine` Skill
+entry #11 capture the two real findings from implementation (pdfkit's `compress: true` default
+breaking text-substring test assertions; `findUnallowedFields` widened to take a caller-supplied
+allow-list).
 ADR: none yet — this proposal's central mechanism decision (generalizing FEAT-016's rendering
 pipeline + reusing ADR-0029's condition evaluator across subsystems) is real and load-bearing per
 this issue's own "write one if a load-bearing decision is discovered during planning" instruction,

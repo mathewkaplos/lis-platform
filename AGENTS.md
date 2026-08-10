@@ -44,6 +44,18 @@ packages/ui (design system) · packages/sdk (generated API client)
   Flow Retrospective, Section 8, finding B). Use the REST API instead:
   `gh api repos/mathewkaplos/lis-platform/pulls/<n> -X PATCH -f body=...`
   (or `-f title=...`) — confirmed working.
+- `gh issue create --label <name>` fails the *entire* command — creating no
+  issue at all, not a labelless one — if the named label doesn't exist.
+  Confirmed 2026-08-09: `--label "type:bug"` (guessed from this repo's own
+  `type:feature`/`type:task`/`type:epic` convention, which covers
+  feature/task work, not plain bug reports) failed with
+  `could not add label: 'type:bug' not found`, and a follow-up search
+  confirmed nothing had been created — easy to misread as "created,
+  just unlabeled." The correct label for a bug report is the plain `bug`
+  label already in this repo's set. Check `gh label list` before passing
+  `--label` to `gh issue create` (or create the issue with no label first,
+  then `gh issue edit <n> --add-label` as a separate step), rather than
+  guessing from the `type:*` pattern.
 
 ## Where knowledge lives
 - Architecture KB: ../lis-engineering/knowledge-base/
@@ -414,3 +426,17 @@ packages/ui (design system) · packages/sdk (generated API client)
   context) over spawning a new one whenever the original is still known —
   a fresh agent has no memory of what the original already did and is
   exactly what produces this kind of race.
+- **Prefer an explicit `cd ~/work/lis-platform &&` prefix over a bare
+  relative path when invoking a repo-root script (`scripts/db-reset.sh`,
+  etc.), since this harness persists cwd across separate tool calls.** An
+  earlier `cd packages/db && pnpm migrate` (or similar) leaves every later
+  `Bash` call running from `packages/db` until something explicitly `cd`s
+  back — confirmed 2026-08-10: a subsequent bare `bash scripts/db-reset.sh`
+  ran from the wrong directory and failed with
+  `db/seed/chemistry-catalog.sql: No such file or directory`, *after*
+  already tearing down and recreating the Postgres Docker volume/container
+  in the same script's own earlier steps — a misleading symptom that
+  doesn't obviously point at "wrong cwd," only diagnosed by checking `pwd`
+  directly. `cd ~/work/lis-platform && bash scripts/db-reset.sh` in one
+  command is immune to this regardless of whatever cwd a prior call left
+  behind.

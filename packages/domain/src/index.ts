@@ -10,3 +10,4 @@ export * from "./control-lot";
 export * from "./critical-notification";
 export * from "./qc-westgard";
 export * from "./raw-result";
+export * from "./operational-reports";

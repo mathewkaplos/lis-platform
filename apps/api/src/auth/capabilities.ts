@@ -58,6 +58,14 @@
  * entry/verification. Covers both `test_definition`/`test_analyte` and
  * `reference_range` creation (proposal §5: one capability, not split
  * per-resource, no stated need yet to differentiate).
+ *
+ * `view_operational_reports` (FEAT-034 proposal §10 Q1): granted to `qa`,
+ * not `technologist`/`verifier` — TAT/workload/rejection-rate reports are
+ * "give lab management visibility" data (the issue's own purpose line);
+ * "workload by bench/analyst" specifically is real, individual-staff-
+ * performance-shaped data, a different sensitivity class from a purely
+ * clinical read (contrast `GET .../prior`, ungated), matching `resolve_qc`'s
+ * own persona (`qa`/lab-manager).
  */
 export type Capability =
   | 'enter_result'
@@ -69,7 +77,8 @@ export type Capability =
   | 'gateway_ingest'
   | 'manage_workflow'
   | 'manage_report_templates'
-  | 'manage_catalog';
+  | 'manage_catalog'
+  | 'view_operational_reports';
 
 const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
   technologist: [
@@ -90,6 +99,7 @@ const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
     'manage_workflow',
     'manage_report_templates',
     'manage_catalog',
+    'view_operational_reports',
   ],
   'gateway-ingest': ['gateway_ingest'],
 };

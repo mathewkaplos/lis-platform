@@ -1,6 +1,6 @@
 import { getValidAccessToken } from '@/auth/access-token';
 import { createLisApiClient } from '@/lib/api-client';
-import { Card, CardContent, CardHeader, CardTitle } from '@lis/ui';
+import { Badge, Card, CardContent, CardHeader, CardTitle } from '@lis/ui';
 import { ClinicianPatientsTable } from './patients-table';
 import { CriticalAckForm } from './critical-ack-form';
 
@@ -53,9 +53,7 @@ export default async function ClinicianDashboardPage() {
               {criticals.map((c) => (
                 <li key={c.id} className="flex flex-col gap-2 rounded-md border border-border p-4">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-danger">
-                      Escalation level {c.escalationLevel}
-                    </span>
+                    <Badge variant="destructive">Escalation level {c.escalationLevel}</Badge>
                     <span className="text-text-secondary">
                       {new Date(c.createdAt).toLocaleString()}
                     </span>

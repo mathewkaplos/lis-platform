@@ -30,7 +30,7 @@ export function ClinicianPatientsTable({ patients }: { patients: ClinicianPatien
       sortable: true,
       sortValue: (p) => `${p.lastName} ${p.firstName}`,
     },
-    { id: 'mrn', header: 'MRN', cell: (p) => p.mrn },
+    { id: 'mrn', header: 'MRN', cell: (p) => <span className="font-mono">{p.mrn}</span> },
     {
       id: 'actions',
       header: '',

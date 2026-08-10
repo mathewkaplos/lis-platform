@@ -1,5 +1,5 @@
 # Implementation Proposal: FEAT-042 AI narrative drafting (advisory)
-Status: APPROVED
+Status: **IMPLEMENTED** — merged PR #476 (`e4f4fe9`), closing #51.
 
 **Approved 2026-08-10** via the native options-prompt (approved as drafted; §10 Q1's provider
 choice was itself already resolved via a prior options-prompt before this proposal was finalized).

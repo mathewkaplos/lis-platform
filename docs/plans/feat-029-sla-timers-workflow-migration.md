@@ -1,10 +1,19 @@
 # Implementation Proposal: FEAT-029 (remainder) — SLA timers via the workflow engine
-Status: **APPROVED** (2026-08-10) — §10's three open questions resolved by the human via the
-native options-prompt (2026-08-10), all three decided as the recommended option (polling-derived
-detection; `view_operational_reports` gates the read list; `sla_breach` stays separate from
-`critical_notification`).
-ADR: none yet — write one if a load-bearing decision is discovered during planning (a durable
-timer → outbox-event → workflow-rule pipeline is new shape; likely candidate, see §10 Q1)
+Status: **IMPLEMENTED** — merged PR #455 (`8c04d15`), closing #38. §10's three open questions
+resolved by the human via the native options-prompt (2026-08-10), all three decided as the
+recommended option (polling-derived detection; `view_operational_reports` gates the read list;
+`sla_breach` stays separate from `critical_notification`). Full apps/api e2e suite (33 files / 330
+tests) green against a freshly reset DB, confirmed stable across 3 consecutive full-suite runs;
+repo-wide typecheck/lint/build clean; golden-dataset check PASS. Real findings during
+implementation: `ordered_test`'s existing `tenant_isolation` RLS policy needed widening to the
+non-throwing form (mirroring `critical_notification`'s own precedent) before `lis_scheduler` could
+read it at all, re-approved by the human mid-implementation (a real, load-bearing change beyond
+this proposal's own stated footprint); and a second, cross-feature instance of the FEAT-034
+fixture-window-contamination class (`testing` Skill entry #13's own follow-up) -- this feature's own
+SLA e2e fixtures landed inside `operational-reports.e2e-spec.ts`'s own TAT window with the same
+priority, fixed by loosening those count assertions to a floor.
+ADR: adr-0033 (the condition-evaluator field allow-list stays one flat list across event shapes,
+not event-type-scoped -- see §10)
 Date: 2026-08-10    Backlog ID: FEAT-029 (issue #38, AC #2 — the deferred half)
 
 ## 1. Goal

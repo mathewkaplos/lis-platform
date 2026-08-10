@@ -452,6 +452,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/patients/{patientId}/cumulative-report/{analyteId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CumulativeReportController_generate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/report-templates": {
         parameters: {
             query?: never;
@@ -1840,6 +1856,26 @@ export interface operations {
             header?: never;
             path: {
                 id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CumulativeReportController_generate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patientId: string;
+                analyteId: string;
             };
             cookie?: never;
         };

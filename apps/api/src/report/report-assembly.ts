@@ -51,8 +51,12 @@ export interface AssembledReport {
  * entire proof of this task's literal AC: a `reference_range` row edited
  * or superseded years later cannot change what an already-written
  * observation reports.
+ *
+ * Exported (FEAT-033): `cumulative-report-assembly.ts` reuses this verbatim
+ * rather than writing a third copy of the same formatting logic -- pure
+ * visibility change, no behavior change.
  */
-function formatReferenceRangeText(
+export function formatReferenceRangeText(
   refLow: number | null,
   refHigh: number | null,
   refCondition: string | null,
@@ -80,7 +84,7 @@ function formatReferenceRangeText(
  * "same input, byte-identical PDF" AC (TASK-058) depend on which
  * environment rendered it.
  */
-function formatDateTime(date: Date): string {
+export function formatDateTime(date: Date): string {
   return new Intl.DateTimeFormat('en-US', {
     dateStyle: 'medium',
     timeStyle: 'medium',
@@ -88,7 +92,9 @@ function formatDateTime(date: Date): string {
   }).format(date);
 }
 
-function formatObservationValue(row: typeof observation.$inferSelect): string {
+export function formatObservationValue(
+  row: typeof observation.$inferSelect,
+): string {
   if (row.dataType === 'quantity') {
     return row.valueNum === null ? '' : String(Number(row.valueNum));
   }

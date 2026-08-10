@@ -24,6 +24,10 @@
       {
         "name": "gateway-ingest",
         "description": "Machine role for the edge integration gateway's service account (FEAT-026, ADR-0026) -- scoped to the internal ingestion endpoint only, never granted to a human user"
+      },
+      {
+        "name": "interop-ingest",
+        "description": "Machine role for the HL7 v2 ACL's service account (FEAT-036, ADR-0035) -- scoped to apps/interop's own calls into apps/api, never granted to a human user"
       }
     ]
   },
@@ -169,6 +173,25 @@
         "basic",
         "roles"
       ]
+    },
+    {
+      "clientId": "lis-interop",
+      "name": "LIS HL7 v2 Interop ACL",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "dev-only-lis-interop-secret",
+      "defaultClientScopes": [
+        "tenant",
+        "openid",
+        "basic",
+        "roles"
+      ]
     }
   ],
   "users": [
@@ -293,6 +316,15 @@
         "tenant_id": ["00000000-0000-0000-0000-000000000001"]
       },
       "realmRoles": ["gateway-ingest"]
+    },
+    {
+      "username": "service-account-lis-interop",
+      "enabled": true,
+      "serviceAccountClientId": "lis-interop",
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+      },
+      "realmRoles": ["interop-ingest"]
     }
   ]
 }

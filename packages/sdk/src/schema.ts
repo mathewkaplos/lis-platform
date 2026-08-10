@@ -724,6 +724,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/interop/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["InteropBridgeController_health"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/interop/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["InteropBridgeController_ingestOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/interop/observations/{id}/oru-data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["InteropBridgeController_getOruData"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workflow-definitions": {
         parameters: {
             query?: never;
@@ -1289,6 +1337,27 @@ export interface components {
             unit?: string;
             flag?: string;
             rawPayload: string;
+        };
+        InteropOrderIngestDto: {
+            mrn: string;
+            testCode: string;
+            /** @enum {string} */
+            priority?: "routine" | "stat";
+            rawMessage: string;
+        };
+        AugmentedZodDto_Output: {
+            patientMrn: string;
+            patientFirstName: string;
+            patientLastName: string;
+            analyteCode: string;
+            analyteDisplay: string;
+            value: string;
+            unit: string | null;
+            refLow: number | null;
+            refHigh: number | null;
+            flags: string[];
+            /** Format: date-time */
+            verifiedAt: string;
         };
         WorkflowDefinitionCreateDto__schema0: {
             and: components["schemas"]["WorkflowDefinitionCreateDto__schema0"][];
@@ -2388,6 +2457,65 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    InteropBridgeController_health: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InteropBridgeController_ingestOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InteropOrderIngestDto"];
+            };
+        };
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InteropBridgeController_getOruData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AugmentedZodDto_Output"];
+                };
             };
         };
     };

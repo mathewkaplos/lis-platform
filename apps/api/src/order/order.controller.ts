@@ -5,6 +5,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  Inject,
   NotFoundException,
   Param,
   Post,
@@ -20,14 +21,7 @@ import {
   type Order,
   type OrderedTest,
 } from '@lis/domain';
-import {
-  order,
-  orderedTest,
-  panel,
-  panelTest,
-  patient,
-  testDefinition,
-} from '@lis/db';
+import { order, orderedTest, patient } from '@lis/db';
 import { and, eq, gte, inArray, lte } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
@@ -41,6 +35,7 @@ import { RequireCapability } from '../auth/require-capability.decorator';
 import type { RequestContext } from '../auth/request-context';
 import type { RequestWithTx } from '../auth/tenant-context.interceptor';
 import { TenantContextInterceptor } from '../auth/tenant-context.interceptor';
+import { OrderCreationService } from './order-creation.service';
 
 const orderIdParamSchema = z.object({ id: z.uuid() });
 
@@ -112,6 +107,14 @@ function toOrderDto(
  */
 @Controller('v1/orders')
 export class OrderController {
+  // Explicit @Inject, not an implicit-typed constructor param -- see
+  // CapabilityGuard's own header comment for why (vitest esbuild
+  // design:paramtypes gap).
+  constructor(
+    @Inject(OrderCreationService)
+    private readonly orderCreationService: OrderCreationService,
+  ) {}
+
   /**
    * FEAT-012 proposal §5: `panelIds` are expanded server-side into their
    * member `testDefinitionId`s (via `panelTest`) and unioned with any
@@ -142,77 +145,14 @@ export class OrderController {
       throw new BadRequestException(`Unknown patient id: ${body.patientId}`);
     }
 
-    const requestedPanelIds = body.panelIds ?? [];
-    const requestedTestIds = body.testDefinitionIds ?? [];
-
-    if (requestedPanelIds.length > 0) {
-      const visiblePanels = await tx
-        .select({ id: panel.id })
-        .from(panel)
-        .where(inArray(panel.id, requestedPanelIds));
-      const visibleIds = new Set(visiblePanels.map((row) => row.id));
-      const missing = requestedPanelIds.filter((id) => !visibleIds.has(id));
-      if (missing.length > 0) {
-        throw new BadRequestException(
-          `Unknown panel id(s): ${missing.join(', ')}`,
-        );
-      }
-    }
-
-    if (requestedTestIds.length > 0) {
-      const visibleTests = await tx
-        .select({ id: testDefinition.id })
-        .from(testDefinition)
-        .where(inArray(testDefinition.id, requestedTestIds));
-      const visibleIds = new Set(visibleTests.map((row) => row.id));
-      const missing = requestedTestIds.filter((id) => !visibleIds.has(id));
-      if (missing.length > 0) {
-        throw new BadRequestException(
-          `Unknown test definition id(s): ${missing.join(', ')}`,
-        );
-      }
-    }
-
-    const expandedTestIds =
-      requestedPanelIds.length > 0
-        ? (
-            await tx
-              .select({ testDefinitionId: panelTest.testDefinitionId })
-              .from(panelTest)
-              .where(inArray(panelTest.panelId, requestedPanelIds))
-          ).map((row) => row.testDefinitionId)
-        : [];
-
-    const resolvedTestIds = Array.from(
-      new Set([...requestedTestIds, ...expandedTestIds]),
-    );
-    if (resolvedTestIds.length === 0) {
-      throw new BadRequestException(
-        'No tests resolved from testDefinitionIds/panelIds (an empty panel?)',
-      );
-    }
-
-    const [orderRow] = await tx
-      .insert(order)
-      .values({
+    const { orderRow, orderedTestRows } =
+      await this.orderCreationService.create(tx, {
         tenantId: user.tenantId,
         patientId: body.patientId,
-        status: 'ordered',
-        priority: body.priority ?? 'routine',
-      })
-      .returning();
-
-    const orderedTestRows = await tx
-      .insert(orderedTest)
-      .values(
-        resolvedTestIds.map((testDefinitionId) => ({
-          tenantId: user.tenantId,
-          orderId: orderRow.id,
-          testDefinitionId,
-          status: 'ordered' as const,
-        })),
-      )
-      .returning();
+        testDefinitionIds: body.testDefinitionIds,
+        panelIds: body.panelIds,
+        priority: body.priority,
+      });
 
     return {
       resourceId: orderRow.id,

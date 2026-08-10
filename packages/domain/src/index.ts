@@ -12,3 +12,5 @@ export * from "./qc-westgard";
 export * from "./raw-result";
 export * from "./operational-reports";
 export * from "./sla-breach";
+export * from "./interop-order";
+export * from "./interop-oru";

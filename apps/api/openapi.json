@@ -1589,6 +1589,76 @@
         ]
       }
     },
+    "/internal/interop/health": {
+      "get": {
+        "operationId": "InteropBridgeController_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "InteropBridge"
+        ]
+      }
+    },
+    "/internal/interop/orders": {
+      "post": {
+        "operationId": "InteropBridgeController_ingestOrder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InteropOrderIngestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "InteropBridge"
+        ]
+      }
+    },
+    "/internal/interop/observations/{id}/oru-data": {
+      "get": {
+        "operationId": "InteropBridgeController_getOruData",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AugmentedZodDto_Output"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "InteropBridge"
+        ]
+      }
+    },
     "/v1/workflow-definitions": {
       "post": {
         "operationId": "WorkflowDefinitionController_create",
@@ -3890,6 +3960,94 @@
           "value",
           "rawPayload"
         ]
+      },
+      "InteropOrderIngestDto": {
+        "type": "object",
+        "properties": {
+          "mrn": {
+            "type": "string",
+            "minLength": 1
+          },
+          "testCode": {
+            "type": "string",
+            "minLength": 1
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "routine",
+              "stat"
+            ]
+          },
+          "rawMessage": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mrn",
+          "testCode",
+          "rawMessage"
+        ]
+      },
+      "AugmentedZodDto_Output": {
+        "type": "object",
+        "properties": {
+          "patientMrn": {
+            "type": "string"
+          },
+          "patientFirstName": {
+            "type": "string"
+          },
+          "patientLastName": {
+            "type": "string"
+          },
+          "analyteCode": {
+            "type": "string"
+          },
+          "analyteDisplay": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string",
+            "nullable": true
+          },
+          "refLow": {
+            "type": "number",
+            "nullable": true
+          },
+          "refHigh": {
+            "type": "number",
+            "nullable": true
+          },
+          "flags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "verifiedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          }
+        },
+        "required": [
+          "patientMrn",
+          "patientFirstName",
+          "patientLastName",
+          "analyteCode",
+          "analyteDisplay",
+          "value",
+          "unit",
+          "refLow",
+          "refHigh",
+          "flags",
+          "verifiedAt"
+        ],
+        "additionalProperties": false
       },
       "WorkflowDefinitionCreateDto__schema0": {
         "anyOf": [

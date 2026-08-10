@@ -12,6 +12,8 @@ import { ZodValidationException } from 'nestjs-zod';
 import { ZodError } from 'zod';
 import type { UnmatchedReason } from '../gateway-ingest/analyzer-correlation.service';
 import { UnmatchedResultException } from '../gateway-ingest/unmatched-result.exception';
+import type { InteropUnmatchedReason } from '../interop-bridge/interop-order-correlation.service';
+import { UnmatchedOrderException } from '../interop-bridge/unmatched-order.exception';
 import { PanelHoldException } from '../observation/finalization-rollup.interceptor';
 
 interface ProblemDetails {
@@ -29,7 +31,14 @@ interface ProblemDetails {
   // FEAT-027: also present on UnmatchedResultException, same reasoning --
   // the gateway forwarder / a future pending-match UI needs the specific
   // unmatched reason, not just "422".
-  reason?: 'unacknowledged_critical' | 'qc_violation' | UnmatchedReason;
+  // FEAT-036: same reasoning again for UnmatchedOrderException -- apps/interop's
+  // MLLP layer maps the specific reason to an HL7 "AR" vs. a generic error,
+  // not just "422".
+  reason?:
+    | 'unacknowledged_critical'
+    | 'qc_violation'
+    | UnmatchedReason
+    | InteropUnmatchedReason;
   heldObservation?: ObservationResult;
   heldCalculatedDependents?: ObservationResult[];
 }
@@ -97,6 +106,11 @@ export class ProblemDetailsFilter implements ExceptionFilter {
       problem.title = 'Unmatched';
       problem.detail = exception.message;
       problem.code = 'unmatched_result';
+      problem.reason = exception.reason;
+    } else if (exception instanceof UnmatchedOrderException) {
+      problem.title = 'Unmatched';
+      problem.detail = exception.message;
+      problem.code = 'unmatched_order';
       problem.reason = exception.reason;
     } else if (exception instanceof HttpException) {
       const body = exception.getResponse();

@@ -66,6 +66,15 @@
  * performance-shaped data, a different sensitivity class from a purely
  * clinical read (contrast `GET .../prior`, ungated), matching `resolve_qc`'s
  * own persona (`qa`/lab-manager).
+ *
+ * `interop_ingest` (FEAT-036 proposal, ADR-0035): granted only to
+ * `interop-ingest`, a machine role held exclusively by `apps/interop`'s own
+ * Keycloak service-account client — never assigned to a human user. Same
+ * reasoning as `gateway_ingest` (`domain/analyzer-integration` Skill entry
+ * #4): a new machine caller gets its own client/role/capability, never
+ * folded into an existing one, so a human role gaining this capability (or
+ * `gateway_ingest`/`interop_ingest` merging) would be a real, reviewable
+ * diff, not an accidental side effect.
  */
 export type Capability =
   | 'enter_result'
@@ -78,7 +87,8 @@ export type Capability =
   | 'manage_workflow'
   | 'manage_report_templates'
   | 'manage_catalog'
-  | 'view_operational_reports';
+  | 'view_operational_reports'
+  | 'interop_ingest';
 
 const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
   technologist: [
@@ -102,6 +112,7 @@ const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
     'view_operational_reports',
   ],
   'gateway-ingest': ['gateway_ingest'],
+  'interop-ingest': ['interop_ingest'],
 };
 
 /**

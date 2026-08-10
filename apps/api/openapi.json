@@ -1684,6 +1684,27 @@
         ]
       }
     },
+    "/v1/portal/results": {
+      "get": {
+        "operationId": "PortalController_getResults",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalResultsResponseDto_Output"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Portal"
+        ]
+      }
+    },
     "/v1/workflow-definitions": {
       "post": {
         "operationId": "WorkflowDefinitionController_create",
@@ -4071,6 +4092,123 @@
           "refHigh",
           "flags",
           "verifiedAt"
+        ],
+        "additionalProperties": false
+      },
+      "PortalResultsResponseDto_Output": {
+        "type": "object",
+        "properties": {
+          "analytes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "analyteId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "analyteDisplay": {
+                  "type": "string"
+                },
+                "latest": {
+                  "type": "object",
+                  "properties": {
+                    "observationId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "producedAt": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "string"
+                    },
+                    "unit": {
+                      "type": "string"
+                    },
+                    "flags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "referenceRangeText": {
+                      "type": "string"
+                    },
+                    "isCritical": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "observationId",
+                    "producedAt",
+                    "value",
+                    "unit",
+                    "flags",
+                    "referenceRangeText",
+                    "isCritical"
+                  ],
+                  "additionalProperties": false
+                },
+                "trend": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "observationId": {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      "producedAt": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "string"
+                      },
+                      "unit": {
+                        "type": "string"
+                      },
+                      "flags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "referenceRangeText": {
+                        "type": "string"
+                      },
+                      "isCritical": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "observationId",
+                      "producedAt",
+                      "value",
+                      "unit",
+                      "flags",
+                      "referenceRangeText",
+                      "isCritical"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "analyteId",
+                "analyteDisplay",
+                "latest",
+                "trend"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "analytes"
         ],
         "additionalProperties": false
       },

@@ -32,6 +32,10 @@
       {
         "name": "clinician",
         "description": "External clinician role (FEAT-040, KB-10): may access only patients with an established care_relationship row, never the whole tenant -- unlike technologist/verifier/qa"
+      },
+      {
+        "name": "patient",
+        "description": "External patient-portal role (FEAT-039, KB-32): may view only their own verified results/trends via patient_portal_account, gated by result_release_policy"
       }
     ]
   },
@@ -327,6 +331,25 @@
         {
           "type": "password",
           "secretData": "{\"value\": \"udFFPXjZtBIPX9Cp7RysUg8W4Yq01VjD7nGtcQc9uXVcAUXm28VlgJi3cdiTiKKwmj0USxmaK7aed2WyrLL0Hg==\", \"salt\": \"2oAsY6B6jn+eN88S8jDOCw==\", \"additionalParameters\": {}}",
+          "credentialData": "{\"hashIterations\": 210000, \"algorithm\": \"pbkdf2-sha512\", \"additionalParameters\": {}}"
+        }
+      ]
+    },
+    {
+      "username": "test-user-8",
+      "email": "test-user-8@example.invalid",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Test",
+      "lastName": "User Eight",
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+      },
+      "realmRoles": ["patient"],
+      "credentials": [
+        {
+          "type": "password",
+          "secretData": "{\"value\": \"vICto9Oe2lgHmtsFILGaSSePzNmsSpWh4LgjrfLJoy8Hv34exe+pFywryjop4TXVoAfY0LKgGzP8BfJEAY0D4g==\", \"salt\": \"DtoM0aObFql+OHODsa2eUQ==\", \"additionalParameters\": {}}",
           "credentialData": "{\"hashIterations\": 210000, \"algorithm\": \"pbkdf2-sha512\", \"additionalParameters\": {}}"
         }
       ]

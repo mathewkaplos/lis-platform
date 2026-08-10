@@ -75,6 +75,13 @@
  * folded into an existing one, so a human role gaining this capability (or
  * `gateway_ingest`/`interop_ingest` merging) would be a real, reviewable
  * diff, not an accidental side effect.
+ *
+ * `view_own_results` (FEAT-039 proposal §10 Q3): granted only to `patient`.
+ * Unlike `PatientController`'s own ungated routes (FEAT-011, grandfathered,
+ * `engineering/authz` entry #1), this is a brand-new route with no legacy
+ * history forcing an ungated shape — KB-10's intended RBAC (this capability)
+ * + ABAC (`resolveOwnPatientId`'s self-identity filter) two-layer model is
+ * followed cleanly from the start.
  */
 export type Capability =
   | 'enter_result'
@@ -88,7 +95,8 @@ export type Capability =
   | 'manage_report_templates'
   | 'manage_catalog'
   | 'view_operational_reports'
-  | 'interop_ingest';
+  | 'interop_ingest'
+  | 'view_own_results';
 
 const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
   technologist: [
@@ -113,6 +121,7 @@ const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
   ],
   'gateway-ingest': ['gateway_ingest'],
   'interop-ingest': ['interop_ingest'],
+  patient: ['view_own_results'],
 };
 
 /**

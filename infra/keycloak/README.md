@@ -111,6 +111,14 @@ the fact"; here, "never configured out-of-band").
   it composes with `test-user`'s own seed-adjacent fixtures), no `care_relationship`
   rows seeded by default — each e2e spec inserts its own via `@lis/db`, per
   proposal §10 Q4 (no assignment endpoint exists yet).
+- **A fifth realm role, `patient`, and an eighth user, `test-user-8`, added
+  FEAT-039.** `patient` is scoped via `patient_portal_account` (a Keycloak `sub`
+  linked to exactly one `patient` row, 1:1) plus a new `view_own_results`
+  capability — the first route in this repo with both an RBAC capability and an
+  ABAC self-identity filter together from the start (proposal §10 Q3). `test-user-8`
+  carries `patient` only, tenant `...0001`, no `patient_portal_account` row seeded
+  by default — each e2e spec inserts its own via `@lis/db`, same no-assignment-
+  endpoint precedent as `care_relationship`.
 
 ## Local dev
 

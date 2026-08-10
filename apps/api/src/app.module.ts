@@ -20,6 +20,7 @@ import { QcRuleViolationModule } from './qc-rule-violation/qc-rule-violation.mod
 import { GatewayIngestModule } from './gateway-ingest/gateway-ingest.module';
 import { InteropBridgeModule } from './interop-bridge/interop-bridge.module';
 import { FhirModule } from './fhir/fhir.module';
+import { PortalModule } from './portal/portal.module';
 import { OutboxModule } from './outbox/outbox.module';
 import { WorkflowModule } from './workflow/workflow.module';
 import { ReflexModule } from './reflex/reflex.module';
@@ -52,6 +53,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     GatewayIngestModule,
     InteropBridgeModule,
     FhirModule,
+    PortalModule,
     OutboxModule,
     WorkflowModule,
     ReflexModule,

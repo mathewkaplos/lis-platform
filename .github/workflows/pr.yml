@@ -134,6 +134,11 @@ jobs:
       # (client-credentials grant, ADR-0026) as apps/api's e2e specs above,
       # but no Postgres -- it doesn't touch the database.
       - run: pnpm --filter gateway test:e2e
+      # FEAT-036: apps/interop's own e2e spec is a real MLLP client/server
+      # round-trip (node-hl7-server/node-hl7-client) with apps/api itself
+      # mocked at global.fetch -- needs neither Postgres nor a live Keycloak,
+      # unlike gateway's/api's own e2e specs above.
+      - run: pnpm --filter interop test:e2e
       # retro (2026-08-07): enforce that apps/api/openapi.json and
       # packages/sdk/src/schema.ts never silently drift from the code
       # (ADR-0013 §1) -- previously relied entirely on whoever happened to

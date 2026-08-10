@@ -1,4 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   analyte,
   codeSystemValue,
@@ -25,10 +29,7 @@ type Tx = RequestWithTx['tx'];
  */
 @Injectable()
 export class InteropOruDataService {
-  async getOruData(
-    tx: Tx,
-    observationId: string,
-  ): Promise<InteropOruData> {
+  async getOruData(tx: Tx, observationId: string): Promise<InteropOruData> {
     const [observationRow] = await tx
       .select()
       .from(observation)
@@ -115,8 +116,10 @@ export class InteropOruDataService {
       analyteDisplay: analyteRow.display,
       value: formatObservationValue(observationRow),
       unit: observationRow.unit,
-      refLow: observationRow.refLow === null ? null : Number(observationRow.refLow),
-      refHigh: observationRow.refHigh === null ? null : Number(observationRow.refHigh),
+      refLow:
+        observationRow.refLow === null ? null : Number(observationRow.refLow),
+      refHigh:
+        observationRow.refHigh === null ? null : Number(observationRow.refHigh),
       flags: observationRow.flags,
       verifiedAt: observationRow.verifiedAt.toISOString(),
     };

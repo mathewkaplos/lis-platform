@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { order, orderedTest, panel, panelTest, testDefinition } from '@lis/db';
-import { eq, inArray } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 import type { OrderPriority } from '@lis/domain';
 import type { RequestWithTx } from '../auth/tenant-context.interceptor';
 

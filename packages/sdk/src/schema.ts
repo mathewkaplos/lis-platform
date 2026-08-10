@@ -260,6 +260,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/test-definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["TestDefinitionController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reference-ranges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ReferenceRangeController_list"];
+        put?: never;
+        post: operations["ReferenceRangeController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/specimens": {
         parameters: {
             query?: never;
@@ -745,6 +777,8 @@ export interface components {
                     display: string;
                     dataType: string;
                     unit: string | null;
+                    /** Format: uuid */
+                    unitId: string | null;
                 }[];
             }[];
             panels: {
@@ -753,6 +787,66 @@ export interface components {
                 code: string;
                 displayName: string;
                 testDefinitionIds: string[];
+            }[];
+        };
+        TestDefinitionCreateDto: {
+            code: string;
+            displayName: string;
+            analyteIds: string[];
+        };
+        ReferenceRangeCreateDto: {
+            /** Format: uuid */
+            analyteId: string;
+            /** Format: uuid */
+            unitId: string;
+            /** @enum {string} */
+            sex?: "M" | "F";
+            ageLowDays?: number;
+            ageHighDays?: number;
+            condition?: string;
+            method?: string;
+            specimenType?: string;
+            population?: string;
+            rangeType: string;
+            low?: number;
+            high?: number;
+            textualRange?: string;
+            interpretationWhenIn?: string;
+            priority?: number;
+            source?: string;
+            /** Format: date-time */
+            effectiveFrom?: string;
+        };
+        ReferenceRangeListDto_Output: {
+            ranges: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                analyteId: string;
+                analyteDisplay: string;
+                /** Format: uuid */
+                unitId: string;
+                unitDisplay: string | null;
+                sex: string | null;
+                ageLowDays: number | null;
+                ageHighDays: number | null;
+                condition: string | null;
+                method: string | null;
+                specimenType: string | null;
+                population: string | null;
+                rangeType: string;
+                low: number | null;
+                high: number | null;
+                textualRange: string | null;
+                interpretationWhenIn: string | null;
+                priority: number;
+                source: string | null;
+                /** Format: date-time */
+                effectiveFrom: string;
+                /** Format: date-time */
+                effectiveTo: string | null;
+                /** Format: date-time */
+                createdAt: string;
             }[];
         };
         SpecimenCreateDto: {
@@ -1458,6 +1552,69 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CatalogDto_Output"];
                 };
+            };
+        };
+    };
+    TestDefinitionController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TestDefinitionCreateDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ReferenceRangeController_list: {
+        parameters: {
+            query?: {
+                analyteId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceRangeListDto_Output"];
+                };
+            };
+        };
+    };
+    ReferenceRangeController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferenceRangeCreateDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

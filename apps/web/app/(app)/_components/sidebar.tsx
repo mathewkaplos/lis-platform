@@ -1,5 +1,14 @@
 import Link from 'next/link';
-import { AlertTriangle, ClipboardList, FlaskConical, LayoutDashboard, ListChecks, Users } from 'lucide-react';
+import {
+  AlertTriangle,
+  ClipboardList,
+  FlaskConical,
+  LayoutDashboard,
+  ListChecks,
+  Ruler,
+  TestTube,
+  Users,
+} from 'lucide-react';
 
 // Nav grows as later features add routes -- not invented ahead of them.
 // TASK-041: "Register patient" -> "Patients" (search list owns the
@@ -13,6 +22,15 @@ import { AlertTriangle, ClipboardList, FlaskConical, LayoutDashboard, ListChecks
 // control-lots/[id]/chart (TASK-069, still direct-link-only, no list to
 // link from), this route IS that list (proposal §10 Q2, folding in #381),
 // so it earns a real nav entry rather than staying link-only.
+//
+// FEAT-035: "Reference ranges"/"Add test" added -- unconditionally listed
+// for every session, not role-filtered here. No nav-level role gate exists
+// anywhere in this file today (confirmed: `Sidebar` receives no `session`
+// prop at all) -- `qc-violations`'s own real precedent gates only the
+// Resolve *button* inside its page via `hasQaRole()`, never the nav entry
+// or the route itself. Both new pages follow that identical shape: a
+// non-`qa` visitor reaches the page and sees the data, but the create
+// control (the real, API-enforced action) doesn't render for them.
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/patients', label: 'Patients', icon: Users },
@@ -20,6 +38,8 @@ const NAV_ITEMS = [
   { href: '/reception', label: 'Reception', icon: FlaskConical },
   { href: '/collection-queue', label: 'Collection queue', icon: ListChecks },
   { href: '/qc-violations', label: 'QC violations', icon: AlertTriangle },
+  { href: '/admin/reference-ranges', label: 'Reference ranges', icon: Ruler },
+  { href: '/admin/tests', label: 'Add test', icon: TestTube },
 ];
 
 export function Sidebar() {

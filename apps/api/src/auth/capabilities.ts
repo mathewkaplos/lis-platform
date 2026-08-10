@@ -49,6 +49,15 @@
  * authoring/publishing a report template changes what layout every future
  * report for that test renders as, the same lab-oversight class of action
  * as `manage_workflow`, not day-to-day result entry/verification.
+ *
+ * `manage_catalog` (FEAT-035 proposal §2, identical reasoning to
+ * `manage_workflow`/`manage_report_templates`): granted to `qa`, not
+ * `technologist`/`verifier` — creating a test or a reference range changes
+ * what every future order/result validates and flags against, the same
+ * lab-oversight class of action as the other two, not day-to-day result
+ * entry/verification. Covers both `test_definition`/`test_analyte` and
+ * `reference_range` creation (proposal §5: one capability, not split
+ * per-resource, no stated need yet to differentiate).
  */
 export type Capability =
   | 'enter_result'
@@ -59,7 +68,8 @@ export type Capability =
   | 'resolve_qc'
   | 'gateway_ingest'
   | 'manage_workflow'
-  | 'manage_report_templates';
+  | 'manage_report_templates'
+  | 'manage_catalog';
 
 const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
   technologist: [
@@ -75,7 +85,12 @@ const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
     'manage_orders',
     'manage_specimens',
   ],
-  qa: ['resolve_qc', 'manage_workflow', 'manage_report_templates'],
+  qa: [
+    'resolve_qc',
+    'manage_workflow',
+    'manage_report_templates',
+    'manage_catalog',
+  ],
   'gateway-ingest': ['gateway_ingest'],
 };
 

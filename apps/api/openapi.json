@@ -454,6 +454,84 @@
         ]
       }
     },
+    "/v1/test-definitions": {
+      "post": {
+        "operationId": "TestDefinitionController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestDefinitionCreateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "TestDefinition"
+        ]
+      }
+    },
+    "/v1/reference-ranges": {
+      "post": {
+        "operationId": "ReferenceRangeController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReferenceRangeCreateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ReferenceRange"
+        ]
+      },
+      "get": {
+        "operationId": "ReferenceRangeController_list",
+        "parameters": [
+          {
+            "name": "analyteId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferenceRangeListDto_Output"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "ReferenceRange"
+        ]
+      }
+    },
     "/v1/specimens": {
       "post": {
         "operationId": "SpecimenController_create",
@@ -1729,6 +1807,12 @@
                       "unit": {
                         "type": "string",
                         "nullable": true
+                      },
+                      "unitId": {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "nullable": true
                       }
                     },
                     "required": [
@@ -1736,7 +1820,8 @@
                       "code",
                       "display",
                       "dataType",
-                      "unit"
+                      "unit",
+                      "unitId"
                     ],
                     "additionalProperties": false
                   }
@@ -1789,6 +1874,245 @@
         "required": [
           "tests",
           "panels"
+        ],
+        "additionalProperties": false
+      },
+      "TestDefinitionCreateDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "analyteIds": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        },
+        "required": [
+          "code",
+          "displayName",
+          "analyteIds"
+        ]
+      },
+      "ReferenceRangeCreateDto": {
+        "type": "object",
+        "properties": {
+          "analyteId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "unitId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "sex": {
+            "type": "string",
+            "enum": [
+              "M",
+              "F"
+            ]
+          },
+          "ageLowDays": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "ageHighDays": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "condition": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "specimenType": {
+            "type": "string"
+          },
+          "population": {
+            "type": "string"
+          },
+          "rangeType": {
+            "type": "string",
+            "minLength": 1
+          },
+          "low": {
+            "type": "number"
+          },
+          "high": {
+            "type": "number"
+          },
+          "textualRange": {
+            "type": "string"
+          },
+          "interpretationWhenIn": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "source": {
+            "type": "string"
+          },
+          "effectiveFrom": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          }
+        },
+        "required": [
+          "analyteId",
+          "unitId",
+          "rangeType"
+        ]
+      },
+      "ReferenceRangeListDto_Output": {
+        "type": "object",
+        "properties": {
+          "ranges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "analyteId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "analyteDisplay": {
+                  "type": "string"
+                },
+                "unitId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "unitDisplay": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "sex": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "ageLowDays": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "ageHighDays": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "condition": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "method": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "specimenType": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "population": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "rangeType": {
+                  "type": "string"
+                },
+                "low": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "high": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "textualRange": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "interpretationWhenIn": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "priority": {
+                  "type": "number"
+                },
+                "source": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "effectiveFrom": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                },
+                "effectiveTo": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                  "nullable": true
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                }
+              },
+              "required": [
+                "id",
+                "analyteId",
+                "analyteDisplay",
+                "unitId",
+                "unitDisplay",
+                "sex",
+                "ageLowDays",
+                "ageHighDays",
+                "condition",
+                "method",
+                "specimenType",
+                "population",
+                "rangeType",
+                "low",
+                "high",
+                "textualRange",
+                "interpretationWhenIn",
+                "priority",
+                "source",
+                "effectiveFrom",
+                "effectiveTo",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "ranges"
         ],
         "additionalProperties": false
       },

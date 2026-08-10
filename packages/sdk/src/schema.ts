@@ -468,6 +468,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/reports/operational/tat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["OperationalReportsController_tat"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reports/operational/workload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["OperationalReportsController_workload"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reports/operational/rejection-rate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["OperationalReportsController_rejectionRate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/report-templates": {
         parameters: {
             query?: never;
@@ -974,6 +1022,38 @@ export interface components {
             producedAt: string | null;
             /** Format: date-time */
             createdAt: string;
+        };
+        TatReportDto_Output: {
+            byPriority: {
+                priority: string;
+                count: number;
+                meanMinutes: number;
+                medianMinutes: number;
+                withinTargetPct: number | null;
+            }[];
+            byTest: {
+                /** Format: uuid */
+                testDefinitionId: string;
+                testDisplayName: string;
+                count: number;
+                meanMinutes: number;
+                medianMinutes: number;
+            }[];
+        };
+        WorkloadReportDto_Output: {
+            entries: {
+                userId: string;
+                operatorCount: number;
+                verifierCount: number;
+            }[];
+        };
+        RejectionRateReportDto_Output: {
+            totalSpecimens: number;
+            rejectedTotal: number;
+            byReason: {
+                reason: string;
+                count: number;
+            }[];
         };
         ReportTemplateCreateDto__schema0: {
             and: components["schemas"]["ReportTemplateCreateDto__schema0"][];
@@ -1886,6 +1966,72 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    OperationalReportsController_tat: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TatReportDto_Output"];
+                };
+            };
+        };
+    };
+    OperationalReportsController_workload: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkloadReportDto_Output"];
+                };
+            };
+        };
+    };
+    OperationalReportsController_rejectionRate: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RejectionRateReportDto_Output"];
+                };
             };
         };
     };

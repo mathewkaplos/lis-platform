@@ -950,6 +950,132 @@
         ]
       }
     },
+    "/v1/reports/operational/tat": {
+      "get": {
+        "operationId": "OperationalReportsController_tat",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TatReportDto_Output"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "OperationalReports"
+        ]
+      }
+    },
+    "/v1/reports/operational/workload": {
+      "get": {
+        "operationId": "OperationalReportsController_workload",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkloadReportDto_Output"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "OperationalReports"
+        ]
+      }
+    },
+    "/v1/reports/operational/rejection-rate": {
+      "get": {
+        "operationId": "OperationalReportsController_rejectionRate",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RejectionRateReportDto_Output"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "OperationalReports"
+        ]
+      }
+    },
     "/v1/report-templates": {
       "post": {
         "operationId": "ReportTemplateController_create",
@@ -2606,6 +2732,149 @@
           "flags",
           "producedAt",
           "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "TatReportDto_Output": {
+        "type": "object",
+        "properties": {
+          "byPriority": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "priority": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "number"
+                },
+                "meanMinutes": {
+                  "type": "number"
+                },
+                "medianMinutes": {
+                  "type": "number"
+                },
+                "withinTargetPct": {
+                  "type": "number",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "priority",
+                "count",
+                "meanMinutes",
+                "medianMinutes",
+                "withinTargetPct"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "byTest": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "testDefinitionId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "testDisplayName": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "number"
+                },
+                "meanMinutes": {
+                  "type": "number"
+                },
+                "medianMinutes": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "testDefinitionId",
+                "testDisplayName",
+                "count",
+                "meanMinutes",
+                "medianMinutes"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "byPriority",
+          "byTest"
+        ],
+        "additionalProperties": false
+      },
+      "WorkloadReportDto_Output": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "string"
+                },
+                "operatorCount": {
+                  "type": "number"
+                },
+                "verifierCount": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "userId",
+                "operatorCount",
+                "verifierCount"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "additionalProperties": false
+      },
+      "RejectionRateReportDto_Output": {
+        "type": "object",
+        "properties": {
+          "totalSpecimens": {
+            "type": "number"
+          },
+          "rejectedTotal": {
+            "type": "number"
+          },
+          "byReason": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "reason": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "reason",
+                "count"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "totalSpecimens",
+          "rejectedTotal",
+          "byReason"
         ],
         "additionalProperties": false
       },

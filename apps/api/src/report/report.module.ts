@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { CumulativeReportController } from './cumulative-report.controller';
 import { ReportController } from './report.controller';
 
 @Module({
   imports: [AuthModule],
-  controllers: [ReportController],
+  controllers: [ReportController, CumulativeReportController],
 })
 export class ReportModule {}

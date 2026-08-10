@@ -136,6 +136,18 @@ packages/ui (design system) · packages/sdk (generated API client)
   `until` loop above for this specific wait; it has none of `Monitor`'s
   own detection-reliability risk for a short, bounded, one-shot condition
   like "these checks are all terminal."
+- **When running multiple features back-to-back in one autonomous batch (a
+  human says "implement all"/"do the whole list"), send a PushNotification
+  at the true end of the whole batch, not just after an early milestone.**
+  Confirmed 2026-08-10: after shipping all 4 M9 features (FEAT-041-044, 8
+  PRs) in one session, the human's next message asked to continue FEAT-043
+  specifically — already merged and closed two features earlier — because a
+  long stream of near-identical per-PR CI-progress updates ("still
+  running", "check X passed") made the actual completion state easy to
+  lose track of, even though it was stated in text at the right
+  checkpoints. A proactive push at the batch's true end reaches a human
+  who's stepped away or is skimming on mobile, cutting the chance of
+  exactly this kind of stale-state follow-up.
 - Before deleting any branch, check whether it is the **base** branch of a
   different, still-open PR (a stacked-PR setup) — deleting it **permanently
   closes** that PR; GitHub refuses to reopen it or change its base once the

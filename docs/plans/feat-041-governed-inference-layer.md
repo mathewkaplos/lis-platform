@@ -1,9 +1,12 @@
 # Implementation Proposal: FEAT-041 Governed Inference Layer
-Status: APPROVED
-ADR: adr-0037    Date: 2026-08-10    Backlog ID: FEAT-041 (#50)
+Status: **IMPLEMENTED** — merged PR #474 (`931cb82`), closing #50.
+ADR: adr-0037 (accepted)    Date: 2026-08-10    Backlog ID: FEAT-041 (#50)
 
 **Approved 2026-08-10** via the native options-prompt (all three §10 questions accepted as
-drafted: in-process module, stub-only provider, no new public route).
+drafted: in-process module, stub-only provider, no new public route). Repo-wide typecheck/lint
+clean; `apps/api` unit suite (17 files/120 tests) and full e2e suite (41 files/370 tests) both
+green against a freshly reset DB; new `test/ai-inference.e2e-spec.ts` proves the audit write and
+PHI-minimization boundary against real Postgres.
 
 ## 1. Goal
 M8 (EPIC-007) is fully code-complete; its epic issue stays open only on a human staging demo, not

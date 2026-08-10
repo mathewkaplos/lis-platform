@@ -50,6 +50,13 @@ export class WorkflowEngineService implements OnModuleInit {
     this.outboxHandlers.register('ObservationFinalized', (payload, tenantId) =>
       this.handleEvent('ObservationFinalized', payload, tenantId),
     );
+    // FEAT-029 (remainder, SLA timers): fired by SlaBreachDetectorService's
+    // own scheduled tick, not by any request-response write path -- the
+    // first event this engine consumes with a payload shape other than
+    // toObservationDto (see workflow-types.ts's own ALLOWED_FIELDS comment).
+    this.outboxHandlers.register('SlaBreached', (payload, tenantId) =>
+      this.handleEvent('SlaBreached', payload, tenantId),
+    );
   }
 
   async handleEvent(

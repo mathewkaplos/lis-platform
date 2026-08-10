@@ -225,6 +225,13 @@
       "when": 1786323557777,
       "tag": "0031_vengeful_gamma_corps",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1786344836881,
+      "tag": "0032_loving_wolfsbane",
+      "breakpoints": true
     }
   ]
 }

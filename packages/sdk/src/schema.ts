@@ -420,6 +420,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/report-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ReportTemplateController_list"];
+        put?: never;
+        post: operations["ReportTemplateController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/report-templates/{id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ReportTemplateController_createVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/report-templates/{id}/versions/{versionId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ReportTemplateController_publish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worklist": {
         parameters: {
             query?: never;
@@ -816,6 +864,68 @@ export interface components {
             producedAt: string | null;
             /** Format: date-time */
             createdAt: string;
+        };
+        ReportTemplateCreateDto__schema0: {
+            and: components["schemas"]["ReportTemplateCreateDto__schema0"][];
+        } | {
+            or: components["schemas"]["ReportTemplateCreateDto__schema0"][];
+        } | {
+            not: components["schemas"]["ReportTemplateCreateDto__schema0"];
+        } | {
+            field: string;
+            /** @enum {string} */
+            op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "includes";
+            value: unknown;
+        };
+        ReportTemplateCreateDto: {
+            /** Format: uuid */
+            testDefinitionId: string;
+            definition: {
+                sections: {
+                    title: string;
+                    fields: {
+                        key: string;
+                        label: string;
+                        /** @enum {string} */
+                        type: "numeric" | "coded" | "richText" | "table" | "referenceRangeDisplay";
+                        /** Format: uuid */
+                        analyteBinding?: string;
+                        analyteBindings?: string[];
+                        content?: string;
+                        visibilityCondition?: components["schemas"]["ReportTemplateCreateDto__schema0"];
+                    }[];
+                }[];
+            };
+        };
+        ReportTemplateVersionCreateDto__schema0: {
+            and: components["schemas"]["ReportTemplateVersionCreateDto__schema0"][];
+        } | {
+            or: components["schemas"]["ReportTemplateVersionCreateDto__schema0"][];
+        } | {
+            not: components["schemas"]["ReportTemplateVersionCreateDto__schema0"];
+        } | {
+            field: string;
+            /** @enum {string} */
+            op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "includes";
+            value: unknown;
+        };
+        ReportTemplateVersionCreateDto: {
+            definition: {
+                sections: {
+                    title: string;
+                    fields: {
+                        key: string;
+                        label: string;
+                        /** @enum {string} */
+                        type: "numeric" | "coded" | "richText" | "table" | "referenceRangeDisplay";
+                        /** Format: uuid */
+                        analyteBinding?: string;
+                        analyteBindings?: string[];
+                        content?: string;
+                        visibilityCondition?: components["schemas"]["ReportTemplateVersionCreateDto__schema0"];
+                    }[];
+                }[];
+            };
         };
         WorklistResponseDto_Output: {
             counts: {
@@ -1573,6 +1683,87 @@ export interface operations {
             header?: never;
             path: {
                 id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ReportTemplateController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ReportTemplateController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportTemplateCreateDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ReportTemplateController_createVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportTemplateVersionCreateDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ReportTemplateController_publish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                versionId: string;
             };
             cookie?: never;
         };

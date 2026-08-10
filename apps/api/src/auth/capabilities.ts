@@ -43,6 +43,12 @@
  * changes what automated behavior applies to every future result, a
  * lab-oversight action matching `resolve_qc`'s own persona (`qa` /
  * lab-manager), not day-to-day result entry/verification.
+ *
+ * `manage_report_templates` (FEAT-032 proposal §10 identical reasoning to
+ * `manage_workflow`): granted to `qa`, not `technologist`/`verifier` —
+ * authoring/publishing a report template changes what layout every future
+ * report for that test renders as, the same lab-oversight class of action
+ * as `manage_workflow`, not day-to-day result entry/verification.
  */
 export type Capability =
   | 'enter_result'
@@ -52,7 +58,8 @@ export type Capability =
   | 'manage_specimens'
   | 'resolve_qc'
   | 'gateway_ingest'
-  | 'manage_workflow';
+  | 'manage_workflow'
+  | 'manage_report_templates';
 
 const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
   technologist: [
@@ -68,7 +75,7 @@ const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
     'manage_orders',
     'manage_specimens',
   ],
-  qa: ['resolve_qc', 'manage_workflow'],
+  qa: ['resolve_qc', 'manage_workflow', 'manage_report_templates'],
   'gateway-ingest': ['gateway_ingest'],
 };
 

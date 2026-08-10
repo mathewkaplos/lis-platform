@@ -1,5 +1,5 @@
 import { findUnallowedFields } from './workflow-condition-evaluator';
-import type { WorkflowRule } from './workflow-types';
+import { ALLOWED_FIELDS, type WorkflowRule } from './workflow-types';
 
 // FEAT-029 proposal §5/ADR-0029: a denylist, not a general static analyzer.
 // A command name here is rejected outright at publish time regardless of
@@ -25,7 +25,7 @@ export function validateWorkflowDefinition(rules: WorkflowRule[]): string[] {
         `Rule '${rule.id}': command '${rule.do.command}' is not yet permitted -- denylisted until its own feature/ADR reviews and registers it`,
       );
     }
-    const unallowed = findUnallowedFields(rule.when);
+    const unallowed = findUnallowedFields(rule.when, ALLOWED_FIELDS);
     if (unallowed.length > 0) {
       errors.push(
         `Rule '${rule.id}': condition references field(s) not in the allow-list: ${unallowed.join(', ')}`,

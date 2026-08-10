@@ -18,3 +18,4 @@ export * from "./instrument-mapping";
 export * from "./observation-idempotency";
 export * from "./outbox-event";
 export * from "./workflow-definition";
+export * from "./report-template";

@@ -12,6 +12,7 @@ import { CatalogModule } from './catalog/catalog.module';
 import { SpecimenModule } from './specimen/specimen.module';
 import { ObservationModule } from './observation/observation.module';
 import { ReportModule } from './report/report.module';
+import { ReportTemplateModule } from './report-template/report-template.module';
 import { WorklistModule } from './worklist/worklist.module';
 import { ControlLotModule } from './control-lot/control-lot.module';
 import { CriticalNotificationModule } from './critical-notification/critical-notification.module';
@@ -40,6 +41,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     SpecimenModule,
     ObservationModule,
     ReportModule,
+    ReportTemplateModule,
     WorklistModule,
     ControlLotModule,
     CriticalNotificationModule,

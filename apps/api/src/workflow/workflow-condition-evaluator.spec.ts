@@ -2,7 +2,7 @@ import {
   evaluateCondition,
   findUnallowedFields,
 } from './workflow-condition-evaluator';
-import type { ConditionNode } from './workflow-types';
+import { ALLOWED_FIELDS, type ConditionNode } from './workflow-types';
 
 describe('evaluateCondition', () => {
   it('eq matches an equal value', () => {
@@ -152,7 +152,7 @@ describe('findUnallowedFields', () => {
         { field: 'status', op: 'eq', value: 'verified' },
       ],
     };
-    expect(findUnallowedFields(node)).toEqual([]);
+    expect(findUnallowedFields(node, ALLOWED_FIELDS)).toEqual([]);
   });
 
   it('finds a field not in the allow-list, nested inside and/or/not', () => {
@@ -162,6 +162,18 @@ describe('findUnallowedFields', () => {
         { not: { field: 'patientAgeYears', op: 'gt', value: 65 } },
       ],
     };
-    expect(findUnallowedFields(node)).toEqual(['patientAgeYears']);
+    expect(findUnallowedFields(node, ALLOWED_FIELDS)).toEqual([
+      'patientAgeYears',
+    ]);
+  });
+
+  it('accepts a caller-supplied allow-list different from workflow ALLOWED_FIELDS (FEAT-032 reuse)', () => {
+    const node: ConditionNode = {
+      field: 'analyteName',
+      op: 'eq',
+      value: 'TSH',
+    };
+    expect(findUnallowedFields(node, ['analyteName'])).toEqual([]);
+    expect(findUnallowedFields(node, ALLOWED_FIELDS)).toEqual(['analyteName']);
   });
 });

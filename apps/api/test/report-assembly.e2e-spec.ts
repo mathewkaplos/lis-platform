@@ -9,6 +9,8 @@ import {
   observation,
   referenceRange,
   report,
+  reportTemplate,
+  reportTemplateVersion,
   testAnalyte,
   testDefinition,
   unit,
@@ -281,6 +283,50 @@ describe('Report assembly (e2e)', () => {
         analyteId: analyteBId,
       },
     ]);
+
+    // FEAT-032 (docs/plans/feat-032-template-engine-config-driven-versioned.md
+    // §5 assumption, real correction found during implementation):
+    // `assembleAndPersistReport` now requires a published
+    // `report_template_version` for the ordered test's own test_definition
+    // -- there is no fixed fallback layout anymore. The real seeded catalog
+    // (db/seed/default-report-templates.sql) covers every *seeded* test,
+    // but this spec's own two synthetic test_definitions above are created
+    // fresh, in-memory, every run -- they need their own published template
+    // too, the same as a real lab would configure one before any test in
+    // its own catalog can produce a report. A single 'table' field listing
+    // every analyte on the panel reproduces the old fixed layout exactly.
+    async function publishDefaultTemplate(
+      testDefinitionId: string,
+      analyteIds: string[],
+    ) {
+      const [templateRow] = await db
+        .insert(reportTemplate)
+        .values({ tenantId: TENANT_A, testDefinitionId })
+        .returning({ id: reportTemplate.id });
+      await db.insert(reportTemplateVersion).values({
+        tenantId: TENANT_A,
+        reportTemplateId: templateRow.id,
+        version: 1,
+        status: 'published',
+        definition: {
+          sections: [
+            {
+              title: 'Results',
+              fields: [
+                {
+                  key: 'results-table',
+                  label: 'Results',
+                  type: 'table',
+                  analyteBindings: analyteIds,
+                },
+              ],
+            },
+          ],
+        },
+      });
+    }
+    await publishDefaultTemplate(singleAnalyteTestDefId, [analyteAId]);
+    await publishDefaultTemplate(twoAnalyteTestDefId, [analyteAId, analyteBId]);
   });
 
   // No fixture cleanup here, deliberately -- unlike

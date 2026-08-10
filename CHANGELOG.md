@@ -427,3 +427,21 @@ frontmatter declaration (this entry's own commit).
   Four rounds of a stronger reminder hadn't held on their own; this changes the kind of instruction
   rather than its volume.
 - **Files:** `~/work/lis-engineering/skills/workflow/develop/SKILL.md`
+
+## 2026-08-10 (3)
+
+- **Friction:** FEAT-038's (clinician portal) own Implementation Proposal §4 "Skills loaded" named
+  `engineering/authz`/`engineering/api-design`/`engineering/database-design` plus two domain skills,
+  but not `engineering/frontend-design` — despite §2 Affected Files already listing three new
+  `apps/web` pages/forms. Because it was never consulted, the implementation went on to hit two
+  mistakes that Skill already documents by name: a Server Component passing function-valued
+  `columns` into the Client `DataTable` (entry #6), and a `'use server'` file exporting a plain
+  `initialState` object (entry #8 — which itself already recorded two prior recurrences of the
+  identical mistake, both after the entry existed). Both were caught only by a manual `web-verify`
+  browser pass, not typecheck/lint/build — the third occurrence of entry #8's own mistake, now.
+- **Area:** existing-skill:workflow/plan
+- **Change:** added a line to `plan/SKILL.md` step 2: any proposal whose Affected Files includes a
+  new `apps/web` page/form/component must load `engineering/frontend-design` regardless of whether
+  the feature's own GitHub issue names it — making the check mechanical (tied to Affected Files)
+  rather than dependent on the issue author having anticipated it.
+- **Files:** `~/work/lis-engineering/skills/workflow/plan/SKILL.md`

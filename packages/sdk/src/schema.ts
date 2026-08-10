@@ -500,6 +500,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/patients/{patientId}/cumulative-report/{analyteId}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CumulativeReportController_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/reports/operational/tat": {
         parameters: {
             query?: never;
@@ -2261,6 +2277,26 @@ export interface operations {
         };
     };
     CumulativeReportController_generate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patientId: string;
+                analyteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CumulativeReportController_summary: {
         parameters: {
             query?: never;
             header?: never;

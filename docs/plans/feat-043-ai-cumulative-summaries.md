@@ -1,5 +1,5 @@
 # Implementation Proposal: FEAT-043 AI cumulative summaries
-Status: APPROVED
+Status: **IMPLEMENTED** — merged PR #478 (`7f84887`), closing #52.
 
 **Approved 2026-08-10** via the native options-prompt (approved as drafted).
 ADR: none — the provider approach (deterministic, no real LLM vendor) is the same decision the

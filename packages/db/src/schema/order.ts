@@ -10,6 +10,48 @@ const tenantIsolation = () =>
     using: sql`tenant_id = current_setting('app.tenant_id')::uuid`,
   });
 
+// FEAT-029 (remainder, SLA timers): `orderedTest`'s own tenant_isolation
+// policy widened to the non-throwing 2-arg `current_setting(..., true)`
+// form -- `order`'s own policy above is deliberately left untouched (still
+// the throwing 1-arg form; nothing needs lis_scheduler to read `order`).
+// Same real, load-bearing Postgres behavior `critical_notification`'s own
+// tenantIsolation() comment already documents: multiple PERMISSIVE
+// policies on one table are OR'd together, but an *exception* thrown while
+// evaluating any one policy's USING clause aborts the whole query
+// regardless of what a second, more specific policy would have allowed --
+// so `schedulerEnumeration` below cannot coexist with the throwing form on
+// this same table, confirmed by that same real, already-shipped precedent
+// rather than re-derived from scratch. `lis_app`'s own visibility is
+// unchanged (a session that never sets `app.tenant_id` now sees zero rows
+// instead of a thrown error, same accepted tradeoff `critical_notification`
+// already made).
+const orderedTestTenantIsolation = () =>
+  pgPolicy("tenant_isolation", {
+    using: sql`tenant_id = current_setting('app.tenant_id', true)::uuid`,
+  });
+
+// FEAT-029 (remainder): the SLA breach detector's own phase-1 enumeration
+// (`SlaBreachDetectorService`, mirroring `CriticalNotificationEscalationService`'s
+// two-phase shape) -- deliberately conservative, not exact. `ordered_test`
+// never reaches a literal `status = 'verified'` (`database-design`-adjacent
+// finding already documented in `apps/api/src/report/operational-reports
+// .service.ts`'s own real comment, FEAT-034), so this policy can only
+// approximate "not yet done" via the cheap, over-inclusive proxy
+// `status NOT IN ('reported','cancelled','rejected')` -- phase 2 (as
+// `lis_app`, full per-tenant RLS, real `sla_target` comparison and a real
+// `observation`-level verified-check) is what proves an actual breach.
+// Column-scoped GRANT (see this table's own migration) restricts
+// `lis_scheduler` to exactly `tenant_id`/`created_at`/`status`, same
+// discipline `critical_notification`'s own scheduler grant already
+// established.
+const orderedTestSchedulerEnumeration = () =>
+  pgPolicy("scheduler_enumeration", {
+    as: "permissive",
+    for: "select",
+    to: "lis_scheduler",
+    using: sql`status NOT IN ('reported', 'cancelled', 'rejected')`,
+  });
+
 // KB-02 Order aggregate. patient_id's forward-reference FK is backfilled by
 // TASK-038 (FEAT-011 proposal §5 — not literally named in ADR-0005's own
 // acceptance criteria, which only lists observation's columns, but this
@@ -91,6 +133,7 @@ export const orderedTest = pgTable(
       "ck_ordered_test_status",
       sql`${table.status} IN ('ordered','collected','received','in_process','resulted','verified','reported','cancelled','rejected')`,
     ),
-    tenantIsolation(),
+    orderedTestTenantIsolation(),
+    orderedTestSchedulerEnumeration(),
   ],
 ).enableRLS();

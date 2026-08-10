@@ -344,13 +344,20 @@ describe('Operational reports (e2e)', () => {
         .expect(400);
     });
 
-    // `byPriority`'s own count assertions are now structurally immune to
-    // cross-spec contamination, the same way `byTest`'s own assertions
-    // already were (scoped to this file's own unique `testDefinitionId`s)
-    // -- see `tatWindowFrom`/`To`'s own header comment above (real finding:
-    // this exact assertion failed with count 29, not 1, the first time it
-    // ran as part of the full suite, before the window was fixed to exclude
-    // real "now").
+    // `byPriority`'s own count assertions are immune to contamination from
+    // *real-time* activity (see `tatWindowFrom`/`To`'s own header comment:
+    // count came back 29, not 1, before the window was fixed to exclude
+    // real "now") but -- a second real finding, this time from FEAT-029's
+    // own SLA-timer e2e spec, `sla-breach.e2e-spec.ts` -- NOT immune to
+    // *another spec file's own deliberately backdated fixture* landing in
+    // this same window with the same priority: that file's own STAT/90min
+    // and routine/5min offsets (chosen independently, for the same reason
+    // this file's own offsets were -- "exceeds"/"is within" the identical
+    // seeded `sla_target` values) collide here exactly. `count` is
+    // loosened to a floor rather than an exact match for this reason;
+    // `byTest`'s own exact-count assertions below remain the real,
+    // structurally-immune proof (scoped to this file's own unique
+    // `testDefinitionId`s, which no other spec file can share).
     it('computes real TAT by priority and by test, with real SLA-percentage math', async () => {
       const res = await request(app.getHttpServer())
         .get('/v1/reports/operational/tat')
@@ -376,14 +383,14 @@ describe('Operational reports (e2e)', () => {
       };
 
       const routineRow = body.byPriority.find((r) => r.priority === 'routine');
-      expect(routineRow?.count).toBe(1);
+      expect(routineRow?.count).toBeGreaterThanOrEqual(1);
       expect(routineRow?.meanMinutes).toBeGreaterThan(4.9);
       expect(routineRow?.meanMinutes).toBeLessThan(6);
       // 5 real minutes is trivially within the seeded 1440-minute target.
       expect(routineRow?.withinTargetPct).toBe(100);
 
       const statRow = body.byPriority.find((r) => r.priority === 'stat');
-      expect(statRow?.count).toBe(1);
+      expect(statRow?.count).toBeGreaterThanOrEqual(1);
       expect(statRow?.meanMinutes).toBeGreaterThan(89.9);
       expect(statRow?.meanMinutes).toBeLessThan(91);
       // 90 real minutes exceeds the seeded 60-minute stat target.

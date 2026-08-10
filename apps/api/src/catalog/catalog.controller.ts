@@ -138,6 +138,7 @@ export class CatalogController {
           unit: row.defaultUnitId
             ? (unitDisplayById.get(row.defaultUnitId) ?? null)
             : null,
+          unitId: row.defaultUnitId,
         } satisfies CatalogAnalyte,
       ]),
     );

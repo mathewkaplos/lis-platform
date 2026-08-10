@@ -1,5 +1,5 @@
 # Implementation Proposal: FEAT-040 — Fine-grained ABAC / relationship authz
-Status: APPROVED
+Status: IMPLEMENTED (merged PR #462, bbe1e6a1c9fe5501721963a1c5147446fd6556e2, closed issue #49)
 ADR: none required — patient-only care_relationship (§10 Q3) is a plain additive table, not a load-bearing architectural decision on the scale of ADR-0011/0026/0027   Date: 2026-08-10   Backlog ID: FEAT-040
 
 ## 1. Goal

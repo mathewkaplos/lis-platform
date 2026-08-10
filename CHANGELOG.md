@@ -413,3 +413,17 @@ frontmatter declaration (this entry's own commit).
   alternative. `AGENTS.md` edits need the human to run the git-level steps per its own carve-out
   (line ~138); the edit is applied locally but not yet committed/pushed/PR'd.
 - **Files:** `~/work/lis-platform/AGENTS.md` (fix applied locally, not yet committed by the agent)
+
+## 2026-08-10 (2)
+
+- **Friction:** opened PR #453 (FEAT-034) without a bare `Closes #43` line, so the issue didn't
+  auto-close on merge and had to be closed manually afterward — the exact recurring failure the
+  `develop` skill's own step 5 already documented (#93/#94, #360/#361, #372/#373, #376/#377), with
+  that exact note already loaded at the time. PR #455 (FEAT-029), opened later the same session,
+  got it right.
+- **Area:** existing-skill:workflow/develop
+- **Change:** step 5 rewritten from a prose reminder into a mechanical check: grep the drafted PR
+  body for `^Closes #<N>$` before calling `gh pr create`/`gh api .../pulls`, and add it if missing.
+  Four rounds of a stronger reminder hadn't held on their own; this changes the kind of instruction
+  rather than its volume.
+- **Files:** `~/work/lis-engineering/skills/workflow/develop/SKILL.md`

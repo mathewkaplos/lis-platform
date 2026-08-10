@@ -1,12 +1,17 @@
 # Implementation Proposal: FEAT-033 Cumulative & clinical reports
-Status: **APPROVED** (2026-08-10) — §10's open questions resolved by the human via the native
-options-prompt (2026-08-10), all three decided as the recommended option; proposal approved the
-same session.
-ADR: none yet — §10 Q1/Q2 (below) are genuinely load-bearing (whether this reuses FEAT-032's own
-`report_template_version` mechanism, and whether generation is audited/persisted) that this
-proposal does not decide unilaterally where a real precedent doesn't already settle them; write one
-during implementation if either resolves toward a new pattern, matching every M6/M7 feature's own
-this-session precedent.
+Status: **IMPLEMENTED** — merged PR #451 (`e6500f6`), closing #42. §10's open questions resolved by
+the human via the native options-prompt (2026-08-10), all three decided as the recommended option
+(purpose-built renderer, unaudited/unpersisted, generous ceiling only). Full apps/api e2e suite (31
+files / 318 tests) green against a freshly reset DB; repo-wide typecheck/lint/build clean;
+golden-dataset check PASS. A real 400-vs-404 gotcha was found and fixed during this task's own
+e2e-test writing: Zod's `z.uuid()` rejects `99999999-...`-shaped placeholders (invalid RFC4122
+version nibble) before a route handler ever runs, producing 400 instead of the 404 a
+not-found-by-id test actually means to prove -- fixed by using a syntactically valid v4-shaped
+placeholder instead.
+ADR: none — both Q1 (purpose-built renderer vs. extending FEAT-032) and Q2 (unaudited, matching
+`prior()`'s own precedent) resolved by applying an already-established pattern, not by creating a
+new one; no load-bearing decision actually arose during implementation that ADR-0032's/ADR-0029's
+own reasoning didn't already cover.
 Date: 2026-08-10    Backlog ID: FEAT-033 (#42)
 
 **§10 resolved 2026-08-10, all three questions decided as the recommended option:** Q1 (rendering

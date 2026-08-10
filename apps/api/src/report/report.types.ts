@@ -16,6 +16,11 @@
  * own §5 assumption.
  */
 export interface ChemistryReportAnalyteResult {
+  /** FEAT-032 addition: the resolved analyte's own id, so the generic
+   * template interpreter (`report-render.ts`) can look up which result a
+   * template field's `analyteBinding` refers to. Not used by the old fixed
+   * layout, which iterated `results` positionally. */
+  analyteId: string;
   analyteName: string;
   /** Already-formatted display value (e.g. "142", "Positive") -- this
    * report renders whatever string the caller passed, it does not format

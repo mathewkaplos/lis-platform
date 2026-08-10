@@ -37,3 +37,9 @@ echo "Seed applied: haematology-catalog.sql (placeholder CBC + differential pane
 # FEAT-022 Part 1 (ADR-0024): SLA targets per priority, not discipline-scoped.
 docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/sla-targets.sql
 echo "Seed applied: sla-targets.sql (placeholder routine/STAT turnaround targets — see its header comment)."
+
+# FEAT-032: default, published report_template_version for every seeded
+# test_definition (chemistry + haematology, both already applied above) --
+# must run after both discipline seeds.
+docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/default-report-templates.sql
+echo "Seed applied: default-report-templates.sql (default published report layout per seeded test)."

@@ -1,48 +1,189 @@
 import { createHash } from 'node:crypto';
 import PDFDocument from 'pdfkit';
 import { stableStringify } from '@lis/db';
-import type { ChemistryReportInput } from './report.types';
+import { evaluateCondition } from '../workflow/workflow-condition-evaluator';
+import type {
+  ReportTemplateDefinition,
+  TemplateFieldDefinition,
+} from '../report-template/report-template-types';
+import type {
+  ChemistryReportAnalyteResult,
+  ChemistryReportInput,
+} from './report.types';
 
 /**
- * TASK-058 (FEAT-016, docs/plans/feat-016-minimal-report.md §10 Q2,
- * resolved). "Config template" here means one fixed, parameterized
- * chemistry-report layout (finding #2) -- not FEAT-032's own
- * config-driven/versioned template engine.
+ * TASK-058 (FEAT-016) originally drew one fixed, hard-coded pdfkit layout
+ * (`drawChemistryReport`). FEAT-032 (docs/plans/feat-032-template-engine-
+ * config-driven-versioned.md finding #3) generalizes the results-body
+ * portion into this interpreter, walking a `report_template_version`'s own
+ * `definition.sections`/`fields` tree instead. The patient/specimen/order
+ * header and verification footer stay fixed structural chrome, rendered
+ * identically regardless of template (proposal's own field-type scoping,
+ * `report-template-types.ts`'s header comment) -- no field type in this
+ * proposal's 5-type scope models "patient info," so templating only the
+ * results body (not the whole document) is the honest boundary of what's
+ * actually configurable here.
  *
- * Determinism strategy: hash the canonical *input*, not the rendered PDF
- * bytes. `engineering/pdf-generation` Skill entry #3 (confirmed live
- * against pdfkit's own docs, not assumed): pdfkit's `doc.info.CreationDate`/
- * `ModDate` are "automatically managed" by default, a real source of
- * byte-level non-determinism unrelated to the report's actual content. This
- * repo's existing canonicalize-then-SHA-256 convention
- * (`packages/db/src/audit.ts`'s `stableStringify`, FEAT-009) is reused
- * as-is rather than inventing a second hashing convention -- see that
- * module's own header comment for why key-sorting matters. The hash
- * represents "what data produced this report", computed from the input;
- * it intentionally says nothing about the PDF bytes themselves.
+ * Determinism strategy unchanged from TASK-058: hash the canonical *input*
+ * (now `{ templateVersionId, input }`, so a different published template
+ * rendering the exact same data produces a different hash -- the template
+ * is real content, not incidental metadata), not the rendered PDF bytes.
+ * `PDFDocument`'s `info` is still pinned entirely via the constructor's own
+ * `info` option (`engineering/pdf-generation` Skill entry #6) -- unchanged
+ * by this generalization, since that finding is about pdfkit's own trailer
+ * `/ID` computation, orthogonal to what gets drawn.
  */
-export function computeReportContentHash(input: ChemistryReportInput): string {
-  return createHash('sha256').update(stableStringify(input)).digest('hex');
+export interface RenderReportInput {
+  templateVersionId: string;
+  definition: ReportTemplateDefinition;
+  input: ChemistryReportInput;
+}
+
+export function computeReportContentHash(params: RenderReportInput): string {
+  return createHash('sha256')
+    .update(
+      stableStringify({
+        templateVersionId: params.templateVersionId,
+        definition: params.definition,
+        input: params.input,
+      }),
+    )
+    .digest('hex');
 }
 
 const RESULT_TABLE_COLUMN_WIDTHS = [130, 70, 55, 45, 175];
 
+function conditionContextFor(
+  result: ChemistryReportAnalyteResult,
+): Record<string, unknown> {
+  return {
+    analyteName: result.analyteName,
+    unit: result.unit,
+    flags: result.flags,
+    isCritical: result.isCritical,
+  };
+}
+
 /**
- * Draws the fixed chemistry-report layout via pdfkit's own imperative
- * drawing API. Real finding, correcting the proposal's own assumption
- * (`engineering/pdf-generation` Skill, written before this task's
- * implementation): pdfkit >=0.14 ships a native `doc.table()` primitive
- * (`@types/pdfkit`'s `PDFTable` mixin) -- the Skill's "pdfkit has no
- * built-in table primitive, lay out rows/columns manually" is stale
- * against the pinned version (`^0.19.1`) this task actually installed.
- * Used here instead of manual x/y column positioning; see this task's own
- * Skill update.
+ * Exported for direct unit testing (`report-render.spec.ts`) -- pdfkit's
+ * own content-stream text encoding (hex-bracketed `TJ` glyph runs, not
+ * plain parenthesized ASCII strings) makes asserting "field X's text
+ * appears/doesn't appear" against raw rendered bytes unreliable; testing
+ * this pure decision function directly is the honest way to prove
+ * conditional visibility actually gates rendering.
+ *
+ * The single source of truth for "should this field draw at all": false
+ * with no resolved data (nothing to draw -- this is a real, expected case:
+ * a field bound to an analyte the guardrail proved is on the test's own
+ * `test_analyte` set at publish time, but this particular ordered test's
+ * assembled results don't happen to include, matching entry #4's own
+ * "logged no-op over crash for an expected-shaped gap" discipline), true
+ * with resolved data and no `visibilityCondition`, otherwise the evaluated
+ * condition.
  */
-function drawChemistryReport(
+export function isFieldVisible(
+  field: TemplateFieldDefinition,
+  resolved: ChemistryReportAnalyteResult | undefined,
+): boolean {
+  if (!resolved) return false;
+  if (!field.visibilityCondition) return true;
+  return evaluateCondition(
+    field.visibilityCondition,
+    conditionContextFor(resolved),
+  );
+}
+
+function drawResultsTable(
   doc: PDFKit.PDFDocument,
+  rows: ChemistryReportAnalyteResult[],
+): void {
+  const headerRow = ['Analyte', 'Value', 'Unit', 'Flag', 'Reference Range'].map(
+    (text) => ({
+      text,
+      font: { family: 'Helvetica-Bold' },
+      backgroundColor: '#eeeeee',
+    }),
+  );
+  const dataRows = rows.map((result) => {
+    const cellStyle = result.isCritical ? { textColor: 'red' as const } : {};
+    return [
+      { text: result.analyteName, ...cellStyle },
+      { text: result.value, ...cellStyle },
+      { text: result.unit, ...cellStyle },
+      { text: result.flags.join(',') || '-', ...cellStyle },
+      { text: result.referenceRangeText, ...cellStyle },
+    ];
+  });
+
+  doc.table({
+    columnStyles: RESULT_TABLE_COLUMN_WIDTHS,
+    defaultStyle: { padding: 4, border: 0.5, borderColor: '#999999' },
+    data: [headerRow, ...dataRows],
+  });
+}
+
+/**
+ * Walks one template field. `resolvedByAnalyteId` is built once per render
+ * from `input.results` (keyed by each result's own `analyteId`, FEAT-032's
+ * addition to `ChemistryReportAnalyteResult`) -- every binding this
+ * function looks up was already proven to exist in the target test's own
+ * `test_analyte` set at publish time (`report-template-guardrails.ts`); a
+ * missing lookup here means the ordered test's own assembled results don't
+ * cover that analyte and the field is silently skipped rather than
+ * crashing the render, the same "logged no-op over throw for an
+ * expected-shaped gap" discipline `engineering/workflow-engine` Skill entry
+ * #4 already established for command handlers.
+ */
+function drawField(
+  doc: PDFKit.PDFDocument,
+  field: TemplateFieldDefinition,
+  resolvedByAnalyteId: Map<string, ChemistryReportAnalyteResult>,
+): void {
+  doc.font('Helvetica').fontSize(10);
+
+  switch (field.type) {
+    case 'richText': {
+      if (field.content) doc.text(field.content);
+      return;
+    }
+    case 'numeric':
+    case 'coded': {
+      const resolved = field.analyteBinding
+        ? resolvedByAnalyteId.get(field.analyteBinding)
+        : undefined;
+      if (!resolved || !isFieldVisible(field, resolved)) return;
+      doc.text(`${field.label}: ${resolved.value} ${resolved.unit}`.trim());
+      return;
+    }
+    case 'referenceRangeDisplay': {
+      const resolved = field.analyteBinding
+        ? resolvedByAnalyteId.get(field.analyteBinding)
+        : undefined;
+      if (!resolved || !isFieldVisible(field, resolved)) return;
+      doc.text(`${field.label}: ${resolved.referenceRangeText}`);
+      return;
+    }
+    case 'table': {
+      const rows = (field.analyteBindings ?? [])
+        .map((analyteId) => resolvedByAnalyteId.get(analyteId))
+        .filter(
+          (row): row is ChemistryReportAnalyteResult => row !== undefined,
+        );
+      if (rows.length === 0) return;
+      doc.moveDown(0.25);
+      drawResultsTable(doc, rows);
+      return;
+    }
+  }
+}
+
+function drawTemplateReport(
+  doc: PDFKit.PDFDocument,
+  definition: ReportTemplateDefinition,
   input: ChemistryReportInput,
 ): void {
   const { patient, specimen, order, results, verifier } = input;
+  const resolvedByAnalyteId = new Map(results.map((r) => [r.analyteId, r]));
 
   doc
     .font('Helvetica-Bold')
@@ -65,34 +206,15 @@ function drawChemistryReport(
   );
   doc.moveDown(1);
 
-  doc.font('Helvetica-Bold').fontSize(11).text('Results');
-  doc.moveDown(0.25);
+  for (const section of definition.sections) {
+    doc.font('Helvetica-Bold').fontSize(11).text(section.title);
+    doc.moveDown(0.25);
+    for (const field of section.fields) {
+      drawField(doc, field, resolvedByAnalyteId);
+    }
+    doc.moveDown(0.75);
+  }
 
-  const headerRow = ['Analyte', 'Value', 'Unit', 'Flag', 'Reference Range'].map(
-    (text) => ({
-      text,
-      font: { family: 'Helvetica-Bold' },
-      backgroundColor: '#eeeeee',
-    }),
-  );
-  const dataRows = results.map((result) => {
-    const cellStyle = result.isCritical ? { textColor: 'red' as const } : {};
-    return [
-      { text: result.analyteName, ...cellStyle },
-      { text: result.value, ...cellStyle },
-      { text: result.unit, ...cellStyle },
-      { text: result.flags.join(',') || '-', ...cellStyle },
-      { text: result.referenceRangeText, ...cellStyle },
-    ];
-  });
-
-  doc.table({
-    columnStyles: RESULT_TABLE_COLUMN_WIDTHS,
-    defaultStyle: { padding: 4, border: 0.5, borderColor: '#999999' },
-    data: [headerRow, ...dataRows],
-  });
-
-  doc.moveDown(1);
   doc.font('Helvetica-Bold').fontSize(11).text('Verification');
   doc.font('Helvetica').fontSize(10);
   doc.text(`Status: ${verifier.status}`);
@@ -100,32 +222,30 @@ function drawChemistryReport(
   doc.text(`Verified at: ${verifier.verifiedAt}`);
 }
 
-export function renderChemistryReportPdf(
+export function renderTemplateReportPdf(
+  templateVersionId: string,
+  definition: ReportTemplateDefinition,
   input: ChemistryReportInput,
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    // Real gotcha, not assumed from docs (see this task's own Skill
-    // update): pdfkit's constructor computes its trailer `/ID` fingerprint
-    // -- `PDFSecurity.generateFileID(this.info)`, an md5 of every `info`
-    // field including `CreationDate.getTime()` -- synchronously inside
-    // `new PDFDocument(...)`, *before* any code gets a chance to run.
-    // Setting `doc.info.CreationDate = ...` *after* construction (the
-    // pattern that looks obvious from the "automatically managed" docs
-    // wording) is already too late: the file ID was already derived from
-    // the real, wall-clock `new Date()` default at that point, making
-    // every render's PDF bytes differ even though `doc.info` itself looks
-    // identical afterward. Fix: pass every `info` field, pinned, via the
-    // constructor's own `info` option so it's in place before the file ID
-    // is generated. Confirmed empirically (not just reasoned): with the
-    // fields passed this way, two renders of the same input are
-    // byte-for-byte identical, not just hash-identical.
+    // Real gotcha (unchanged from TASK-058, `engineering/pdf-generation`
+    // Skill entry #6): pdfkit's trailer `/ID` fingerprint is computed
+    // synchronously inside `new PDFDocument(...)`, from `info` --
+    // `doc.info.X = ...` set after construction is already too late. Every
+    // `info` field is pinned via the constructor's own `info` option.
     const doc = new PDFDocument({
       margin: 50,
       bufferPages: true,
+      // Explicit, not pdfkit's own `compress: true` default -- keeps content
+      // streams plain-text-inspectable (e.g. in e2e/manual verification and
+      // this module's own visibility-condition unit tests), and has no
+      // bearing on the determinism guarantees above (byte-identity holds
+      // either way; only file size differs).
+      compress: false,
       info: {
         CreationDate: new Date(0),
         ModDate: new Date(0),
-        Title: `Chemistry Result Report - ${input.specimen.accessionNumber}`,
+        Title: `Result Report - ${input.specimen.accessionNumber}`,
         Author: 'LIS Platform',
       },
     });
@@ -135,7 +255,7 @@ export function renderChemistryReportPdf(
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    drawChemistryReport(doc, input);
+    drawTemplateReport(doc, definition, input);
 
     doc.end();
   });
@@ -146,14 +266,16 @@ export interface RenderedChemistryReport {
   contentHash: string;
 }
 
-/**
- * The one public entry point (proposal §10 Q3: no persistence in this
- * task -- returns both pieces for TASK-059 to persist later).
- */
-export async function renderChemistryReport(
-  input: ChemistryReportInput,
+/** The one public entry point -- returns both pieces for the caller
+ * (`report-assembly.ts`) to persist. */
+export async function renderTemplateReport(
+  params: RenderReportInput,
 ): Promise<RenderedChemistryReport> {
-  const pdf = await renderChemistryReportPdf(input);
-  const contentHash = computeReportContentHash(input);
+  const pdf = await renderTemplateReportPdf(
+    params.templateVersionId,
+    params.definition,
+    params.input,
+  );
+  const contentHash = computeReportContentHash(params);
   return { pdf, contentHash };
 }

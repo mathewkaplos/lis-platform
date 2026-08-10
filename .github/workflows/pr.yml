@@ -111,6 +111,11 @@ jobs:
       # row and silently fall back to 'on_track', a real CI failure this
       # exact addition fixes).
       - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/sla-targets.sql
+      # FEAT-032: default, published report_template_version for every
+      # seeded test_definition -- must run after both discipline seeds
+      # above (database-design Skill entry #12: wired here separately from
+      # scripts/db-reset.sh, not assumed to share one seed sequence).
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/default-report-templates.sql
       - run: pnpm run-golden-datasets
       - run: pnpm test
       # TASK-029: waits here, not right after launch — gives Keycloak's own

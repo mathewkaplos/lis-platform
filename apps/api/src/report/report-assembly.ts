@@ -8,12 +8,15 @@ import {
   orderedTest,
   patient,
   report,
+  reportTemplate,
+  reportTemplateVersion,
   specimen,
   specimenFulfillment,
   testAnalyte,
   writeAuditEvent,
 } from '@lis/db';
-import { renderChemistryReport } from './report-render';
+import { renderTemplateReport } from './report-render';
+import type { ReportTemplateDefinition } from '../report-template/report-template-types';
 import type {
   ChemistryReportAnalyteResult,
   ChemistryReportInput,
@@ -187,6 +190,7 @@ export async function assembleAndPersistReport(
     (analyteId) => {
       const row = observationByAnalyteId.get(analyteId)!;
       return {
+        analyteId,
         analyteName: analyteDisplayById.get(analyteId) ?? 'Unknown analyte',
         value: formatObservationValue(row),
         unit: row.unit ?? '',
@@ -290,7 +294,47 @@ export async function assembleAndPersistReport(
     },
   };
 
-  const { pdf, contentHash } = await renderChemistryReport(input);
+  // FEAT-032 (docs/plans/feat-032-template-engine-config-driven-versioned.md
+  // finding #3): a report can only be assembled once its test_definition
+  // has a published report_template_version -- there is no fixed fallback
+  // layout anymore. `report_template` is unique on (tenant, test_definition)
+  // and `report_template_version` allows at most one `published` row per
+  // template (both DB-enforced), so this lookup can return at most one row
+  // either way; it's still two real states worth distinguishing for the
+  // caller: no template configured at all (404, a real gap to fix) vs. a
+  // template exists but nothing has been published yet (409, a real but
+  // different gap -- someone left every version in draft).
+  const [templateRow] = await tx
+    .select()
+    .from(reportTemplate)
+    .where(eq(reportTemplate.testDefinitionId, orderedTestRow.testDefinitionId))
+    .limit(1);
+  if (!templateRow) {
+    throw new NotFoundException(
+      `No report template configured for test definition ${orderedTestRow.testDefinitionId}`,
+    );
+  }
+  const [publishedVersion] = await tx
+    .select()
+    .from(reportTemplateVersion)
+    .where(
+      and(
+        eq(reportTemplateVersion.reportTemplateId, templateRow.id),
+        eq(reportTemplateVersion.status, 'published'),
+      ),
+    )
+    .limit(1);
+  if (!publishedVersion) {
+    throw new ConflictException(
+      `Report template for test definition ${orderedTestRow.testDefinitionId} has no published version`,
+    );
+  }
+
+  const { pdf, contentHash } = await renderTemplateReport({
+    templateVersionId: publishedVersion.id,
+    definition: publishedVersion.definition as ReportTemplateDefinition,
+    input,
+  });
 
   const [reportRow] = await tx
     .insert(report)
@@ -300,6 +344,7 @@ export async function assembleAndPersistReport(
       contentHash,
       includedObservations,
       generatedByUserId: actorPrincipalId,
+      templateVersionId: publishedVersion.id,
     })
     .returning();
 

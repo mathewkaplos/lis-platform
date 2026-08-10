@@ -1,5 +1,5 @@
 # Implementation Proposal: FEAT-038 — Clinician portal
-Status: APPROVED
+Status: IMPLEMENTED (merged PR #468, 983b26d3946baba46774b1b5dee97653c26c87bf, closed issue #47)
 ADR: none required — every mechanism this task needs (care-relationship scoping, the "one write path"
 service-extraction pattern, RBAC+ABAC two-layer capability design) already has a precedent ADR from
 FEAT-040/036/027; this task applies them, it doesn't add a new load-bearing architectural choice   Date: 2026-08-10   Backlog ID: FEAT-038

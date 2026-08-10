@@ -232,6 +232,13 @@
       "when": 1786344836881,
       "tag": "0032_loving_wolfsbane",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1786361448643,
+      "tag": "0033_zippy_annihilus",
+      "breakpoints": true
     }
   ]
 }

@@ -34,6 +34,7 @@ import { patientAlert } from "./schema/patient-alert";
 import { controlLot } from "./schema/control-lot";
 import { criticalNotification } from "./schema/critical-notification";
 import { qcRuleViolation } from "./schema/qc-rule-violation";
+import { careRelationship } from "./schema/care-relationship";
 import { writeAuditEvent } from "./audit";
 
 type Db = ReturnType<typeof createDb>;
@@ -168,6 +169,16 @@ async function insertFixtures(db: Db) {
     severity: "low",
     description: "RLS isolation check fixture",
     addedByPrincipalId: "99999999-9999-9999-9999-999999999999",
+  });
+
+  // FEAT-040: care_relationship fixture, same reasoning as control_lot's own
+  // above -- a genuinely new tenant table this task introduces.
+  // clinicianUserId is a raw Keycloak sub string (no user table exists), so
+  // any non-empty placeholder proves isolation here.
+  await db.insert(careRelationship).values({
+    tenantId: TENANT_A,
+    clinicianUserId: "99999999-9999-9999-9999-999999999999",
+    patientId: pat.id,
   });
 
   const [ord] = await db.insert(order).values({ tenantId: TENANT_A, patientId: pat.id }).returning();

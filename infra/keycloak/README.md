@@ -103,6 +103,14 @@ the fact"; here, "never configured out-of-band").
   capability being tested, not just a second tenant at all (the same reasoning
   `test-user-4` already established for `resolveGrantingRole`'s determinism proof
   needing a real multi-role token, not an assumption from the unit test alone).
+- **A fourth realm role, `clinician`, and a seventh user, `test-user-7`, added
+  FEAT-040.** `clinician` is the first role whose default is *not* "see the whole
+  tenant" — `PatientController.search()`/`getById()` scope a `clinician`-only
+  principal (no other role) to patients with a real `care_relationship` row,
+  proposal §10 Q1/Q2. `test-user-7` carries `clinician` only, tenant `...0001` (so
+  it composes with `test-user`'s own seed-adjacent fixtures), no `care_relationship`
+  rows seeded by default — each e2e spec inserts its own via `@lis/db`, per
+  proposal §10 Q4 (no assignment endpoint exists yet).
 
 ## Local dev
 

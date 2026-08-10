@@ -26,6 +26,7 @@ import { WorkflowModule } from './workflow/workflow.module';
 import { ReflexModule } from './reflex/reflex.module';
 import { AutoVerifyModule } from './auto-verify/auto-verify.module';
 import { SlaModule } from './sla/sla.module';
+import { ClinicianModule } from './clinician/clinician.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
 @Module({
@@ -59,6 +60,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     ReflexModule,
     AutoVerifyModule,
     SlaModule,
+    ClinicianModule,
   ],
   controllers: [AppController],
   providers: [

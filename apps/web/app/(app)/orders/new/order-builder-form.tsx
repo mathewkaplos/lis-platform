@@ -16,7 +16,7 @@ import {
   Label,
 } from '@lis/ui';
 import { createOrder } from './actions';
-import { createOrderInitialState } from './types';
+import { createOrderInitialState, type CreateOrderState } from './types';
 
 /**
  * TASK-043 (FEAT-012 proposal §5). Catalog search is client-side text
@@ -25,9 +25,30 @@ import { createOrderInitialState } from './types';
  * favorites, or recently-ordered (none has a backing column/table). No
  * duplicate-active-order warning, "save draft", or "print labels" (proposal
  * §5 -- none has supporting AC/data).
+ *
+ * `action`/`backHref` are optional (default to the staff `createOrder`
+ * server action and `/patients/:id`) so FEAT-038's clinician order-entry
+ * page reuses this exact form against its own `/v1/clinician/orders` action
+ * and `/clinician` back-link, rather than a second, parallel ~200-line copy
+ * of the same UI.
  */
-export function OrderBuilderForm({ patientId, catalog }: { patientId: string; catalog: Catalog }) {
-  const [state, formAction, pending] = useActionState(createOrder, createOrderInitialState);
+export function OrderBuilderForm({
+  patientId,
+  catalog,
+  action = createOrder,
+  backHref = `/patients/${patientId}`,
+  backLabel = 'Back to patient',
+}: {
+  patientId: string;
+  catalog: Catalog;
+  action?: (
+    prevState: CreateOrderState,
+    formData: FormData,
+  ) => Promise<CreateOrderState>;
+  backHref?: string;
+  backLabel?: string;
+}) {
+  const [state, formAction, pending] = useActionState(action, createOrderInitialState);
   const [selectedTestIds, setSelectedTestIds] = useState<Set<string>>(new Set());
   const [selectedPanelIds, setSelectedPanelIds] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState('');
@@ -93,7 +114,7 @@ export function OrderBuilderForm({ patientId, catalog }: { patientId: string; ca
             {state.createdTestCount} {state.createdTestCount === 1 ? 'test' : 'tests'} ordered.
           </p>
           <Button asChild className="w-fit">
-            <Link href={`/patients/${patientId}`}>Back to patient</Link>
+            <Link href={backHref}>{backLabel}</Link>
           </Button>
         </CardContent>
       </Card>

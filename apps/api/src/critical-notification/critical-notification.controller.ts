@@ -1,10 +1,9 @@
 import {
   Body,
-  ConflictException,
   Controller,
   Get,
   HttpCode,
-  NotFoundException,
+  Inject,
   Param,
   Post,
   Query,
@@ -17,14 +16,15 @@ import {
   criticalNotificationStatusSchema,
   type CriticalNotificationResult,
 } from '@lis/domain';
-import { criticalNotification } from '@lis/db';
-import { desc, eq } from 'drizzle-orm';
+import { criticalNotification, observation } from '@lis/db';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { Audit } from '../auth/audit.decorator';
 import type { AuditedMutationResult } from '../auth/audit.interceptor';
 import { AuditInterceptor } from '../auth/audit.interceptor';
 import { CapabilityGuard } from '../auth/capability.guard';
+import { isClinicianOnly, relatedPatientIds } from '../auth/clinician-scope';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { DbTx } from '../auth/db-tx.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -32,6 +32,8 @@ import { RequireCapability } from '../auth/require-capability.decorator';
 import type { RequestContext } from '../auth/request-context';
 import type { RequestWithTx } from '../auth/tenant-context.interceptor';
 import { TenantContextInterceptor } from '../auth/tenant-context.interceptor';
+import { CriticalAcknowledgeService } from './critical-acknowledge.service';
+import { toCriticalNotificationDto } from './critical-notification-mapper';
 
 const notificationIdParamSchema = z.object({ id: z.uuid() });
 class NotificationIdParamDto extends createZodDto(notificationIdParamSchema) {}
@@ -57,29 +59,6 @@ const listQuerySchema = z.object({
 class ListQueryDto extends createZodDto(listQuerySchema) {}
 
 type Tx = RequestWithTx['tx'];
-export type CriticalNotificationRow = typeof criticalNotification.$inferSelect;
-
-// Exported for CriticalNotificationEscalationService's own audit payload
-// (TASK-066) -- same shape, no reason to duplicate this mapping.
-export function toCriticalNotificationDto(
-  row: CriticalNotificationRow,
-): CriticalNotificationResult {
-  return {
-    id: row.id,
-    observationId: row.observationId,
-    status: row.status as CriticalNotificationResult['status'],
-    createdAt: row.createdAt.toISOString(),
-    escalationLevel: row.escalationLevel,
-    lastEscalatedAt: row.lastEscalatedAt
-      ? row.lastEscalatedAt.toISOString()
-      : null,
-    acknowledgedAt: row.acknowledgedAt
-      ? row.acknowledgedAt.toISOString()
-      : null,
-    acknowledgedByUserId: row.acknowledgedByUserId,
-    readBack: row.readBack,
-  };
-}
 
 /**
  * TASK-065 (FEAT-021, ADR-0016). The notification/read-back half of
@@ -95,25 +74,21 @@ export function toCriticalNotificationDto(
  */
 @Controller('v1/critical-notifications')
 export class CriticalNotificationController {
-  private async loadNotification(tx: Tx, id: string) {
-    const [row] = await tx
-      .select()
-      .from(criticalNotification)
-      .where(eq(criticalNotification.id, id))
-      .limit(1);
-    // RLS makes a cross-tenant row structurally invisible (engineering/
-    // api-design entry #7).
-    if (!row) {
-      throw new NotFoundException('Critical notification not found');
-    }
-    return row;
-  }
+  constructor(
+    @Inject(CriticalAcknowledgeService)
+    private readonly acknowledgeService: CriticalAcknowledgeService,
+  ) {}
 
   /**
    * Captures the documented read-back FEAT-021's own AC requires. Rejects
    * an already-`'acknowledged'` notification with 409 rather than silently
    * overwriting a prior read-back -- acknowledgement is a one-time,
    * documented action, not an editable field.
+   *
+   * The write itself lives in `CriticalAcknowledgeService` (FEAT-038,
+   * ADR-0027) -- this route stays unscoped/staff-only (`verify`), the new
+   * clinician-facing route in `ClinicianController` calls the same service
+   * after its own own-patient ABAC check.
    */
   @Post(':id/acknowledge')
   @HttpCode(200) // an action on an existing resource, not a creation
@@ -132,26 +107,12 @@ export class CriticalNotificationController {
     @CurrentUser() user: RequestContext,
     @DbTx() tx: Tx,
   ): Promise<AuditedMutationResult & { after: CriticalNotificationResult }> {
-    const existing = await this.loadNotification(tx, id);
-    if (existing.status === 'acknowledged') {
-      throw new ConflictException(
-        `Critical notification ${id} is already acknowledged`,
-      );
-    }
-
-    const before = toCriticalNotificationDto(existing);
-    const [updated] = await tx
-      .update(criticalNotification)
-      .set({
-        status: 'acknowledged',
-        acknowledgedAt: new Date(),
-        acknowledgedByUserId: user.sub,
-        readBack: body.readBack,
-      })
-      .where(eq(criticalNotification.id, id))
-      .returning();
-
-    const after = toCriticalNotificationDto(updated);
+    const { before, after } = await this.acknowledgeService.acknowledge(
+      tx,
+      id,
+      user.sub,
+      body.readBack,
+    );
     return { resourceId: after.id, before, after };
   }
 
@@ -163,6 +124,13 @@ export class CriticalNotificationController {
    * api-design` entry #6). Any authenticated tenant user may read, matching
    * `observation.controller.ts`'s own `list()`/`prior()` precedent (no
    * capability gate on a read).
+   *
+   * FEAT-038 (§2/Risks): a `clinician`-only caller is additionally scoped to
+   * criticals on their own related patients' observations -- a real,
+   * pre-existing gap found while building the clinician portal (this route
+   * had no ABAC at all, so any authenticated caller, `clinician` included,
+   * could already see every tenant patient's criticals). Every other role's
+   * behavior is unchanged. Zero related patients returns an empty list.
    */
   @Get()
   @UseGuards(JwtAuthGuard)
@@ -170,18 +138,39 @@ export class CriticalNotificationController {
   @ZodResponse({ type: [CriticalNotificationDto], status: 200 })
   async list(
     @Query(new ZodValidationPipe(listQuerySchema)) query: ListQueryDto,
+    @CurrentUser() user: RequestContext,
     @DbTx() tx: Tx,
   ): Promise<CriticalNotificationResult[]> {
-    const rows = query.status
-      ? await tx
-          .select()
-          .from(criticalNotification)
-          .where(eq(criticalNotification.status, query.status))
-          .orderBy(desc(criticalNotification.createdAt))
-      : await tx
-          .select()
-          .from(criticalNotification)
-          .orderBy(desc(criticalNotification.createdAt));
+    let scopeToObservationIds: string[] | undefined;
+    if (isClinicianOnly(user.roles)) {
+      const related = await relatedPatientIds(tx, user.sub);
+      if (related.length === 0) {
+        return [];
+      }
+      const observationRows = await tx
+        .select({ id: observation.id })
+        .from(observation)
+        .where(inArray(observation.patientId, related));
+      if (observationRows.length === 0) {
+        return [];
+      }
+      scopeToObservationIds = observationRows.map((r) => r.id);
+    }
+
+    const rows = await tx
+      .select()
+      .from(criticalNotification)
+      .where(
+        and(
+          query.status
+            ? eq(criticalNotification.status, query.status)
+            : undefined,
+          scopeToObservationIds
+            ? inArray(criticalNotification.observationId, scopeToObservationIds)
+            : undefined,
+        ),
+      )
+      .orderBy(desc(criticalNotification.createdAt));
 
     return rows.map(toCriticalNotificationDto);
   }

@@ -7,7 +7,7 @@ import { schedulerDb } from '../auth/scheduler-db';
 import {
   toCriticalNotificationDto,
   type CriticalNotificationRow,
-} from './critical-notification.controller';
+} from './critical-notification-mapper';
 
 // The first `actorType: 'service'` audit actor this repo has ever written
 // (every existing audit write is `'human'`, the interactive-request case) --

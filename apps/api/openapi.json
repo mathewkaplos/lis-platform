@@ -275,6 +275,41 @@
         ]
       }
     },
+    "/v1/patients/{id}/care-relationships": {
+      "post": {
+        "operationId": "PatientController_assignClinician",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CareRelationshipCreateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Patient"
+        ]
+      }
+    },
     "/v1/orders": {
       "post": {
         "operationId": "OrderController_create",
@@ -1803,6 +1838,121 @@
           "SlaBreach"
         ]
       }
+    },
+    "/v1/clinician/patients": {
+      "get": {
+        "operationId": "ClinicianController_listPatients",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PatientDto_Output"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Clinician"
+        ]
+      }
+    },
+    "/v1/clinician/orders": {
+      "post": {
+        "operationId": "ClinicianController_createOrder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderCreateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Clinician"
+        ]
+      }
+    },
+    "/v1/clinician/patients/{patientId}/results": {
+      "get": {
+        "operationId": "ClinicianController_getPatientResults",
+        "parameters": [
+          {
+            "name": "patientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalResultsResponseDto_Output"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Clinician"
+        ]
+      }
+    },
+    "/v1/clinician/critical-notifications/{id}/acknowledge": {
+      "post": {
+        "operationId": "ClinicianController_acknowledgeCritical",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcknowledgeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Clinician"
+        ]
+      }
     }
   },
   "info": {
@@ -1917,6 +2067,19 @@
           "createdAt"
         ],
         "additionalProperties": false
+      },
+      "CareRelationshipCreateDto": {
+        "type": "object",
+        "properties": {
+          "clinicianUserId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "clinicianUserId"
+        ]
       },
       "OrderCreateDto": {
         "type": "object",

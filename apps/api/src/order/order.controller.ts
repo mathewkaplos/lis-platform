@@ -40,7 +40,9 @@ import { OrderCreationService } from './order-creation.service';
 const orderIdParamSchema = z.object({ id: z.uuid() });
 
 class OrderCreateDto extends createZodDto(orderCreateSchema) {}
-class OrderDto extends createZodDto(orderSchema) {}
+// Exported for ClinicianController's own reuse (FEAT-038) -- same shape,
+// same "one write path" precedent as toCriticalNotificationDto's own export.
+export class OrderDto extends createZodDto(orderSchema) {}
 class OrderSearchQueryDto extends createZodDto(orderSearchQuerySchema) {}
 class OrderIdParamDto extends createZodDto(orderIdParamSchema) {}
 
@@ -52,7 +54,7 @@ function toOrderedTestDto(row: typeof orderedTest.$inferSelect): OrderedTest {
   };
 }
 
-function toOrderDto(
+export function toOrderDto(
   row: typeof order.$inferSelect,
   tests: (typeof orderedTest.$inferSelect)[],
   patientSummary?: { firstName: string; lastName: string; mrn: string },

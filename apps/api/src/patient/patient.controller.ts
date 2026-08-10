@@ -4,6 +4,7 @@ import {
   ConflictException,
   Controller,
   Get,
+  HttpCode,
   NotFoundException,
   Param,
   Post,
@@ -12,13 +13,15 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import {
+  careRelationshipCreateSchema,
   patientCreateSchema,
   patientSchema,
   patientSearchQuerySchema,
   PATIENT_SEARCH_RESULT_LIMIT,
+  type CareRelationship,
   type Patient,
 } from '@lis/domain';
-import { patient } from '@lis/db';
+import { careRelationship, patient } from '@lis/db';
 import { and, eq, ilike, inArray, or } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
@@ -40,6 +43,15 @@ class PatientCreateDto extends createZodDto(patientCreateSchema) {}
 class PatientDto extends createZodDto(patientSchema) {}
 class PatientSearchQueryDto extends createZodDto(patientSearchQuerySchema) {}
 class PatientIdParamDto extends createZodDto(patientIdParamSchema) {}
+class CareRelationshipCreateDto extends createZodDto(
+  careRelationshipCreateSchema,
+) {}
+
+function toCareRelationshipDto(
+  row: typeof careRelationship.$inferSelect,
+): CareRelationship {
+  return { ...row, createdAt: row.createdAt.toISOString() };
+}
 
 /** Postgres unique_violation, per https://www.postgresql.org/docs/current/errcodes-appendix.html */
 const UNIQUE_VIOLATION = '23505';
@@ -72,7 +84,9 @@ const MAX_MRN_ATTEMPTS = 5;
  * strings) — explicit here rather than relying on `@ZodResponse`'s
  * serializer to coerce a `Date` into an ISO string implicitly.
  */
-function toPatientDto(row: typeof patient.$inferSelect): Patient {
+// Exported for ClinicianController's own "my patients" list (FEAT-038) --
+// same shape, no reason to duplicate this mapping.
+export function toPatientDto(row: typeof patient.$inferSelect): Patient {
   return {
     ...row,
     sex: row.sex as Patient['sex'], // CHECK-constrained in Postgres (ck_patient_sex), not reflected in drizzle's plain `text` column type
@@ -284,5 +298,66 @@ export class PatientController {
       }
     }
     return toPatientDto(row);
+  }
+
+  /**
+   * FEAT-038 (proposal §10 Q1): the one new mechanism this task adds — a
+   * lab-staff user assigns a clinician to a patient, which is how a
+   * `care_relationship` row comes to exist outside a direct DB insert for
+   * the first time (FEAT-040 shipped the table with no assignment endpoint
+   * at all). Same `manage_patients` capability as `create()` above — this is
+   * the same front-desk-adjacent administrative action, not a clinical one.
+   */
+  @Post(':id/care-relationships')
+  @HttpCode(201)
+  @UseGuards(JwtAuthGuard, CapabilityGuard)
+  @RequireCapability('manage_patients')
+  @UseInterceptors(TenantContextInterceptor, AuditInterceptor)
+  @Audit({ action: 'patient.assign_clinician', resourceType: 'patient' })
+  async assignClinician(
+    @Param(new ZodValidationPipe(patientIdParamSchema))
+    { id }: PatientIdParamDto,
+    @Body(new ZodValidationPipe(careRelationshipCreateSchema))
+    body: CareRelationshipCreateDto,
+    @CurrentUser() user: RequestContext,
+    @DbTx() tx: RequestWithTx['tx'],
+  ) {
+    const [patientRow] = await tx
+      .select({ id: patient.id })
+      .from(patient)
+      .where(eq(patient.id, id))
+      .limit(1);
+    // RLS makes a cross-tenant row structurally invisible, same "never leak
+    // existence" reasoning as getById() above.
+    if (!patientRow) {
+      throw new NotFoundException('Patient not found');
+    }
+
+    try {
+      const [row] = await tx
+        .insert(careRelationship)
+        .values({
+          tenantId: user.tenantId,
+          clinicianUserId: body.clinicianUserId,
+          patientId: id,
+        })
+        .returning();
+      return {
+        resourceId: row.id,
+        before: null,
+        after: toCareRelationshipDto(row),
+      };
+    } catch (err) {
+      if (
+        pgErrorCode(err) === UNIQUE_VIOLATION &&
+        pgConstraintName(err) ===
+          'ux_care_relationship_tenant_clinician_patient'
+      ) {
+        throw new ConflictException(
+          'This clinician is already assigned to this patient',
+        );
+      }
+      throw err;
+    }
   }
 }

@@ -1,5 +1,5 @@
 # Implementation Proposal: FEAT-039 — Patient portal
-Status: APPROVED
+Status: IMPLEMENTED (merged PR #466, 39a3ee6582c6024f94ba766090de8d9164eb0c45, closed issue #48)
 ADR: none required — result-release policy is a small additive config table, not a load-bearing architectural decision on the scale of ADR-0011/0026/0027   Date: 2026-08-10   Backlog ID: FEAT-039
 
 ## 1. Goal

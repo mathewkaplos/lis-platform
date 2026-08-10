@@ -1,5 +1,5 @@
 # Implementation Proposal: FEAT-044 AI evaluation harness
-Status: APPROVED
+Status: **IMPLEMENTED** — merged PR #480 (`9b6e680`), closing #53.
 
 **Approved 2026-08-10** via the native options-prompt (approved as drafted).
 ADR: none — the harness's shape (plain Vitest suite, no new CI step, tests `TemplateProvider`

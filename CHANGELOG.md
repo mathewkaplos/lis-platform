@@ -445,3 +445,21 @@ frontmatter declaration (this entry's own commit).
   the feature's own GitHub issue names it — making the check mechanical (tied to Affected Files)
   rather than dependent on the issue author having anticipated it.
 - **Files:** `~/work/lis-engineering/skills/workflow/plan/SKILL.md`
+
+## 2026-08-10 (4)
+
+- **Friction:** shipped all 4 M9 features (FEAT-041-044, 8 PRs) back-to-back in one autonomous
+  session. Each PR's CI wait produced several short, near-identical progress updates ("still
+  running", "check X passed"). The human's next message asked to continue FEAT-043 specifically —
+  already merged and closed two features earlier — even though completion was stated in text at
+  the relevant checkpoint and again in the final wrap-up summary. Only one `PushNotification` was
+  sent during the whole session (early, after the first finding), none at the true end of the
+  8-PR batch.
+- **Area:** github-workflow
+- **Change:** added a bullet to `AGENTS.md`'s "Rules of engagement": when running multiple
+  features back-to-back in one autonomous batch, send a `PushNotification` at the true end of the
+  whole batch, not just after an early milestone — reaches a human who's stepped away or is
+  skimming on mobile, reducing stale-state follow-ups like this one. Per this file's own
+  AGENTS.md-edit rule, the file was edited locally but not committed/pushed — handed back for the
+  human to land.
+- **Files:** `~/work/lis-platform/AGENTS.md`

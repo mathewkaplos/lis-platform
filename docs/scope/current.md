@@ -1,6 +1,6 @@
 # Status — 2026-08-10 (session 32)
 
-Last commit on main: `a88f474` (`lis-platform`) / `9aa381d` (`lis-engineering`) — this breadcrumb
+Last commit on main: `63bb5c5` (`lis-platform`) / `6c54367` (`lis-engineering`) — this breadcrumb
 refresh itself lands as a further `lis-platform` commit on top of that, so this line will already be
 one commit behind by construction — check `git log origin/main -5` for the real current tip.
 
@@ -87,17 +87,26 @@ the first attempt.
    outright. Fixed: clarified `AGENTS.md`'s existing hand-off note to say explicitly "same
    branch+PR flow, never a direct push" — PR #484.
 
-### `/close` cycle — all three pending items addressed, not deferred
+### `/close` cycle — two rounds, every pending item addressed, not deferred
 
 Per `~/work/lis-engineering/session-close-reports/2026-08-10-2242-pre.md`'s three pending items:
 
-1. **Breadcrumb refresh** — this file.
-2. **AGENTS.md hand-off wording clarification** — PR #484 (see `/retro` cycle above).
+1. **Breadcrumb refresh** — this file (this section itself now updated a second time, below).
+2. **AGENTS.md hand-off wording clarification** — drafted, then genuinely merged as PR #484 in a
+   second `/close` round (branch-protection required a `git merge origin/main` update first, since
+   the breadcrumb-refresh PR had moved `main` out from under it in between — the exact mechanism
+   the `close` Skill's own step 11 already documents).
 3. **Manual verification, both items addressed**: FEAT-042's other 3 analyte rows (Poikilocytosis,
    Polychromasia, Platelet Estimate) driven through a real browser live — all render correctly,
    zero console errors, badges and narratives all correct. The design-partner lab review of the
    generated text's actual clinical phrasing is filed as issue #483 (matching #171's own precedent
    — not something a session can do itself, tracked visibly instead of silently dropped).
+
+**Second `/close` round** (`2026-08-11-0005-pre.md` → this final resolution): caught a real,
+unrelated CI flake (`apps/web/auth/access-token.spec.ts`'s `refreshIfStale` test timed out on its
+real, unmocked Keycloak call — on a PR that only touched this same breadcrumb file, confirmed
+unrelated via a clean rerun) and documented it as `engineering/testing` Skill entry #17, so a
+future session recognizes the exact symptom on sight instead of re-diagnosing it as a regression.
 
 ## Carried into next session
 

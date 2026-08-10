@@ -50,6 +50,10 @@ export interface ResultActionOutcome {
   // finalizeMorphologyResult() -- quantity actions never populate either.
   valueCode?: string | null;
   notes?: string | null;
+  // FEAT-042: same "only ever set by the morphology actions" shape as
+  // valueCode/notes immediately above.
+  notesAiOriginated?: boolean | null;
+  notesAiDisposition?: 'accepted' | 'edited' | null;
 }
 
 // The subset of `ProblemDetails` (apps/api's problem-details.filter.ts)
@@ -62,6 +66,9 @@ interface HeldObservationDto {
   // result's grade/notes survive the panel_hold path too.
   valueCode: string | null;
   notes: string | null;
+  // FEAT-042: same "widened so it survives the panel_hold path too" shape.
+  notesAiOriginated: boolean;
+  notesAiDisposition: 'accepted' | 'edited' | null;
   flags: string[];
   refLow: number | null;
   refHigh: number | null;
@@ -148,6 +155,8 @@ export async function draftMorphologyResult(
   analyteId: string,
   valueCode: MorphologyGrade,
   notes?: string,
+  notesAiOriginated?: boolean,
+  notesAiDisposition?: 'accepted' | 'edited',
 ): Promise<ResultActionOutcome> {
   const accessToken = await getValidAccessToken();
   if (!accessToken) {
@@ -157,7 +166,7 @@ export async function draftMorphologyResult(
 
   const { data, response } = await client.PUT('/v1/ordered-tests/{id}/results/{analyteId}', {
     params: { path: { id: orderedTestId, analyteId } },
-    body: { dataType: 'ordinal', valueCode, notes },
+    body: { dataType: 'ordinal', valueCode, notes, notesAiOriginated, notesAiDisposition },
   });
   if (!response.ok || !data) {
     return { status: 'error', error: writeErrorMessage(response.status), ...FAILURE };
@@ -167,11 +176,47 @@ export async function draftMorphologyResult(
     valueNum: null,
     valueCode: data.valueCode,
     notes: data.notes,
+    notesAiOriginated: data.notesAiOriginated,
+    notesAiDisposition: data.notesAiDisposition,
     flags: data.flags,
     refLow: data.refLow,
     refHigh: data.refHigh,
     observationStatus: data.status,
   };
+}
+
+/**
+ * FEAT-042: proposes a starter narrative for the analyte's already-drafted
+ * grade (the API's own `draftNarrative()` reads the persisted valueCode,
+ * not a client-supplied one -- see its own header comment). Never writes
+ * anything itself; the technologist's own subsequent draft/finalize call is
+ * what actually persists the (possibly edited) text.
+ */
+export async function draftNarrative(
+  orderedTestId: string,
+  analyteId: string,
+): Promise<{ status: 'ok'; narrative: string } | { status: 'error'; error: string }> {
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    return { status: 'error', error: 'Your session has expired — please log in again.' };
+  }
+  const client = createLisApiClient(accessToken);
+
+  // Not run through @ZodResponse (same gap finalize()'s own comment above
+  // documents -- observation.controller.ts's draftNarrative() returns a
+  // plain object, no OpenAPI response schema, hence the manual cast).
+  const { data, response } = await client.POST(
+    '/v1/ordered-tests/{id}/results/{analyteId}/draft-narrative',
+    { params: { path: { id: orderedTestId, analyteId } } },
+  );
+  if (!response.ok || !data) {
+    if (response.status === 409) {
+      return { status: 'error', error: 'Select a morphology grade before drafting a narrative.' };
+    }
+    return { status: 'error', error: writeErrorMessage(response.status) };
+  }
+  const narrative = (data as unknown as { narrative: string }).narrative;
+  return { status: 'ok', narrative };
 }
 
 export async function finalizeResult(
@@ -279,6 +324,8 @@ export async function finalizeMorphologyResult(
   analyteId: string,
   valueCode: MorphologyGrade,
   notes?: string,
+  notesAiOriginated?: boolean,
+  notesAiDisposition?: 'accepted' | 'edited',
 ): Promise<ResultActionOutcome> {
   const accessToken = await getValidAccessToken();
   if (!accessToken) {
@@ -288,7 +335,7 @@ export async function finalizeMorphologyResult(
 
   const { data, error, response } = await client.POST('/v1/ordered-tests/{id}/results/{analyteId}/finalize', {
     params: { path: { id: orderedTestId, analyteId } },
-    body: { dataType: 'ordinal', valueCode, notes },
+    body: { dataType: 'ordinal', valueCode, notes, notesAiOriginated, notesAiDisposition },
   });
   if (!response.ok || !data) {
     const problem = error as PanelHoldProblem | undefined;
@@ -300,6 +347,8 @@ export async function finalizeMorphologyResult(
         valueNum: problem.heldObservation.valueNum,
         valueCode: problem.heldObservation.valueCode,
         notes: problem.heldObservation.notes,
+        notesAiOriginated: problem.heldObservation.notesAiOriginated,
+        notesAiDisposition: problem.heldObservation.notesAiDisposition,
         flags: problem.heldObservation.flags,
         refLow: problem.heldObservation.refLow,
         refHigh: problem.heldObservation.refHigh,
@@ -314,6 +363,8 @@ export async function finalizeMorphologyResult(
         observation: {
           valueCode: string | null;
           notes: string | null;
+          notesAiOriginated: boolean;
+          notesAiDisposition: 'accepted' | 'edited' | null;
           flags: string[];
           refLow: number | null;
           refHigh: number | null;
@@ -327,6 +378,8 @@ export async function finalizeMorphologyResult(
     valueNum: null,
     valueCode: after.observation.valueCode,
     notes: after.observation.notes,
+    notesAiOriginated: after.observation.notesAiOriginated,
+    notesAiDisposition: after.observation.notesAiDisposition,
     flags: after.observation.flags,
     refLow: after.observation.refLow,
     refHigh: after.observation.refHigh,

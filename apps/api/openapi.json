@@ -765,6 +765,41 @@
         ]
       }
     },
+    "/v1/ordered-tests/{id}/results/{analyteId}/draft-narrative": {
+      "post": {
+        "operationId": "ObservationController_draftNarrative",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "analyteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Observation"
+        ]
+      }
+    },
     "/v1/ordered-tests/{id}/results/{analyteId}/finalize": {
       "post": {
         "operationId": "ObservationController_finalize",
@@ -2855,6 +2890,16 @@
               "notes": {
                 "type": "string",
                 "maxLength": 2000
+              },
+              "notesAiOriginated": {
+                "type": "boolean"
+              },
+              "notesAiDisposition": {
+                "type": "string",
+                "enum": [
+                  "accepted",
+                  "edited"
+                ]
               }
             },
             "required": [
@@ -2966,6 +3011,18 @@
           "notes": {
             "type": "string",
             "nullable": true
+          },
+          "notesAiOriginated": {
+            "type": "boolean"
+          },
+          "notesAiDisposition": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "edited",
+              null
+            ],
+            "nullable": true
           }
         },
         "required": [
@@ -2988,7 +3045,9 @@
           "createdAt",
           "verifierUserId",
           "verifiedAt",
-          "notes"
+          "notes",
+          "notesAiOriginated",
+          "notesAiDisposition"
         ],
         "additionalProperties": false
       },

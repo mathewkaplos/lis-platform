@@ -37,10 +37,12 @@ import {
 import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
+import { InferenceGatewayService } from '../ai/inference-gateway.service';
 import { Audit } from '../auth/audit.decorator';
 import { AuditInterceptor } from '../auth/audit.interceptor';
 import { CapabilityGuard } from '../auth/capability.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { db } from '../auth/db';
 import { DbTx } from '../auth/db-tx.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RequireCapability } from '../auth/require-capability.decorator';
@@ -107,6 +109,10 @@ export function toObservationDto(row: ObservationRow): ObservationResult {
     verifiedAt: row.verifiedAt ? row.verifiedAt.toISOString() : null,
     // FEAT-024 (ADR-0025 decision 3): null on every non-ordinal row.
     notes: row.notes,
+    // FEAT-042: same "null on every non-ordinal row" shape as notes itself.
+    notesAiOriginated: row.notesAiOriginated,
+    notesAiDisposition:
+      row.notesAiDisposition as ObservationResult['notesAiDisposition'],
   };
 }
 
@@ -151,6 +157,8 @@ export class ObservationController {
   constructor(
     @Inject(ObservationWriteService)
     private readonly writeService: ObservationWriteService,
+    @Inject(InferenceGatewayService)
+    private readonly inferenceGateway: InferenceGatewayService,
   ) {}
 
   /**
@@ -407,6 +415,93 @@ export class ObservationController {
     }
 
     return toObservationDto(row);
+  }
+
+  /**
+   * FEAT-042: proposes a starter narrative for the *already-drafted* grade
+   * (reads the persisted `valueCode` -- the same row `draft()` just wrote --
+   * rather than trusting a client-supplied grade for what reaches the
+   * provider/audit trail). No `@Audit()` -- it makes no database write of
+   * its own; `InferenceGatewayService.invoke()` already audits the AI call
+   * itself (`actorType: 'ai'`), and the human's disposition of this draft
+   * becomes visible only once `draft()`/`finalize()` actually persists the
+   * (possibly edited) text, same "only mutating actions are audited" rule
+   * (`engineering/api-design` entry #6) `list()` above already follows.
+   * `allowedContextFields` never includes any patient/order/specimen
+   * identifier -- only the analyte's own display name and the graded value,
+   * enforced by phi-minimization.ts's deny-by-default mechanism (FEAT-041).
+   *
+   * Deliberately does NOT use `TenantContextInterceptor`/`@DbTx()` -- that
+   * would hold the app's shared singleton pool's one checked-out connection
+   * for this whole method, and `InferenceGatewayService.invoke()` opens its
+   * own separate `db.transaction()` internally for the audit write.
+   * Nesting a second transaction inside an already-open one on the same
+   * pool is a guaranteed deadlock under this repo's `DB_POOL_MAX=1` e2e
+   * config (`engineering/database-design` Skill entry #14) -- found for
+   * real here (every e2e test in this file timed out on the first attempt).
+   * Fixed exactly as that entry prescribes: a short, self-contained
+   * transaction for the read (commits and releases the connection before
+   * this method returns from it), then the gateway call runs with no
+   * transaction of this method's own still open.
+   */
+  @Post('results/:analyteId/draft-narrative')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, CapabilityGuard)
+  @RequireCapability('enter_result')
+  async draftNarrative(
+    @Param(new ZodValidationPipe(resultParamSchema))
+    { id, analyteId }: ResultParamDto,
+    @CurrentUser() user: RequestContext,
+  ): Promise<{ narrative: string }> {
+    const { existing, analyteRow } = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT set_config('app.tenant_id', ${user.tenantId}, true)`,
+      );
+      const [existingRow] = await tx
+        .select({
+          dataType: observation.dataType,
+          valueCode: observation.valueCode,
+        })
+        .from(observation)
+        .where(
+          and(
+            eq(observation.orderedTestId, id),
+            eq(observation.analyteId, analyteId),
+          ),
+        )
+        .limit(1);
+      const [analyteRowResult] = await tx
+        .select({ display: analyte.display })
+        .from(analyte)
+        .where(eq(analyte.id, analyteId))
+        .limit(1);
+      return { existing: existingRow, analyteRow: analyteRowResult };
+    });
+
+    if (!existing || existing.dataType !== 'ordinal' || !existing.valueCode) {
+      throw new ConflictException(
+        'A morphology grade must be drafted before requesting an AI narrative',
+      );
+    }
+    if (!analyteRow) {
+      throw new NotFoundException('Analyte not found');
+    }
+
+    const result = await this.inferenceGateway.invoke({
+      tenantId: user.tenantId,
+      actorPrincipalId: user.sub,
+      capability: 'narrative-drafting.peripheral-film-morphology',
+      prompt: `Draft a peripheral blood smear morphology narrative for ${analyteRow.display} at grade ${existing.valueCode}.`,
+      context: {
+        analyteDisplay: analyteRow.display,
+        grade: existing.valueCode,
+      },
+      allowedContextFields: ['analyteDisplay', 'grade'],
+      resourceType: 'observation',
+      resourceId: id,
+    });
+
+    return { narrative: result.output };
   }
 
   /**

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { selectProvider } from './provider-registry';
 import { StubProvider } from './providers/stub-provider';
+import { TemplateProvider } from './providers/template-provider';
 
 describe('ai.module: selectProvider (config-driven provider swap, FEAT-041 AC #2)', () => {
   const originalProvider = process.env.AI_PROVIDER;
@@ -13,9 +14,9 @@ describe('ai.module: selectProvider (config-driven provider swap, FEAT-041 AC #2
     }
   });
 
-  it('defaults to StubProvider when AI_PROVIDER is unset', () => {
+  it('defaults to TemplateProvider when AI_PROVIDER is unset (FEAT-042)', () => {
     delete process.env.AI_PROVIDER;
-    expect(selectProvider()).toBeInstanceOf(StubProvider);
+    expect(selectProvider()).toBeInstanceOf(TemplateProvider);
   });
 
   it('selects the provider named by AI_PROVIDER, not a hardcoded default', () => {

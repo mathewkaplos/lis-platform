@@ -1,0 +1,3 @@
+ALTER TABLE "observation" ADD COLUMN "notes_ai_originated" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "observation" ADD COLUMN "notes_ai_disposition" text;--> statement-breakpoint
+ALTER TABLE "observation" ADD CONSTRAINT "ck_observation_notes_ai_disposition" CHECK ((notes_ai_originated = false AND notes_ai_disposition IS NULL) OR (notes_ai_originated = true AND notes_ai_disposition IN ('accepted', 'edited')));

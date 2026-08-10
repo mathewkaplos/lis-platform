@@ -15,3 +15,4 @@ export * from "./sla-breach";
 export * from "./interop-order";
 export * from "./interop-oru";
 export * from "./portal";
+export * from "./care-relationship";

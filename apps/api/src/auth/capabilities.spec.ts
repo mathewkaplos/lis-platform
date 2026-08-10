@@ -112,6 +112,31 @@ describe('resolveGrantingRole', () => {
     ).toBeUndefined();
   });
 
+  it('grants place_order_own_patient/view_related_patient_results/acknowledge_critical_own_patient to clinician only (FEAT-038)', () => {
+    expect(resolveGrantingRole(['clinician'], 'place_order_own_patient')).toBe(
+      'clinician',
+    );
+    expect(
+      resolveGrantingRole(['clinician'], 'view_related_patient_results'),
+    ).toBe('clinician');
+    expect(
+      resolveGrantingRole(['clinician'], 'acknowledge_critical_own_patient'),
+    ).toBe('clinician');
+    expect(
+      resolveGrantingRole(['technologist'], 'place_order_own_patient'),
+    ).toBeUndefined();
+    expect(
+      resolveGrantingRole(['verifier'], 'acknowledge_critical_own_patient'),
+    ).toBeUndefined();
+  });
+
+  it('denies staff-wide manage_orders/verify to a clinician-only principal (FEAT-038)', () => {
+    // The whole point of the three dedicated capabilities above: a
+    // clinician must not silently inherit the unscoped staff grants.
+    expect(resolveGrantingRole(['clinician'], 'manage_orders')).toBeUndefined();
+    expect(resolveGrantingRole(['clinician'], 'verify')).toBeUndefined();
+  });
+
   it('resolves deterministically when multiple held roles grant the same capability', () => {
     // Both technologist and verifier grant enter_result — the result must
     // always be the same role for the same input, not arbitrary, since two

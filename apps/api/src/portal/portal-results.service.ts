@@ -39,6 +39,13 @@ const PORTAL_RESULT_LIMIT = 500;
  * (`isReleased`) -- the one real difference from the existing staff-facing
  * cumulative report, which has no release-policy concept at all (it's
  * already internal-only).
+ *
+ * FEAT-038 (proposal §10 Q2, resolved): the ordering/treating clinician
+ * reuses this exact same query, via `bypassReleasePolicy` -- the
+ * release-policy delay was designed for patient-facing visibility timing,
+ * not a clinician who needs a result the moment it's clinically actionable,
+ * same as internal staff today. Default `false` so the existing
+ * patient-portal caller (`PortalController`) is unaffected.
  */
 @Injectable()
 export class PortalResultsService {
@@ -46,8 +53,11 @@ export class PortalResultsService {
     tx: Tx,
     tenantId: string,
     patientId: string,
+    options?: { bypassReleasePolicy?: boolean },
   ): Promise<PortalAnalyteResults[]> {
-    const policy = await getReleasePolicy(tx, tenantId);
+    const policy = options?.bypassReleasePolicy
+      ? { mode: 'immediate' as const, delayHours: 0 }
+      : await getReleasePolicy(tx, tenantId);
     const now = new Date();
 
     // Full observation rows, matching `assembleCumulativeReport`'s own

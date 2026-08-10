@@ -82,6 +82,15 @@
  * history forcing an ungated shape — KB-10's intended RBAC (this capability)
  * + ABAC (`resolveOwnPatientId`'s self-identity filter) two-layer model is
  * followed cleanly from the start.
+ *
+ * `place_order_own_patient` / `view_related_patient_results` /
+ * `acknowledge_critical_own_patient` (FEAT-038 proposal §10): granted only to
+ * `clinician`. Deliberately three dedicated capabilities rather than reusing
+ * `manage_orders`/`view_own_results`/`verify` — those existing grants carry
+ * unscoped, staff-wide semantics (any tenant patient), while every clinician
+ * route is additionally row-filtered by `relatedPatientIds()`
+ * (`clinician-scope.ts`, FEAT-040) — same RBAC (capability) + ABAC (relation
+ * filter) two-layer split `view_own_results` already established.
  */
 export type Capability =
   | 'enter_result'
@@ -96,7 +105,10 @@ export type Capability =
   | 'manage_catalog'
   | 'view_operational_reports'
   | 'interop_ingest'
-  | 'view_own_results';
+  | 'view_own_results'
+  | 'place_order_own_patient'
+  | 'view_related_patient_results'
+  | 'acknowledge_critical_own_patient';
 
 const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
   technologist: [
@@ -122,6 +134,11 @@ const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
   'gateway-ingest': ['gateway_ingest'],
   'interop-ingest': ['interop_ingest'],
   patient: ['view_own_results'],
+  clinician: [
+    'place_order_own_patient',
+    'view_related_patient_results',
+    'acknowledge_critical_own_patient',
+  ],
 };
 
 /**

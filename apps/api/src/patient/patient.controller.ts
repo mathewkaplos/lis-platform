@@ -19,12 +19,13 @@ import {
   type Patient,
 } from '@lis/domain';
 import { patient } from '@lis/db';
-import { and, eq, ilike, or } from 'drizzle-orm';
+import { and, eq, ilike, inArray, or } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { Audit } from '../auth/audit.decorator';
 import { AuditInterceptor } from '../auth/audit.interceptor';
 import { CapabilityGuard } from '../auth/capability.guard';
+import { isClinicianOnly, relatedPatientIds } from '../auth/clinician-scope';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { DbTx } from '../auth/db-tx.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -184,6 +185,13 @@ export class PatientController {
    * Tenant isolation is RLS alone (TenantContextInterceptor's `SET LOCAL`) —
    * no `tenantId` filter added in application code, matching every existing
    * read route in this repo (e.g. `order-count`'s plain unfiltered SELECT).
+   *
+   * FEAT-040 (proposal §10 Q1/Q2): a `clinician`-only principal (no
+   * `technologist`/`verifier`/`qa` role also held) is additionally scoped to
+   * patients with a real `care_relationship` row — every other role's
+   * behavior is unchanged. Zero related patients returns an empty result,
+   * not an error; this is a real, valid state for a newly onboarded
+   * clinician.
    */
   @Get()
   @UseGuards(JwtAuthGuard)
@@ -192,25 +200,39 @@ export class PatientController {
   async search(
     @Query(new ZodValidationPipe(patientSearchQuerySchema))
     query: PatientSearchQueryDto,
+    @CurrentUser() user: RequestContext,
     @DbTx() tx: RequestWithTx['tx'],
   ): Promise<Patient[]> {
+    let scopeToPatientIds: string[] | undefined;
+    if (isClinicianOnly(user.roles)) {
+      scopeToPatientIds = await relatedPatientIds(tx, user.sub);
+      if (scopeToPatientIds.length === 0) {
+        return [];
+      }
+    }
+
     if (query.q !== undefined) {
       const term = query.q;
       const rows = await tx
         .select()
         .from(patient)
         .where(
-          or(
-            ilike(patient.firstName, `%${term}%`),
-            ilike(patient.lastName, `%${term}%`),
-            ilike(patient.mrn, `${term}%`),
-            ilike(patient.nationalId, `${term}%`),
+          and(
+            or(
+              ilike(patient.firstName, `%${term}%`),
+              ilike(patient.lastName, `%${term}%`),
+              ilike(patient.mrn, `${term}%`),
+              ilike(patient.nationalId, `${term}%`),
+            ),
+            scopeToPatientIds
+              ? inArray(patient.id, scopeToPatientIds)
+              : undefined,
           ),
         )
         .limit(PATIENT_SEARCH_RESULT_LIMIT);
       return rows.map(toPatientDto);
     }
-    const where =
+    const where = and(
       query.mrn !== undefined
         ? eq(patient.mrn, query.mrn)
         : query.nationalId !== undefined
@@ -219,11 +241,20 @@ export class PatientController {
               ilike(patient.firstName, query.firstName as string),
               ilike(patient.lastName, query.lastName as string),
               eq(patient.birthDate, new Date(query.birthDate as string)),
-            );
+            ),
+      scopeToPatientIds ? inArray(patient.id, scopeToPatientIds) : undefined,
+    );
     const rows = await tx.select().from(patient).where(where);
     return rows.map(toPatientDto);
   }
 
+  /**
+   * FEAT-040 (proposal §10 Q1/Q2): a `clinician`-only principal must also
+   * have a real `care_relationship` row for this specific patient, or the
+   * response is 404 — same "never leak existence" reasoning
+   * `engineering/api-design` entry #7 already established for cross-tenant
+   * access, applied here to "no relationship" too.
+   */
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(TenantContextInterceptor)
@@ -231,6 +262,7 @@ export class PatientController {
   async getById(
     @Param(new ZodValidationPipe(patientIdParamSchema))
     { id }: PatientIdParamDto,
+    @CurrentUser() user: RequestContext,
     @DbTx() tx: RequestWithTx['tx'],
   ): Promise<Patient> {
     const [row] = await tx
@@ -244,6 +276,12 @@ export class PatientController {
     // (FEAT-011 proposal §7).
     if (!row) {
       throw new NotFoundException('Patient not found');
+    }
+    if (isClinicianOnly(user.roles)) {
+      const related = await relatedPatientIds(tx, user.sub);
+      if (!related.includes(id)) {
+        throw new NotFoundException('Patient not found');
+      }
     }
     return toPatientDto(row);
   }

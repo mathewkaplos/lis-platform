@@ -28,6 +28,10 @@
       {
         "name": "interop-ingest",
         "description": "Machine role for the HL7 v2 ACL's service account (FEAT-036, ADR-0035) -- scoped to apps/interop's own calls into apps/api, never granted to a human user"
+      },
+      {
+        "name": "clinician",
+        "description": "External clinician role (FEAT-040, KB-10): may access only patients with an established care_relationship row, never the whole tenant -- unlike technologist/verifier/qa"
       }
     ]
   },
@@ -304,6 +308,25 @@
         {
           "type": "password",
           "secretData": "{\"value\": \"anY1buX+esngpJynofeL2tVHD74EaAJnq5t/q8hQoujvx2NVr9SV0Z50Xu5qREVw2dwnwcr/iKptgiZsr9zUeg==\", \"salt\": \"JbNChkAAJ5zBEk2b8/dfDw==\", \"additionalParameters\": {}}",
+          "credentialData": "{\"hashIterations\": 210000, \"algorithm\": \"pbkdf2-sha512\", \"additionalParameters\": {}}"
+        }
+      ]
+    },
+    {
+      "username": "test-user-7",
+      "email": "test-user-7@example.invalid",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Test",
+      "lastName": "User Seven",
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+      },
+      "realmRoles": ["clinician"],
+      "credentials": [
+        {
+          "type": "password",
+          "secretData": "{\"value\": \"udFFPXjZtBIPX9Cp7RysUg8W4Yq01VjD7nGtcQc9uXVcAUXm28VlgJi3cdiTiKKwmj0USxmaK7aed2WyrLL0Hg==\", \"salt\": \"2oAsY6B6jn+eN88S8jDOCw==\", \"additionalParameters\": {}}",
           "credentialData": "{\"hashIterations\": 210000, \"algorithm\": \"pbkdf2-sha512\", \"additionalParameters\": {}}"
         }
       ]

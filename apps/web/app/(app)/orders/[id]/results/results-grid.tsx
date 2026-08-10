@@ -2,10 +2,11 @@
 
 import { useRef, useState, useTransition, type KeyboardEvent } from 'react';
 import Link from 'next/link';
-import { Button, DataTable, Input, StatusPill, type ResultFlag } from '@lis/ui';
+import { Badge, Button, DataTable, Input, StatusPill, type ResultFlag } from '@lis/ui';
 import { getCalculatedAnalyteDefinition, isCalculatedAnalyteCode, type MorphologyGrade } from '@lis/domain';
 import {
   draftMorphologyResult,
+  draftNarrative,
   draftResult,
   finalizeMorphologyResult,
   finalizeResult,
@@ -78,6 +79,16 @@ interface RowState {
   /** FEAT-024 (ADR-0025): only meaningful for an `ordinal` row. */
   valueCode: string | null;
   notes: string;
+  /** FEAT-042: true only while `notes` currently holds an AI-drafted
+   * narrative (accepted verbatim or edited) -- reset to false the moment
+   * the technologist clears the field or types their own note instead of
+   * ever calling draft-narrative. */
+  notesAiOriginated: boolean;
+  notesAiDisposition: 'accepted' | 'edited' | null;
+  /** FEAT-042: true only while a draft-narrative request is in flight for
+   * this row -- separate from `pending` (grade/finalize save) so the two
+   * loading states never fight over the same disabled/label logic. */
+  narrativePending: boolean;
   flags: string[];
   refLow: number | null;
   refHigh: number | null;
@@ -161,6 +172,9 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
           text: row.initialValueNum === null ? '' : String(row.initialValueNum),
           valueCode: row.initialValueCode,
           notes: row.initialNotes ?? '',
+          notesAiOriginated: false,
+          notesAiDisposition: null,
+          narrativePending: false,
           flags: row.initialFlags,
           refLow: row.initialRefLow,
           refHigh: row.initialRefHigh,
@@ -343,7 +357,14 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
     const state = rowStates[key];
     updateRow(key, { valueCode: grade, pending: true, error: null, heldMessage: null, heldReason: null });
     startTransition(async () => {
-      const outcome = await draftMorphologyResult(row.orderedTestId, row.analyteId, grade, state.notes || undefined);
+      const outcome = await draftMorphologyResult(
+        row.orderedTestId,
+        row.analyteId,
+        grade,
+        state.notes || undefined,
+        state.notesAiOriginated || undefined,
+        state.notesAiDisposition ?? undefined,
+      );
       if (outcome.status === 'error') {
         updateRow(key, { pending: false, error: outcome.error ?? 'Something went wrong.' });
         return;
@@ -356,6 +377,33 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
         refLow: outcome.refLow,
         refHigh: outcome.refHigh,
         observationStatus: outcome.observationStatus,
+      });
+    });
+  }
+
+  /**
+   * FEAT-042: proposes a starter narrative for the grade just drafted
+   * (`handleGradeSelect` above already autosaved it -- the API reads that
+   * persisted value, never a client-supplied one). Populates `notes` and
+   * marks it AI-originated/`accepted`; any subsequent edit to the textarea
+   * flips the disposition to `edited` (see `onChange` below) without ever
+   * clearing `notesAiOriginated` -- KB-11's "accept or edit," both still
+   * AI-originated, distinct only in whether the technologist changed it.
+   */
+  function handleDraftNarrative(row: ResultRow) {
+    const key = rowKey(row);
+    updateRow(key, { narrativePending: true, error: null });
+    startTransition(async () => {
+      const outcome = await draftNarrative(row.orderedTestId, row.analyteId);
+      if (outcome.status === 'error') {
+        updateRow(key, { narrativePending: false, error: outcome.error });
+        return;
+      }
+      updateRow(key, {
+        narrativePending: false,
+        notes: outcome.narrative,
+        notesAiOriginated: true,
+        notesAiDisposition: 'accepted',
       });
     });
   }
@@ -374,7 +422,14 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
     const grade = state.valueCode as MorphologyGrade;
     updateRow(key, { pending: true, error: null, heldMessage: null, heldReason: null });
     startTransition(async () => {
-      const outcome = await finalizeMorphologyResult(row.orderedTestId, row.analyteId, grade, state.notes || undefined);
+      const outcome = await finalizeMorphologyResult(
+        row.orderedTestId,
+        row.analyteId,
+        grade,
+        state.notes || undefined,
+        state.notesAiOriginated || undefined,
+        state.notesAiDisposition ?? undefined,
+      );
       if (outcome.status === 'error') {
         updateRow(key, { pending: false, error: outcome.error ?? 'Something went wrong.' });
         return;
@@ -504,12 +559,33 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
                       </Button>
                     ))}
                   </div>
+                  {enterable && state.valueCode ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={state.pending || state.narrativePending}
+                      onClick={() => handleDraftNarrative(row)}
+                    >
+                      {state.narrativePending ? 'Drafting…' : 'Draft with AI'}
+                    </Button>
+                  ) : null}
+                  {state.notesAiOriginated ? (
+                    <Badge variant="secondary" aria-label="AI-drafted narrative, review before finalizing">
+                      {state.notesAiDisposition === 'edited' ? 'AI draft (edited)' : 'AI draft — review before finalizing'}
+                    </Badge>
+                  ) : null}
                   <textarea
                     aria-label={`${row.analyteDisplay} notes`}
                     placeholder="Notes (optional)"
                     value={state.notes}
                     disabled={!enterable || state.pending}
-                    onChange={(e) => updateRow(key, { notes: e.target.value })}
+                    onChange={(e) =>
+                      updateRow(key, {
+                        notes: e.target.value,
+                        notesAiDisposition: state.notesAiOriginated ? 'edited' : state.notesAiDisposition,
+                      })
+                    }
                     rows={2}
                     className="w-48 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                   />

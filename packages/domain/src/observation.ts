@@ -46,13 +46,40 @@ export type MorphologyGrade = z.infer<typeof morphologyGradeSchema>;
  * this one branch only (ADR-0025 decision 3) -- not exposed for
  * quantity/coded/text writes, which no AC asks for.
  */
+// FEAT-042: mirrors observation.ts's own ck_observation_notes_ai_disposition
+// CHECK constraint at the request-validation layer, not just the DB -- a
+// caller sending disposition without originated (or vice versa) is rejected
+// as a 400 before it ever reaches a write, same "narrow at the boundary,
+// trust internally" discipline (see AGENTS.md).
+export const notesAiDispositionSchema = z.enum(["accepted", "edited"]);
+export type NotesAiDisposition = z.infer<typeof notesAiDispositionSchema>;
+
 export const resultEntrySchema = z
   .discriminatedUnion("dataType", [
     z.object({ dataType: z.literal("quantity"), valueNum: z.number() }),
     z.object({ dataType: z.literal("coded"), valueCode: z.string().min(1) }),
     z.object({ dataType: z.literal("text"), valueText: z.string().min(1) }),
-    z.object({ dataType: z.literal("ordinal"), valueCode: morphologyGradeSchema, notes: z.string().max(2000).optional() }),
+    z.object({
+      dataType: z.literal("ordinal"),
+      valueCode: morphologyGradeSchema,
+      notes: z.string().max(2000).optional(),
+      // FEAT-042 (KB-11's "every AI suggestion and its human disposition"):
+      // notesAiOriginated/notesAiDisposition travel with notes, always
+      // absent unless the technologist's note started from a draft-narrative
+      // suggestion (accepted verbatim or edited before finalizing).
+      notesAiOriginated: z.boolean().optional(),
+      notesAiDisposition: notesAiDispositionSchema.optional(),
+    }),
   ])
+  .refine(
+    (value) =>
+      value.dataType !== "ordinal" ||
+      Boolean(value.notesAiOriginated) === Boolean(value.notesAiDisposition),
+    {
+      message: "notesAiOriginated and notesAiDisposition must be set together, or not at all",
+      path: ["notesAiDisposition"],
+    },
+  )
   .meta({ id: "ResultEntryDto" }); // nestjs-zod docs: names the OpenAPI/SDK schema -- otherwise a generic "AugmentedZodDto"
 export type ResultEntryInput = z.infer<typeof resultEntrySchema>;
 
@@ -113,6 +140,10 @@ export const observationSchema = z.object({
   // every dataType, but only ever set on write via the `ordinal` branch of
   // `resultEntrySchema` -- null on every quantity/coded/text row today.
   notes: z.string().nullable(),
+  // FEAT-042: same "exposed generally, only ever set via ordinal" shape as
+  // notes itself, immediately above.
+  notesAiOriginated: z.boolean(),
+  notesAiDisposition: notesAiDispositionSchema.nullable(),
 });
 export type ObservationResult = z.infer<typeof observationSchema>;
 

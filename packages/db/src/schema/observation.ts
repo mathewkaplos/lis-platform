@@ -119,6 +119,14 @@ export const observation = pgTable(
     supersededBy: uuid("superseded_by"),
     supersededByCreatedAt: timestamp("superseded_by_created_at", { withTimezone: true }), // set atomically with supersededBy, see previousObservationCreatedAt comment
     notes: text("notes"),
+    // FEAT-042 (KB-11's "every AI suggestion and its human disposition"):
+    // set only on 'ordinal' rows whose notes originated from
+    // InferenceGatewayService's draft-narrative capability, accepted
+    // verbatim or edited before finalizing. A rejected draft (technologist
+    // types their own note instead) leaves both null -- there is nothing
+    // AI-originated left in the final value to label.
+    notesAiOriginated: boolean("notes_ai_originated").notNull().default(false),
+    notesAiDisposition: text("notes_ai_disposition"), // 'accepted'|'edited', null unless notesAiOriginated
     // FEAT-027 (ADR-0026, analyzer-integration Skill entry #3): the
     // driver-computed idempotency key (instrument_id:specimen_id:analyte:
     // run_id, @lis/domain's rawResultIdempotencyKey), set only on
@@ -149,6 +157,14 @@ export const observation = pgTable(
     check("ck_observation_table_value", sql`(${table.dataType} <> 'table') OR (${table.valueJson} IS NOT NULL)`),
     check("ck_observation_structured_value", sql`(${table.dataType} <> 'structured') OR (${table.valueJson} IS NOT NULL)`),
     check("ck_observation_attachment_value", sql`(${table.dataType} <> 'attachment') OR (${table.valueJson} IS NOT NULL)`),
+    // Bare column names, not the usual ${table.column} interpolation --
+    // database-design Skill entry #9: a CHECK added via a standalone ALTER
+    // TABLE (this table already existed) cannot table-qualify columns the
+    // way one embedded in the original CREATE TABLE can.
+    check(
+      "ck_observation_notes_ai_disposition",
+      sql`(notes_ai_originated = false AND notes_ai_disposition IS NULL) OR (notes_ai_originated = true AND notes_ai_disposition IN ('accepted', 'edited'))`,
+    ),
     // ADR-0015: every row is unambiguously a patient result or a QC result,
     // never neither, never both -- structural, not an application-level
     // convention (Constitution Law #4's own "structural, not an if check"

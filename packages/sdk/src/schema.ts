@@ -388,6 +388,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ordered-tests/{id}/results/{analyteId}/draft-narrative": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ObservationController_draftNarrative"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ordered-tests/{id}/results/{analyteId}/finalize": {
         parameters: {
             query?: never;
@@ -1156,6 +1172,9 @@ export interface components {
             /** @enum {string} */
             valueCode: "none" | "1+" | "2+" | "3+";
             notes?: string;
+            notesAiOriginated?: boolean;
+            /** @enum {string} */
+            notesAiDisposition?: "accepted" | "edited";
         };
         ObservationDto_Output: {
             /** Format: uuid */
@@ -1187,6 +1206,9 @@ export interface components {
             /** Format: date-time */
             verifiedAt: string | null;
             notes: string | null;
+            notesAiOriginated: boolean;
+            /** @enum {string|null} */
+            notesAiDisposition: "accepted" | "edited" | null;
         };
         PriorObservationDto_Output: {
             /** Format: uuid */
@@ -2109,6 +2131,26 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ObservationDto_Output"];
                 };
+            };
+        };
+    };
+    ObservationController_draftNarrative: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                analyteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

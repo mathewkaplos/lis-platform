@@ -314,6 +314,17 @@ export class ObservationWriteService {
       valueText: params.body.dataType === 'text' ? params.body.valueText : null,
       notes:
         params.body.dataType === 'ordinal' ? (params.body.notes ?? null) : null,
+      // FEAT-042: same "only ordinal ever sets this" shape as notes itself
+      // above -- notesAiOriginated/notesAiDisposition travel with notes,
+      // never independently of it.
+      notesAiOriginated:
+        params.body.dataType === 'ordinal'
+          ? (params.body.notesAiOriginated ?? false)
+          : false,
+      notesAiDisposition:
+        params.body.dataType === 'ordinal'
+          ? (params.body.notesAiDisposition ?? null)
+          : null,
     };
 
     const sharedFields = {

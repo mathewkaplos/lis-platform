@@ -1,6 +1,12 @@
 # Implementation Proposal: FEAT-053 Susceptibility interpretation & antibiogram
-Status: DRAFT
-ADR: none yet (see §10 Q1)    Date: 2026-08-11    Backlog ID: FEAT-053 (#503)
+Status: APPROVED (speculative — see §10 Q1)
+ADR: none needed (see §3's own resolution of the table-field-type question)    Date: 2026-08-11    Backlog ID: FEAT-053 (#503)
+
+**Approved 2026-08-11** via the native options-prompt: all three §10 questions accepted as drafted,
+including explicitly proceeding on FEAT-051's own still-provisional schema (§10 Q1) — this
+proposal's §2/§5 may need real revision once FEAT-051's actual implementation lands with real
+breakpoint data. **Implementation cannot begin until FEAT-051 is actually built** (a hard technical
+dependency, not just a sequencing preference) — this approval unblocks the design, not the code.
 
 ## 1. Goal
 Interpret a technologist-entered MIC value against the versioned breakpoint table in force at

@@ -57,6 +57,21 @@ if [ "$ready" != "true" ]; then
   exit 1
 fi
 
+# lis_app/lis_scheduler are cluster-level roles created by migrations
+# (db/migrations/0002_app_role.sql, 0018_lis_scheduler_role.sql) -- a plain
+# `pg_dump` of just the `lis` database never captures CREATE ROLE statements
+# (roles are cluster-wide, not per-database), so a handful of this dump's
+# own `CREATE POLICY ... TO lis_scheduler` statements fail against a bare
+# scratch container with only the `postgres` superuser. Real finding, caught
+# by actually running this drill against a real backup (2026-08-11) -- not
+# guessed. No login/password/grants needed here (this scratch instance is
+# never connected to as either role, --no-owner/--no-privileges above
+# already strips the GRANT statements this dump also contains) -- the roles
+# only need to exist so CREATE POLICY's own role reference resolves.
+docker compose -p "$SCRATCH_PROJECT" -f "$SCRATCH_COMPOSE" exec -T postgres \
+  psql -U postgres -d lis -v ON_ERROR_STOP=0 -c \
+  'CREATE ROLE "lis_app"; CREATE ROLE "lis_scheduler";' < /dev/null >>"$LOG_FILE" 2>&1
+
 if ! docker compose -p "$SCRATCH_PROJECT" -f "$SCRATCH_COMPOSE" exec -T postgres \
     pg_restore -U postgres -d lis --no-owner --no-privileges < "$LATEST_BACKUP" >>"$LOG_FILE" 2>&1; then
   log "FAIL restore-drill: pg_restore reported an error for $LATEST_BACKUP"

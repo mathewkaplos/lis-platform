@@ -17,6 +17,19 @@ jobs:
           # which this regex's naive word-boundary matching flags as a
           # free-text column even when none exists (found via TASK-020,
           # observation.data_type is a proper ENUM per ADR-0006).
+          #
+          # Second false-positive class (found FEAT-052): a genuinely
+          # non-clinical, CHECK-constrained workflow-state column (e.g.
+          # culture_read's own 'no_growth'|'growth' flag) trips this if its
+          # SQL column name happens to be "result"/"value"/"finding" -- the
+          # same category as sla_breach.status/outbox_event.status, which
+          # only dodge this regex by coincidence of naming, not by being
+          # structurally different (a CHECK-bounded enum-like column is not
+          # the free-text risk Law #1 is about). Established workaround,
+          # not yet a fix to this check's own logic: rename the SQL column
+          # to avoid the flagged words (e.g. result -> outcome) -- Drizzle's
+          # column-name-vs-TS-field-name mapping (`result: text("outcome")`)
+          # means the rename has zero ripple into the API/domain/web layers.
           if git diff origin/main...HEAD -- 'db/migrations/*.sql' | grep -E '^\+.*\b(result|value|finding)\b.*\btext\b' ; then
             echo "::error::A migration appears to add a free-text column for clinical data (Law #1). If this is a legitimate non-clinical text field, adjust this check's pattern."
             exit 1

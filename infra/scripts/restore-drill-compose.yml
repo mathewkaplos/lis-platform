@@ -1,0 +1,27 @@
+# FEAT-050 (ADR-0044). The restore drill's own throwaway Postgres project --
+# a completely separate `docker compose` project (`-p lis-restore-drill`)
+# from the real `lis` project docker-compose.staging.yml runs, with its own
+# ephemeral volume and no ports published anywhere. `restore-drill.sh` always
+# tears this down (`down -v`) after its check, pass or fail, so nothing here
+# is meant to persist between runs.
+#
+# mem_limit: smaller than the real postgres service's own 192m
+# (docker-compose.staging.yml) -- this only ever holds one freshly-restored
+# dump for a brief sanity check, never real traffic. Sized to fit the
+# droplet's already-tight budget (docker-pnpm-monorepo-deploy Skill entry
+# #13) alongside the 5 real services that are running at the same time.
+services:
+  postgres:
+    image: postgres:16
+    mem_limit: 160m
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: lis
+      # Never reachable outside this container's own network namespace (no
+      # ports published) -- a fixed, non-secret value is fine for a
+      # throwaway instance torn down within minutes of creation.
+      POSTGRES_PASSWORD: restore-drill-scratch-only
+    volumes: ["restore_drill_pgdata:/var/lib/postgresql/data"]
+
+volumes:
+  restore_drill_pgdata:

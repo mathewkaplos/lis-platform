@@ -1,0 +1,133 @@
+name: Rollback Staging
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Git SHA of the api/web images to roll back to (must already exist in GHCR -- i.e. a commit deploy-staging.yml has already built and pushed)'
+        required: true
+        type: string
+
+# FEAT-050 (ADR-0044). Manually triggered only -- never fires on push, never
+# substitutes for a normal deploy of main. Rolls back apps/api and apps/web
+# ONLY, to the images deploy-staging.yml already tagged with this exact git
+# SHA (deploy-staging.yml pushes both :latest and :<sha> for these two
+# images, specifically so this workflow has something addressable to pull
+# even after :latest has moved on and the droplet has pruned its own local
+# copy). Deliberately never touches the database (no migrate step -- a prior
+# application version is only safe to run against a schema that hasn't
+# changed since; rolling back across a breaking migration is out of scope,
+# see ADR-0044) and never touches the Keycloak realm.
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+    steps:
+      - name: Set up deploy key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > deploy_key
+          chmod 600 deploy_key
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci-runner
+
+      - name: Wait for Tailscale connectivity to droplet
+        run: |
+          for i in $(seq 1 5); do
+            if tailscale ping -c 3 ${{ secrets.DEPLOY_HOST }}; then
+              exit 0
+            fi
+            echo "Tailscale ping attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "Tailscale ping did not succeed after 5 attempts"
+          exit 1
+
+      - name: Roll back api/web on droplet
+        env:
+          ROLLBACK_SHA: ${{ inputs.sha }}
+          API_IMAGE: ghcr.io/${{ github.repository_owner }}/lis-platform-api
+          WEB_IMAGE: ghcr.io/${{ github.repository_owner }}/lis-platform-web
+        run: |
+          # Single-quoted heredoc terminator (matches deploy-staging.yml's
+          # own established convention) -- the local runner's shell does no
+          # expansion at all on the body; every $VAR below is resolved only
+          # once, by the remote bash -s session, from the SHA_TARGET/
+          # API_IMAGE_REF/WEB_IMAGE_REF exports right before this heredoc.
+          # Avoids the escaping mistakes a mixed GH-Actions-${{ }}-plus-
+          # bash-$VAR unquoted heredoc invites.
+          ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} \
+            "SHA_TARGET='$ROLLBACK_SHA' API_IMAGE_BASE='$API_IMAGE' WEB_IMAGE_BASE='$WEB_IMAGE' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /opt/lis
+
+          API_IMAGE_REF="${API_IMAGE_BASE}:${SHA_TARGET}"
+          WEB_IMAGE_REF="${WEB_IMAGE_BASE}:${SHA_TARGET}"
+
+          docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} < /dev/null
+
+          # Fail fast and clearly if this SHA was never built/pushed --
+          # docker-pnpm-monorepo-deploy Skill entry #19 (curl -sf hides the
+          # real error): pull without -q so a real "not found" is visible in
+          # the log, not just a nonzero exit.
+          docker pull "$API_IMAGE_REF" < /dev/null
+          docker pull "$WEB_IMAGE_REF" < /dev/null
+
+          # Re-point the same :latest tag docker-compose.yml already
+          # references at the rollback target's own image -- avoids editing
+          # docker-compose.yml at all. The next normal deploy's own
+          # `docker compose pull` overwrites this local retag with the real
+          # current :latest from the registry, so this never leaves the
+          # droplet in a state a future deploy has to know about or undo.
+          docker tag "$API_IMAGE_REF" "${API_IMAGE_BASE}:latest"
+          docker tag "$WEB_IMAGE_REF" "${WEB_IMAGE_BASE}:latest"
+
+          docker compose stop api web < /dev/null
+          docker compose up -d api web < /dev/null
+          REMOTE
+
+      - name: Smoke test (api, internal)
+        run: |
+          ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} '
+            cd /opt/lis
+            for i in $(seq 1 10); do
+              if docker compose exec -T api node -e "require(\"http\").get(\"http://localhost:4000/health\", r => process.exit(r.statusCode === 200 ? 0 : 1)).on(\"error\", () => process.exit(1))" < /dev/null; then
+                exit 0
+              fi
+              echo "api health check attempt $i failed, retrying in 5s..."
+              sleep 5
+            done
+            echo "api health check did not succeed after 10 attempts"
+            exit 1
+          '
+
+      - name: Smoke test (web, real HTTPS over the tailnet)
+        run: |
+          MAGIC_DNS_NAME=$(ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} \
+            'if command -v jq >/dev/null 2>&1; then tailscale status --self --json | jq -r ".Self.DNSName"; else tailscale status --self --json | grep -oP "\"DNSName\":\s*\"\K[^\"]+" | head -1; fi' < /dev/null)
+          MAGIC_DNS_NAME=$(echo "$MAGIC_DNS_NAME" | sed 's/\.$//')
+          if [ -z "$MAGIC_DNS_NAME" ] || [ "$MAGIC_DNS_NAME" = "null" ]; then
+            echo "Could not discover the droplet's MagicDNS hostname" >&2
+            exit 1
+          fi
+          echo "Checking against https://${MAGIC_DNS_NAME}"
+          for i in $(seq 1 10); do
+            if curl -sSf --connect-timeout 10 --max-time 10 "https://${MAGIC_DNS_NAME}/" > /dev/null; then
+              exit 0
+            fi
+            echo "web check attempt $i failed, retrying in 5s..."
+            sleep 5
+            if [ "$i" = "10" ]; then
+              echo "web did not become reachable over HTTPS after 10 attempts" >&2
+              exit 1
+            fi
+          done
+
+      - name: Clean up deploy key
+        if: always()
+        run: rm -f deploy_key

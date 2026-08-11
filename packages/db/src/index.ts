@@ -17,3 +17,11 @@ export { computeFlags, mergeDeltaFlag } from "./flagging";
 export { resolveDeltaCheck, type DeltaCheckParams, type DeltaCheckResult } from "./delta-check";
 export { resolveTenantRouting, type TenantRouting } from "./tenant-resolver";
 export { seedStarterCatalog } from "./tenant-catalog-seed";
+export {
+  interpretMic,
+  resolveSusceptibility,
+  type BreakpointRow,
+  type ResolveBreakpointParams,
+  type ResolvedBreakpoint,
+  type NoBreakpointResult,
+} from "./breakpoint-resolution";

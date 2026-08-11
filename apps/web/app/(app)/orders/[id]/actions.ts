@@ -42,3 +42,47 @@ export async function cancelOrder(orderId: string): Promise<CancelOrderResult> {
   }
   return { status: 'cancelled' };
 }
+
+export interface GenerateInvoiceResult {
+  status: 'created' | 'error';
+  invoiceId?: string;
+  formError?: string;
+}
+
+/**
+ * FEAT-046 (ADR-0041). Always creates a new invoice from the order's
+ * current ordered tests -- this feature's approved scope doesn't include
+ * duplicate-invoice prevention (a real, tracked simplification, not an
+ * oversight -- see the billing Skill).
+ */
+export async function generateInvoice(
+  orderId: string,
+): Promise<GenerateInvoiceResult> {
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    return {
+      status: 'error',
+      formError: 'Your session has expired — please log in again.',
+    };
+  }
+  const client = createLisApiClient(accessToken);
+
+  const { data, response } = await client.POST('/v1/orders/{id}/invoice', {
+    params: { path: { id: orderId } },
+  });
+  if (!response.ok) {
+    if (response.status === 400) {
+      return {
+        status: 'error',
+        formError:
+          'One or more tests on this order have no price configured — cannot generate an invoice.',
+      };
+    }
+    return {
+      status: 'error',
+      formError: 'Something went wrong generating this invoice. Please try again.',
+    };
+  }
+  const created = data as unknown as { after: { id: string } };
+  return { status: 'created', invoiceId: created.after.id };
+}

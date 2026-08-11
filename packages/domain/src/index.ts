@@ -17,3 +17,4 @@ export * from "./interop-oru";
 export * from "./portal";
 export * from "./care-relationship";
 export * from "./onboarding";
+export * from "./billing";

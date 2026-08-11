@@ -4,6 +4,7 @@ import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@lis/ui
 import { getValidAccessToken } from '@/auth/access-token';
 import { createLisApiClient } from '@/lib/api-client';
 import { CancelOrderButton } from './cancel-order-button';
+import { GenerateInvoiceButton } from './generate-invoice-button';
 
 /**
  * TASK-044 (FEAT-012 proposal §1/§5). Overview only -- no Specimens/
@@ -86,6 +87,9 @@ export default async function OrderDetailPage({
               </Button>
             ) : null}
             {order.status === 'ordered' ? <CancelOrderButton orderId={order.id} /> : null}
+            {order.status !== 'cancelled' ? (
+              <GenerateInvoiceButton orderId={order.id} />
+            ) : null}
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">

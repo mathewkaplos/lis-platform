@@ -28,6 +28,7 @@ import { AutoVerifyModule } from './auto-verify/auto-verify.module';
 import { SlaModule } from './sla/sla.module';
 import { ClinicianModule } from './clinician/clinician.module';
 import { AiModule } from './ai/ai.module';
+import { BillingModule } from './billing/billing.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
@@ -65,6 +66,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     ClinicianModule,
     AiModule,
     OnboardingModule,
+    BillingModule,
   ],
   controllers: [AppController],
   providers: [

@@ -136,6 +136,24 @@ packages/ui (design system) · packages/sdk (generated API client)
   `until` loop above for this specific wait; it has none of `Monitor`'s
   own detection-reliability risk for a short, bounded, one-shot condition
   like "these checks are all terminal."
+- **`gh pr create` and `gh pr merge` shell out to GraphQL too, not just `gh
+  pr checks --watch` — the same rate-limit exhaustion above can hit either
+  of them, and neither had a documented REST substitute until now.**
+  Confirmed 2026-08-11 (session 33): both failed mid-session with the
+  identical `GraphQL: API rate limit already exceeded` error the CI-polling
+  bullet above already documents — `gh pr create` creating PR #488, `gh pr
+  merge --squash` merging PR #490 — each requiring the REST equivalent to
+  be worked out live, under the same time pressure (mid-PR-flow, quota
+  already exhausted) as every other incident in this section. Use these
+  instead:
+  - Create: `gh api repos/<owner>/<repo>/pulls -X POST -f
+    title="<title>" -f head="<branch>" -f base="main" -f
+    body="$(cat <<'EOF' ... EOF)"`
+  - Merge: `gh api repos/<owner>/<repo>/pulls/<n>/merge -X PUT -f
+    merge_method=squash` (still never combine with `--delete-branch` — see
+    the separate branch-deletion note elsewhere in this file; delete as its
+    own follow-up `gh api .../git/refs/heads/<branch> -X DELETE` step after
+    confirming the merge landed).
 - **When running multiple features back-to-back in one autonomous batch (a
   human says "implement all"/"do the whole list"), send a PushNotification
   at the true end of the whole batch, not just after an early milestone.**

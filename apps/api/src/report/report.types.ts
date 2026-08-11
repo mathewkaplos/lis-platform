@@ -51,9 +51,20 @@ export interface ChemistryReportInput {
     orderId?: string;
   };
   results: ChemistryReportAnalyteResult[];
-  verifier: {
-    name: string;
-    status: string;
-    verifiedAt: string;
-  };
+  /** `name`/`verifiedAt` absent when `status === 'pending'` (FEAT-054: a
+   * preliminary report generated before anything on the panel has been
+   * verified yet) -- an explicit "nothing to show" state, never a
+   * fabricated name/timestamp, same discipline `patient.sex = 'U'` already
+   * established for this schema's other genuinely-unknown fields. */
+  verifier:
+    | { name: string; status: string; verifiedAt: string }
+    | { status: 'pending' };
+  /** FEAT-054 (ADR-0047): drives `report-render.ts`'s own PRELIMINARY
+   * banner -- fixed chrome, not a template-configurable field, same
+   * boundary the patient/specimen/order header already follows
+   * (`packages/domain/src/report-template.ts`'s own header comment).
+   * Optional so TASK-058's own original disposable-scaffolding callers
+   * (report-render.spec.ts fixtures predating this feature) don't need
+   * updating -- absent is treated as `'final'`. */
+  reportType?: 'final' | 'preliminary';
 }

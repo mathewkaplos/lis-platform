@@ -1,0 +1,2 @@
+ALTER TABLE "report" ADD COLUMN "report_type" text DEFAULT 'final' NOT NULL;--> statement-breakpoint
+ALTER TABLE "report" ADD CONSTRAINT "ck_report_report_type" CHECK ("report"."report_type" IN ('final', 'preliminary'));

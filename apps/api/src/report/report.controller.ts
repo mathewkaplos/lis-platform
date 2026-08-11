@@ -10,7 +10,10 @@ import {
 } from '@nestjs/common';
 import { createZodDto, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
-import { assembleAndPersistReport } from './report-assembly';
+import {
+  assembleAndPersistPreliminaryReport,
+  assembleAndPersistReport,
+} from './report-assembly';
 import type { RequestWithGrantingRole } from '../auth/capability.guard';
 import { CapabilityGuard } from '../auth/capability.guard';
 import { DbTx } from '../auth/db-tx.decorator';
@@ -91,6 +94,41 @@ export class ReportController {
     return new StreamableFile(result.pdf, {
       type: 'application/pdf',
       disposition: `attachment; filename="report-${id}.pdf"`,
+    });
+  }
+
+  /**
+   * FEAT-054 (ADR-0047). Same shape as `generate()` above -- action
+   * sub-resource (`report/preliminary`, not a status PATCH on `report`
+   * itself), same `verify` capability gate (§10 Q2, resolved: a
+   * preliminary report is still a real clinical artifact, gated the same
+   * way as final), same `StreamableFile`-after-transaction-commit
+   * discipline (this route's own header comment explains why). Rejects
+   * with 409 if nothing on the panel has been recorded yet
+   * (`assembleAndPersistPreliminaryReport`'s own relaxed-but-not-empty
+   * precondition) -- never renders a report with nothing in it.
+   */
+  @Post('report/preliminary')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, CapabilityGuard)
+  @RequireCapability('verify')
+  @UseInterceptors(TenantContextInterceptor)
+  async generatePreliminary(
+    @Param(new ZodValidationPipe(orderedTestIdParamSchema))
+    { id }: OrderedTestIdParamDto,
+    @Req() request: RequestWithGrantingRole,
+    @DbTx() tx: RequestWithTx['tx'],
+  ): Promise<StreamableFile> {
+    const result = await assembleAndPersistPreliminaryReport(tx, {
+      tenantId: request.authContext.tenantId,
+      orderedTestId: id,
+      actorPrincipalId: request.authContext.sub,
+      actorRole: request.grantingRole,
+    });
+
+    return new StreamableFile(result.pdf, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="report-preliminary-${id}.pdf"`,
     });
   }
 }

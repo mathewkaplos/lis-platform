@@ -105,6 +105,102 @@ export function formatObservationValue(
 }
 
 /**
+ * FEAT-054: extracted from `assembleAndPersistReport` (pure refactor, no
+ * behavior change -- proven by that function's own unmodified e2e suite
+ * still passing) so `assembleAndPersistPreliminaryReport` doesn't duplicate
+ * this identical order/patient/specimen lookup and its own three real
+ * error cases.
+ */
+async function loadReportContext(
+  tx: Tx,
+  orderedTestRow: typeof orderedTest.$inferSelect,
+): Promise<{
+  orderRow: typeof order.$inferSelect;
+  patientRow: typeof patient.$inferSelect;
+  specimenRow: typeof specimen.$inferSelect;
+}> {
+  const [orderRow] = await tx
+    .select()
+    .from(order)
+    .where(eq(order.id, orderedTestRow.orderId))
+    .limit(1);
+  if (!orderRow) {
+    throw new ConflictException('Ordered test has no associated order');
+  }
+
+  const [patientRow] = await tx
+    .select()
+    .from(patient)
+    .where(eq(patient.id, orderRow.patientId))
+    .limit(1);
+  if (!patientRow) {
+    throw new ConflictException('Order has no associated patient');
+  }
+
+  const [fulfillmentRow] = await tx
+    .select({ specimenId: specimenFulfillment.specimenId })
+    .from(specimenFulfillment)
+    .where(eq(specimenFulfillment.orderedTestId, orderedTestRow.id))
+    .limit(1);
+  if (!fulfillmentRow) {
+    throw new ConflictException(
+      'Ordered test has no associated specimen (specimen_fulfillment)',
+    );
+  }
+  const [specimenRow] = await tx
+    .select()
+    .from(specimen)
+    .where(eq(specimen.id, fulfillmentRow.specimenId))
+    .limit(1);
+  if (!specimenRow) {
+    throw new ConflictException(
+      'Specimen fulfillment references a missing specimen',
+    );
+  }
+
+  return { orderRow, patientRow, specimenRow };
+}
+
+/**
+ * FEAT-054: shared by both `assembleAndPersistReport` and
+ * `assembleAndPersistPreliminaryReport` -- looks up the published template
+ * version for a test definition, or throws the same two real, distinct
+ * error states either caller already threw inline before this extraction
+ * (pure refactor, no behavior change).
+ */
+async function loadPublishedTemplateVersion(
+  tx: Tx,
+  testDefinitionId: string,
+): Promise<typeof reportTemplateVersion.$inferSelect> {
+  const [templateRow] = await tx
+    .select()
+    .from(reportTemplate)
+    .where(eq(reportTemplate.testDefinitionId, testDefinitionId))
+    .limit(1);
+  if (!templateRow) {
+    throw new NotFoundException(
+      `No report template configured for test definition ${testDefinitionId}`,
+    );
+  }
+  const [publishedVersion] = await tx
+    .select()
+    .from(reportTemplateVersion)
+    .where(
+      and(
+        eq(reportTemplateVersion.reportTemplateId, templateRow.id),
+        eq(reportTemplateVersion.status, 'published'),
+      ),
+    )
+    .limit(1);
+  if (!publishedVersion) {
+    throw new ConflictException(
+      `Report template for test definition ${testDefinitionId} has no published version`,
+    );
+  }
+  return publishedVersion;
+}
+
+/**
  * One report per `ordered_test` (a chemistry panel) -- finding #2: KB-02's
  * own "Open questions" section names chemistry = per panel directly, and
  * every existing precedent in this schema (draft/finalize/verify/results
@@ -211,44 +307,10 @@ export async function assembleAndPersistReport(
     },
   );
 
-  const [orderRow] = await tx
-    .select()
-    .from(order)
-    .where(eq(order.id, orderedTestRow.orderId))
-    .limit(1);
-  if (!orderRow) {
-    throw new ConflictException('Ordered test has no associated order');
-  }
-
-  const [patientRow] = await tx
-    .select()
-    .from(patient)
-    .where(eq(patient.id, orderRow.patientId))
-    .limit(1);
-  if (!patientRow) {
-    throw new ConflictException('Order has no associated patient');
-  }
-
-  const [fulfillmentRow] = await tx
-    .select({ specimenId: specimenFulfillment.specimenId })
-    .from(specimenFulfillment)
-    .where(eq(specimenFulfillment.orderedTestId, orderedTestId))
-    .limit(1);
-  if (!fulfillmentRow) {
-    throw new ConflictException(
-      'Ordered test has no associated specimen (specimen_fulfillment)',
-    );
-  }
-  const [specimenRow] = await tx
-    .select()
-    .from(specimen)
-    .where(eq(specimen.id, fulfillmentRow.specimenId))
-    .limit(1);
-  if (!specimenRow) {
-    throw new ConflictException(
-      'Specimen fulfillment references a missing specimen',
-    );
-  }
+  const { orderRow, patientRow, specimenRow } = await loadReportContext(
+    tx,
+    orderedTestRow,
+  );
 
   // Verifier block: the most-recently-verified analyte on this panel
   // (proposal §5 assumption) -- a single-line proxy for "who signed this
@@ -298,43 +360,13 @@ export async function assembleAndPersistReport(
       status: 'verified',
       verifiedAt: formatDateTime(mostRecentlyVerified.verifiedAt!),
     },
+    reportType: 'final',
   };
 
-  // FEAT-032 (docs/plans/feat-032-template-engine-config-driven-versioned.md
-  // finding #3): a report can only be assembled once its test_definition
-  // has a published report_template_version -- there is no fixed fallback
-  // layout anymore. `report_template` is unique on (tenant, test_definition)
-  // and `report_template_version` allows at most one `published` row per
-  // template (both DB-enforced), so this lookup can return at most one row
-  // either way; it's still two real states worth distinguishing for the
-  // caller: no template configured at all (404, a real gap to fix) vs. a
-  // template exists but nothing has been published yet (409, a real but
-  // different gap -- someone left every version in draft).
-  const [templateRow] = await tx
-    .select()
-    .from(reportTemplate)
-    .where(eq(reportTemplate.testDefinitionId, orderedTestRow.testDefinitionId))
-    .limit(1);
-  if (!templateRow) {
-    throw new NotFoundException(
-      `No report template configured for test definition ${orderedTestRow.testDefinitionId}`,
-    );
-  }
-  const [publishedVersion] = await tx
-    .select()
-    .from(reportTemplateVersion)
-    .where(
-      and(
-        eq(reportTemplateVersion.reportTemplateId, templateRow.id),
-        eq(reportTemplateVersion.status, 'published'),
-      ),
-    )
-    .limit(1);
-  if (!publishedVersion) {
-    throw new ConflictException(
-      `Report template for test definition ${orderedTestRow.testDefinitionId} has no published version`,
-    );
-  }
+  const publishedVersion = await loadPublishedTemplateVersion(
+    tx,
+    orderedTestRow.testDefinitionId,
+  );
 
   const { pdf, contentHash } = await renderTemplateReport({
     templateVersionId: publishedVersion.id,
@@ -350,6 +382,7 @@ export async function assembleAndPersistReport(
       contentHash,
       includedObservations,
       generatedByUserId: actorPrincipalId,
+      reportType: 'final',
       templateVersionId: publishedVersion.id,
     })
     .returning();
@@ -360,6 +393,201 @@ export async function assembleAndPersistReport(
     actorRole,
     actorType: 'human',
     action: 'report.generate',
+    resourceType: 'report',
+    resourceId: reportRow.id,
+    after: { contentHash, orderedTestId, includedObservations },
+  });
+
+  return { reportId: reportRow.id, contentHash, pdf };
+}
+
+export type AssemblePreliminaryReportParams = AssembleReportParams;
+
+/**
+ * FEAT-054 (ADR-0047). A new, separate function -- `assembleAndPersistReport`
+ * above is completely unmodified in behavior (only its own identical
+ * order/patient/specimen/template lookups were extracted into shared
+ * helpers, a pure refactor). Relaxed precondition: at least one analyte on
+ * the panel has *any* current observation (not every analyte need be
+ * `'verified'`) -- a report with literally nothing to show is still
+ * rejected (409), but a partially-resulted panel is not. Every analyte
+ * without a current `'verified'` observation renders as an explicit
+ * "Pending" placeholder in the results table -- never a fabricated value,
+ * same discipline this schema's own explicit-unknown fields already follow.
+ */
+export async function assembleAndPersistPreliminaryReport(
+  tx: Tx,
+  params: AssemblePreliminaryReportParams,
+): Promise<AssembledReport> {
+  const { tenantId, orderedTestId, actorPrincipalId, actorRole } = params;
+
+  const [orderedTestRow] = await tx
+    .select()
+    .from(orderedTest)
+    .where(eq(orderedTest.id, orderedTestId))
+    .limit(1);
+  if (!orderedTestRow) {
+    throw new NotFoundException('Ordered test not found');
+  }
+
+  const requiredAnalytes = await tx
+    .select({ analyteId: testAnalyte.analyteId })
+    .from(testAnalyte)
+    .where(eq(testAnalyte.testDefinitionId, orderedTestRow.testDefinitionId));
+  if (requiredAnalytes.length === 0) {
+    throw new ConflictException(
+      `Test definition ${orderedTestRow.testDefinitionId} has no analytes defined`,
+    );
+  }
+  const requiredAnalyteIds = requiredAnalytes.map((row) => row.analyteId);
+
+  const observationRows = await tx
+    .select()
+    .from(observation)
+    .where(
+      and(
+        eq(observation.orderedTestId, orderedTestId),
+        isNull(observation.supersededBy),
+      ),
+    );
+  const observationByAnalyteId = new Map(
+    observationRows.map((row) => [row.analyteId, row]),
+  );
+
+  // Relaxed precondition (proposal §5): at least one analyte present, not
+  // every analyte verified. A panel with nothing recorded yet has nothing
+  // honest to put in a preliminary report either.
+  const presentAnalyteIds = requiredAnalyteIds.filter((analyteId) =>
+    observationByAnalyteId.has(analyteId),
+  );
+  if (presentAnalyteIds.length === 0) {
+    throw new ConflictException(
+      `Ordered test ${orderedTestId} has no results recorded yet; a preliminary report needs at least one`,
+    );
+  }
+
+  const analyteRows = await tx
+    .select({ id: analyte.id, display: analyte.display })
+    .from(analyte)
+    .where(inArray(analyte.id, requiredAnalyteIds));
+  const analyteDisplayById = new Map(
+    analyteRows.map((row) => [row.id, row.display]),
+  );
+
+  // Only real observations are snapshotted as "included" -- a "Pending"
+  // placeholder has no observation row to snapshot (proposal §5).
+  const includedObservations = presentAnalyteIds.map((analyteId) => {
+    const row = observationByAnalyteId.get(analyteId)!;
+    return { id: row.id, createdAt: row.createdAt.toISOString() };
+  });
+
+  const results: ChemistryReportAnalyteResult[] = requiredAnalyteIds.map(
+    (analyteId) => {
+      const analyteName =
+        analyteDisplayById.get(analyteId) ?? 'Unknown analyte';
+      const row = observationByAnalyteId.get(analyteId);
+      if (!row || row.status !== 'verified') {
+        return {
+          analyteId,
+          analyteName,
+          value: 'Pending',
+          unit: '',
+          flags: [],
+          referenceRangeText: '',
+          isCritical: false,
+        };
+      }
+      return {
+        analyteId,
+        analyteName,
+        value: formatObservationValue(row),
+        unit: row.unit ?? '',
+        flags: row.flags,
+        referenceRangeText: formatReferenceRangeText(
+          row.refLow === null ? null : Number(row.refLow),
+          row.refHigh === null ? null : Number(row.refHigh),
+          row.refCondition,
+        ),
+        isCritical: row.flags.includes('HH') || row.flags.includes('LL'),
+      };
+    },
+  );
+
+  const { orderRow, patientRow, specimenRow } = await loadReportContext(
+    tx,
+    orderedTestRow,
+  );
+
+  // Verifier block: the most-recently-verified analyte among whatever is
+  // actually verified so far, or an explicit "pending" state if nothing is
+  // (§10 Q3) -- never a fabricated name/timestamp.
+  const [mostRecentlyVerified] = observationRows
+    .filter((row) => row.status === 'verified' && row.verifiedAt)
+    .sort((a, b) => b.verifiedAt!.getTime() - a.verifiedAt!.getTime());
+
+  const input: ChemistryReportInput = {
+    patient: {
+      name: `${patientRow.firstName} ${patientRow.lastName}`,
+      mrn: patientRow.mrn,
+      dateOfBirth: patientRow.birthDate
+        ? patientRow.birthDate.toISOString().slice(0, 10)
+        : 'Unknown',
+      sex: patientRow.sex,
+    },
+    specimen: {
+      accessionNumber: specimenRow.accessionNumber,
+      collectedAt: specimenRow.collectedAt
+        ? formatDateTime(specimenRow.collectedAt)
+        : 'Unknown',
+      receivedAt: specimenRow.receivedAt
+        ? formatDateTime(specimenRow.receivedAt)
+        : undefined,
+    },
+    order: {
+      orderingProviderName: 'Not recorded',
+      orderId: orderRow.id,
+    },
+    results,
+    verifier: mostRecentlyVerified
+      ? {
+          name: mostRecentlyVerified.verifierUserId ?? 'Unknown',
+          status: 'verified',
+          verifiedAt: formatDateTime(mostRecentlyVerified.verifiedAt!),
+        }
+      : { status: 'pending' },
+    reportType: 'preliminary',
+  };
+
+  const publishedVersion = await loadPublishedTemplateVersion(
+    tx,
+    orderedTestRow.testDefinitionId,
+  );
+
+  const { pdf, contentHash } = await renderTemplateReport({
+    templateVersionId: publishedVersion.id,
+    definition: publishedVersion.definition as ReportTemplateDefinition,
+    input,
+  });
+
+  const [reportRow] = await tx
+    .insert(report)
+    .values({
+      tenantId,
+      orderedTestId,
+      contentHash,
+      includedObservations,
+      generatedByUserId: actorPrincipalId,
+      reportType: 'preliminary',
+      templateVersionId: publishedVersion.id,
+    })
+    .returning();
+
+  await writeAuditEvent(tx, {
+    tenantId,
+    actorPrincipalId,
+    actorRole,
+    actorType: 'human',
+    action: 'report.generate_preliminary',
     resourceType: 'report',
     resourceId: reportRow.id,
     after: { contentHash, orderedTestId, includedObservations },

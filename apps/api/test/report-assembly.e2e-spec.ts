@@ -16,7 +16,10 @@ import {
   unit,
 } from '@lis/db';
 import { and, eq, sql } from 'drizzle-orm';
-import { assembleAndPersistReport } from '../src/report/report-assembly';
+import {
+  assembleAndPersistPreliminaryReport,
+  assembleAndPersistReport,
+} from '../src/report/report-assembly';
 import { AppModule } from './../src/app.module';
 import { getKeycloakToken } from './get-keycloak-token';
 
@@ -141,6 +144,21 @@ describe('Report assembly (e2e)', () => {
         sql`SELECT set_config('app.tenant_id', ${TENANT_A}, true)`,
       );
       return assembleAndPersistReport(tx, {
+        tenantId: TENANT_A,
+        orderedTestId,
+        actorPrincipalId: verifierUserId,
+        actorRole: 'verifier',
+      });
+    });
+  }
+
+  /** FEAT-054: same wrapping as `assemble()` above, for the new preliminary path. */
+  async function assemblePreliminary(orderedTestId: string) {
+    return db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, true)`,
+      );
+      return assembleAndPersistPreliminaryReport(tx, {
         tenantId: TENANT_A,
         orderedTestId,
         actorPrincipalId: verifierUserId,
@@ -590,6 +608,179 @@ describe('Report assembly (e2e)', () => {
 
       await request(app.getHttpServer())
         .post(`/v1/ordered-tests/${orderedTestId}/report`)
+        .set('Authorization', `Bearer ${verifierToken}`)
+        .expect(409);
+    });
+  });
+
+  /**
+   * FEAT-054 (ADR-0047). `assembleAndPersistReport`'s own describes above
+   * are untouched by this feature and still pass unmodified -- proving the
+   * existing final path's own behavior is provably unaffected. These tests
+   * exercise the new, separate relaxed-precondition path directly.
+   */
+  describe('assembleAndPersistPreliminaryReport', () => {
+    it('rejects (409) when nothing on the panel has been recorded yet', async () => {
+      const patientId = await createPatient();
+      const { orderId, orderedTestId } = await createOrder(
+        patientId,
+        twoAnalyteTestDefId,
+      );
+      await receive(orderId);
+
+      try {
+        await assemblePreliminary(orderedTestId);
+        throw new Error(
+          'expected assembleAndPersistPreliminaryReport to reject an empty panel',
+        );
+      } catch (err) {
+        if (!(err instanceof ConflictException)) throw err;
+      }
+    });
+
+    it('succeeds with only one of two analytes verified -- the relaxed precondition -- rendering the other as Pending and persisting reportType "preliminary"', async () => {
+      const patientId = await createPatient();
+      const { orderId, orderedTestId } = await createOrder(
+        patientId,
+        twoAnalyteTestDefId,
+      );
+      await receive(orderId);
+      await finalize(orderedTestId, analyteAId, 50);
+      await verify(orderedTestId, analyteAId);
+      // analyteB deliberately left unrecorded entirely -- not even a draft.
+
+      const result = await assemblePreliminary(orderedTestId);
+      if (!result.contentHash || result.pdf.length === 0) {
+        throw new Error('expected a real hash and non-empty PDF');
+      }
+
+      const [reportRow] = await db
+        .select()
+        .from(report)
+        .where(eq(report.id, result.reportId))
+        .limit(1);
+      if (reportRow.reportType !== 'preliminary') {
+        throw new Error(
+          `expected reportType 'preliminary', got ${JSON.stringify(reportRow.reportType)}`,
+        );
+      }
+      // Only the one real observation is snapshotted as included -- the
+      // "Pending" analyte has no real row to snapshot.
+      const included = reportRow.includedObservations as { id: string }[];
+      if (included.length !== 1) {
+        throw new Error(
+          `expected exactly 1 included observation (the verified one only), got ${included.length}`,
+        );
+      }
+    });
+
+    it('a preliminary report followed by a final report leaves both rows independently queryable, each with its own correct reportType', async () => {
+      const patientId = await createPatient();
+      const { orderId, orderedTestId } = await createOrder(
+        patientId,
+        twoAnalyteTestDefId,
+      );
+      await receive(orderId);
+      await finalize(orderedTestId, analyteAId, 50);
+      await verify(orderedTestId, analyteAId);
+
+      const preliminary = await assemblePreliminary(orderedTestId);
+
+      await finalize(orderedTestId, analyteBId, 60);
+      await verify(orderedTestId, analyteBId);
+      const final = await assemble(orderedTestId);
+
+      const rows = await db
+        .select()
+        .from(report)
+        .where(eq(report.orderedTestId, orderedTestId));
+      const preliminaryRow = rows.find((r) => r.id === preliminary.reportId);
+      const finalRow = rows.find((r) => r.id === final.reportId);
+      if (!preliminaryRow || preliminaryRow.reportType !== 'preliminary') {
+        throw new Error(
+          `expected the preliminary row to survive with reportType 'preliminary', got ${JSON.stringify(preliminaryRow)}`,
+        );
+      }
+      if (!finalRow || finalRow.reportType !== 'final') {
+        throw new Error(
+          `expected the final row to have reportType 'final', got ${JSON.stringify(finalRow)}`,
+        );
+      }
+    });
+  });
+
+  describe('HTTP: POST /v1/ordered-tests/:id/report/preliminary', () => {
+    it('returns real PDF bytes with only one of two analytes verified, persisting reportType "preliminary"', async () => {
+      const patientId = await createPatient();
+      const { orderId, orderedTestId } = await createOrder(
+        patientId,
+        twoAnalyteTestDefId,
+      );
+      await receive(orderId);
+      await finalize(orderedTestId, analyteAId, 55);
+      await verify(orderedTestId, analyteAId);
+
+      const res = await request(app.getHttpServer())
+        .post(`/v1/ordered-tests/${orderedTestId}/report/preliminary`)
+        .set('Authorization', `Bearer ${verifierToken}`)
+        .expect(200);
+
+      if (res.headers['content-type'] !== 'application/pdf') {
+        throw new Error(
+          `expected Content-Type: application/pdf, got ${JSON.stringify(res.headers['content-type'])}`,
+        );
+      }
+      const bodyBuffer = Buffer.isBuffer(res.body)
+        ? res.body
+        : Buffer.from(res.text ?? '', 'binary');
+      if (
+        bodyBuffer.length === 0 ||
+        bodyBuffer.subarray(0, 4).toString('latin1') !== '%PDF'
+      ) {
+        throw new Error(
+          `expected a non-empty PDF response starting with %PDF, got length=${bodyBuffer.length}`,
+        );
+      }
+
+      const [reportRow] = await db
+        .select()
+        .from(report)
+        .where(eq(report.orderedTestId, orderedTestId))
+        .orderBy(sql`${report.generatedAt} DESC`)
+        .limit(1);
+      if (reportRow.reportType !== 'preliminary') {
+        throw new Error(
+          `expected the just-generated row's reportType to be 'preliminary', got ${JSON.stringify(reportRow.reportType)}`,
+        );
+      }
+    });
+
+    it('rejects a technologist-only session with 403 (no verify capability) -- same gate as the final route', async () => {
+      const patientId = await createPatient();
+      const { orderId, orderedTestId } = await createOrder(
+        patientId,
+        twoAnalyteTestDefId,
+      );
+      await receive(orderId);
+      await finalize(orderedTestId, analyteAId, 60);
+      await verify(orderedTestId, analyteAId);
+
+      await request(app.getHttpServer())
+        .post(`/v1/ordered-tests/${orderedTestId}/report/preliminary`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(403);
+    });
+
+    it('returns 409 when nothing on the panel has been recorded yet', async () => {
+      const patientId = await createPatient();
+      const { orderId, orderedTestId } = await createOrder(
+        patientId,
+        twoAnalyteTestDefId,
+      );
+      await receive(orderId);
+
+      await request(app.getHttpServer())
+        .post(`/v1/ordered-tests/${orderedTestId}/report/preliminary`)
         .set('Authorization', `Bearer ${verifierToken}`)
         .expect(409);
     });

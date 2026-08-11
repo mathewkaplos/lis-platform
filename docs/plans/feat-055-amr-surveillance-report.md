@@ -1,6 +1,13 @@
 # Implementation Proposal: FEAT-055 AMR surveillance report
-Status: DRAFT
+Status: APPROVED (speculative — see §10 Q1)
 ADR: none needed (see §3)    Date: 2026-08-11    Backlog ID: FEAT-055 (#508)
+
+**Approved 2026-08-11** via the native options-prompt: all three §10 questions accepted as
+drafted — approved now on a speculative basis (§10 Q1), a new standalone
+`AmrSurveillanceController` (§10 Q2), first-isolate deduplication deferred to a named follow-up
+with an honest caveat on the v1 report (§10 Q3). **Implementation cannot begin until FEAT-051 and
+FEAT-053 are both actually built** (a hard table-level dependency, not just sequencing) — this
+approval unblocks the design, not the code.
 
 ## 1. Goal
 Organism × antimicrobial × S/I/R rates over a date range, as a real, on-demand report — the

@@ -463,3 +463,20 @@ frontmatter declaration (this entry's own commit).
   AGENTS.md-edit rule, the file was edited locally but not committed/pushed — handed back for the
   human to land.
 - **Files:** `~/work/lis-platform/AGENTS.md`
+
+## 2026-08-11 (2)
+
+- **Friction:** `rollback-staging.yml` (FEAT-050) silently registered with 0 runnable jobs. Root
+  cause: a doc comment on its own heredoc explained an escaping mistake by literally writing
+  `` `${{ }}` `` as the example text — GitHub Actions scans an entire `run:` block for `${{ }}`
+  patterns regardless of bash `#` comments, so the empty expression between the braces failed to
+  parse ("unexpected end of input while parsing variable access... expecting IDENT"), invalidating
+  the whole file. Went undetected through 6 pushes across two PRs; found only when actually trying
+  to `workflow_dispatch` the workflow for a real rehearsal. Confirmed root cause and fix with
+  `actionlint` (rhysd/actionlint, downloaded fresh — not installed in this environment by
+  default).
+- **Area:** github-workflow
+- **Change:** added entry #28 to `engineering/docker-pnpm-monorepo-deploy` — never write a literal
+  `${{ }}` sequence inside a workflow file's own comments, even to document the pattern itself;
+  run `actionlint` against any new/edited `.github/workflows/*.yml` file before pushing it.
+- **Files:** `~/work/lis-engineering/skills/engineering/docker-pnpm-monorepo-deploy/SKILL.md`

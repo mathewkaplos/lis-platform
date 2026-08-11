@@ -98,6 +98,18 @@
  * collection is the same front-desk-adjacent action class with no
  * dedicated `cashier` role in Keycloak yet (a real, separate infra
  * decision the proposal explicitly deferred, not this task's own scope).
+ *
+ * `platform_analytics` (FEAT-056 proposal §10 Q2, ADR-0048): granted only
+ * to `platform-analytics`, a machine role held exclusively by
+ * `lis-platform-analytics`'s own Keycloak service-account client — never
+ * assigned to a human user or folded into any existing tenant-scoped
+ * capability. Same `gateway_ingest`/`interop_ingest` precedent: this is
+ * the first genuinely cross-tenant endpoint in this codebase (its whole
+ * point is aggregating data spanning every opted-in tenant), which no
+ * existing tenant-scoped human role's own JWT `tenant_id` claim should
+ * ever be authorized to request — a new, dedicated capability keeps that
+ * authorization legible on its own, not an accidental side effect of some
+ * other role's grant list changing.
  */
 export type Capability =
   | 'enter_result'
@@ -116,7 +128,8 @@ export type Capability =
   | 'place_order_own_patient'
   | 'view_related_patient_results'
   | 'acknowledge_critical_own_patient'
-  | 'manage_billing';
+  | 'manage_billing'
+  | 'platform_analytics';
 
 const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
   technologist: [
@@ -143,6 +156,7 @@ const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
   ],
   'gateway-ingest': ['gateway_ingest'],
   'interop-ingest': ['interop_ingest'],
+  'platform-analytics': ['platform_analytics'],
   patient: ['view_own_results'],
   clinician: [
     'place_order_own_patient',

@@ -30,6 +30,10 @@
         "description": "Machine role for the HL7 v2 ACL's service account (FEAT-036, ADR-0035) -- scoped to apps/interop's own calls into apps/api, never granted to a human user"
       },
       {
+        "name": "platform-analytics",
+        "description": "Machine role for the cross-tenant AMR surveillance aggregator's service account (FEAT-056, ADR-0048) -- scoped to the network-wide de-identified analytics endpoint only, never granted to a human user or any tenant-scoped role"
+      },
+      {
         "name": "clinician",
         "description": "External clinician role (FEAT-040, KB-10): may access only patients with an established care_relationship row, never the whole tenant -- unlike technologist/verifier/qa"
       },
@@ -194,6 +198,25 @@
       "serviceAccountsEnabled": true,
       "clientAuthenticatorType": "client-secret",
       "secret": "dev-only-lis-interop-secret",
+      "defaultClientScopes": [
+        "tenant",
+        "openid",
+        "basic",
+        "roles"
+      ]
+    },
+    {
+      "clientId": "lis-platform-analytics",
+      "name": "LIS Cross-Tenant AMR Surveillance Aggregator",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "dev-only-lis-platform-analytics-secret",
       "defaultClientScopes": [
         "tenant",
         "openid",
@@ -409,6 +432,15 @@
         "tenant_id": ["00000000-0000-0000-0000-000000000001"]
       },
       "realmRoles": ["interop-ingest"]
+    },
+    {
+      "username": "service-account-lis-platform-analytics",
+      "enabled": true,
+      "serviceAccountClientId": "lis-platform-analytics",
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-0000000000a1"]
+      },
+      "realmRoles": ["platform-analytics"]
     },
     {
       "username": "service-account-lis-onboarding",

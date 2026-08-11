@@ -596,6 +596,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/reports/network-amr-surveillance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AmrNetworkSurveillanceController_report"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/report-templates": {
         parameters: {
             query?: never;
@@ -1462,6 +1478,18 @@ export interface components {
                 resistantCount: number;
                 total: number;
                 resistantPct: number;
+            }[];
+        };
+        NetworkAmrSurveillanceReportDto_Output: {
+            entries: {
+                organismDisplay: string;
+                antimicrobialDisplay: string;
+                timeBucket: string;
+                suppressed: boolean;
+                susceptibleCount: number | null;
+                intermediateCount: number | null;
+                resistantCount: number | null;
+                totalCount: number | null;
             }[];
         };
         ReportTemplateCreateDto__schema0: {
@@ -2877,6 +2905,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AmrSurveillanceReportDto_Output"];
+                };
+            };
+        };
+    };
+    AmrNetworkSurveillanceController_report: {
+        parameters: {
+            query: {
+                month: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkAmrSurveillanceReportDto_Output"];
                 };
             };
         };

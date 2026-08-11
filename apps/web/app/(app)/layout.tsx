@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { getSession } from '@/auth/get-session';
 import { THEME_COOKIE_NAME, isTheme } from '@/lib/theme';
+import { DEFAULT_LOCALE, LOCALE_COOKIE_NAME, isLocale } from '@/lib/locale';
 import { Sidebar } from './_components/sidebar';
 import { TopBar } from './_components/top-bar';
 
@@ -23,6 +24,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const cookieStore = await cookies();
   const themeCookie = cookieStore.get(THEME_COOKIE_NAME)?.value;
+  const localeCookie = cookieStore.get(LOCALE_COOKIE_NAME)?.value;
 
   return (
     <div className="flex min-h-full flex-1">
@@ -32,6 +34,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           tenantId={session.tenantId}
           userSub={session.sub}
           theme={isTheme(themeCookie) ? themeCookie : undefined}
+          locale={isLocale(localeCookie) ? localeCookie : DEFAULT_LOCALE}
         />
         <main className="flex-1 overflow-y-auto p-6 print:p-0">{children}</main>
       </div>

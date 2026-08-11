@@ -7,17 +7,21 @@ import {
   DropdownMenuTrigger,
 } from '@lis/ui';
 import type { Theme } from '@/lib/theme';
+import type { Locale } from '@/lib/locale';
 import { CommandPalette } from './command-palette';
+import { LocaleSelect } from './locale-select';
 import { ThemeToggle } from './theme-toggle';
 
 export function TopBar({
   tenantId,
   userSub,
   theme,
+  locale,
 }: {
   tenantId: string;
   userSub: string;
   theme: Theme | undefined;
+  locale: Locale;
 }) {
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-surface px-4 print:hidden">
@@ -28,6 +32,7 @@ export function TopBar({
         <span className="rounded-md border border-border px-2 py-1 text-xs text-text-secondary">
           {tenantId}
         </span>
+        <LocaleSelect current={locale} />
         <ThemeToggle current={theme} />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

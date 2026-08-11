@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
 import {
   AlertTriangle,
   ClipboardList,
@@ -31,32 +32,37 @@ import {
 // or the route itself. Both new pages follow that identical shape: a
 // non-`qa` visitor reaches the page and sees the data, but the create
 // control (the real, API-enforced action) doesn't render for them.
+// FEAT-048 (ADR-0043): `labelKey` looks up the nav item's own label in the
+// `Sidebar` message namespace (messages/*.json) -- the literal English
+// strings that used to live here moved there instead.
 const NAV_ITEMS = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/patients', label: 'Patients', icon: Users },
-  { href: '/orders', label: 'Orders', icon: ClipboardList },
-  { href: '/reception', label: 'Reception', icon: FlaskConical },
-  { href: '/collection-queue', label: 'Collection queue', icon: ListChecks },
-  { href: '/qc-violations', label: 'QC violations', icon: AlertTriangle },
-  { href: '/admin/reference-ranges', label: 'Reference ranges', icon: Ruler },
-  { href: '/admin/tests', label: 'Add test', icon: TestTube },
-];
+  { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
+  { href: '/patients', labelKey: 'patients', icon: Users },
+  { href: '/orders', labelKey: 'orders', icon: ClipboardList },
+  { href: '/reception', labelKey: 'reception', icon: FlaskConical },
+  { href: '/collection-queue', labelKey: 'collectionQueue', icon: ListChecks },
+  { href: '/qc-violations', labelKey: 'qcViolations', icon: AlertTriangle },
+  { href: '/admin/reference-ranges', labelKey: 'referenceRanges', icon: Ruler },
+  { href: '/admin/tests', labelKey: 'addTest', icon: TestTube },
+] as const;
 
-export function Sidebar() {
+export async function Sidebar() {
+  const t = await getTranslations('Sidebar');
+
   return (
     <nav
       aria-label="Main"
       className="hidden w-56 shrink-0 flex-col gap-1 border-r border-border bg-surface p-4 sm:flex print:hidden"
     >
-      <div className="mb-4 px-2 text-sm font-semibold text-foreground">LIS Platform</div>
-      {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
+      <div className="mb-4 px-2 text-sm font-semibold text-foreground">{t('appName')}</div>
+      {NAV_ITEMS.map(({ href, labelKey, icon: Icon }) => (
         <Link
           key={href}
           href={href}
           className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-text-secondary transition-colors hover:bg-accent hover:text-foreground"
         >
           <Icon className="size-4" />
-          {label}
+          {t(labelKey)}
         </Link>
       ))}
     </nav>

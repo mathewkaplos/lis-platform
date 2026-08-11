@@ -42,10 +42,24 @@ jobs:
           # could recognize. Added the correctly-ordered pattern as a third
           # alternative rather than working around it in the migration SQL,
           # same fix-the-gate precedent as TASK-020's meta/*.json finding.
-          added_tables=$(git diff origin/main...HEAD -- 'db/migrations/*.sql' | grep -oE '^\+CREATE TABLE "?[A-Za-z0-9_]+"?' | tr -d '"' | awk '{print $NF}' || true)
+          diff_text=$(git diff origin/main...HEAD -- 'db/migrations/*.sql')
+          added_tables=$(echo "$diff_text" | grep -oE '^\+CREATE TABLE "?[A-Za-z0-9_]+"?' | tr -d '"' | awk '{print $NF}' || true)
           for t in $added_tables; do
-            if ! git diff origin/main...HEAD -- 'db/migrations/*.sql' | grep -qE "ALTER TABLE \"?$t\"?[[:space:]]*ENABLE ROW LEVEL SECURITY|ENABLE ROW LEVEL SECURITY.*\"?$t\"?|ON \"?$t\"?"; then
-              echo "::error::New table '$t' has no RLS policy in this diff (Law #4)."
-              exit 1
+            if echo "$diff_text" | grep -qE "ALTER TABLE \"?$t\"?[[:space:]]*ENABLE ROW LEVEL SECURITY|ENABLE ROW LEVEL SECURITY.*\"?$t\"?|ON \"?$t\"?"; then
+              continue
             fi
+            # ADR-0038: a table with no tenant_id/RLS is instead allowed to
+            # cite a deliberate exemption -- `-- RLS-exempt per ADR-NNNN` on
+            # the line immediately above its `CREATE TABLE` statement in the
+            # diff (the same convention ADR-0004 already used for
+            # analyte/unit/code_system_value, before this check existed to
+            # recognize it). This gate does not verify the cited ADR actually
+            # says what the marker claims -- same trust boundary as the rest
+            # of this check, a human reviewer's job, not this script's.
+            if echo "$diff_text" | grep -B1 -E "^\+CREATE TABLE \"?$t\"?" | grep -qE '^\+-- RLS-exempt per ADR-[0-9]+'; then
+              echo "::notice::Table '$t' is RLS-exempt per its cited ADR (marker recognized, Law #4 satisfied)."
+              continue
+            fi
+            echo "::error::New table '$t' has no RLS policy and no RLS-exempt marker in this diff (Law #4)."
+            exit 1
           done

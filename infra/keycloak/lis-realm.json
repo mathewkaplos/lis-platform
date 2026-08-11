@@ -355,6 +355,25 @@
       ]
     },
     {
+      "username": "test-user-dedicated",
+      "email": "test-user-dedicated@example.invalid",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Test",
+      "lastName": "User Dedicated",
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-0000000000d1"]
+      },
+      "realmRoles": ["technologist"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "test-password-dedicated",
+          "temporary": false
+        }
+      ]
+    },
+    {
       "username": "service-account-lis-gateway",
       "enabled": true,
       "serviceAccountClientId": "lis-gateway",

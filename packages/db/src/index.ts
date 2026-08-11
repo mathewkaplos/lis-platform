@@ -15,3 +15,4 @@ export {
 } from "./reference-range";
 export { computeFlags, mergeDeltaFlag } from "./flagging";
 export { resolveDeltaCheck, type DeltaCheckParams, type DeltaCheckResult } from "./delta-check";
+export { resolveTenantRouting, type TenantRouting } from "./tenant-resolver";

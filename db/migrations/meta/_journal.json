@@ -253,6 +253,13 @@
       "when": 1786384282390,
       "tag": "0035_aspiring_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1786415276441,
+      "tag": "0036_nice_dreaming_celestial",
+      "breakpoints": true
     }
   ]
 }

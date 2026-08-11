@@ -16,7 +16,7 @@ import {
   writeAuditEvent,
 } from '@lis/db';
 import { renderTemplateReport } from './report-render';
-import type { ReportTemplateDefinition } from '../report-template/report-template-types';
+import type { ReportTemplateDefinition } from '@lis/domain';
 import type {
   ChemistryReportAnalyteResult,
   ChemistryReportInput,

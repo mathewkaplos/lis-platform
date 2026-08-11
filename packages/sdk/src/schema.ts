@@ -1369,6 +1369,53 @@ export interface components {
                 }[];
             };
         };
+        ReportTemplateResultDto_Output__schema0_Output: {
+            and: components["schemas"]["ReportTemplateResultDto_Output__schema0_Output"][];
+        } | {
+            or: components["schemas"]["ReportTemplateResultDto_Output__schema0_Output"][];
+        } | {
+            not: components["schemas"]["ReportTemplateResultDto_Output__schema0_Output"];
+        } | {
+            field: string;
+            /** @enum {string} */
+            op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "includes";
+            value: unknown;
+        };
+        ReportTemplateResultDto_Output: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            testDefinitionId: string;
+            /** Format: date-time */
+            createdAt: string;
+            versions: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                reportTemplateId: string;
+                version: number;
+                /** @enum {string} */
+                status: "draft" | "in_review" | "published" | "archived";
+                definition: {
+                    sections: {
+                        title: string;
+                        fields: {
+                            key: string;
+                            label: string;
+                            /** @enum {string} */
+                            type: "numeric" | "coded" | "richText" | "table" | "referenceRangeDisplay";
+                            /** Format: uuid */
+                            analyteBinding?: string;
+                            analyteBindings?: string[];
+                            content?: string;
+                            visibilityCondition?: components["schemas"]["ReportTemplateResultDto_Output__schema0_Output"];
+                        }[];
+                    }[];
+                };
+                /** Format: date-time */
+                createdAt: string;
+            }[];
+        };
         ReportTemplateVersionCreateDto__schema0: {
             and: components["schemas"]["ReportTemplateVersionCreateDto__schema0"][];
         } | {
@@ -1398,6 +1445,94 @@ export interface components {
                     }[];
                 }[];
             };
+        };
+        ReportTemplateVersionResultDto_Output__schema0_Output: {
+            and: components["schemas"]["ReportTemplateVersionResultDto_Output__schema0_Output"][];
+        } | {
+            or: components["schemas"]["ReportTemplateVersionResultDto_Output__schema0_Output"][];
+        } | {
+            not: components["schemas"]["ReportTemplateVersionResultDto_Output__schema0_Output"];
+        } | {
+            field: string;
+            /** @enum {string} */
+            op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "includes";
+            value: unknown;
+        };
+        ReportTemplateVersionResultDto_Output: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            reportTemplateId: string;
+            version: number;
+            /** @enum {string} */
+            status: "draft" | "in_review" | "published" | "archived";
+            definition: {
+                sections: {
+                    title: string;
+                    fields: {
+                        key: string;
+                        label: string;
+                        /** @enum {string} */
+                        type: "numeric" | "coded" | "richText" | "table" | "referenceRangeDisplay";
+                        /** Format: uuid */
+                        analyteBinding?: string;
+                        analyteBindings?: string[];
+                        content?: string;
+                        visibilityCondition?: components["schemas"]["ReportTemplateVersionResultDto_Output__schema0_Output"];
+                    }[];
+                }[];
+            };
+            /** Format: date-time */
+            createdAt: string;
+        };
+        ReportTemplateListDto_Output__schema0_Output: {
+            and: components["schemas"]["ReportTemplateListDto_Output__schema0_Output"][];
+        } | {
+            or: components["schemas"]["ReportTemplateListDto_Output__schema0_Output"][];
+        } | {
+            not: components["schemas"]["ReportTemplateListDto_Output__schema0_Output"];
+        } | {
+            field: string;
+            /** @enum {string} */
+            op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "includes";
+            value: unknown;
+        };
+        ReportTemplateListDto_Output: {
+            templates: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                testDefinitionId: string;
+                /** Format: date-time */
+                createdAt: string;
+                versions: {
+                    /** Format: uuid */
+                    id: string;
+                    /** Format: uuid */
+                    reportTemplateId: string;
+                    version: number;
+                    /** @enum {string} */
+                    status: "draft" | "in_review" | "published" | "archived";
+                    definition: {
+                        sections: {
+                            title: string;
+                            fields: {
+                                key: string;
+                                label: string;
+                                /** @enum {string} */
+                                type: "numeric" | "coded" | "richText" | "table" | "referenceRangeDisplay";
+                                /** Format: uuid */
+                                analyteBinding?: string;
+                                analyteBindings?: string[];
+                                content?: string;
+                                visibilityCondition?: components["schemas"]["ReportTemplateListDto_Output__schema0_Output"];
+                            }[];
+                        }[];
+                    };
+                    /** Format: date-time */
+                    createdAt: string;
+                }[];
+            }[];
         };
         WorklistResponseDto_Output: {
             counts: {
@@ -2504,7 +2639,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReportTemplateListDto_Output"];
+                };
             };
         };
     };
@@ -2525,7 +2662,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReportTemplateResultDto_Output"];
+                };
             };
         };
     };
@@ -2548,7 +2687,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReportTemplateVersionResultDto_Output"];
+                };
             };
         };
     };
@@ -2568,7 +2709,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReportTemplateVersionResultDto_Output"];
+                };
             };
         };
     };

@@ -1,5 +1,5 @@
+import type { ReportTemplateDefinition } from '@lis/domain';
 import { validateReportTemplateDefinition } from './report-template-guardrails';
-import type { ReportTemplateDefinition } from './report-template-types';
 
 const ANALYTE_A = '11111111-1111-1111-1111-111111111111';
 const ANALYTE_B = '22222222-2222-2222-2222-222222222222';

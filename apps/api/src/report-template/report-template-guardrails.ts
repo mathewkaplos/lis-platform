@@ -1,10 +1,10 @@
-import { findUnallowedFields } from '../workflow/workflow-condition-evaluator';
 import {
   ANALYTE_BOUND_FIELD_TYPES,
   TEMPLATE_ALLOWED_FIELDS,
   type ReportTemplateDefinition,
   type TemplateFieldDefinition,
-} from './report-template-types';
+} from '@lis/domain';
+import { findUnallowedFields } from '../workflow/workflow-condition-evaluator';
 
 /**
  * Runs before a report_template_version may ever reach `status: 'published'`

@@ -1,21 +1,24 @@
+import type { ConditionNode } from '@lis/domain';
+
 /**
  * FEAT-029 (ADR-0029). `WorkflowRule`/`ConditionNode` are the persisted
  * shape of `workflow_definition.rules` (jsonb) -- KB-25's own
  * trigger -> when -> do model, with `when` resolved to ADR-0029's fixed
  * JSON tree (never a parsed string).
+ *
+ * `ConditionNode`/`ConditionLeaf`/`ConditionOp`/`CONDITION_OPS`/
+ * `isConditionLeaf` moved to `@lis/domain` (FEAT-047) so apps/web's report
+ * designer can share the exact same condition-tree schema apps/api enforces;
+ * re-exported here unchanged so every existing import in this module stays
+ * valid.
  */
-
-export const CONDITION_OPS = [
-  'eq',
-  'neq',
-  'gt',
-  'gte',
-  'lt',
-  'lte',
-  'in',
-  'includes',
-] as const;
-export type ConditionOp = (typeof CONDITION_OPS)[number];
+export {
+  CONDITION_OPS,
+  isConditionLeaf,
+  type ConditionLeaf,
+  type ConditionNode,
+  type ConditionOp,
+} from '@lis/domain';
 
 // Explicit allow-list -- ADR-0029's own point: a field not in this list is
 // rejected at publish time (the guardrail validator), never silently
@@ -48,18 +51,6 @@ export const ALLOWED_FIELDS = [
 ] as const;
 export type AllowedField = (typeof ALLOWED_FIELDS)[number];
 
-export interface ConditionLeaf {
-  field: string;
-  op: ConditionOp;
-  value: unknown;
-}
-
-export type ConditionNode =
-  | { and: ConditionNode[] }
-  | { or: ConditionNode[] }
-  | { not: ConditionNode }
-  | ConditionLeaf;
-
 export interface WorkflowRule {
   id: string;
   on: string; // event type, e.g. 'ObservationVerified' | 'ObservationFinalized'
@@ -70,8 +61,4 @@ export interface WorkflowRule {
   // outcome), but the handler itself must skip any mutating write -- see
   // WorkflowCommandHandler's own `firingContext` parameter.
   dryRun?: boolean;
-}
-
-export function isConditionLeaf(node: ConditionNode): node is ConditionLeaf {
-  return 'field' in node;
 }

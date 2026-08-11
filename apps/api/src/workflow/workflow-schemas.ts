@@ -1,28 +1,10 @@
 import { z } from 'zod';
-import { CONDITION_OPS, type ConditionNode } from './workflow-types';
+import { conditionNodeSchema } from '@lis/domain';
 
-const conditionOpSchema = z.enum(CONDITION_OPS);
-
-const conditionLeafSchema = z.object({
-  field: z.string().min(1),
-  op: conditionOpSchema,
-  value: z.unknown(),
-});
-
-// Recursive schema -- z.lazy() is required since ConditionNode references
-// itself (and/or/not each contain more ConditionNodes). Exported: FEAT-032's
-// report-template-schemas.ts reuses this verbatim for a template field's own
-// `visibilityCondition` (the same ConditionNode/evaluateCondition reuse this
-// module's own condition tree is built on -- see report-template-types.ts's
-// header comment).
-export const conditionNodeSchema: z.ZodType<ConditionNode> = z.lazy(() =>
-  z.union([
-    z.object({ and: z.array(conditionNodeSchema).min(1) }),
-    z.object({ or: z.array(conditionNodeSchema).min(1) }),
-    z.object({ not: conditionNodeSchema }),
-    conditionLeafSchema,
-  ]),
-);
+// Moved to @lis/domain (FEAT-047) so apps/web's report designer shares the
+// exact same condition-tree schema; re-exported here so every existing
+// import of `conditionNodeSchema` from this module stays valid.
+export { conditionNodeSchema };
 
 const workflowRuleSchema = z.object({
   id: z.string().min(1),

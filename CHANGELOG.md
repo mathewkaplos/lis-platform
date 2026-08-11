@@ -480,3 +480,22 @@ frontmatter declaration (this entry's own commit).
   `${{ }}` sequence inside a workflow file's own comments, even to document the pattern itself;
   run `actionlint` against any new/edited `.github/workflows/*.yml` file before pushing it.
 - **Files:** `~/work/lis-engineering/skills/engineering/docker-pnpm-monorepo-deploy/SKILL.md`
+
+## 2026-08-11 (3)
+
+- **Friction:** `constitution-gate.yml`'s "Block free-text clinical value columns" step (a naive
+  `grep -E '^\+.*\b(result|value|finding)\b.*\btext\b'` over migration diffs) flagged
+  `culture_read`'s own `result` column (FEAT-052) as a suspected Law #1 violation, even though it's
+  a genuinely non-clinical, CHECK-constrained workflow-state flag (`'no_growth'|'growth'`) — the
+  same category as `sla_breach.status`/`outbox_event.status`, which only dodge this regex by
+  coincidence of naming. The check's own comment already documents one prior false-positive class
+  and invites adjusting the pattern, but has no real exclusion mechanism yet; every future
+  bounded-enum column named result/value/finding will keep tripping this. Fixed for real this time
+  by renaming the SQL column to `outcome` (Drizzle's own field-name-vs-column-name mapping meant
+  zero ripple into the API/domain/web layers) rather than editing the check's own regex logic — a
+  real behavior change to a security-relevant CI gate is a bigger edit than this loop is scoped for.
+- **Area:** github-workflow
+- **Change:** documented this second false-positive class and its established workaround (rename
+  the SQL column to dodge the flagged words) directly in the check's own header comment, mirroring
+  how the first documented false positive (TASK-020) is already handled there.
+- **Files:** `.github/workflows/constitution-gate.yml`

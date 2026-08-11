@@ -2307,6 +2307,48 @@
           "MicrobiologyCatalog"
         ]
       }
+    },
+    "/v1/ordered-tests/{orderedTestId}/antibiogram": {
+      "post": {
+        "operationId": "AntibiogramController_record",
+        "parameters": [
+          {
+            "name": "orderedTestId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordAntibiogramDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AntibiogramResultDto_Output"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Antibiogram"
+        ]
+      }
     }
   },
   "info": {
@@ -6029,6 +6071,102 @@
           "antimicrobials",
           "breakpointTables",
           "breakpoints"
+        ],
+        "additionalProperties": false
+      },
+      "RecordAntibiogramDto": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "antimicrobialId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "micValue": {
+                  "type": "number",
+                  "exclusiveMinimum": true,
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "antimicrobialId",
+                "micValue"
+              ]
+            }
+          }
+        },
+        "required": [
+          "results"
+        ]
+      },
+      "AntibiogramResultDto_Output": {
+        "type": "object",
+        "properties": {
+          "organismId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "organismDisplay": {
+            "type": "string"
+          },
+          "tableObservationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "antimicrobialId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "antimicrobialDisplay": {
+                  "type": "string"
+                },
+                "micValue": {
+                  "type": "number"
+                },
+                "interpretation": {
+                  "type": "string",
+                  "enum": [
+                    "S",
+                    "I",
+                    "R"
+                  ]
+                },
+                "observationId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                }
+              },
+              "required": [
+                "antimicrobialId",
+                "antimicrobialDisplay",
+                "micValue",
+                "interpretation",
+                "observationId"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "organismId",
+          "organismDisplay",
+          "tableObservationId",
+          "results"
         ],
         "additionalProperties": false
       }

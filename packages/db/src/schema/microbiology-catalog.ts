@@ -1,5 +1,5 @@
 import { pgTable, uuid, text, numeric, timestamp, index } from "drizzle-orm/pg-core";
-import { codeSystemValue } from "./catalog";
+import { analyte, codeSystemValue } from "./catalog";
 
 // Global reference tables -- no tenant_id, no RLS, per ADR-0045 (extending
 // ADR-0004's own precedent for analyte/unit/code_system_value): organism/
@@ -20,9 +20,19 @@ export const organism = pgTable("organism", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-// FEAT-053 will add its own analyteId FK here later (ADR-0047 precedent:
-// additive column on an existing table, not a new one) -- out of this
-// feature's own scope.
+// FEAT-053: `analyteId` added -- anticipated by FEAT-051's own proposal
+// (§5: "antimicrobials will each need their own discipline-specific
+// attributes later"), a real usage rather than a speculative one now:
+// each antimicrobial's own S/I/R result is a discrete coded Observation
+// against its own dedicated analyte (KB-21's dual-emission antibiogram),
+// so the query "all carbapenem-resistant E. coli this quarter"
+// (FEAT-053's own literal AC) is a normal `observation.analyteId` join,
+// the same mechanism every other discipline already uses. Nullable --
+// not every antimicrobial in the catalog necessarily has a seeded
+// susceptibility-result analyte yet (FEAT-053 proposal §5's own real
+// LOINC-per-antimicrobial seeding is scoped to whatever antimicrobials
+// FEAT-051's real breakpoint data actually covers, not invented ahead of
+// need).
 export const antimicrobial = pgTable("antimicrobial", {
   id: uuid("id").primaryKey().defaultRandom(),
   codeSystemValueId: uuid("code_system_value_id")
@@ -30,6 +40,7 @@ export const antimicrobial = pgTable("antimicrobial", {
     .references(() => codeSystemValue.id)
     .unique(),
   display: text("display").notNull(),
+  analyteId: uuid("analyte_id").references(() => analyte.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

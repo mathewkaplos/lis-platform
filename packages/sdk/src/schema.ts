@@ -1108,6 +1108,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ordered-tests/{orderedTestId}/antibiogram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AntibiogramController_record"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1968,6 +1984,30 @@ export interface components {
                 susceptibleMax: string;
                 resistantMin: string;
                 sourceNote: string | null;
+            }[];
+        };
+        RecordAntibiogramDto: {
+            results: {
+                /** Format: uuid */
+                antimicrobialId: string;
+                micValue: number;
+            }[];
+        };
+        AntibiogramResultDto_Output: {
+            /** Format: uuid */
+            organismId: string;
+            organismDisplay: string;
+            /** Format: uuid */
+            tableObservationId: string;
+            results: {
+                /** Format: uuid */
+                antimicrobialId: string;
+                antimicrobialDisplay: string;
+                micValue: number;
+                /** @enum {string} */
+                interpretation: "S" | "I" | "R";
+                /** Format: uuid */
+                observationId: string;
             }[];
         };
     };
@@ -3541,6 +3581,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MicrobiologyCatalogDto_Output"];
+                };
+            };
+        };
+    };
+    AntibiogramController_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orderedTestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordAntibiogramDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AntibiogramResultDto_Output"];
                 };
             };
         };

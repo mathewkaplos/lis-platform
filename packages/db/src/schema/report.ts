@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, jsonb, index, pgPolicy } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, jsonb, index, pgPolicy, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { orderedTest } from "./order";
 import { reportTemplateVersion } from "./report-template";
@@ -69,9 +69,21 @@ export const report = pgTable(
     templateVersionId: uuid("template_version_id").references(
       () => reportTemplateVersion.id,
     ),
+    // FEAT-054 (ADR-0047): NOT this table's original "no report.status, no
+    // draft/preliminary concept of its own" scope cut (TASK-059's own
+    // header comment above) reopened wholesale -- a narrower, additive
+    // field. Set directly by which function/endpoint generated the row
+    // (`assembleAndPersistReport` always writes 'final',
+    // `assembleAndPersistPreliminaryReport` always writes 'preliminary'),
+    // never auto-computed from observation completeness at read time.
+    // Defaults 'final' so every pre-FEAT-054 row backfills to a true fact
+    // about it (every report ever generated before this column existed
+    // went through the all-verified-required path).
+    reportType: text("report_type").notNull().default("final"),
   },
   (table) => [
     index("ix_report_tenant_ordered_test").on(table.tenantId, table.orderedTestId),
+    check("ck_report_report_type", sql`${table.reportType} IN ('final', 'preliminary')`),
     tenantIsolation(),
   ],
 ).enableRLS();

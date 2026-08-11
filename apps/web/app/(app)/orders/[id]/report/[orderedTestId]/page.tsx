@@ -111,9 +111,27 @@ export default async function ReportViewerPage({
                 This report is ready. Downloading requires a verifier-roled session.
               </p>
             )
+          ) : results.length > 0 ? (
+            // FEAT-054 (ADR-0047): at least one result recorded -- the same
+            // relaxed precondition `assembleAndPersistPreliminaryReport`
+            // itself checks, so this button's own visibility and the
+            // backend's willingness to generate a real PDF can never
+            // disagree (same discipline this page's own FINAL/isFinal
+            // check already established, TASK-060's own header comment).
+            isVerifier ? (
+              <Button asChild variant="outline">
+                <a href={`/orders/${id}/report/${orderedTestId}/download/preliminary`}>
+                  Download preliminary PDF
+                </a>
+              </Button>
+            ) : (
+              <p className="text-sm text-text-secondary">
+                A preliminary report is available. Downloading requires a verifier-roled session.
+              </p>
+            )
           ) : (
             <p className="text-sm text-text-secondary">
-              This report will be available once every result on this panel is verified.
+              This report will be available once at least one result on this panel is recorded.
             </p>
           )}
         </CardContent>

@@ -189,6 +189,17 @@ function drawTemplateReport(
     .font('Helvetica-Bold')
     .fontSize(18)
     .text('Chemistry Result Report', { align: 'center' });
+  // FEAT-054 (ADR-0047): fixed chrome, not template-configurable -- same
+  // boundary the patient/specimen/order header already follows. Absent
+  // `reportType` (pre-FEAT-054 callers) renders no banner, same as 'final'.
+  if (input.reportType === 'preliminary') {
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(12)
+      .fillColor('red')
+      .text('PRELIMINARY REPORT — subject to change', { align: 'center' })
+      .fillColor('black');
+  }
   doc.moveDown(1);
 
   doc.font('Helvetica-Bold').fontSize(11).text('Patient / Specimen');
@@ -218,8 +229,13 @@ function drawTemplateReport(
   doc.font('Helvetica-Bold').fontSize(11).text('Verification');
   doc.font('Helvetica').fontSize(10);
   doc.text(`Status: ${verifier.status}`);
-  doc.text(`Verified by: ${verifier.name}`);
-  doc.text(`Verified at: ${verifier.verifiedAt}`);
+  // FEAT-054: a preliminary report generated before anything is verified
+  // has no real verifier to show -- an honest "Pending verification"
+  // state (§10 Q3), never a fabricated name/timestamp.
+  if ('name' in verifier) {
+    doc.text(`Verified by: ${verifier.name}`);
+    doc.text(`Verified at: ${verifier.verifiedAt}`);
+  }
 }
 
 export function renderTemplateReportPdf(

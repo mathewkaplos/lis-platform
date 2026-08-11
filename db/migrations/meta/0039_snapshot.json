@@ -1,6 +1,6 @@
 {
-  "id": "f74629d3-051c-4fea-9ee1-393fdefad309",
-  "prevId": "220e38f6-54bc-4bc3-98b2-a80428c45cb3",
+  "id": "40b71da9-eb17-4926-bf54-12dd4035f254",
+  "prevId": "f74629d3-051c-4fea-9ee1-393fdefad309",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3120,6 +3120,13 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
+        },
+        "report_type": {
+          "name": "report_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'final'"
         }
       },
       "indexes": {
@@ -3186,7 +3193,12 @@
           "using": "tenant_id = current_setting('app.tenant_id')::uuid"
         }
       },
-      "checkConstraints": {},
+      "checkConstraints": {
+        "ck_report_report_type": {
+          "name": "ck_report_report_type",
+          "value": "\"report\".\"report_type\" IN ('final', 'preliminary')"
+        }
+      },
       "isRLSEnabled": true
     },
     "public.instrument_analyte_mapping": {

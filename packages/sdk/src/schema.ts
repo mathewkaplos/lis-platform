@@ -580,6 +580,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/reports/amr-surveillance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AmrSurveillanceController_report"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/report-templates": {
         parameters: {
             query?: never;
@@ -1431,6 +1447,21 @@ export interface components {
             byReason: {
                 reason: string;
                 count: number;
+            }[];
+        };
+        AmrSurveillanceReportDto_Output: {
+            entries: {
+                /** Format: uuid */
+                organismId: string;
+                organismDisplay: string;
+                /** Format: uuid */
+                antimicrobialId: string;
+                antimicrobialDisplay: string;
+                susceptibleCount: number;
+                intermediateCount: number;
+                resistantCount: number;
+                total: number;
+                resistantPct: number;
             }[];
         };
         ReportTemplateCreateDto__schema0: {
@@ -2824,6 +2855,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RejectionRateReportDto_Output"];
+                };
+            };
+        };
+    };
+    AmrSurveillanceController_report: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AmrSurveillanceReportDto_Output"];
                 };
             };
         };

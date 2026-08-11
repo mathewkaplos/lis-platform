@@ -1206,6 +1206,48 @@
         ]
       }
     },
+    "/v1/reports/amr-surveillance": {
+      "get": {
+        "operationId": "AmrSurveillanceController_report",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmrSurveillanceReportDto_Output"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "AmrSurveillance"
+        ]
+      }
+    },
     "/v1/report-templates": {
       "post": {
         "operationId": "ReportTemplateController_create",
@@ -3612,6 +3654,66 @@
           "totalSpecimens",
           "rejectedTotal",
           "byReason"
+        ],
+        "additionalProperties": false
+      },
+      "AmrSurveillanceReportDto_Output": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "organismId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "organismDisplay": {
+                  "type": "string"
+                },
+                "antimicrobialId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "antimicrobialDisplay": {
+                  "type": "string"
+                },
+                "susceptibleCount": {
+                  "type": "number"
+                },
+                "intermediateCount": {
+                  "type": "number"
+                },
+                "resistantCount": {
+                  "type": "number"
+                },
+                "total": {
+                  "type": "number"
+                },
+                "resistantPct": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "organismId",
+                "organismDisplay",
+                "antimicrobialId",
+                "antimicrobialDisplay",
+                "susceptibleCount",
+                "intermediateCount",
+                "resistantCount",
+                "total",
+                "resistantPct"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "entries"
         ],
         "additionalProperties": false
       },

@@ -1,6 +1,11 @@
 # Implementation Proposal: FEAT-054 Culture report template & preliminary/final lifecycle
-Status: DRAFT
-ADR: adr-0047 (proposed)    Date: 2026-08-11    Backlog ID: FEAT-054 (#504)
+Status: APPROVED
+ADR: adr-0047 (accepted)    Date: 2026-08-11    Backlog ID: FEAT-054 (#504)
+
+**Approved 2026-08-11** via the native options-prompt: all three §10 questions accepted as drafted
+— including §10 Q1's own "build now, independent of the breakpoint-data wait" option. `/develop`
+may proceed immediately on §2's mechanism; §7 AC #1 (authoring a real culture template) remains
+blocked on FEAT-051/052/053's real data, tracked separately, not gating this feature's own merge.
 
 ## 1. Goal
 Let a culture panel be reported before every result is verified (KB-21: culture is genuinely

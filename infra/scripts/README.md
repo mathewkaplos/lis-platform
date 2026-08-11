@@ -29,3 +29,27 @@ To restore a backup:
 docker compose exec -T postgres pg_restore -U postgres -d lis --clean \
   < /mnt/volume_nyc1_1785507357628/backups/lis-<timestamp>.dump
 ```
+
+## restore-drill.sh
+
+FEAT-050 (ADR-0044). The actual rehearsal AC #1 asks for -- restores the most
+recent backup into a **throwaway, ephemeral Postgres project**
+(`restore-drill-compose.yml`, project name `lis-restore-drill`), completely
+separate from the real `lis` project's own postgres container/volume. Never
+touches live data. Runs a row-count sanity check on 3 fixed tables
+(`tenant`/`test_definition`/`patient`), logs pass/fail to
+`/var/log/lis-restore-drill.log`, and always tears the scratch project down
+afterward regardless of outcome.
+
+**One-time setup on the droplet** (same idempotent-replace pattern as
+`backup-staging-db.sh`'s own entry above; offset to 03:30 UTC so it always
+drills the backup that just completed at 03:00):
+
+```bash
+(crontab -l 2>/dev/null | grep -v restore-drill.sh; \
+  echo "30 3 * * * /opt/lis/scripts/restore-drill.sh") \
+  | crontab -
+```
+
+Check it ran: `cat /var/log/lis-restore-drill.log`. A `PASS` line includes
+the row counts found; a `FAIL` line states which step failed.

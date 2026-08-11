@@ -42,7 +42,14 @@ jobs:
           context: .
           file: apps/api/Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/lis-platform-api:latest
+          # FEAT-050 (ADR-0044): a second, immutable tag alongside :latest --
+          # :latest gets overwritten every deploy and the droplet prunes its
+          # own local images on every deploy too, so without this tag no
+          # prior version is ever addressable again once a new one deploys.
+          # This tag is what rollback-staging.yml pulls.
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/lis-platform-api:latest
+            ghcr.io/${{ github.repository_owner }}/lis-platform-api:${{ github.sha }}
 
       - name: Build and push migrator
         uses: docker/build-push-action@v6
@@ -58,6 +65,9 @@ jobs:
           # that produces the slim api runtime image. That stage, pushed on
           # its own, is a ready-made image for running `pnpm --filter @lis/db
           # migrate` against staging Postgres -- no separate Dockerfile needed.
+          # No git-SHA tag here (FEAT-050/ADR-0044): rollback is
+          # application-image-only and deliberately never re-runs migrate --
+          # see rollback-staging.yml's own header comment.
 
       - name: Build and push web
         uses: docker/build-push-action@v6
@@ -65,7 +75,10 @@ jobs:
           context: .
           file: apps/web/Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/lis-platform-web:latest
+          # FEAT-050 (ADR-0044): same second immutable tag as api above.
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/lis-platform-web:latest
+            ghcr.io/${{ github.repository_owner }}/lis-platform-web:${{ github.sha }}
           # TASK-031: `next build` requiredEnv()s SESSION_SECRET at module
           # load (see apps/web/Dockerfile's own ARG) -- this is a build-time-
           # only placeholder, deliberately NOT secrets.SESSION_SECRET: an ARG
@@ -147,6 +160,14 @@ jobs:
           scp -i deploy_key -o StrictHostKeyChecking=no \
             infra/scripts/backup-staging-db.sh \
             root@${{ secrets.DEPLOY_HOST }}:/opt/lis/scripts/backup-staging-db.sh
+          scp -i deploy_key -o StrictHostKeyChecking=no \
+            infra/scripts/restore-drill.sh \
+            root@${{ secrets.DEPLOY_HOST }}:/opt/lis/scripts/restore-drill.sh
+          scp -i deploy_key -o StrictHostKeyChecking=no \
+            infra/scripts/restore-drill-compose.yml \
+            root@${{ secrets.DEPLOY_HOST }}:/opt/lis/scripts/restore-drill-compose.yml
+          ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} \
+            'chmod +x /opt/lis/scripts/restore-drill.sh /opt/lis/scripts/backup-staging-db.sh'
 
       - name: Pull and restart on droplet
         run: |

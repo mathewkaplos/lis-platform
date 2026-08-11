@@ -6,6 +6,7 @@ import {
   FlaskConical,
   LayoutDashboard,
   ListChecks,
+  Microscope,
   Ruler,
   TestTube,
   Users,
@@ -35,6 +36,9 @@ import {
 // FEAT-048 (ADR-0043): `labelKey` looks up the nav item's own label in the
 // `Sidebar` message namespace (messages/*.json) -- the literal English
 // strings that used to live here moved there instead.
+// FEAT-052: "Culture reads" added -- the due-reads worklist earns a real
+// nav entry, same standing as "QC violations" (a real list to link to, not
+// a link-only detail route).
 const NAV_ITEMS = [
   { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
   { href: '/patients', labelKey: 'patients', icon: Users },
@@ -42,6 +46,7 @@ const NAV_ITEMS = [
   { href: '/reception', labelKey: 'reception', icon: FlaskConical },
   { href: '/collection-queue', labelKey: 'collectionQueue', icon: ListChecks },
   { href: '/qc-violations', labelKey: 'qcViolations', icon: AlertTriangle },
+  { href: '/culture-reads', labelKey: 'cultureReads', icon: Microscope },
   { href: '/admin/reference-ranges', labelKey: 'referenceRanges', icon: Ruler },
   { href: '/admin/tests', labelKey: 'addTest', icon: TestTube },
 ] as const;

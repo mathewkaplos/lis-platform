@@ -30,6 +30,7 @@ import { ClinicianModule } from './clinician/clinician.module';
 import { AiModule } from './ai/ai.module';
 import { BillingModule } from './billing/billing.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
+import { CultureReadModule } from './culture-read/culture-read.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
 @Module({
@@ -67,6 +68,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     AiModule,
     OnboardingModule,
     BillingModule,
+    CultureReadModule,
   ],
   controllers: [AppController],
   providers: [

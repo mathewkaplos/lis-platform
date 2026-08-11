@@ -1028,6 +1028,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ordered-tests/{orderedTestId}/culture-reads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CultureReadController_schedule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/culture-reads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CultureReadController_listDue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/culture-reads/{id}/record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CultureReadController_record"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1826,6 +1874,30 @@ export interface components {
             method: "cash" | "mobile_money";
             amountCents: number;
             reference?: string;
+        };
+        ScheduleCultureReadDto: {
+            /** Format: date-time */
+            scheduledAt?: string;
+        };
+        CultureReadDto_Output: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            orderedTestId: string;
+            /** Format: date-time */
+            scheduledAt: string;
+            /** Format: date-time */
+            completedAt: string | null;
+            /** @enum {string|null} */
+            result: "no_growth" | "growth" | null;
+            /** Format: uuid */
+            recordedBy: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        RecordCultureReadDto: {
+            /** @enum {string} */
+            result: "no_growth" | "growth";
         };
     };
     responses: never;
@@ -3292,6 +3364,71 @@ export interface operations {
         };
         responses: {
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CultureReadController_schedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orderedTestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleCultureReadDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CultureReadController_listDue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CultureReadDto_Output"][];
+                };
+            };
+        };
+    };
+    CultureReadController_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordCultureReadDto"];
+            };
+        };
+        responses: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

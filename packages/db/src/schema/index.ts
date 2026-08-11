@@ -25,3 +25,4 @@ export * from "./patient-portal-account";
 export * from "./result-release-policy";
 export * from "./tenant";
 export * from "./billing";
+export * from "./culture-read";

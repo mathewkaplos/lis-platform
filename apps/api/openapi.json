@@ -2023,6 +2023,30 @@
           "Clinician"
         ]
       }
+    },
+    "/onboarding/signup": {
+      "post": {
+        "operationId": "OnboardingController_signUp",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignUpDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Onboarding"
+        ]
+      }
     }
   },
   "info": {
@@ -4659,6 +4683,43 @@
           "createdAt"
         ],
         "additionalProperties": false
+      },
+      "SignUpDto": {
+        "type": "object",
+        "properties": {
+          "orgName": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 200
+          },
+          "adminFirstName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "adminLastName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "adminEmail": {
+            "type": "string",
+            "format": "email",
+            "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+          },
+          "adminPassword": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "orgName",
+          "adminFirstName",
+          "adminLastName",
+          "adminEmail",
+          "adminPassword"
+        ]
       }
     }
   }

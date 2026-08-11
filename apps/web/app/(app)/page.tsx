@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getFormatter, getTranslations } from 'next-intl/server';
 import { Button, Card, CardContent, CardHeader, CardTitle, StatCard } from '@lis/ui';
 import { getValidAccessToken } from '@/auth/access-token';
 import { getSession } from '@/auth/get-session';
@@ -7,11 +8,13 @@ import { createLisApiClient } from '@/lib/api-client';
 import { ActiveFilters } from './active-filters';
 import { WorklistView } from './worklist-view';
 
+// FEAT-048 (ADR-0043): `labelKey` looks up the tab's label in the
+// `Dashboard` message namespace -- 'all'/'pending'/'inProgress'/'verified'.
 const STAGE_TABS = [
-  { key: undefined, label: 'All' },
-  { key: 'pending', label: 'Pending' },
-  { key: 'in_progress', label: 'In Progress' },
-  { key: 'verified', label: 'Verified' },
+  { key: undefined, labelKey: 'all' },
+  { key: 'pending', labelKey: 'pending' },
+  { key: 'in_progress', labelKey: 'inProgress' },
+  { key: 'verified', labelKey: 'verified' },
 ] as const;
 
 /**
@@ -40,6 +43,7 @@ export default async function Home({
     : undefined;
   const normalizedPriority = priority ? (priority as 'routine' | 'stat') : undefined;
 
+  const [t, format] = await Promise.all([getTranslations('Dashboard'), getFormatter()]);
   const [accessToken, session] = await Promise.all([getValidAccessToken(), getSession()]);
   if (!accessToken) {
     throw new Error('Your session has expired — please log in again.');
@@ -77,39 +81,39 @@ export default async function Home({
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
-      <h1 className="text-xl font-semibold text-foreground">Worklist</h1>
+      <h1 className="text-xl font-semibold text-foreground">{t('title')}</h1>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Link
           href={filterHref({ stage: 'pending' })}
-          aria-label={`Filter to Pending, ${data.counts.pending} items`}
+          aria-label={`Filter to ${t('pending')}, ${data.counts.pending} items`}
           className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <StatCard
-            label="Pending"
-            value={data.counts.pending}
+            label={t('pending')}
+            value={format.number(data.counts.pending)}
             className={normalizedStage === 'pending' ? 'ring-2 ring-ring' : undefined}
           />
         </Link>
         <Link
           href={filterHref({ stage: 'in_progress' })}
-          aria-label={`Filter to In Progress, ${data.counts.inProgress} items`}
+          aria-label={`Filter to ${t('inProgress')}, ${data.counts.inProgress} items`}
           className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <StatCard
-            label="In Progress"
-            value={data.counts.inProgress}
+            label={t('inProgress')}
+            value={format.number(data.counts.inProgress)}
             className={normalizedStage === 'in_progress' ? 'ring-2 ring-ring' : undefined}
           />
         </Link>
         <Link
           href={filterHref({ stage: 'verified' })}
-          aria-label={`Filter to Verified, ${data.counts.verified} items`}
+          aria-label={`Filter to ${t('verified')}, ${data.counts.verified} items`}
           className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <StatCard
-            label="Verified"
-            value={data.counts.verified}
+            label={t('verified')}
+            value={format.number(data.counts.verified)}
             className={normalizedStage === 'verified' ? 'ring-2 ring-ring' : undefined}
           />
         </Link>
@@ -117,7 +121,7 @@ export default async function Home({
 
       <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Worklist stage">
         {STAGE_TABS.map((tab) => (
-          <Link key={tab.label} href={filterHref({ stage: tab.key })}>
+          <Link key={tab.labelKey} href={filterHref({ stage: tab.key })}>
             <Button
               type="button"
               variant={normalizedStage === tab.key ? 'default' : 'outline'}
@@ -125,7 +129,7 @@ export default async function Home({
               role="tab"
               aria-selected={normalizedStage === tab.key}
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </Button>
           </Link>
         ))}
@@ -133,25 +137,25 @@ export default async function Home({
 
       <Card>
         <CardHeader>
-          <CardTitle>Filters</CardTitle>
+          <CardTitle>{t('filters')}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <form className="flex flex-wrap items-end gap-3" action="/">
             {stage ? <input type="hidden" name="stage" value={stage} /> : null}
             <label className="flex flex-col gap-1 text-sm">
-              Priority
+              {t('priority')}
               <select
                 name="priority"
                 defaultValue={priority ?? ''}
                 className="h-9 rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
               >
-                <option value="">Any</option>
-                <option value="routine">Routine</option>
-                <option value="stat">STAT</option>
+                <option value="">{t('any')}</option>
+                <option value="routine">{t('routine')}</option>
+                <option value="stat">{t('stat')}</option>
               </select>
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              From
+              {t('from')}
               <input
                 type="date"
                 name="createdFrom"
@@ -160,7 +164,7 @@ export default async function Home({
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              To
+              {t('to')}
               <input
                 type="date"
                 name="createdTo"
@@ -168,7 +172,7 @@ export default async function Home({
                 className="h-9 rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
               />
             </label>
-            <Button type="submit">Apply</Button>
+            <Button type="submit">{t('apply')}</Button>
           </form>
           <ActiveFilters
             stage={stage}

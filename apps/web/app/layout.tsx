@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { cookies } from "next/headers";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale } from "next-intl/server";
 import { THEME_COOKIE_NAME, isTheme } from "@/lib/theme";
 import "./globals.css";
 
@@ -31,13 +33,22 @@ export default async function RootLayout({
   // deciding, same as before TASK-036. Only an explicit choice overrides it.
   const dataTheme = isTheme(themeCookie) ? themeCookie : undefined;
 
+  // FEAT-048 (ADR-0043): the resolved locale (cookie, falling back to
+  // DEFAULT_LOCALE -- see i18n/request.ts) drives both the real <html lang>
+  // attribute and the message catalog every route group renders from.
+  // NextIntlClientProvider needs no explicit locale/messages props here --
+  // it reads them from the same request config getLocale() resolves.
+  const locale = await getLocale();
+
   return (
     <html
-      lang="en"
+      lang={locale}
       data-theme={dataTheme}
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <NextIntlClientProvider>{children}</NextIntlClientProvider>
+      </body>
     </html>
   );
 }

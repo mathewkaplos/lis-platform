@@ -1,0 +1,50 @@
+{
+  "Sidebar": {
+    "appName": "LIS Platform",
+    "dashboard": "Dashboard",
+    "patients": "Patients",
+    "orders": "Orders",
+    "reception": "Reception",
+    "collectionQueue": "Collection queue",
+    "qcViolations": "QC violations",
+    "referenceRanges": "Reference ranges",
+    "addTest": "Add test"
+  },
+  "Dashboard": {
+    "title": "Worklist",
+    "pending": "Pending",
+    "inProgress": "In Progress",
+    "verified": "Verified",
+    "all": "All",
+    "filters": "Filters",
+    "priority": "Priority",
+    "any": "Any",
+    "routine": "Routine",
+    "stat": "STAT",
+    "from": "From",
+    "to": "To",
+    "apply": "Apply"
+  },
+  "Orders": {
+    "title": "Orders",
+    "filters": "Filters",
+    "status": "Status",
+    "priority": "Priority",
+    "any": "Any",
+    "ordered": "Ordered",
+    "cancelled": "Cancelled",
+    "routine": "Routine",
+    "stat": "STAT",
+    "from": "From",
+    "to": "To",
+    "apply": "Apply",
+    "showingFirst": "Showing the first {limit} orders. Narrow your filters for more specific results.",
+    "columnPatient": "Patient",
+    "columnTests": "Tests",
+    "columnPriority": "Priority",
+    "columnStatus": "Status",
+    "columnCreatedAt": "Ordered at",
+    "moreTests": "+{count} more",
+    "emptyMessage": "No orders match these filters."
+  }
+}

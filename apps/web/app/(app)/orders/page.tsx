@@ -1,3 +1,4 @@
+import { getTranslations } from 'next-intl/server';
 import { Button, Card, CardContent, CardHeader, CardTitle } from '@lis/ui';
 import { ORDER_SEARCH_RESULT_LIMIT } from '@lis/domain';
 import { getValidAccessToken } from '@/auth/access-token';
@@ -22,6 +23,7 @@ export default async function OrdersPage({
   }>;
 }) {
   const { status, priority, createdFrom, createdTo } = await searchParams;
+  const t = await getTranslations('Orders');
   // The filter form's <select>/<input type="date"> submit an empty string
   // when left at "Any"/blank, not an absent key -- the API's Zod schema
   // rejects an empty string for an enum/datetime field with a real 400
@@ -62,40 +64,40 @@ export default async function OrdersPage({
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
-      <h1 className="text-xl font-semibold text-foreground">Orders</h1>
+      <h1 className="text-xl font-semibold text-foreground">{t('title')}</h1>
 
       <Card>
         <CardHeader>
-          <CardTitle>Filters</CardTitle>
+          <CardTitle>{t('filters')}</CardTitle>
         </CardHeader>
         <CardContent>
           <form className="flex flex-wrap items-end gap-3" action="/orders">
             <label className="flex flex-col gap-1 text-sm">
-              Status
+              {t('status')}
               <select
                 name="status"
                 defaultValue={status ?? ''}
                 className="h-9 rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
               >
-                <option value="">Any</option>
-                <option value="ordered">Ordered</option>
-                <option value="cancelled">Cancelled</option>
+                <option value="">{t('any')}</option>
+                <option value="ordered">{t('ordered')}</option>
+                <option value="cancelled">{t('cancelled')}</option>
               </select>
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              Priority
+              {t('priority')}
               <select
                 name="priority"
                 defaultValue={priority ?? ''}
                 className="h-9 rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
               >
-                <option value="">Any</option>
-                <option value="routine">Routine</option>
-                <option value="stat">STAT</option>
+                <option value="">{t('any')}</option>
+                <option value="routine">{t('routine')}</option>
+                <option value="stat">{t('stat')}</option>
               </select>
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              From
+              {t('from')}
               <input
                 type="date"
                 name="createdFrom"
@@ -104,7 +106,7 @@ export default async function OrdersPage({
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              To
+              {t('to')}
               <input
                 type="date"
                 name="createdTo"
@@ -112,7 +114,7 @@ export default async function OrdersPage({
                 className="h-9 rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
               />
             </label>
-            <Button type="submit">Apply</Button>
+            <Button type="submit">{t('apply')}</Button>
           </form>
         </CardContent>
       </Card>
@@ -120,8 +122,7 @@ export default async function OrdersPage({
       <OrdersTable rows={orders} testNameById={testNameById} />
       {orders.length === ORDER_SEARCH_RESULT_LIMIT ? (
         <p className="text-xs text-text-secondary">
-          Showing the first {ORDER_SEARCH_RESULT_LIMIT} orders. Narrow your filters for more
-          specific results.
+          {t('showingFirst', { limit: ORDER_SEARCH_RESULT_LIMIT })}
         </p>
       ) : null}
     </div>

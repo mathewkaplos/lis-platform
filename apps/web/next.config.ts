@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -12,4 +13,9 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@lis/ui"],
 };
 
-export default nextConfig;
+// FEAT-048 (ADR-0043): points at i18n/request.ts, which resolves the locale
+// from a cookie -- no `[locale]` URL segment, so this plugin never touches
+// routing/middleware (proxy.ts is untouched by this feature).
+const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
+
+export default withNextIntl(nextConfig);

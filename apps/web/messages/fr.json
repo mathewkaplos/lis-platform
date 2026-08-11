@@ -1,0 +1,50 @@
+{
+  "Sidebar": {
+    "appName": "LIS Platform",
+    "dashboard": "Tableau de bord",
+    "patients": "Patients",
+    "orders": "Commandes",
+    "reception": "Réception",
+    "collectionQueue": "File d'attente de prélèvement",
+    "qcViolations": "Anomalies CQ",
+    "referenceRanges": "Valeurs de référence",
+    "addTest": "Ajouter un test"
+  },
+  "Dashboard": {
+    "title": "Liste de travail",
+    "pending": "En attente",
+    "inProgress": "En cours",
+    "verified": "Vérifié",
+    "all": "Tous",
+    "filters": "Filtres",
+    "priority": "Priorité",
+    "any": "Tous",
+    "routine": "Routine",
+    "stat": "STAT",
+    "from": "Du",
+    "to": "Au",
+    "apply": "Appliquer"
+  },
+  "Orders": {
+    "title": "Commandes",
+    "filters": "Filtres",
+    "status": "Statut",
+    "priority": "Priorité",
+    "any": "Tous",
+    "ordered": "Commandée",
+    "cancelled": "Annulée",
+    "routine": "Routine",
+    "stat": "STAT",
+    "from": "Du",
+    "to": "Au",
+    "apply": "Appliquer",
+    "showingFirst": "Affichage des {limit} premières commandes. Affinez vos filtres pour des résultats plus précis.",
+    "columnPatient": "Patient",
+    "columnTests": "Tests",
+    "columnPriority": "Priorité",
+    "columnStatus": "Statut",
+    "columnCreatedAt": "Commandée le",
+    "moreTests": "+{count} de plus",
+    "emptyMessage": "Aucune commande ne correspond à ces filtres."
+  }
+}

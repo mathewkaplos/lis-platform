@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useFormatter, useTranslations } from 'next-intl';
 import { Badge, DataTable } from '@lis/ui';
 
 export interface OrderRow {
@@ -37,13 +38,19 @@ export function OrdersTable({
   testNameById: Map<string, string>;
 }) {
   const router = useRouter();
+  const t = useTranslations('Orders');
+  // FEAT-048 (ADR-0043): the AC's own date-formatting proof point --
+  // replaces the previous ad hoc `new Date(...).toLocaleString()` with a
+  // locale-aware formatter driven by the same cookie every other screen
+  // reads.
+  const format = useFormatter();
 
   return (
     <DataTable
       columns={[
         {
           id: 'patient',
-          header: 'Patient',
+          header: t('columnPatient'),
           cell: (row) =>
             row.patient ? (
               <span>
@@ -56,39 +63,43 @@ export function OrdersTable({
         },
         {
           id: 'tests',
-          header: 'Tests',
+          header: t('columnTests'),
           cell: (row) => {
             const names = row.orderedTests.map(
-              (t) => testNameById.get(t.testDefinitionId) ?? t.testDefinitionId,
+              (test) => testNameById.get(test.testDefinitionId) ?? test.testDefinitionId,
             );
             const shown = names.slice(0, 2);
             const overflow = names.length - shown.length;
             return (
               <span className="text-sm">
                 {shown.join(', ')}
-                {overflow > 0 ? ` +${overflow} more` : ''}
+                {overflow > 0 ? ` ${t('moreTests', { count: overflow })}` : ''}
               </span>
             );
           },
         },
         {
           id: 'priority',
-          header: 'Priority',
+          header: t('columnPriority'),
           cell: (row) => (
             <Badge variant={PRIORITY_VARIANT[row.priority] ?? 'outline'}>{row.priority}</Badge>
           ),
         },
         {
           id: 'status',
-          header: 'Status',
+          header: t('columnStatus'),
           cell: (row) => (
             <Badge variant={STATUS_VARIANT[row.status] ?? 'outline'}>{row.status}</Badge>
           ),
         },
         {
           id: 'createdAt',
-          header: 'Ordered at',
-          cell: (row) => new Date(row.createdAt).toLocaleString(),
+          header: t('columnCreatedAt'),
+          cell: (row) =>
+            format.dateTime(new Date(row.createdAt), {
+              dateStyle: 'medium',
+              timeStyle: 'short',
+            }),
           sortable: true,
           sortValue: (row) => row.createdAt,
         },
@@ -96,7 +107,7 @@ export function OrdersTable({
       data={rows}
       getRowId={(row) => row.id}
       onRowClick={(row) => router.push(`/orders/${row.id}`)}
-      emptyMessage="No orders match these filters."
+      emptyMessage={t('emptyMessage')}
     />
   );
 }

@@ -59,8 +59,9 @@ jobs:
           # expansion at all on the body; every $VAR below is resolved only
           # once, by the remote bash -s session, from the SHA_TARGET/
           # API_IMAGE_REF/WEB_IMAGE_REF exports right before this heredoc.
-          # Avoids the escaping mistakes a mixed GH-Actions-${{ }}-plus-
-          # bash-$VAR unquoted heredoc invites.
+          # Avoids the escaping mistakes a heredoc mixing GitHub Actions'
+          # own expression syntax with unescaped bash $VAR references would
+          # invite.
           ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} \
             "SHA_TARGET='$ROLLBACK_SHA' API_IMAGE_BASE='$API_IMAGE' WEB_IMAGE_BASE='$WEB_IMAGE' bash -s" <<'REMOTE'
           set -euo pipefail

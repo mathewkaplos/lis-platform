@@ -1,6 +1,25 @@
 # Implementation Proposal: FEAT-050 DR, backup rehearsal & scale hardening
-Status: APPROVED
+Status: IMPLEMENTED (merge commits: #495 f57930a, #496 5267d09, #497 e56b049)
 ADR: adr-0044 (accepted)    Date: 2026-08-11    Backlog ID: FEAT-050 (#59)
+
+**Both ACs proven live against the real staging droplet, 2026-08-11:**
+- **Restore drill**: ran for real, twice (first run caught two genuine bugs -- see §5's own
+  "Real finding" entries -- second run passed clean). `PASS restore-drill: ...restored
+  successfully (test_definition=19 analyte=45 code_system_value=57)`. Live database's own row
+  counts confirmed identical before/after (`0|19|0`), scratch project confirmed fully torn down
+  (zero leftover containers/volumes/networks). Cron installed (`30 3 * * *`).
+- **Rollback rehearsal**: triggered for real via `workflow_dispatch` at 10:57:41Z, completed
+  10:58:42Z -- **~60 seconds**, well under the AC's 5-minute budget. Verified not a no-op: `docker
+  inspect`'s own image content-hash IDs for both `lis-api-1`/`lis-web-1` changed
+  (`174042888d80...`/`608b41d838d8...` → `3d73361ff133...`/`70412a781739...`), proving genuinely
+  different image content was deployed, not a same-version cycle. Staging then redeployed to
+  main's real current state as the rehearsal's own final step.
+- **Real bug found and fixed along the way** (separate from the two restore-drill findings):
+  `rollback-staging.yml` itself silently registered with 0 runnable jobs due to a doc comment
+  literally containing the empty-expression text `` ${{ }} `` -- GitHub Actions scans an entire
+  `run:` block for `${{ }}` patterns regardless of bash `#` comments, so this invalidated the whole
+  workflow file. Found only by actually trying to trigger it; fixed and confirmed with
+  `actionlint` (PR #497).
 
 **Approved 2026-08-11** via the native options-prompt (all three §10 questions accepted as
 recommended: ADR-0044's scope cuts as drafted, application-image-only rollback boundary, and

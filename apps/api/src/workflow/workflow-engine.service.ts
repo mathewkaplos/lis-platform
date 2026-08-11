@@ -57,6 +57,14 @@ export class WorkflowEngineService implements OnModuleInit {
     this.outboxHandlers.register('SlaBreached', (payload, tenantId) =>
       this.handleEvent('SlaBreached', payload, tenantId),
     );
+    // FEAT-052 (ADR-0046): fired by CultureReadController.record() when a
+    // human-recorded culture read result is 'growth' -- a published rule
+    // (`on: 'CultureGrowthDetected'`) dispatches the existing AddReflexTest
+    // handler unmodified, reusing FEAT-030's lineage/cycle/depth-bound
+    // mechanism verbatim for the organism-ID reflex.
+    this.outboxHandlers.register('CultureGrowthDetected', (payload, tenantId) =>
+      this.handleEvent('CultureGrowthDetected', payload, tenantId),
+    );
   }
 
   async handleEvent(

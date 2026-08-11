@@ -7,6 +7,7 @@
     "reception": "Reception",
     "collectionQueue": "Collection queue",
     "qcViolations": "QC violations",
+    "cultureReads": "Culture reads",
     "referenceRanges": "Reference ranges",
     "addTest": "Add test"
   },

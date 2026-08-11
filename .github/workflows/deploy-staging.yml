@@ -158,6 +158,9 @@ jobs:
             db/seed/haematology-catalog.sql \
             root@${{ secrets.DEPLOY_HOST }}:/opt/lis/seed/haematology-catalog.sql
           scp -i deploy_key -o StrictHostKeyChecking=no \
+            db/seed/microbiology-catalog.sql \
+            root@${{ secrets.DEPLOY_HOST }}:/opt/lis/seed/microbiology-catalog.sql
+          scp -i deploy_key -o StrictHostKeyChecking=no \
             infra/scripts/backup-staging-db.sh \
             root@${{ secrets.DEPLOY_HOST }}:/opt/lis/scripts/backup-staging-db.sh
           scp -i deploy_key -o StrictHostKeyChecking=no \
@@ -352,6 +355,10 @@ jobs:
           if ! docker compose exec -T postgres psql -U postgres -d lis \
               -v ON_ERROR_STOP=1 -f - < seed/haematology-catalog.sql; then
             echo "WARNING: haematology-catalog.sql seed failed -- catalog data may be incomplete this deploy, api/web will still restart" >&2
+          fi
+          if ! docker compose exec -T postgres psql -U postgres -d lis \
+              -v ON_ERROR_STOP=1 -f - < seed/microbiology-catalog.sql; then
+            echo "WARNING: microbiology-catalog.sql seed failed -- catalog data may be incomplete this deploy, api/web will still restart" >&2
           fi
 
           docker compose up -d valkey keycloak < /dev/null

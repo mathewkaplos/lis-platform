@@ -38,6 +38,11 @@ export {
 // evaluating as `undefined` at runtime rather than being rejected at
 // publish time -- a real but modest gap, not a safety boundary (Skill
 // entry #9: `when` is never the safety boundary regardless).
+//
+// `result` added by FEAT-052 for `CultureGrowthDetected`'s own payload
+// (`@lis/domain`'s `cultureGrowthDetectedEventPayloadSchema`) -- same "fold
+// the new event's genuinely different field into this one flat list"
+// treatment `priority`/`targetMinutes` already got for `SlaBreached`.
 export const ALLOWED_FIELDS = [
   'analyteId',
   'valueNum',
@@ -48,6 +53,7 @@ export const ALLOWED_FIELDS = [
   'dataType',
   'priority',
   'targetMinutes',
+  'result',
 ] as const;
 export type AllowedField = (typeof ALLOWED_FIELDS)[number];
 

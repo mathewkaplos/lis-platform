@@ -38,6 +38,12 @@ echo "Seed applied: haematology-catalog.sql (placeholder CBC + differential pane
 docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/sla-targets.sql
 echo "Seed applied: sla-targets.sql (placeholder routine/STAT turnaround targets — see its header comment)."
 
+# FEAT-052: third discipline seed (microbiology), same placeholder framing --
+# must run before default-report-templates.sql below, same ordering
+# requirement as chemistry/haematology.
+docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/microbiology-catalog.sql
+echo "Seed applied: microbiology-catalog.sql (placeholder culture/organism-ID reflex pair — see its header comment)."
+
 # FEAT-032: default, published report_template_version for every seeded
 # test_definition (chemistry + haematology, both already applied above) --
 # must run after both discipline seeds.

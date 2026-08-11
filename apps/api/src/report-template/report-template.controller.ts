@@ -11,9 +11,20 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import {
+  reportTemplateCreateSchema,
+  reportTemplateListSchema,
+  reportTemplateResultSchema,
+  reportTemplateVersionCreateSchema,
+  reportTemplateVersionResultSchema,
+  type ReportTemplateDefinition,
+  type ReportTemplateList,
+  type ReportTemplateResult,
+  type ReportTemplateVersionResult,
+} from '@lis/domain';
 import { reportTemplate, reportTemplateVersion, testAnalyte } from '@lis/db';
 import { and, eq, max } from 'drizzle-orm';
-import { createZodDto, ZodValidationPipe } from 'nestjs-zod';
+import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { CapabilityGuard } from '../auth/capability.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -24,11 +35,6 @@ import type { RequestContext } from '../auth/request-context';
 import type { RequestWithTx } from '../auth/tenant-context.interceptor';
 import { TenantContextInterceptor } from '../auth/tenant-context.interceptor';
 import { validateReportTemplateDefinition } from './report-template-guardrails';
-import {
-  reportTemplateCreateSchema,
-  reportTemplateVersionCreateSchema,
-} from './report-template-schemas';
-import type { ReportTemplateDefinition } from './report-template-types';
 
 type Tx = RequestWithTx['tx'];
 type TemplateRow = typeof reportTemplate.$inferSelect;
@@ -44,19 +50,29 @@ class ReportTemplateCreateDto extends createZodDto(
 class ReportTemplateVersionCreateDto extends createZodDto(
   reportTemplateVersionCreateSchema,
 ) {}
+class ReportTemplateVersionResultDto extends createZodDto(
+  reportTemplateVersionResultSchema,
+) {}
+class ReportTemplateResultDto extends createZodDto(
+  reportTemplateResultSchema,
+) {}
+class ReportTemplateListDto extends createZodDto(reportTemplateListSchema) {}
 
-function toVersionDto(row: VersionRow) {
+function toVersionDto(row: VersionRow): ReportTemplateVersionResult {
   return {
     id: row.id,
     reportTemplateId: row.reportTemplateId,
     version: row.version,
-    status: row.status,
+    status: row.status as ReportTemplateVersionResult['status'],
     definition: row.definition as ReportTemplateDefinition,
     createdAt: row.createdAt.toISOString(),
   };
 }
 
-function toTemplateDto(row: TemplateRow, versions: VersionRow[]) {
+function toTemplateDto(
+  row: TemplateRow,
+  versions: VersionRow[],
+): ReportTemplateResult {
   return {
     id: row.id,
     testDefinitionId: row.testDefinitionId,
@@ -93,12 +109,13 @@ async function loadValidAnalyteIds(
 export class ReportTemplateController {
   @Post()
   @RequireCapability('manage_report_templates')
+  @ZodResponse({ type: ReportTemplateResultDto, status: 201 })
   async create(
     @Body(new ZodValidationPipe(reportTemplateCreateSchema))
     body: ReportTemplateCreateDto,
     @CurrentUser() user: RequestContext,
     @DbTx() tx: Tx,
-  ) {
+  ): Promise<ReportTemplateResult> {
     const [existing] = await tx
       .select({ id: reportTemplate.id })
       .from(reportTemplate)
@@ -139,13 +156,14 @@ export class ReportTemplateController {
 
   @Post(':id/versions')
   @RequireCapability('manage_report_templates')
+  @ZodResponse({ type: ReportTemplateVersionResultDto, status: 201 })
   async createVersion(
     @Param(new ZodValidationPipe(idParamSchema)) { id }: IdParamDto,
     @Body(new ZodValidationPipe(reportTemplateVersionCreateSchema))
     body: ReportTemplateVersionCreateDto,
     @CurrentUser() user: RequestContext,
     @DbTx() tx: Tx,
-  ) {
+  ): Promise<ReportTemplateVersionResult> {
     const [templateRow] = await tx
       .select()
       .from(reportTemplate)
@@ -186,11 +204,12 @@ export class ReportTemplateController {
   @Post(':id/versions/:versionId/publish')
   @HttpCode(200)
   @RequireCapability('manage_report_templates')
+  @ZodResponse({ type: ReportTemplateVersionResultDto, status: 200 })
   async publish(
     @Param(new ZodValidationPipe(versionIdParamSchema))
     { id, versionId }: VersionIdParamDto,
     @DbTx() tx: Tx,
-  ) {
+  ): Promise<ReportTemplateVersionResult> {
     const [templateRow] = await tx
       .select()
       .from(reportTemplate)
@@ -257,7 +276,8 @@ export class ReportTemplateController {
   }
 
   @Get()
-  async list(@DbTx() tx: Tx) {
+  @ZodResponse({ type: ReportTemplateListDto, status: 200 })
+  async list(@DbTx() tx: Tx): Promise<ReportTemplateList> {
     const templates = await tx.select().from(reportTemplate);
     const versions = await tx.select().from(reportTemplateVersion);
     const versionsByTemplateId = new Map<string, VersionRow[]>();
@@ -266,8 +286,10 @@ export class ReportTemplateController {
       bucket.push(version);
       versionsByTemplateId.set(version.reportTemplateId, bucket);
     }
-    return templates.map((template) =>
-      toTemplateDto(template, versionsByTemplateId.get(template.id) ?? []),
-    );
+    return {
+      templates: templates.map((template) =>
+        toTemplateDto(template, versionsByTemplateId.get(template.id) ?? []),
+      ),
+    };
   }
 }

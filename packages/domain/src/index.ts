@@ -18,3 +18,5 @@ export * from "./portal";
 export * from "./care-relationship";
 export * from "./onboarding";
 export * from "./billing";
+export * from "./conditions";
+export * from "./report-template";

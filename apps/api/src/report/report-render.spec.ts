@@ -5,7 +5,7 @@ import {
   renderTemplateReport,
 } from './report-render';
 import type { ChemistryReportInput } from './report.types';
-import type { ReportTemplateDefinition } from '../report-template/report-template-types';
+import type { ReportTemplateDefinition } from '@lis/domain';
 
 /**
  * TASK-058 (FEAT-016) originally exercised `renderChemistryReport` directly

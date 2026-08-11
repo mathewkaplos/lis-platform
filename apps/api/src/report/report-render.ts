@@ -5,7 +5,7 @@ import { evaluateCondition } from '../workflow/workflow-condition-evaluator';
 import type {
   ReportTemplateDefinition,
   TemplateFieldDefinition,
-} from '../report-template/report-template-types';
+} from '@lis/domain';
 import type {
   ChemistryReportAnalyteResult,
   ChemistryReportInput,
@@ -19,7 +19,7 @@ import type {
  * `definition.sections`/`fields` tree instead. The patient/specimen/order
  * header and verification footer stay fixed structural chrome, rendered
  * identically regardless of template (proposal's own field-type scoping,
- * `report-template-types.ts`'s header comment) -- no field type in this
+ * `packages/domain/src/report-template.ts`'s header comment) -- no field type in this
  * proposal's 5-type scope models "patient info," so templating only the
  * results body (not the whole document) is the honest boundary of what's
  * actually configurable here.

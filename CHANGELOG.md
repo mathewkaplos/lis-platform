@@ -499,3 +499,19 @@ frontmatter declaration (this entry's own commit).
   the SQL column to dodge the flagged words) directly in the check's own header comment, mirroring
   how the first documented false positive (TASK-020) is already handled there.
 - **Files:** `.github/workflows/constitution-gate.yml`
+
+## 2026-08-11 (4)
+
+- **Friction:** FEAT-051 (organism/antimicrobial/breakpoint_table/breakpoint, ADR-0045) correctly
+  designed four new global (no `tenant_id`, no RLS) tables and correctly explained why in the
+  schema file's own header comment -- but `constitution-gate.yml`'s "Require RLS alongside any new
+  tenant table" job requires a machine-checkable `-- RLS-exempt per ADR-NNNN` marker on the line
+  immediately above each `CREATE TABLE` statement in the migration diff itself, which the migration
+  never got. `engineering/database-design` (loaded during this feature's own proposal drafting) had
+  no entry documenting this requirement at all -- caught only by a real failed `check-invariants`
+  run on the PR, not by any local check or Skill guidance.
+- **Area:** existing-skill:engineering/database-design
+- **Change:** added entry #16 to `engineering/database-design` documenting the marker requirement
+  and the exact command to check for it before pushing (`git diff origin/main...HEAD --
+  'db/migrations/*.sql' | grep -B1 '^+CREATE TABLE'`).
+- **Files:** `~/work/lis-engineering/skills/engineering/database-design/SKILL.md`

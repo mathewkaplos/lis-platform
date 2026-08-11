@@ -1,6 +1,10 @@
 # Implementation Proposal: FEAT-052 Culture workflow & reflex cascade
-Status: DRAFT
-ADR: adr-0046 (proposed)    Date: 2026-08-11    Backlog ID: FEAT-052 (#502)
+Status: APPROVED
+ADR: adr-0046 (accepted)    Date: 2026-08-11    Backlog ID: FEAT-052 (#502)
+
+**Approved 2026-08-11** via the native options-prompt: all three §10 questions accepted as
+drafted (ADR-0046's detector-not-timer design, the single-read v1 scope cut, and LOINC 634-6 for
+the "Organism identified" analyte).
 
 ## 1. Goal
 Model the multi-day, iterative, preliminary-by-default culture process (`setup → incubation

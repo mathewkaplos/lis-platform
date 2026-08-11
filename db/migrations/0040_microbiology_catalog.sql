@@ -1,3 +1,4 @@
+-- RLS-exempt per ADR-0045 (global reference data, identical across tenants)
 CREATE TABLE "antimicrobial" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"code_system_value_id" uuid NOT NULL,
@@ -6,6 +7,7 @@ CREATE TABLE "antimicrobial" (
 	CONSTRAINT "antimicrobial_code_system_value_id_unique" UNIQUE("code_system_value_id")
 );
 --> statement-breakpoint
+-- RLS-exempt per ADR-0045 (global reference data, identical across tenants)
 CREATE TABLE "breakpoint" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"breakpoint_table_id" uuid NOT NULL,
@@ -18,6 +20,7 @@ CREATE TABLE "breakpoint" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+-- RLS-exempt per ADR-0045 (global reference data, identical across tenants)
 CREATE TABLE "breakpoint_table" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"publisher" text NOT NULL,
@@ -28,6 +31,7 @@ CREATE TABLE "breakpoint_table" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+-- RLS-exempt per ADR-0045 (global reference data, identical across tenants)
 CREATE TABLE "organism" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"code_system_value_id" uuid NOT NULL,

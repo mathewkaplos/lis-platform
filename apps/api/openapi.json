@@ -1248,6 +1248,37 @@
         ]
       }
     },
+    "/v1/reports/network-amr-surveillance": {
+      "get": {
+        "operationId": "AmrNetworkSurveillanceController_report",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkAmrSurveillanceReportDto_Output"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "AmrNetworkSurveillance"
+        ]
+      }
+    },
     "/v1/report-templates": {
       "post": {
         "operationId": "ReportTemplateController_create",
@@ -3707,6 +3738,62 @@
                 "resistantCount",
                 "total",
                 "resistantPct"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkAmrSurveillanceReportDto_Output": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "organismDisplay": {
+                  "type": "string"
+                },
+                "antimicrobialDisplay": {
+                  "type": "string"
+                },
+                "timeBucket": {
+                  "type": "string"
+                },
+                "suppressed": {
+                  "type": "boolean"
+                },
+                "susceptibleCount": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "intermediateCount": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "resistantCount": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "totalCount": {
+                  "type": "number",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "organismDisplay",
+                "antimicrobialDisplay",
+                "timeBucket",
+                "suppressed",
+                "susceptibleCount",
+                "intermediateCount",
+                "resistantCount",
+                "totalCount"
               ],
               "additionalProperties": false
             }

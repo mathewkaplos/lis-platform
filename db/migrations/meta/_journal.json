@@ -295,6 +295,13 @@
       "when": 1786470013279,
       "tag": "0041_antimicrobial_analyte_id",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1786474034291,
+      "tag": "0042_tenant_amr_surveillance_opt_in",
+      "breakpoints": true
     }
   ]
 }

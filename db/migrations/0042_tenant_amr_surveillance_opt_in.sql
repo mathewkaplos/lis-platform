@@ -1,0 +1,1 @@
+ALTER TABLE "tenant" ADD COLUMN "amr_surveillance_opt_in" boolean DEFAULT false NOT NULL;

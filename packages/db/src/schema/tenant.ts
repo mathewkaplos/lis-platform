@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, uuid, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, pgEnum, uuid, text, timestamp, boolean } from "drizzle-orm/pg-core";
 
 // Global registry table -- no tenant_id, no RLS. Necessarily exempt: this
 // table defines the tenants RLS scopes BY, so it cannot itself be scoped by
@@ -27,5 +27,12 @@ export const tenant = pgTable("tenant", {
   // guarantee.
   connectionRef: text("connection_ref"),
   region: text("region"),
+  // FEAT-056 (ADR-0048 decision 2): explicit per-tenant opt-in required
+  // before this tenant's own data is ever aggregated into a cross-tenant
+  // AMR surveillance report. Default false -- no tenant is aggregated
+  // without having explicitly agreed to it. One flag on this table's own
+  // existing global registry row, not a new table (the smallest schema
+  // addition that satisfies the requirement).
+  amrSurveillanceOptIn: boolean("amr_surveillance_opt_in").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

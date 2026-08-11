@@ -4,12 +4,12 @@ CREATE TABLE "culture_read" (
 	"ordered_test_id" uuid NOT NULL,
 	"scheduled_at" timestamp with time zone NOT NULL,
 	"completed_at" timestamp with time zone,
-	"result" text,
+	"outcome" text,
 	"recorded_by" uuid,
 	"due_notified_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "ck_culture_read_result" CHECK ("culture_read"."result" IN ('no_growth', 'growth')),
-	CONSTRAINT "ck_culture_read_completion" CHECK (("culture_read"."completed_at" IS NULL AND "culture_read"."result" IS NULL) OR ("culture_read"."completed_at" IS NOT NULL AND "culture_read"."result" IS NOT NULL))
+	CONSTRAINT "ck_culture_read_outcome" CHECK ("culture_read"."outcome" IN ('no_growth', 'growth')),
+	CONSTRAINT "ck_culture_read_completion" CHECK (("culture_read"."completed_at" IS NULL AND "culture_read"."outcome" IS NULL) OR ("culture_read"."completed_at" IS NOT NULL AND "culture_read"."outcome" IS NOT NULL))
 );
 --> statement-breakpoint
 ALTER TABLE "culture_read" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint

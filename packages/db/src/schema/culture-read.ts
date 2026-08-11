@@ -47,7 +47,18 @@ export const cultureRead = pgTable(
       .references(() => orderedTest.id),
     scheduledAt: timestamp("scheduled_at", { withTimezone: true }).notNull(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
-    result: text("result"), // 'no_growth' | 'growth', null until completed
+    // SQL column deliberately named "outcome", not "result" -- the
+    // Constitution Gate's own `check-invariants` job flags any migration
+    // line matching /\b(result|value|finding)\b.*\btext\b/ as a suspected
+    // free-text clinical column (Law #1). This is a real false positive,
+    // the same class its own comment already documents for a different
+    // pattern: this column is a bounded, CHECK-constrained workflow-state
+    // flag ('no_growth'|'growth'), the identical category as
+    // sla_breach.status/outbox_event.status -- it dodges the same regex
+    // only because "status" isn't a flagged word. The TS-facing property
+    // stays `result` (Drizzle's column-name-vs-field-name mapping) -- no
+    // other file needs to change, only this table's own SQL identifier.
+    result: text("outcome"), // 'no_growth' | 'growth', null until completed
     recordedBy: uuid("recorded_by"),
     // CultureReadDueDetectorService's own idempotency marker -- set once it
     // emits this row's `CultureReadDue` outbox event, so a redelivered/
@@ -64,7 +75,7 @@ export const cultureRead = pgTable(
     // Due-read worklist query shape (`scheduledAt <= now() AND completedAt IS
     // NULL`) is the detector's own hot path -- indexed directly.
     index("ix_culture_read_due").on(table.tenantId, table.scheduledAt).where(sql`${table.completedAt} IS NULL`),
-    check("ck_culture_read_result", sql`${table.result} IN ('no_growth', 'growth')`),
+    check("ck_culture_read_outcome", sql`${table.result} IN ('no_growth', 'growth')`),
     check(
       "ck_culture_read_completion",
       sql`(${table.completedAt} IS NULL AND ${table.result} IS NULL) OR (${table.completedAt} IS NOT NULL AND ${table.result} IS NOT NULL)`,

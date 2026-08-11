@@ -1,5 +1,5 @@
 {
-  "id": "3e503e22-23e0-4256-bb3d-d83764560ee6",
+  "id": "f74629d3-051c-4fea-9ee1-393fdefad309",
   "prevId": "220e38f6-54bc-4bc3-98b2-a80428c45cb3",
   "version": "7",
   "dialect": "postgresql",
@@ -4811,8 +4811,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "result": {
-          "name": "result",
+        "outcome": {
+          "name": "outcome",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -4916,11 +4916,11 @@
       "checkConstraints": {
         "ck_culture_read_result": {
           "name": "ck_culture_read_result",
-          "value": "\"culture_read\".\"result\" IN ('no_growth', 'growth')"
+          "value": "\"culture_read\".\"outcome\" IN ('no_growth', 'growth')"
         },
         "ck_culture_read_completion": {
           "name": "ck_culture_read_completion",
-          "value": "(\"culture_read\".\"completed_at\" IS NULL AND \"culture_read\".\"result\" IS NULL) OR (\"culture_read\".\"completed_at\" IS NOT NULL AND \"culture_read\".\"result\" IS NOT NULL)"
+          "value": "(\"culture_read\".\"completed_at\" IS NULL AND \"culture_read\".\"outcome\" IS NULL) OR (\"culture_read\".\"completed_at\" IS NOT NULL AND \"culture_read\".\"outcome\" IS NOT NULL)"
         }
       },
       "isRLSEnabled": true

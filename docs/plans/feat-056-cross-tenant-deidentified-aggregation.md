@@ -1,6 +1,13 @@
 # Implementation Proposal: FEAT-056 Cross-tenant de-identified aggregation
-Status: DRAFT
-ADR: adr-0048 (proposed)    Date: 2026-08-11    Backlog ID: FEAT-056 (#518)
+Status: APPROVED (speculative — see §10 Q1)
+ADR: adr-0048 (accepted)    Date: 2026-08-11    Backlog ID: FEAT-056 (#518)
+
+**Approved 2026-08-11** via the native options-prompt: all three §10 questions accepted as drafted
+— approved now on a speculative basis (§10 Q1), a new machine-only Keycloak client + capability
+for authorization (§10 Q2, matching `gateway_ingest`/`interop_ingest`'s own precedent), n<5/
+monthly as the v1 suppression policy default (§10 Q3). **Implementation cannot begin until
+FEAT-051, FEAT-053, and FEAT-055 have all actually shipped** — this approval unblocks the design,
+not the code.
 
 ## 1. Goal
 Generalize `FEAT-055`'s own tenant-scoped AMR surveillance report into a real, safe network-wide

@@ -32,7 +32,9 @@ this pre-launch stage.
   throwaway scratch Postgres container (its own `docker compose -p lis-restore-drill -f
   restore-drill-compose.yml` project, an ephemeral named volume, a `mem_limit` sized within the
   droplet's already-tight budget per `docker-pnpm-monorepo-deploy` Skill entry #13), runs a row-count
-  sanity check on 3 fixed tables (`tenant`, `test_definition`, `patient`), logs pass/fail, and
+  sanity check on 3 fixed tables (`test_definition`, `analyte`, `code_system_value` -- not
+  `tenant`/`patient`, both confirmed live to be legitimately zero on this real pre-launch staging
+  environment), logs pass/fail, and
   **always** tears the scratch project down (`docker compose ... down -v`) in a `trap`/`finally`,
   regardless of outcome. Every `docker compose exec -T` call gets `< /dev/null`
   (`docker-pnpm-monorepo-deploy` Skill entry #10 — this script isn't itself run over an SSH
@@ -99,6 +101,15 @@ this pre-launch stage.
   the real `api`/`web` containers there (the same disruption profile any real deploy already has —
   staging exists for exactly this). Flagged as §10 question 3, since it's a real, if brief and
   fully reversible, live-infrastructure action, not something to execute without explicit sign-off.
+- **Real finding during implementation, caught only by querying the live staging database directly
+  before trusting the sanity-check design (2026-08-11):** the original draft of this proposal (and
+  ADR-0044) named `tenant`/`test_definition`/`patient` as the drill's 3 sanity-check tables. A live
+  query against the real staging database showed `tenant=0` and `patient=0` — this is a genuinely
+  pre-launch environment with no onboarded tenant and no registered patient yet, not a bug. A drill
+  checking those two tables would fail on every single run regardless of whether the restore
+  actually worked. Fixed before the drill was ever run for real: swapped to
+  `test_definition`/`analyte`/`code_system_value`, all three confirmed live to be reliably
+  populated by the seed catalogs this environment already has loaded.
 
 ## 6. Risks
 - **A second, even briefly-resident Postgres container on a 1vCPU/1GB box with an already-tight

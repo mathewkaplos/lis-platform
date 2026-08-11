@@ -68,10 +68,18 @@ fi
 # This is deliberately not "does pg_restore exit 0" alone -- pg_restore can
 # exit 0 while having skipped/errored on individual objects it treats as
 # non-fatal; a real row-count proves data actually landed.
+#
+# `test_definition`/`analyte`/`code_system_value` -- not `tenant`/`patient` --
+# confirmed live against the real staging database before picking these
+# (2026-08-11): this is a pre-launch environment with zero onboarded tenants
+# and zero patients yet (both real, expected zeros, not a restore bug), while
+# the seeded chemistry/haematology catalogs guarantee these three tables are
+# always populated. Checking tenant/patient here would make this drill fail
+# every single run regardless of whether the restore actually worked.
 CHECK_SQL="SELECT
-  (SELECT count(*) FROM tenant) AS tenant_count,
   (SELECT count(*) FROM test_definition) AS test_definition_count,
-  (SELECT count(*) FROM patient) AS patient_count;"
+  (SELECT count(*) FROM analyte) AS analyte_count,
+  (SELECT count(*) FROM code_system_value) AS code_system_value_count;"
 
 RESULT=$(docker compose -p "$SCRATCH_PROJECT" -f "$SCRATCH_COMPOSE" exec -T postgres \
   psql -U postgres -d lis -t -A -F',' -c "$CHECK_SQL" < /dev/null 2>>"$LOG_FILE")
@@ -80,14 +88,14 @@ if [ $? -ne 0 ] || [ -z "$RESULT" ]; then
   exit 1
 fi
 
-TENANT_COUNT=$(echo "$RESULT" | cut -d',' -f1)
-TEST_DEF_COUNT=$(echo "$RESULT" | cut -d',' -f2)
-PATIENT_COUNT=$(echo "$RESULT" | cut -d',' -f3)
+TEST_DEF_COUNT=$(echo "$RESULT" | cut -d',' -f1)
+ANALYTE_COUNT=$(echo "$RESULT" | cut -d',' -f2)
+CODE_SYSTEM_VALUE_COUNT=$(echo "$RESULT" | cut -d',' -f3)
 
-if [ "${TENANT_COUNT:-0}" -gt 0 ] && [ "${TEST_DEF_COUNT:-0}" -gt 0 ] && [ "${PATIENT_COUNT:-0}" -gt 0 ]; then
-  log "PASS restore-drill: $LATEST_BACKUP restored successfully (tenant=$TENANT_COUNT test_definition=$TEST_DEF_COUNT patient=$PATIENT_COUNT)"
+if [ "${TEST_DEF_COUNT:-0}" -gt 0 ] && [ "${ANALYTE_COUNT:-0}" -gt 0 ] && [ "${CODE_SYSTEM_VALUE_COUNT:-0}" -gt 0 ]; then
+  log "PASS restore-drill: $LATEST_BACKUP restored successfully (test_definition=$TEST_DEF_COUNT analyte=$ANALYTE_COUNT code_system_value=$CODE_SYSTEM_VALUE_COUNT)"
   exit 0
 else
-  log "FAIL restore-drill: sanity check found an unexpectedly empty table (tenant=$TENANT_COUNT test_definition=$TEST_DEF_COUNT patient=$PATIENT_COUNT)"
+  log "FAIL restore-drill: sanity check found an unexpectedly empty table (test_definition=$TEST_DEF_COUNT analyte=$ANALYTE_COUNT code_system_value=$CODE_SYSTEM_VALUE_COUNT)"
   exit 1
 fi

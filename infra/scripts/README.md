@@ -37,7 +37,10 @@ recent backup into a **throwaway, ephemeral Postgres project**
 (`restore-drill-compose.yml`, project name `lis-restore-drill`), completely
 separate from the real `lis` project's own postgres container/volume. Never
 touches live data. Runs a row-count sanity check on 3 fixed tables
-(`tenant`/`test_definition`/`patient`), logs pass/fail to
+(`test_definition`/`analyte`/`code_system_value` -- confirmed live against the
+real staging database that `tenant`/`patient` are legitimately zero on this
+pre-launch environment, so checking those would fail every run regardless of
+whether the restore worked), logs pass/fail to
 `/var/log/lis-restore-drill.log`, and always tears the scratch project down
 afterward regardless of outcome.
 

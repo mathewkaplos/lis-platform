@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, uniqueIndex, pgPolicy } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, timestamp, uniqueIndex, pgPolicy } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { analyte } from "./catalog";
 
@@ -16,6 +16,15 @@ export const testDefinition = pgTable(
     tenantId: uuid("tenant_id").notNull(),
     code: text("code").notNull(),
     displayName: text("display_name").notNull(),
+    // FEAT-046 (ADR-0041): billing metadata on the catalog, per KB-35's own
+    // "billing codes as catalog metadata" design decision. Both nullable --
+    // no starter-catalog test has real pricing/code data yet (placeholder
+    // seed data, same "not partner data" honesty chemistry-catalog.sql's
+    // own header comment already establishes); an order containing a test
+    // with no priceCents cannot be invoiced (billing.service.ts rejects it
+    // rather than silently billing $0).
+    billingCode: text("billing_code"),
+    priceCents: integer("price_cents"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [uniqueIndex("ux_test_definition_tenant_code").on(table.tenantId, table.code), tenantIsolation()],

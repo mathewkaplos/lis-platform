@@ -91,6 +91,13 @@
  * route is additionally row-filtered by `relatedPatientIds()`
  * (`clinician-scope.ts`, FEAT-040) — same RBAC (capability) + ABAC (relation
  * filter) two-layer split `view_own_results` already established.
+ *
+ * `manage_billing` (FEAT-046 proposal §5/§10 Q3, ADR-0041): granted to
+ * `technologist`/`verifier`, identical reasoning to `manage_patients`/
+ * `manage_orders`/`manage_specimens` — invoice generation and payment
+ * collection is the same front-desk-adjacent action class with no
+ * dedicated `cashier` role in Keycloak yet (a real, separate infra
+ * decision the proposal explicitly deferred, not this task's own scope).
  */
 export type Capability =
   | 'enter_result'
@@ -108,7 +115,8 @@ export type Capability =
   | 'view_own_results'
   | 'place_order_own_patient'
   | 'view_related_patient_results'
-  | 'acknowledge_critical_own_patient';
+  | 'acknowledge_critical_own_patient'
+  | 'manage_billing';
 
 const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
   technologist: [
@@ -116,6 +124,7 @@ const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
     'manage_patients',
     'manage_orders',
     'manage_specimens',
+    'manage_billing',
   ],
   verifier: [
     'enter_result',
@@ -123,6 +132,7 @@ const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
     'manage_patients',
     'manage_orders',
     'manage_specimens',
+    'manage_billing',
   ],
   qa: [
     'resolve_qc',

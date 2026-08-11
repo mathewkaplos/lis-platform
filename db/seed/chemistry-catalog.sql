@@ -367,3 +367,15 @@ WHERE NOT EXISTS (
     AND existing.analyte_id = a.id
     AND existing.range_type = r.range_type
 );
+
+-- 19. FEAT-046: placeholder billing metadata (CPT-style code + price), NOT
+-- real payer-negotiated rates -- same "placeholder, not partner data"
+-- framing this file's own header comment already establishes for its
+-- clinical content. Needed so the billing feature is demoable against this
+-- fixture data at all -- an order containing any unpriced test cannot be
+-- invoiced (billing.service.ts's own validateAndTotal rejects it, rather
+-- than silently billing $0). Idempotent (WHERE billing_code IS NULL) --
+-- never overwrites a real price a lab has since configured.
+UPDATE test_definition
+SET billing_code = code || '-PLACEHOLDER', price_cents = 1500
+WHERE tenant_id = '00000000-0000-0000-0000-000000000001' AND billing_code IS NULL;

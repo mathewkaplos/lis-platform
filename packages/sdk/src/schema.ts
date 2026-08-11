@@ -980,6 +980,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/orders/{id}/invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["BillingController_generateInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/invoices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["BillingController_getInvoice"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/invoices/{id}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["BillingController_recordPayment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1606,6 +1654,43 @@ export interface components {
             /** Format: email */
             adminEmail: string;
             adminPassword: string;
+        };
+        InvoiceDto_Output: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: uuid */
+            orderId: string;
+            /** Format: uuid */
+            patientId: string;
+            /** @enum {string} */
+            status: "unpaid" | "partial" | "paid";
+            totalCents: number;
+            /** Format: date-time */
+            createdAt: string;
+            lineItems: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                tenantId: string;
+                /** Format: uuid */
+                invoiceId: string;
+                /** Format: uuid */
+                testDefinitionId: string;
+                billingCode: string | null;
+                unitPriceCents: number;
+                quantity: number;
+                amountCents: number;
+                /** Format: date-time */
+                createdAt: string;
+            }[];
+        };
+        PaymentRequestDto: {
+            /** @enum {string} */
+            method: "cash" | "mobile_money";
+            amountCents: number;
+            reference?: string;
         };
     };
     responses: never;
@@ -2997,6 +3082,69 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["SignUpDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BillingController_generateInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BillingController_getInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceDto_Output"];
+                };
+            };
+        };
+    };
+    BillingController_recordPayment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentRequestDto"];
             };
         };
         responses: {

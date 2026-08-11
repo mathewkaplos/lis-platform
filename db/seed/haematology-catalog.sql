@@ -226,3 +226,12 @@ JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.version = '2.78' AND 
 JOIN analyte a ON a.code_system_value_id = csv.id
 JOIN test_definition td ON td.tenant_id = '00000000-0000-0000-0000-000000000001' AND td.code = 'PBS'
 ON CONFLICT (test_definition_id, analyte_id) DO NOTHING;
+
+-- FEAT-046: placeholder billing metadata (CPT-style code + price), NOT real
+-- payer-negotiated rates -- same "placeholder, not partner data" framing
+-- chemistry-catalog.sql's own equivalent block already establishes.
+-- Idempotent (WHERE billing_code IS NULL) -- never overwrites a real price
+-- a lab has since configured.
+UPDATE test_definition
+SET billing_code = code || '-PLACEHOLDER', price_cents = 1500
+WHERE tenant_id = '00000000-0000-0000-0000-000000000001' AND billing_code IS NULL;

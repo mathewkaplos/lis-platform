@@ -24,3 +24,4 @@ export * from "./care-relationship";
 export * from "./patient-portal-account";
 export * from "./result-release-policy";
 export * from "./tenant";
+export * from "./billing";

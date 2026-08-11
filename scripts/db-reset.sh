@@ -38,11 +38,13 @@ echo "Seed applied: haematology-catalog.sql (placeholder CBC + differential pane
 docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/sla-targets.sql
 echo "Seed applied: sla-targets.sql (placeholder routine/STAT turnaround targets — see its header comment)."
 
-# FEAT-052: third discipline seed (microbiology), same placeholder framing --
-# must run before default-report-templates.sql below, same ordering
-# requirement as chemistry/haematology.
+# FEAT-052: third discipline seed (microbiology) -- must run before
+# default-report-templates.sql below, same ordering requirement as
+# chemistry/haematology. FEAT-051 later extended this same file with a
+# real, cited EUCAST breakpoint table (not placeholder) -- see the file's
+# own header comments per section.
 docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/microbiology-catalog.sql
-echo "Seed applied: microbiology-catalog.sql (placeholder culture/organism-ID reflex pair — see its header comment)."
+echo "Seed applied: microbiology-catalog.sql (culture/organism-ID reflex pair + real EUCAST v16.0 breakpoint catalog)."
 
 # FEAT-032: default, published report_template_version for every seeded
 # test_definition (chemistry + haematology, both already applied above) --

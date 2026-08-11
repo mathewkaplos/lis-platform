@@ -26,3 +26,4 @@ export * from "./result-release-policy";
 export * from "./tenant";
 export * from "./billing";
 export * from "./culture-read";
+export * from "./microbiology-catalog";

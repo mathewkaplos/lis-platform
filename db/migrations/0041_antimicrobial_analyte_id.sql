@@ -1,0 +1,2 @@
+ALTER TABLE "antimicrobial" ADD COLUMN "analyte_id" uuid;--> statement-breakpoint
+ALTER TABLE "antimicrobial" ADD CONSTRAINT "antimicrobial_analyte_id_analyte_id_fk" FOREIGN KEY ("analyte_id") REFERENCES "public"."analyte"("id") ON DELETE no action ON UPDATE no action;

@@ -156,3 +156,81 @@ WHERE NOT EXISTS (
   WHERE existing.breakpoint_table_id = bt.id AND existing.organism_id = o.id
     AND existing.antimicrobial_id = am.id AND existing.method = r.method
 );
+
+-- FEAT-053 (docs/plans/feat-053-susceptibility-interpretation-antibiogram.md).
+-- Real, verified LOINC codes (loinc.org, cross-checked via its own search
+-- listing) -- one dedicated, coded susceptibility-result analyte per
+-- antimicrobial (proposal §5/§10 Q2, approved: each antimicrobial's own
+-- S/I/R result is independently queryable via the normal
+-- observation.analyteId join, not a shared analyte with the drug identified
+-- in valueJson), scoped to exactly the four antimicrobials FEAT-051's own
+-- real breakpoint data already covers -- not invented ahead of that list
+-- (proposal §6's own risk, resolved as designed: the real antimicrobial
+-- list is downstream of the real breakpoint data, never independently
+-- guessed). Plus one "Antibiogram (MIC)" table analyte, the dual-emission
+-- grid's own home (KB-21).
+
+-- 10. Code system values: per-antimicrobial susceptibility-result LOINC
+-- codes (MIC method specifically, matching this feature's own MIC-only v1
+-- scope) and the antibiogram panel LOINC code.
+INSERT INTO code_system_value (system, code, version, display) VALUES
+  ('LOINC', '28-1',    '2.78', 'Ampicillin [Susceptibility] by Minimum inhibitory concentration (MIC)'),
+  ('LOINC', '6652-2',  '2.78', 'Meropenem [Susceptibility] by Minimum inhibitory concentration (MIC)'),
+  ('LOINC', '185-9',   '2.78', 'Ciprofloxacin [Susceptibility] by Minimum inhibitory concentration (MIC)'),
+  ('LOINC', '524-9',   '2.78', 'Vancomycin [Susceptibility] by Minimum inhibitory concentration (MIC)'),
+  ('LOINC', '50545-3', '2.78', 'Bacterial susceptibility panel by Minimum inhibitory concentration (MIC)')
+ON CONFLICT (system, code, version) DO NOTHING;
+
+-- 11. Analytes: one coded analyte per antimicrobial's own susceptibility
+-- result, plus the table-shaped antibiogram grid. No default unit -- a
+-- coded S/I/R value and a structured grid both have no unit of measure,
+-- same as FEAT-052's own "Organism Identified" analyte.
+INSERT INTO analyte (code_system_value_id, display, data_type, default_unit_id)
+SELECT DISTINCT ON (csv.id) csv.id, r.display, r.data_type, NULL
+FROM (VALUES
+  ('28-1',    'Ampicillin Susceptibility',    'coded'),
+  ('6652-2',  'Meropenem Susceptibility',     'coded'),
+  ('185-9',   'Ciprofloxacin Susceptibility', 'coded'),
+  ('524-9',   'Vancomycin Susceptibility',    'coded'),
+  ('50545-3', 'Antibiogram (MIC)',            'table')
+) AS r(loinc_code, display, data_type)
+JOIN code_system_value csv ON csv.system = 'LOINC' AND csv.version = '2.78' AND csv.code = r.loinc_code
+WHERE NOT EXISTS (SELECT 1 FROM analyte existing WHERE existing.code_system_value_id = csv.id);
+
+-- 12. Link each antimicrobial to its own new susceptibility-result analyte.
+UPDATE antimicrobial am
+SET analyte_id = a.id
+FROM code_system_value csv, analyte a, (VALUES
+  ('J01CA01', '28-1'),
+  ('J01DH02', '6652-2'),
+  ('J01MA02', '185-9'),
+  ('J01XA01', '524-9')
+) AS r(antimicrobial_atc, susceptibility_loinc)
+WHERE am.code_system_value_id = (
+    SELECT id FROM code_system_value WHERE system = 'ATC' AND version = '2026' AND code = r.antimicrobial_atc
+  )
+  AND csv.system = 'LOINC' AND csv.version = '2.78' AND csv.code = r.susceptibility_loinc
+  AND a.code_system_value_id = csv.id
+  AND am.analyte_id IS NULL;
+
+-- 13. Link the "Antibiogram (MIC)" table analyte onto ORGID's own
+-- test_analyte set, alongside "Organism Identified" (FEAT-052) -- a real
+-- culture report is not final until both organism ID and susceptibility
+-- are verified, matching FEAT-054's own preliminary/final lifecycle
+-- directly. The four individual antimicrobial-susceptibility analytes are
+-- deliberately NOT linked to test_analyte -- which antimicrobials are
+-- actually tested varies by organism (EUCAST's own breakpoint table is
+-- itself organism-specific, see step 9 above), unlike a fixed chemistry
+-- panel's own fixed analyte set; the antibiogram API's own bespoke write
+-- path (not the generic test_analyte-gated result-entry endpoint) is what
+-- writes these, and the existing generic verify action works on them
+-- regardless of test_analyte membership (confirmed: `observation.verify`
+-- checks only that a 'preliminary' row exists for the given
+-- (orderedTestId, analyteId), never test_analyte).
+INSERT INTO test_analyte (tenant_id, test_definition_id, analyte_id)
+SELECT '00000000-0000-0000-0000-000000000001', td.id, a.id
+FROM test_definition td, code_system_value csv, analyte a
+WHERE td.tenant_id = '00000000-0000-0000-0000-000000000001' AND td.code = 'ORGID'
+  AND csv.system = 'LOINC' AND csv.version = '2.78' AND csv.code = '50545-3'
+  AND a.code_system_value_id = csv.id
+ON CONFLICT (test_definition_id, analyte_id) DO NOTHING;

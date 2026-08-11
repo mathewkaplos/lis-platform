@@ -32,6 +32,7 @@ import { BillingModule } from './billing/billing.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { CultureReadModule } from './culture-read/culture-read.module';
 import { MicrobiologyCatalogModule } from './microbiology-catalog/microbiology-catalog.module';
+import { AntibiogramModule } from './antibiogram/antibiogram.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
 @Module({
@@ -71,6 +72,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     BillingModule,
     CultureReadModule,
     MicrobiologyCatalogModule,
+    AntibiogramModule,
   ],
   controllers: [AppController],
   providers: [

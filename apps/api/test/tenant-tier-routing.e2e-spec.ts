@@ -91,8 +91,12 @@ describe('Tenant tier routing (e2e)', () => {
   });
 
   afterAll(async () => {
-    await migrationDb.delete(tenant).where(sql`${tenant.id} = ${DEDICATED_TENANT}`);
-    await migrationDb.execute(sql.raw(`DROP SCHEMA IF EXISTS "${SCHEMA_NAME}" CASCADE`));
+    await migrationDb
+      .delete(tenant)
+      .where(sql`${tenant.id} = ${DEDICATED_TENANT}`);
+    await migrationDb.execute(
+      sql.raw(`DROP SCHEMA IF EXISTS "${SCHEMA_NAME}" CASCADE`),
+    );
     await app.close();
   });
 
@@ -103,7 +107,9 @@ describe('Tenant tier routing (e2e)', () => {
       .expect(200);
     const body = res.body as { tenantId: string; count: number };
     if (body.tenantId !== DEDICATED_TENANT) {
-      throw new Error(`expected ${DEDICATED_TENANT}, got ${JSON.stringify(res.body)}`);
+      throw new Error(
+        `expected ${DEDICATED_TENANT}, got ${JSON.stringify(res.body)}`,
+      );
     }
     // No `tenant` row exists yet for this tenant -- resolveTenantRouting
     // defaults to shared, so this must land in public.audit_event, which has
@@ -132,7 +138,9 @@ describe('Tenant tier routing (e2e)', () => {
         .expect(200);
       const body = res.body as { tenantId: string; count: number };
       if (body.tenantId !== DEDICATED_TENANT) {
-        throw new Error(`expected ${DEDICATED_TENANT}, got ${JSON.stringify(res.body)}`);
+        throw new Error(
+          `expected ${DEDICATED_TENANT}, got ${JSON.stringify(res.body)}`,
+        );
       }
       // The two rows live only in the dedicated schema's audit_event, never
       // public's -- a count of 2 here is only possible if search_path was

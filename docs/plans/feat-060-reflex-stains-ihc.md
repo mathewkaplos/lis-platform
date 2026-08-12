@@ -98,13 +98,24 @@ model, audit) is reused unchanged.
   `block_fulfillment` (FEAT-057) already has exactly the shape a reflex handler needs
   (`tenantId`, `blockId`, `orderedTestId`, unique on `(blockId, orderedTestId)`) — this proposal
   is genuinely the first automated writer of this table; FEAT-057 only wired the manual route.
-- **`apps/api/src/observation/observation.controller.ts`** — confirmed the existing
-  `results/:analyteId/finalize`/`results/:analyteId/verify` routes are discipline-agnostic (keyed
-  by `orderedTestId`/`analyteId` only, no discipline branch) — a histology stain result (e.g. an
-  H&E interpretation) can be entered/verified through the exact same existing route an AP
-  ordered_test already gets from `block_fulfillment`, with zero new result-entry code. This is
-  what makes `ObservationVerified` (FEAT-030/052's own trigger event) reusable here unchanged —
-  no new outbox producer needed.
+- **`apps/api/src/observation/observation.controller.ts` + `observation-write.service.ts`** —
+  confirmed the existing `results/:analyteId/finalize`/`results/:analyteId/verify` routes are
+  discipline-agnostic (keyed by `orderedTestId`/`analyteId` only, no discipline branch), so
+  `ObservationVerified` (FEAT-030/052's own trigger event) is reusable here unchanged — no new
+  outbox producer needed. **Correction found during implementation, not assumed correctly here
+  originally**: `ObservationWriteService.loadWriteContext` unconditionally requires a
+  `specimen_fulfillment` row (hard-coded, `block_fulfillment` isn't recognized at all) and an
+  `ENTERABLE_ORDERED_TEST_STATUSES` status — a purely `block_fulfillment`-only ordered_test (what
+  FEAT-057's own manual `POST /v1/blocks/:id/ordered-tests` route actually produces: `status:
+  'ordered'`, no `specimen_fulfillment` row) cannot have a result entered against it at all today.
+  This is a real, pre-existing gap FEAT-057 itself never exercised (nothing before this feature
+  ever tried to enter a result on a block-linked ordered_test), not something this feature's own
+  narrow AC scope requires fixing — a block's own specimen (the part it was grossed from) is a
+  real, valid `specimen_fulfillment` target, so the e2e fixture (§8) adds that row directly,
+  matching the coherent real-world fact rather than working around a bug. Flagged here, filed as
+  issue #561, and noted in the new `engineering/workflow-engine` Skill entry as a known gap for a
+  future feature (in the same spirit as issue #440's specimen-exhaustion gap), not fixed by this
+  proposal.
 - **`apps/api/test/reflex.e2e-spec.ts` + `apps/api/test/case.e2e-spec.ts`** (read in full) — the
   exact e2e fixture/assertion shapes mirrored (published-rule setup, real draft→finalize→verify
   chain, `OutboxRelayService.tick()`, and the block-creation fixture from `case.e2e-spec.ts`'s own
@@ -162,6 +173,11 @@ model, audit) is reused unchanged.
 - **`engineering/workflow-engine` Skill has no entry yet distinguishing block- vs.
   specimen-fulfillment reflexes** — this feature's own implementation findings become its first
   content here (AGENTS.md's same-day rule), not invented speculatively in this proposal.
+- **Real pre-existing gap found (issue #561, §3 correction)**: a block-linked-only ordered_test
+  cannot have a result entered against it through the generic result-entry path today
+  (`ObservationWriteService.loadWriteContext` hard-requires `specimen_fulfillment`, doesn't
+  recognize `block_fulfillment`). Worked around in this feature's own e2e fixture (adds the
+  specimen_fulfillment row directly, a real, coherent fact not a hack); filed, not fixed here.
 
 ## 7. Acceptance criteria
 

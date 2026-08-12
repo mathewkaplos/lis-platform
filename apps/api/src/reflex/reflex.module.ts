@@ -2,6 +2,7 @@ import { Inject, Injectable, Module, OnModuleInit } from '@nestjs/common';
 import { WorkflowModule } from '../workflow/workflow.module';
 import { WorkflowCommandRegistry } from '../workflow/workflow-command.registry';
 import { addReflexTestHandler } from './add-reflex-test.command';
+import { addBlockReflexTestHandler } from './add-block-reflex-test.command';
 
 /**
  * FEAT-030 (ADR-0030). Registers `addReflexTestHandler` as `'AddReflexTest'`
@@ -11,6 +12,13 @@ import { addReflexTestHandler } from './add-reflex-test.command';
  * `WorkflowModule` layering one level further: the general engine mechanism
  * and this feature's first domain-specific command handler stay
  * independently reviewable.
+ *
+ * FEAT-060 additionally registers `addBlockReflexTestHandler` as
+ * `'AddBlockReflexTest'` here, not a new module -- still the reflex/cascade
+ * sub-engine's own domain (KB-25), just a second command for anatomic
+ * pathology's block-linked reflexes/add-ons (docs/plans/
+ * feat-060-reflex-stains-ihc.md §5: a separate command, not a parameterized
+ * `AddReflexTest`).
  */
 @Injectable()
 class ReflexCommandRegistration implements OnModuleInit {
@@ -23,6 +31,7 @@ class ReflexCommandRegistration implements OnModuleInit {
 
   onModuleInit() {
     this.commands.register('AddReflexTest', addReflexTestHandler);
+    this.commands.register('AddBlockReflexTest', addBlockReflexTestHandler);
   }
 }
 

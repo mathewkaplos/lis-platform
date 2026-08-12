@@ -37,6 +37,7 @@ import { qcRuleViolation } from "./schema/qc-rule-violation";
 import { careRelationship } from "./schema/care-relationship";
 import { patientPortalAccount } from "./schema/patient-portal-account";
 import { resultReleasePolicy } from "./schema/result-release-policy";
+import { report } from "./schema/report";
 import { writeAuditEvent } from "./audit";
 
 type Db = ReturnType<typeof createDb>;
@@ -259,6 +260,19 @@ async function insertFixtures(db: Db) {
     observationCreatedAt: sql`(SELECT created_at FROM observation WHERE id = ${obs.id})`,
   });
 
+  // #430: report fixture, same reasoning as control_lot's own above -- the
+  // live leak check below has no data to prove isolation against on this
+  // table without it. contentHash/includedObservations are provenance data
+  // only (no format enforced by a check constraint), so placeholder values
+  // are sufficient here.
+  await db.insert(report).values({
+    tenantId: TENANT_A,
+    orderedTestId: ot.id,
+    contentHash: "rls-check-fixture",
+    includedObservations: [],
+    generatedByUserId: "99999999-9999-9999-9999-999999999999",
+  });
+
   // audit_event fixture, via the real writer (TASK-025) rather than a
   // direct insert — exercises the same hash-chain path any real caller
   // would use, matching the same "trigger the real path" reasoning as the
@@ -309,7 +323,7 @@ async function main() {
   console.log("--- Fixture setup under TENANT_A ---");
   await insertFixtures(db);
   console.log(
-    "Fixtures inserted for patient/patient_alert/order/ordered_test/specimen/specimen_fulfillment/observation/result_history.\n",
+    "Fixtures inserted for patient/patient_alert/order/ordered_test/specimen/specimen_fulfillment/observation/result_history/report.\n",
   );
 
   console.log("--- Live cross-tenant leak check: TENANT_B must see 0 rows of TENANT_A's data ---");

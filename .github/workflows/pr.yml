@@ -123,6 +123,12 @@ jobs:
       # layout for ORGID, superseding the generic default above -- must run
       # after it, same ordering as scripts/db-reset.sh.
       - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/culture-report-template.sql
+      # FEAT-058: shared synoptic-report-grid analyte, then the two real
+      # ICCR-sourced protocols (breast, colorectal) -- common must run
+      # first, same ordering as scripts/db-reset.sh.
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/synoptic-protocol-common.sql
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/synoptic-protocol-breast.sql
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/synoptic-protocol-colorectal.sql
       - run: pnpm run-golden-datasets
       - run: pnpm test
       # TASK-029: waits here, not right after launch — gives Keycloak's own

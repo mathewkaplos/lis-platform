@@ -25,3 +25,4 @@ export * from "./microbiology-catalog";
 export * from "./antibiogram";
 export * from "./amr-surveillance";
 export * from "./anatomic-pathology";
+export * from "./synoptic-protocol";

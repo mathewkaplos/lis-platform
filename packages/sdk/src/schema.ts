@@ -1252,6 +1252,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/synoptic-protocols": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SynopticProtocolController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/synoptic-protocols/{id}/versions/{versionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SynopticProtocolController_getVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/cases/{id}/synoptic-responses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["SynopticProtocolController_recordResponses"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2231,6 +2279,77 @@ export interface components {
                         createdAt: string;
                     }[];
                 }[];
+            }[];
+        };
+        SynopticProtocolListDto_Output: {
+            protocols: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                sourceStandard: string;
+                specimenType: string;
+                /** Format: date-time */
+                createdAt: string;
+            }[];
+        };
+        SynopticProtocolVersionDto_Output__schema0_Output: {
+            and: components["schemas"]["SynopticProtocolVersionDto_Output__schema0_Output"][];
+        } | {
+            or: components["schemas"]["SynopticProtocolVersionDto_Output__schema0_Output"][];
+        } | {
+            not: components["schemas"]["SynopticProtocolVersionDto_Output__schema0_Output"];
+        } | {
+            field: string;
+            /** @enum {string} */
+            op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "includes";
+            value: unknown;
+        };
+        SynopticProtocolVersionDto_Output: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            synopticProtocolId: string;
+            version: number;
+            /** @enum {string} */
+            status: "draft" | "in_review" | "published" | "archived";
+            /** Format: date-time */
+            effectiveFrom: string;
+            /** Format: date-time */
+            effectiveTo: string | null;
+            elements: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                synopticProtocolVersionId: string;
+                /** Format: uuid */
+                parentElementId: string | null;
+                key: string;
+                label: string;
+                /** @enum {string} */
+                dataType: "coded" | "quantity" | "text";
+                /** @enum {string} */
+                requirement: "required" | "recommended";
+                /** Format: uuid */
+                analyteId: string;
+                visibilityCondition: components["schemas"]["SynopticProtocolVersionDto_Output__schema0_Output"] | null;
+                displayOrder: number;
+                responseOptions: {
+                    /** Format: uuid */
+                    id: string;
+                    value: string;
+                    display: string;
+                    displayOrder: number;
+                }[];
+            }[];
+        };
+        SynopticResponseCreateDto: {
+            /** Format: uuid */
+            orderedTestId: string;
+            /** Format: uuid */
+            synopticProtocolVersionId: string;
+            responses: {
+                elementKey: string;
+                value: string | number;
             }[];
         };
     };
@@ -3995,6 +4114,70 @@ export interface operations {
         requestBody?: never;
         responses: {
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SynopticProtocolController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SynopticProtocolListDto_Output"];
+                };
+            };
+        };
+    };
+    SynopticProtocolController_getVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SynopticProtocolVersionDto_Output"];
+                };
+            };
+        };
+    };
+    SynopticProtocolController_recordResponses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SynopticResponseCreateDto"];
+            };
+        };
+        responses: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

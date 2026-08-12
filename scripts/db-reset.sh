@@ -56,3 +56,10 @@ echo "Seed applied: default-report-templates.sql (default published report layou
 # for ORGID, superseding the generic default above -- must run after it.
 docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/culture-report-template.sql
 echo "Seed applied: culture-report-template.sql (real authored ORGID culture/antibiogram layout)."
+
+# FEAT-058: shared synoptic-report-grid analyte, then the two real
+# ICCR-sourced protocols (breast, colorectal) -- common must run first.
+docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/synoptic-protocol-common.sql
+docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/synoptic-protocol-breast.sql
+docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/synoptic-protocol-colorectal.sql
+echo "Seed applied: synoptic-protocol-{common,breast,colorectal}.sql (real, cited ICCR breast + colorectal synoptic protocols)."

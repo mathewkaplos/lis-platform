@@ -309,6 +309,13 @@
       "when": 1786540939028,
       "tag": "0043_anatomic_pathology_hierarchy",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1786546380439,
+      "tag": "0044_synoptic_protocol",
+      "breakpoints": true
     }
   ]
 }

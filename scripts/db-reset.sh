@@ -51,3 +51,8 @@ echo "Seed applied: microbiology-catalog.sql (culture/organism-ID reflex pair + 
 # must run after both discipline seeds.
 docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/default-report-templates.sql
 echo "Seed applied: default-report-templates.sql (default published report layout per seeded test)."
+
+# FEAT-054: a real, deliberately-authored culture/antibiogram report layout
+# for ORGID, superseding the generic default above -- must run after it.
+docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/culture-report-template.sql
+echo "Seed applied: culture-report-template.sql (real authored ORGID culture/antibiogram layout)."

@@ -92,14 +92,51 @@ export function formatDateTime(date: Date): string {
   }).format(date);
 }
 
+/**
+ * FEAT-054: `dataType === 'table'` branch added -- real gap, found only by
+ * actually trying to render FEAT-053's own antibiogram analyte through a
+ * real culture template, not assumed from any KB/proposal text. Every
+ * other branch here reads one scalar column; a `table` Observation's own
+ * content lives in `valueJson` instead, which this function previously
+ * fell through on (landing on `valueText`, always null for this dataType --
+ * a silent blank cell, not an error). `ChemistryReportAnalyteResult`'s own
+ * single-string `value` field isn't a real nested-grid rendering surface
+ * (that's a genuinely bigger, separate rendering-architecture change, not
+ * this fix's own scope) -- this renders the antibiogram's own
+ * `{organismDisplay, results}` shape (`antibiogram-assembly.ts`'s own
+ * write-time shape) as one compact, readable summary string instead, the
+ * same "no fabricated value, an honest gap over nothing" discipline this
+ * function's own coded/quantity branches already follow.
+ */
 export function formatObservationValue(
-  row: typeof observation.$inferSelect,
+  row: Pick<
+    typeof observation.$inferSelect,
+    'dataType' | 'valueNum' | 'valueCode' | 'valueJson' | 'valueText'
+  >,
 ): string {
   if (row.dataType === 'quantity') {
     return row.valueNum === null ? '' : String(Number(row.valueNum));
   }
   if (row.dataType === 'coded') {
     return row.valueCode ?? '';
+  }
+  if (row.dataType === 'table') {
+    const value = row.valueJson as {
+      organismDisplay?: string;
+      results?: {
+        antimicrobialDisplay: string;
+        micValue: number;
+        interpretation: string;
+      }[];
+    } | null;
+    if (!value?.results || value.results.length === 0) return '';
+    const parts = value.results.map(
+      (r) =>
+        `${r.antimicrobialDisplay}: ${r.interpretation} (MIC ${r.micValue})`,
+    );
+    return value.organismDisplay
+      ? `${value.organismDisplay} — ${parts.join('; ')}`
+      : parts.join('; ');
   }
   return row.valueText ?? '';
 }

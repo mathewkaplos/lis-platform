@@ -1,130 +1,166 @@
-# Status — 2026-08-11 (session 34)
+# Status — 2026-08-12 (session 35)
 
-Last commit on main: `e339f7f` (`lis-platform`) / `75afe45` (`lis-engineering`) — this breadcrumb
+Last commit on main: `0e93321` (`lis-platform`) / `c6715b1` (`lis-engineering`) — this breadcrumb
 refresh itself lands as a further `lis-platform` commit on top of that, so this line will already
 be one commit behind by construction — check `git log origin/main -5` for the real current tip.
 
 **Earlier sessions' breadcrumb entries are not carried in this file — see git history on this
 exact file (`git log -- docs/scope/current.md`) for full detail back through session 12.**
 
-## M10 (EPIC-009, Commercial Readiness) completed this session — all 6 features shipped
+## M11 (EPIC-010, Microbiology) + M12 (EPIC-011, Analytics & AMR Surveillance) both completed this session — all 6 features shipped, both epics formally closed
 
-Session 33 left M10 3/6 complete (FEAT-045/049/046) with FEAT-047 planned-and-approved but not
-built. This session picked up cold via `/develop`, shipped FEAT-047, then planned and shipped
-FEAT-048 and FEAT-050 — **M10 is now 6/6 features complete.** Only issue #9 (EPIC-009 itself,
-closes when the milestone is formally closed) and #489 (FEAT-046's own deferred follow-up screens)
-remain open in the milestone, both by design.
+Session 34 left M11/M12 unstarted. This session planned and shipped all six features across both
+milestones in sequence (FEAT-051 → FEAT-052 → FEAT-053 → FEAT-054 → FEAT-055 → FEAT-056), then
+closed both epic tracking issues (#500, #517) once every feature under them was done. **M11 and M12
+are both now fully complete.**
 
-### FEAT-047 (Visual report designer v1) — merged PR #493, issue #56 closed, ADR-0042 (already accepted session 33)
+### FEAT-051 (Microbiology organism & breakpoint catalog) — merged PR #523 (+ #524 retro), issue #501 closed, ADR-0045
 
-Picked up cold from session 33's approved-but-unbuilt proposal, no re-planning needed. Sections/
-fields canvas over FEAT-032's existing API: all 5 field types, a scoped analyte-binding picker
-(never lists an analyte outside the target test's own set), a JSON-mode `visibilityCondition`
-editor validated client-side against the same schema the server enforces, a client-side mock
-preview, keyboard-only up/down reordering (no drag-and-drop library, ADR-0042's own scope).
-`packages/domain/src/report-template.ts` + `conditions.ts` (new): schemas moved out of `apps/api`
-so the designer's client-side validation reuses the exact server schema — `ConditionNode`/
-`conditionNodeSchema` hoisted out of the workflow engine alongside it (the evaluator itself stays
-server-only). **Real bug found and fixed during manual browser verification:** the visibility-
-condition textarea used an uncontrolled `defaultValue` keyed only by field position — reordering
-fields via the up/down buttons correctly swapped the underlying data, but the textarea's on-screen
-text could go stale (still showing the previous occupant's condition), since React reuses the DOM
-node at that index. Fixed by including the field's own committed condition in the element's `key`,
-forcing a fresh mount whenever the occupant at that position actually changes.
+The session's single hardest blocker: no real, citable clinical breakpoint data existed anywhere in
+this codebase or KB. Resolved via genuine online research (WebFetch/WebSearch), not fabrication —
+found the official EUCAST v16.0 PDF, extracted real S/I/R breakpoints via `pdftotext` (poppler-utils
+installed root-free via `apt-get download` + `dpkg-deb -x`, same technique already used for
+Chromium), cross-verified organism/antimicrobial SNOMED/ATC codes independently, presented findings
+with page citations before use — explicitly approved by the human before implementing. New global,
+RLS-exempt tables (`organism`/`antimicrobial`/`breakpoint_table`/`breakpoint`, ADR-0045, same
+precedent as `analyte`/`unit`/`code_system_value`). **Real Constitution Gate CI failure found and
+fixed**: the 4 new tables were correctly designed with no RLS but lacked the required
+`-- RLS-exempt per ADR-NNNN` marker comment the gate's own grep looks for — fixed, verified locally
+by simulating the gate's own logic first, logged as `engineering/database-design` Skill entry #16
+(PR #524).
 
-### FEAT-048 (Internationalization) — merged PR #494, issue #57 closed, ADR-0043 (drafted + accepted this session)
+### FEAT-052 (Culture workflow & reflex cascade) — merged PR #512 (+ #513 retro), ADR-0046
 
-KB-51/§20.15 describe a much larger system (full-app translation, a locale-settings admin page
-with timezone/currency/RTL, SI-vs-conventional clinical unit conversion) than the literal AC needs
-("renders in at least one additional language with proper date/number/unit locale formatting").
-ADR-0043 scopes v1 to real, working `next-intl` infrastructure — cookie-based locale, **no URL
-prefix** (mirrors `lib/theme.ts`'s own dark-mode-cookie precedent exactly, avoiding any change to
-`proxy.ts`'s matcher) — proven on the `(app)` shell chrome plus two representative screens chosen
-specifically to prove both AC halves on real data: Dashboard (number formatting, its `StatCard`
-counts) and Orders list (date formatting, its pre-existing `toLocaleString()` call replaced with
-`useFormatter().dateTime()`). French shipped as the second language. `report-render.ts` (PDF
-generation) deliberately untouched — stays pinned to `'en-US'`/`'UTC'` for TASK-058's own
-byte-identical-PDF determinism. Context7 was fully unreachable during planning (a real transport-
-level outage, confirmed via 3 retries) — worked around live via `WebFetch` against `next-intl.dev`
-directly; a fallback note for this is now in the user's own global `context7.md` rule.
+Culture → organism-ID reflex pair (CULT/ORGID), `culture_read` workflow state. **A second
+Constitution Gate false-positive class found and logged as retro**: the "block free-text clinical
+value columns" check's naive regex flagged `culture_read.result` purely because the SQL column name
+contained "result", despite being a real, bounded, CHECK-constrained enum (`'no_growth'|'growth'`).
+Worked around by renaming the column to `outcome` (zero API/domain ripple, Drizzle's TS-field-vs-
+SQL-column mapping absorbed it) — the check itself still has no real exclusion mechanism, so any
+future bounded-enum column with a clinical-sounding name will trip it again.
 
-### FEAT-050 (DR, backup rehearsal & scale hardening) — merged PR #495 (+ #496/#497/#498 follow-ups), issue #59 closed, ADR-0044 (drafted + accepted this session)
+### FEAT-053 (Susceptibility interpretation & antibiogram) — merged PR #525, issue #503 closed
 
-**Central finding, from an actual SSH session to the real live staging droplet before designing
-anything:** a daily backup already ran successfully (8+ consecutive real `.dump` files), but its
-restore path had never once been exercised — and there was **no way to roll back a deploy at all**
-(every image pushed to a single mutable `:latest` tag, pruned locally on every deploy; no
-addressable prior version existed anywhere). ADR-0044 scopes v1 to exactly the two pieces the
-literal AC needs, against the real single-droplet environment — not KB-49's PITR/multi-region/
-automated-failover vision. `infra/scripts/restore-drill.sh` (new): restores the latest backup into
-a disposable scratch Postgres project, never the live database, torn down after its check
-regardless of outcome; cron installed (03:30 UTC). `deploy-staging.yml`: api/web images now also
-tagged `:<git-sha>`, alongside `:latest`. `rollback-staging.yml` (new): `workflow_dispatch`-only,
-pulls a specific SHA-tagged image and restarts only api/web — deliberately never touches the
-database or Keycloak realm.
+`resolveSusceptibility()`/`interpretMic()` (mirrors `resolveReferenceRange()`'s pure-resolver shape,
+effective-dated, never fabricates a match). Dual-emission Observation pattern (KB-21): one
+`table`-typed Observation (readable grid) + N discrete `coded`-typed Observations (queryable atoms,
+one per antimicrobial), written in one transaction. Deliberately does **not** link the 4 discrete
+antimicrobial-susceptibility analytes onto ORGID's `test_analyte` (antibiotic panels vary by
+organism) — but confirmed via reading `observation.controller.ts`'s `verify()` directly that it only
+requires a `'preliminary'` row for `(orderedTestId, analyteId)`, never `test_analyte` membership, so
+these are still independently verifiable via the existing generic endpoint. Manually verified
+end-to-end against a real session (real E. coli identification, real MIC values, correct R/S
+interpretation, confirmed dual-emission rows in Postgres) before shipping.
 
-**Both ACs proven live, not just implemented** — the human explicitly approved performing the
-rehearsal for real against staging:
-- Restore drill: failed twice on its first real run (two genuine bugs — the sanity-check table set
-  assumed `tenant`/`patient` would be nonzero, but this pre-launch staging environment genuinely
-  has zero of both; and the scratch container was missing the `lis_app`/`lis_scheduler` roles those
-  tables' RLS policies reference, since roles are cluster-level and never captured by a
-  per-database `pg_dump`) — fixed both, passed clean on the third run, live DB confirmed untouched.
-- Rollback: triggered for real via `workflow_dispatch`, completed in **~60 seconds** (well under
-  the 5-minute AC), verified via changed `docker inspect` image content-hashes on the droplet — not
-  a same-version no-op.
-- **A third real bug found along the way:** `rollback-staging.yml` itself silently registered with
-  0 runnable jobs because a doc comment literally quoted the empty GitHub Actions expression
-  `` ${{ }} `` as documentation text — GitHub Actions scans an entire `run:` block for that pattern
-  regardless of bash `#` comments. Found only by actually trying to trigger the workflow; fixed and
-  confirmed with `actionlint` (PR #497), now `engineering/docker-pnpm-monorepo-deploy` entry #28.
+### FEAT-054 (Culture report template & preliminary/final lifecycle) — mechanism merged PR #516 (ADR-0047), remaining scope merged PR #528, issue #504 closed
 
-### `/close` cycle
+Shipped in two parts, deliberately: the preliminary/final lifecycle **mechanism** itself has no
+hard dependency on FEAT-051/052/053 (`report.reportType`, `assembleAndPersistPreliminaryReport()`,
+proven against chemistry fixtures) and shipped mid-session, independent of the breakpoint-data
+chain. Issue #504 stayed open afterward — its own AC #1 (author a real culture/antibiogram layout)
+was genuinely blocked until FEAT-051/053 shipped. Once they did, a `/close` walkthrough picked this
+back up:
+- **Real gap found and fixed** (human sign-off on the approach, not a silent fix): `format
+  ObservationValue()` only ever rendered `quantity`/`coded`/text observations — the antibiogram's
+  own `table`-typed Observation (`valueJson` grid) silently fell through to a blank cell, never an
+  error. Fixed with a small, additive formatter branch (a compact readable summary string, e.g.
+  `"Escherichia coli — Ampicillin: R (MIC 16); Meropenem: S (MIC 1)"`) — deliberately not a new
+  nested-grid rendering path, a real, separate architecture change out of this fix's own scope.
+  Unit-tested directly (`report-assembly.spec.ts`).
+- A genuine two-section culture report template (Organism Identification + Antibiogram) authored
+  for real through the existing report-template API (`POST .../versions` + `.../publish`, the exact
+  calls the FEAT-047 designer UI itself makes), proven in `culture-report-lifecycle.e2e-spec.ts`
+  alongside a real preliminary → final lifecycle on a genuine culture panel. Persisted as durable
+  seed data (`culture-report-template.sql`, wired into both `db-reset.sh` and `pr.yml`) so a fresh
+  `pnpm db:reset` is demo-ready out of the box.
+- **A test-file bug found only by a genuinely clean full-suite run**: the new e2e spec's own
+  `beforeAll` queried tenant-scoped tables without first calling `set_config('app.tenant_id', ...)`,
+  unlike every other spec file's own convention — an earlier run had (probably) masked this by
+  running immediately after another spec file had already set it, since a broken vitest filter
+  (see Skill entry below) silently ran the full suite every time a single-file run was intended.
+  Fixed; confirmed via a real clean `pnpm db:reset` + full suite pass (53 files / 432 tests).
 
-Per `~/work/lis-engineering/session-close-reports/2026-08-11-1416-pre.md`'s five pending items, all
-addressed this round:
-1. **Breadcrumb refresh** — this file.
-2. **Retro entry #28 landed** — `engineering/docker-pnpm-monorepo-deploy`, the `${{ }}`-in-a-comment
-   workflow bug (see FEAT-050 above).
-3. **Context7-outage fallback note** — added to the user's own global `~/.claude/rules/context7.md`
-   (outside both repos, not committed here).
-4. **Issues #145 and #292 actually closed** — both were fully resolved weeks/sessions ago but never
-   auto-closed (`#145`: a prior PR used invalid cross-repo close syntax, `Closes
-   lis-engineering#145`; `#292`: simply never revisited after its own fix shipped). Closed with an
-   explanatory comment on each, not silently.
-5. **FEAT-047/FEAT-048 manual-verification items** — carried forward below, genuinely need a human
-   (a live lab-admin pass on the JSON-mode condition editor; a native-French-speaker review of the
-   shipped translations).
+### FEAT-055 (AMR surveillance report) — merged PR #526, issue #508 closed
+
+`GET /v1/reports/amr-surveillance`, `qa`-gated, organism × antimicrobial S/I/R rates over a
+`from`/`to` window, mirrors `computeTatReport`'s own proven aggregation shape (FEAT-034). Only
+`'verified'` susceptibility Observations count. e2e fixture spans two real organisms (E. coli,
+S. aureus) against real EUCAST breakpoints, proves verified-only filtering (a deliberately-
+unverified result is excluded).
+
+### FEAT-056 (Cross-tenant de-identified AMR surveillance aggregation) — merged PR #527, issue #518 closed, ADR-0048
+
+The first feature in this codebase that deliberately crosses tenant isolation, even de-identified.
+Per-tenant iteration (not one cross-tenant SQL query — a `dedicated_schema` tenant's rows live in a
+different Postgres schema entirely, invisible to a single query against the shared one), explicit
+per-tenant opt-in (`tenant.amrSurveillanceOptIn`), `dedicated_db`-tier tenants skipped/logged (not
+thrown), n<5 minimum-cell-size suppression + monthly time-bucketing minimum, no tenant/facility
+identifier anywhere in the response shape, one real `audit_event` row per contributing tenant
+(itself tenant-scoped, so no single cross-tenant audit row exists — a shared `requestId` correlates
+them). New machine-only `platform-analytics` Keycloak client/capability (`lis-platform-analytics`,
+same precedent as `gateway_ingest`/`interop_ingest`). e2e fixture spans all three isolation tiers
+(one `shared`, one `dedicated_schema` with its own minimal cloned tables, one opted-out), synthetic
+global catalog rows to guarantee zero collision with any other spec's real fixture data.
+
+### `/close` cycle (walkthrough format, per the human's explicit request)
+
+Per `~/work/lis-engineering/session-close-reports/2026-08-12-0008-pre.md`'s four pending items, all
+addressed as a walkthrough of individual approve/defer decisions:
+1. **FEAT-054's remaining scope shipped** — PR #528 (see above).
+2. **Breadcrumb refresh** — this file.
+3. **`engineering/testing` Skill entry #19 approved and shipped** — the `pnpm --filter api
+   test:e2e -- <pattern>` filter does not actually filter to a single spec file in this repo (ran
+   the full suite regardless, at least 4 separate times this session); confirmed working
+   alternative documented: `pnpm --filter api exec vitest run --config
+   ./test/vitest.e2e.config.ts test/<file>.e2e-spec.ts`. A related, smaller finding folded into the
+   same entry: a background-task output capture on one of those full-suite runs was truncated at
+   its own start, and a claim ("spec X passed, not among the 9 failed files") was stated to the
+   human from an incomplete accounting (3 of 9 failures actually visible) — harmless that time, but
+   flagged as its own practice note.
+4. **Manual Verification Checklist items filed as follow-up issues**, not done in-session:
+   #529 (real antibiogram S/I/R rendering in `apps/web`), #530 (real culture-report PDF appearance,
+   specifically the new antibiogram summary string inside a real rendered table cell), #531 (rotate
+   the `lis-platform-analytics` Keycloak client's checked-in dev-only secret before any real
+   deployment).
+
+Additionally, once every FEAT-* issue under both epics was confirmed closed, the human approved
+closing **EPIC-010 (#500)** and **EPIC-011 (#517)** themselves — both closed with a comment noting
+their own remaining open items (#506/507/509/510 under M11, #519/520 under M12) are deliberately-
+deferred follow-ups, tracked independently, not blocking either epic's own closure.
 
 ## Carried into next session
 
-- **M10 (EPIC-009) is fully complete, 6/6 features.** The milestone itself can likely be formally
-  closed on GitHub (issue #9) — worth a real check next session that nothing else is expected of
-  it first, not assumed.
-- Issue #489 (FEAT-046's own deferred Invoice List/Outstanding Balances/Refunds) remains open,
-  unstarted, unchanged — the next real work if M10-adjacent scope continues.
-- Issues #145 and #292 are now **closed** — remove from any future "still open" carry-forward list.
-- Issue #430 (rls-isolation-check.ts fixture-coverage gap) — unchanged this session; no new
-  tenant-scoped tables were added by FEAT-047/048/050 (report-template's own tables predate this
-  session; FEAT-050 is infra-only).
+- **New this session:** issues #529, #530, #531 (this session's own Manual Verification Checklist
+  items, filed not done — see above).
+- **New this session:** `engineering/testing` Skill entry #19 (broken `test:e2e -- <pattern>`
+  filter) — worth any future session actually using the documented working alternative rather than
+  rediscovering the broken filter again.
+- EPIC-009 (#9, M10/Commercial Readiness) is still open despite M10 being 6/6 feature-complete
+  since session 34 — carried forward twice now, still not formally closed. Worth resolving alongside
+  or right after this session's own EPIC-010/011 closures, same reasoning.
+- Issue #489 (FEAT-046's own deferred Invoice List/Outstanding Balances/Refunds screens) remains
+  open, unstarted, unchanged.
+- Issue #430 (rls-isolation-check.ts fixture-coverage gap) — this session added 4 new global,
+  RLS-exempt tables (FEAT-051) and one new tenant-scoped column (FEAT-056's
+  `tenant.amrSurveillanceOptIn`, on an already-covered table) — worth confirming neither needs a
+  fixture-coverage update, not assumed.
 - M6's own remaining item (FEAT-027) is still blocked on the design partner naming their actual
   instrument, unchanged.
 - Issue #440 (specimen exhaustion/expiry tracking) remains open, unstarted, unchanged.
-- Issue #427 (backfill missing M1-M5 retrospectives), #267 (pnpm-workspace config ignored in CI)
+- Issues #427 (backfill missing M1-M5 retrospectives), #267 (pnpm-workspace config ignored in CI)
   both remain open, untouched since filed.
 - The real Tailscale/OpenTofu edge-node provisioning for `apps/gateway` still needs a human's
   `tofu apply`.
-- **New this session:** the staging droplet's `restore-drill.sh` cron job (03:30 UTC daily) has no
-  active alerting on failure beyond its own log file (`/var/log/lis-restore-drill.log`) — worth a
-  human spot-check periodically (e.g. weekly) until real alerting exists.
-- Manual verification still owed by a human: FEAT-047's JSON-mode `visibilityCondition` editor —
-  mechanically verified, but whether it's actually usable by a real lab admin (not just
-  functional) needs a live pass; FEAT-048's shipped French translations (`messages/fr.json`) were
-  written by the agent, not reviewed by a native speaker or the design partner — lab/order
-  terminology choices deserve a real fluent-speaker pass before reaching actual users. Carried from
-  prior sessions, still not done: FEAT-049's `/signup` UX + confirming `lis-onboarding`'s dev
-  secret gets rotated before any real deploy; FEAT-046's take-payment UX + confirming the
-  placeholder billing metadata reads unambiguously as placeholder; FEAT-045's Constitution-gate
-  marker-recognition logic, worth a human read beyond its own automated deliberate-break test; a
-  live technologist pass on FEAT-024's notes-textarea/grade-button spacing; a live pass confirming
-  FEAT-022's SLA amber/red badges read clearly at a glance.
+- The staging droplet's `restore-drill.sh` cron job still has no active alerting beyond its own log
+  file — unchanged, still worth a periodic human spot-check until real alerting exists.
+- Manual verification still owed by a human, carried forward unchanged: FEAT-047's JSON-mode
+  `visibilityCondition` editor (mechanically verified, not yet a live lab-admin pass); FEAT-048's
+  shipped French translations (not yet a native-speaker review); FEAT-049's `/signup` UX + confirming
+  `lis-onboarding`'s dev secret gets rotated before any real deploy; FEAT-046's take-payment UX +
+  confirming the placeholder billing metadata reads unambiguously as placeholder; FEAT-045's
+  Constitution-gate marker-recognition logic; a live technologist pass on FEAT-024's notes-textarea/
+  grade-button spacing; a live pass confirming FEAT-022's SLA amber/red badges read clearly at a
+  glance.
+- **No open M11/M12 exploratory scope beyond the deliberately-deferred follow-up issues** (#506,
+  #507, #509, #510, #519, #520) — pathology/histology-cytology was discussed as a possible future
+  milestone (KB-16) but explicitly not started or scoped this session, purely exploratory.

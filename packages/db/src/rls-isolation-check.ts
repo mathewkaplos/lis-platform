@@ -38,6 +38,13 @@ import { careRelationship } from "./schema/care-relationship";
 import { patientPortalAccount } from "./schema/patient-portal-account";
 import { resultReleasePolicy } from "./schema/result-release-policy";
 import { report } from "./schema/report";
+import { cultureRead } from "./schema/culture-read";
+import { instrumentAnalyteMapping } from "./schema/instrument-mapping";
+import { invoice, invoiceLineItem, payment } from "./schema/billing";
+import { observationIdempotencyKey } from "./schema/observation-idempotency";
+import { outboxEvent } from "./schema/outbox-event";
+import { slaBreach } from "./schema/sla-breach";
+import { workflowDefinition, workflowRuleFiring } from "./schema/workflow-definition";
 import { writeAuditEvent } from "./audit";
 
 type Db = ReturnType<typeof createDb>;
@@ -273,6 +280,92 @@ async function insertFixtures(db: Db) {
     generatedByUserId: "99999999-9999-9999-9999-999999999999",
   });
 
+  // #534: 10 more tables added by later features without a matching
+  // fixture here, same gap #430/report above already had. Deliberately
+  // reuses the existing `ot`/`analyte`/`unit`/`pat`/`obs` fixtures above
+  // rather than manufacturing a semantically distinct ordered_test per
+  // table -- this function's own established style everywhere else:
+  // "valid FK, proves isolation" over domain realism.
+
+  // FEAT-052 (ADR-0046): culture_read fixture. Leaves completedAt/result
+  // both null (an open, scheduled read) -- ck_culture_read_completion
+  // requires both null or both set together.
+  await db.insert(cultureRead).values({
+    tenantId: TENANT_A,
+    orderedTestId: ot.id,
+    scheduledAt: sql`now()`,
+  });
+
+  // FEAT-027 (KB-29): instrument_analyte_mapping fixture.
+  await db.insert(instrumentAnalyteMapping).values({
+    tenantId: TENANT_A,
+    instrumentId: "RLS-CHECK-INSTRUMENT",
+    channelCode: "RLS-CHECK-CHANNEL",
+    analyteId: analyte.id,
+    unitId: unit.id,
+  });
+
+  // FEAT-046 (ADR-0041): invoice/invoice_line_item/payment fixture chain.
+  const [inv] = await db
+    .insert(invoice)
+    .values({ tenantId: TENANT_A, orderId: ord.id, patientId: pat.id, totalCents: 1000 })
+    .returning();
+  await db.insert(invoiceLineItem).values({
+    tenantId: TENANT_A,
+    invoiceId: inv.id,
+    testDefinitionId: testDef.id,
+    unitPriceCents: 1000,
+    amountCents: 1000,
+  });
+  await db.insert(payment).values({
+    tenantId: TENANT_A,
+    invoiceId: inv.id,
+    method: "cash",
+    amountCents: 1000,
+    status: "pending",
+  });
+
+  // FEAT-027 (ADR-0026): observation_idempotency_key fixture. observationId
+  // is a plain uuid (no FK, see this table's own header comment) -- reuses
+  // `obs` above for a realistic value anyway.
+  await db.insert(observationIdempotencyKey).values({
+    tenantId: TENANT_A,
+    sourceIdempotencyKey: `RLS-CHECK-${Date.now()}`,
+    observationId: obs.id,
+  });
+
+  // FEAT-028 (ADR-0028): outbox_event fixture.
+  await db.insert(outboxEvent).values({
+    tenantId: TENANT_A,
+    eventType: "RlsCheckFixture",
+    payload: {},
+  });
+
+  // FEAT-029 (remainder): sla_breach fixture.
+  await db.insert(slaBreach).values({
+    tenantId: TENANT_A,
+    orderedTestId: ot.id,
+    priority: "routine",
+    targetMinutes: 60,
+    breachedAt: sql`now()`,
+  });
+
+  // FEAT-029 (ADR-0029): workflow_definition + workflow_rule_firing fixture
+  // chain. workflowDefinitionId on the firing row is a plain uuid (no FK,
+  // see that table's own header comment) -- reuses the definition just
+  // inserted anyway.
+  const [wfDef] = await db
+    .insert(workflowDefinition)
+    .values({ tenantId: TENANT_A, rules: [] })
+    .returning();
+  await db.insert(workflowRuleFiring).values({
+    tenantId: TENANT_A,
+    workflowDefinitionId: wfDef.id,
+    ruleId: "rls-check-rule",
+    eventType: "RlsCheckFixture",
+    matched: false,
+  });
+
   // audit_event fixture, via the real writer (TASK-025) rather than a
   // direct insert — exercises the same hash-chain path any real caller
   // would use, matching the same "trigger the real path" reasoning as the
@@ -323,7 +416,9 @@ async function main() {
   console.log("--- Fixture setup under TENANT_A ---");
   await insertFixtures(db);
   console.log(
-    "Fixtures inserted for patient/patient_alert/order/ordered_test/specimen/specimen_fulfillment/observation/result_history/report.\n",
+    "Fixtures inserted for patient/patient_alert/order/ordered_test/specimen/specimen_fulfillment/observation/" +
+      "result_history/report/culture_read/instrument_analyte_mapping/invoice/invoice_line_item/payment/" +
+      "observation_idempotency_key/outbox_event/sla_breach/workflow_definition/workflow_rule_firing.\n",
   );
 
   console.log("--- Live cross-tenant leak check: TENANT_B must see 0 rows of TENANT_A's data ---");

@@ -243,6 +243,12 @@ jobs:
           SENTRY_DSN=${{ secrets.SENTRY_DSN }}
           KEYCLOAK_ADMIN_PASSWORD=${{ secrets.KEYCLOAK_ADMIN_PASSWORD }}
           SESSION_SECRET=${{ secrets.SESSION_SECRET }}
+          # FEAT-059 (ADR-0051): apps/api-side, read lazily per call (not at
+          # module load, unlike SESSION_SECRET's Next.js build-time
+          # requiredEnv()) -- its absence fails the specific finalize/amend
+          # request, not a container crash-loop, but must still be a real
+          # secret before staging sign-out is exercised for real.
+          SIGNING_SECRET=${{ secrets.SIGNING_SECRET }}
           ENVEOF
           # Appended separately, not inside the quoted heredoc above -- these
           # need real bash variable expansion (computed this run, not a GH

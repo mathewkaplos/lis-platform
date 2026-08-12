@@ -134,6 +134,10 @@ services:
       # even though api itself is never browser-facing -- it's a JWT
       # issuer-validation value, not a reachability one.
       KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL}
+      # FEAT-059 (ADR-0051): packages/db/src/case-report-signature.ts reads
+      # this at call time (case.controller.ts finalize()/amend()) -- same
+      # secret-management convention as web's SESSION_SECRET below.
+      SIGNING_SECRET: ${SIGNING_SECRET}
     # No ports: mapping -- #188. apps/web never calls api from the browser
     # (confirmed: no client-side reference to it anywhere in apps/web),
     # only server-to-server on lis_staging_net, which doesn't need one.

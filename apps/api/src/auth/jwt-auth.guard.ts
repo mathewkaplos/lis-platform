@@ -21,6 +21,7 @@ export type RequestWithAuthContext = FastifyRequest & {
 interface LisTokenPayload extends JWTPayload {
   tenant_id?: unknown;
   realm_access?: { roles?: unknown };
+  auth_time?: unknown;
 }
 
 @Injectable()
@@ -64,10 +65,21 @@ export class JwtAuthGuard implements CanActivate {
       ? (payload.realm_access.roles as string[])
       : [];
 
+    // FEAT-059: sourced from the realm's existing `oidc-usersessionmodel-note-mapper`
+    // (infra/keycloak/lis-realm.json), which stamps the Keycloak session's
+    // AUTH_TIME note onto every access token already — no realm change
+    // needed. Not required on every token the way sub/tenant_id are: routes
+    // with no @RequireStepUp() never look at it. Missing/malformed defaults
+    // to 0 (epoch), the most stale possible value, so a @RequireStepUp()
+    // route fails closed rather than treating an absent claim as fresh.
+    const authTime =
+      typeof payload.auth_time === 'number' ? payload.auth_time : 0;
+
     request.authContext = {
       sub: payload.sub,
       tenantId: payload.tenant_id,
       roles,
+      authTime,
     };
     return true;
   }

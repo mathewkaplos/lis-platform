@@ -7,44 +7,56 @@ import {
   NotFoundException,
   Param,
   Post,
+  Req,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import {
   blockCreateSchema,
   blockOrderedTestLinkCreateSchema,
+  caseAmendRequestSchema,
   caseCreateSchema,
   caseLineageSchema,
   type Block,
   type Case,
   type CaseLineage,
+  type CaseReportVersion,
   type Slide,
 } from '@lis/domain';
 import {
   block,
   blockFulfillment,
+  caseReportVersion,
   caseTable,
+  computeCaseReportContentHash,
   deriveBlockCode,
   deriveCaseSpecimenAccessionNumber,
   deriveSlideCode,
   generateAccessionNumber,
+  observation,
   order,
   orderedTest,
+  signCaseReportContent,
   slide,
   specimen,
+  synopticElement,
   testDefinition,
+  writeAuditEvent,
 } from '@lis/db';
-import { and, count, eq, inArray } from 'drizzle-orm';
+import { and, count, desc, eq, inArray } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { Audit } from '../auth/audit.decorator';
 import { AuditInterceptor } from '../auth/audit.interceptor';
+import type { RequestWithGrantingRole } from '../auth/capability.guard';
 import { CapabilityGuard } from '../auth/capability.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { DbTx } from '../auth/db-tx.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RequireCapability } from '../auth/require-capability.decorator';
+import { RequireStepUp } from '../auth/require-step-up.decorator';
 import type { RequestContext } from '../auth/request-context';
+import { StepUpGuard } from '../auth/step-up.guard';
 import type { RequestWithTx } from '../auth/tenant-context.interceptor';
 import { TenantContextInterceptor } from '../auth/tenant-context.interceptor';
 
@@ -52,6 +64,7 @@ const idParamSchema = z.object({ id: z.uuid() });
 
 class CaseCreateDto extends createZodDto(caseCreateSchema) {}
 class CaseLineageDto extends createZodDto(caseLineageSchema) {}
+class CaseAmendRequestDto extends createZodDto(caseAmendRequestSchema) {}
 class BlockCreateDto extends createZodDto(blockCreateSchema) {}
 class BlockOrderedTestLinkCreateDto extends createZodDto(
   blockOrderedTestLinkCreateSchema,
@@ -79,6 +92,105 @@ function toSlideDto(row: typeof slide.$inferSelect): Slide {
     ...row,
     status: row.status as Slide['status'], // CHECK-constrained (ck_slide_status)
     createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function toCaseReportVersionDto(
+  row: typeof caseReportVersion.$inferSelect,
+): CaseReportVersion {
+  return {
+    ...row,
+    signature: row.signature.toString('hex'), // bytea -> hex for JSON transport
+    authTimeUsed: row.authTimeUsed.toISOString(),
+    status: row.status as CaseReportVersion['status'], // CHECK-constrained (ck_case_report_version_status)
+    signedAt: row.signedAt.toISOString(),
+  };
+}
+
+/**
+ * FEAT-059. The signed content for a case: lineage ids (provenance, not a
+ * full snapshot -- same "id + createdAt, not the whole row" minimalism as
+ * report.includedObservations's own header comment) plus the ids of every
+ * discrete synoptic-response Observation recorded against any ordered test
+ * belonging to this case's order (FEAT-058's `assembleAndPersistSynopticResponse`
+ * writes one such Observation per response, bound to that response's own
+ * element analyte -- filtering observation.analyteId against the set of
+ * every synopticElement.analyteId is what distinguishes these from any
+ * other observation that might exist on the same order).
+ */
+async function buildCaseReportContent(
+  tx: RequestWithTx['tx'],
+  caseRow: typeof caseTable.$inferSelect,
+): Promise<{
+  content: Parameters<typeof computeCaseReportContentHash>[0];
+  specimenRows: (typeof specimen.$inferSelect)[];
+  blockRows: (typeof block.$inferSelect)[];
+  slideRows: (typeof slide.$inferSelect)[];
+}> {
+  const specimenRows = await tx
+    .select()
+    .from(specimen)
+    .where(eq(specimen.caseId, caseRow.id));
+  const specimenIds = specimenRows.map((row) => row.id);
+  const blockRows =
+    specimenIds.length > 0
+      ? await tx
+          .select()
+          .from(block)
+          .where(inArray(block.specimenId, specimenIds))
+      : [];
+  const blockIds = blockRows.map((row) => row.id);
+  const slideRows =
+    blockIds.length > 0
+      ? await tx.select().from(slide).where(inArray(slide.blockId, blockIds))
+      : [];
+
+  const orderedTestRows = await tx
+    .select({ id: orderedTest.id })
+    .from(orderedTest)
+    .where(eq(orderedTest.orderId, caseRow.orderId));
+  const orderedTestIds = orderedTestRows.map((row) => row.id);
+
+  const synopticAnalyteRows = await tx
+    .select({ analyteId: synopticElement.analyteId })
+    .from(synopticElement);
+  const synopticAnalyteIds = new Set(
+    synopticAnalyteRows.map((row) => row.analyteId),
+  );
+
+  const observationRows =
+    orderedTestIds.length > 0
+      ? await tx
+          .select({
+            id: observation.id,
+            analyteId: observation.analyteId,
+            createdAt: observation.createdAt,
+          })
+          .from(observation)
+          .where(inArray(observation.orderedTestId, orderedTestIds))
+      : [];
+  const synopticResponses = observationRows
+    .filter((row) => synopticAnalyteIds.has(row.analyteId))
+    .map((row) => ({ id: row.id, createdAt: row.createdAt.toISOString() }));
+
+  return {
+    content: {
+      case: {
+        id: caseRow.id,
+        accessionNumber: caseRow.accessionNumber,
+      },
+      parts: specimenRows.map((row) => ({
+        id: row.id,
+        accessionNumber: row.accessionNumber,
+        blockIds: blockRows
+          .filter((b) => b.specimenId === row.id)
+          .map((b) => b.id),
+      })),
+      synopticResponses,
+    },
+    specimenRows,
+    blockRows,
+    slideRows,
   };
 }
 
@@ -462,21 +574,35 @@ export class CaseController {
   }
 
   /**
-   * Proposal §5 scope cut: transitions `case.status` to `signed_out` after
-   * confirming every part has ≥1 active block and every block has ≥1 active
-   * slide (AC #3's own "single report-finalize action covers every
-   * part/block/slide under one case" read at the lineage-completeness level,
-   * not a generated report -- see the proposal's §5/§10 Q1 for why `report.ts`
-   * is untouched here, deferred to FEAT-058/059).
+   * FEAT-059 (ADR-0051). The real, step-up-signed sign-out FEAT-057's own
+   * placeholder deferred -- see this method's git history for that
+   * placeholder's own header comment. Confirms every part has ≥1 active
+   * block and every block has ≥1 active slide (AC #3's own "single
+   * report-finalize action covers every part/block/slide under one case"),
+   * then signs a new `case_report_version` (v1) binding the case's lineage +
+   * synoptic content to this exact fresh step-up assertion.
+   *
+   * `verify` capability (not `manage_specimens`) + `@RequireStepUp()`: the
+   * same gate `report.controller.ts generate()` already uses for "this
+   * feature's own final, clinically-signed artifact", plus the new freshness
+   * check (StepUpGuard, 403 `step_up_required` if `auth_time` is stale --
+   * AC #1).
+   *
+   * No `@Audit()`/`AuditInterceptor` here -- exactly one `writeAuditEvent`
+   * call below, inside the same transaction as the `case_report_version`
+   * insert and the `case.status` update, matching AC #2's own "plus one
+   * audit_event row in the same transaction" and the synoptic recorder's own
+   * established "the function already writes its own audit event" precedent.
    */
   @Post('v1/cases/:id/finalize')
   @HttpCode(200) // an action on an existing resource, not a creation
-  @UseGuards(JwtAuthGuard, CapabilityGuard)
-  @RequireCapability('manage_specimens')
-  @UseInterceptors(TenantContextInterceptor, AuditInterceptor)
-  @Audit({ action: 'case.finalize', resourceType: 'case' })
+  @UseGuards(JwtAuthGuard, CapabilityGuard, StepUpGuard)
+  @RequireCapability('verify')
+  @RequireStepUp()
+  @UseInterceptors(TenantContextInterceptor)
   async finalize(
     @Param(new ZodValidationPipe(idParamSchema)) { id }: IdParamDto,
+    @Req() request: RequestWithGrantingRole,
     @DbTx() tx: RequestWithTx['tx'],
   ) {
     const [caseRow] = await tx
@@ -493,24 +619,11 @@ export class CaseController {
       );
     }
 
-    const specimenRows = await tx
-      .select()
-      .from(specimen)
-      .where(eq(specimen.caseId, id));
+    const { content, specimenRows, blockRows, slideRows } =
+      await buildCaseReportContent(tx, caseRow);
     if (specimenRows.length === 0) {
       throw new BadRequestException('Case has no specimen/parts');
     }
-    const specimenIds = specimenRows.map((row) => row.id);
-    const blockRows = await tx
-      .select()
-      .from(block)
-      .where(inArray(block.specimenId, specimenIds));
-    const blockIds = blockRows.map((row) => row.id);
-    const slideRows =
-      blockIds.length > 0
-        ? await tx.select().from(slide).where(inArray(slide.blockId, blockIds))
-        : [];
-
     for (const specimenRow of specimenRows) {
       const activeBlocks = blockRows.filter(
         (row) => row.specimenId === specimenRow.id && row.status === 'active',
@@ -532,21 +645,168 @@ export class CaseController {
       }
     }
 
-    const [before] = await tx
-      .select()
-      .from(caseTable)
-      .where(eq(caseTable.id, id))
-      .limit(1);
+    const contentHash = computeCaseReportContentHash(content);
+    const authTimeUsed = request.authContext.authTime;
+    const signature = signCaseReportContent({
+      caseId: id,
+      contentHash,
+      actorPrincipalId: request.authContext.sub,
+      authTimeUsed,
+    });
+
+    const [reportVersion] = await tx
+      .insert(caseReportVersion)
+      .values({
+        tenantId: request.authContext.tenantId,
+        caseId: id,
+        versionNumber: 1,
+        contentHash,
+        includedContent: content,
+        signature,
+        signedByUserId: request.authContext.sub,
+        signedByRole: request.grantingRole,
+        authTimeUsed: new Date(authTimeUsed * 1000),
+      })
+      .returning();
+
     const [after] = await tx
       .update(caseTable)
       .set({ status: 'signed_out' })
       .where(eq(caseTable.id, id))
       .returning();
 
+    await writeAuditEvent(tx, {
+      tenantId: request.authContext.tenantId,
+      actorPrincipalId: request.authContext.sub,
+      actorRole: request.grantingRole,
+      actorType: 'human',
+      action: 'case.sign_out',
+      resourceType: 'case_report_version',
+      resourceId: reportVersion.id,
+      before: null,
+      after: {
+        ...toCaseReportVersionDto(reportVersion),
+        caseStatus: after.status,
+      },
+      context: {
+        step_up: { authTime: authTimeUsed, method: 'reauthentication' },
+      },
+    });
+
     return {
-      resourceId: id,
-      before: toCaseDto(before),
-      after: toCaseDto(after),
+      case: toCaseDto(after),
+      reportVersion: toCaseReportVersionDto(reportVersion),
+    };
+  }
+
+  /**
+   * FEAT-059 (ADR-0051, AC #3). Amends an already-signed case: creates a new
+   * `case_report_version` (`amendmentOf` the current `final` one), which the
+   * `trg_case_report_version_supersede` trigger atomically marks the prior
+   * version `superseded`. Same `verify` + `@RequireStepUp()` gates as
+   * `finalize()` -- StepUpGuard re-checks freshness unconditionally on every
+   * call, so this genuinely requires its own independent step-up, not a
+   * carried-forward one from the original sign-out.
+   */
+  @Post('v1/cases/:id/amend')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, CapabilityGuard, StepUpGuard)
+  @RequireCapability('verify')
+  @RequireStepUp()
+  @UseInterceptors(TenantContextInterceptor)
+  async amend(
+    @Param(new ZodValidationPipe(idParamSchema)) { id }: IdParamDto,
+    @Body(new ZodValidationPipe(caseAmendRequestSchema))
+    body: CaseAmendRequestDto,
+    @Req() request: RequestWithGrantingRole,
+    @DbTx() tx: RequestWithTx['tx'],
+  ) {
+    const [caseRow] = await tx
+      .select()
+      .from(caseTable)
+      .where(eq(caseTable.id, id))
+      .limit(1);
+    if (!caseRow) {
+      throw new NotFoundException('Case not found');
+    }
+    if (caseRow.status !== 'signed_out' && caseRow.status !== 'amended') {
+      throw new BadRequestException(
+        `Case ${id} has not been signed out yet (status: ${caseRow.status})`,
+      );
+    }
+
+    const [currentVersion] = await tx
+      .select()
+      .from(caseReportVersion)
+      .where(
+        and(
+          eq(caseReportVersion.caseId, id),
+          eq(caseReportVersion.status, 'final'),
+        ),
+      )
+      .orderBy(desc(caseReportVersion.versionNumber))
+      .limit(1);
+    if (!currentVersion) {
+      throw new BadRequestException(
+        `Case ${id} has no signed version to amend`,
+      );
+    }
+
+    const { content } = await buildCaseReportContent(tx, caseRow);
+    const contentHash = computeCaseReportContentHash(content);
+    const authTimeUsed = request.authContext.authTime;
+    const signature = signCaseReportContent({
+      caseId: id,
+      contentHash,
+      actorPrincipalId: request.authContext.sub,
+      authTimeUsed,
+    });
+
+    const [newVersion] = await tx
+      .insert(caseReportVersion)
+      .values({
+        tenantId: request.authContext.tenantId,
+        caseId: id,
+        versionNumber: currentVersion.versionNumber + 1,
+        contentHash,
+        includedContent: content,
+        signature,
+        signedByUserId: request.authContext.sub,
+        signedByRole: request.grantingRole,
+        authTimeUsed: new Date(authTimeUsed * 1000),
+        amendmentOf: currentVersion.id,
+        reason: body.reason,
+      })
+      .returning();
+
+    const [after] = await tx
+      .update(caseTable)
+      .set({ status: 'amended' })
+      .where(eq(caseTable.id, id))
+      .returning();
+
+    await writeAuditEvent(tx, {
+      tenantId: request.authContext.tenantId,
+      actorPrincipalId: request.authContext.sub,
+      actorRole: request.grantingRole,
+      actorType: 'human',
+      action: 'case.amend',
+      resourceType: 'case_report_version',
+      resourceId: newVersion.id,
+      before: toCaseReportVersionDto(currentVersion),
+      after: {
+        ...toCaseReportVersionDto(newVersion),
+        caseStatus: after.status,
+      },
+      reason: body.reason,
+      context: {
+        step_up: { authTime: authTimeUsed, method: 'reauthentication' },
+      },
+    });
+
+    return {
+      case: toCaseDto(after),
+      reportVersion: toCaseReportVersionDto(newVersion),
     };
   }
 }

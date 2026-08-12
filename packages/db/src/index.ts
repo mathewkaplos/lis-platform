@@ -3,6 +3,13 @@ export { createDb } from "./client";
 export { writeAuditEvent, verifyAuditChain, stableStringify, type AuditEventInput } from "./audit";
 export { writeOutboxEvent, type OutboxEventInput } from "./outbox";
 export {
+  computeCaseReportContentHash,
+  signCaseReportContent,
+  verifyCaseReportSignature,
+  type CaseReportContent,
+  type CaseReportSignatureInput,
+} from "./case-report-signature";
+export {
   generateAccessionNumber,
   deriveCaseSpecimenAccessionNumber,
   deriveBlockCode,

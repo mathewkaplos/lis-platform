@@ -9,9 +9,8 @@ import { specimenRejectionReasonSchema, specimenTypeSchema } from "./specimen";
  * constraints exactly.
  */
 
-/** Mirrors `ck_case_status`. `signed_out` here is a schema-only status
- * transition (proposal §5 scope cut) — the real step-up-signed sign-out is
- * FEAT-059's job, not this feature's `finalize` action. */
+/** Mirrors `ck_case_status`. `signed_out` is set by the real, step-up-signed
+ * `finalize` action (FEAT-059); `amended` is set by `amend`. */
 export const caseStatusSchema = z.enum(["accessioned", "in_process", "signed_out", "amended"]);
 export type CaseStatus = z.infer<typeof caseStatusSchema>;
 
@@ -114,3 +113,40 @@ export const caseLineageSchema = z.object({
   parts: z.array(caseLineagePartSchema),
 });
 export type CaseLineage = z.infer<typeof caseLineageSchema>;
+
+/**
+ * FEAT-059 (ADR-0051, docs/plans/feat-059-sign-out-step-up-digital-signature.md).
+ * Mirrors `packages/db/src/schema/anatomic-pathology.ts`'s `caseReportVersion`
+ * table. `signature` is hex-encoded for JSON transport (the DB column is
+ * `bytea`) — a caller who needs to verify it converts back via
+ * `Buffer.from(signature, "hex")` and `verifyCaseReportSignature`
+ * (`@lis/db`).
+ */
+export const caseReportVersionStatusSchema = z.enum(["final", "superseded"]);
+export type CaseReportVersionStatus = z.infer<typeof caseReportVersionStatusSchema>;
+
+export const caseReportVersionSchema = z.object({
+  id: z.uuid(),
+  tenantId: z.uuid(),
+  caseId: z.uuid(),
+  versionNumber: z.number().int().positive(),
+  contentHash: z.string(),
+  signature: z.string(),
+  signedByUserId: z.uuid(),
+  signedByRole: z.string(),
+  authTimeUsed: z.iso.datetime(),
+  amendmentOf: z.uuid().nullable(),
+  reason: z.string().nullable(),
+  supersededBy: z.uuid().nullable(),
+  status: caseReportVersionStatusSchema,
+  signedAt: z.iso.datetime(),
+});
+export type CaseReportVersion = z.infer<typeof caseReportVersionSchema>;
+
+/** `POST /v1/cases/:id/amend` body (AC #3): a `reason` is mandatory for
+ * every amendment, matching `audit_event.reason`'s own "required for
+ * amendments" convention. */
+export const caseAmendRequestSchema = z.object({
+  reason: z.string().min(1),
+});
+export type CaseAmendRequestInput = z.infer<typeof caseAmendRequestSchema>;

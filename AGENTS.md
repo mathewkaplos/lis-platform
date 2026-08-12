@@ -56,6 +56,17 @@ packages/ui (design system) · packages/sdk (generated API client)
   `--label` to `gh issue create` (or create the issue with no label first,
   then `gh issue edit <n> --add-label` as a separate step), rather than
   guessing from the `type:*` pattern.
+- When batch-creating 3+ related GitHub issues in one sitting (an epic plus
+  its features plus deferred follow-ups), verify the complete resulting set
+  with one `gh issue list --milestone "<name>" --json number,title` (or
+  equivalent) *before* wiring cross-references between them — do not trust
+  parallel tool-call return-value ordering to tell you which calls actually
+  succeeded. A batch of 8 parallel `gh issue create` calls had 2 transient
+  failures (one GraphQL `HTTP 499`, one classifier-unavailable block) that
+  were easy to miscount from result ordering alone, and only an explicit
+  `gh issue list`/`gh issue view` re-check revealed which 2 of 8 had actually
+  failed. Confirmed 2026-08-12 (close Skill's Engineering Flow Retrospective,
+  Section 8 — M13/EPIC-012 issue batch creation).
 
 ## Where knowledge lives
 - Architecture KB: ../lis-engineering/knowledge-base/

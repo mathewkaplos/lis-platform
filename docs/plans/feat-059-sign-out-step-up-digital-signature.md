@@ -1,5 +1,5 @@
 # Implementation Proposal: FEAT-059 — Human sign-out, step-up authentication & digital signature
-Status: APPROVED
+Status: IMPLEMENTED (PR #559, merge commit f6122df6715978826371fba4f87d1a2f14defb0f)
 ADR: ADR-0051 (mandatory human verification + step-up-bound digital signature — accepted)
 Date: 2026-08-12    Backlog ID: #544 (FEAT-059, depends on FEAT-057 #538, ADR-0051)
 

@@ -420,6 +420,34 @@ async function insertFixtures(db: Db) {
     authTimeUsed: new Date(),
   });
 
+  // FEAT-061 (ADR-0052): image_attachment/image_annotation fixture — two
+  // genuinely new tenant tables. observation_created_at is supplied via a
+  // server-side subquery, never `obs.createdAt` (a JS-parsed Date, which
+  // truncates Postgres's real microsecond timestamptz to milliseconds —
+  // database-design Skill entry #10's own documented precision-mismatch
+  // trap for any composite FK into observation(id, created_at)).
+  const [imageAttachmentRow] = await db
+    .insert(schema.imageAttachment)
+    .values({
+      tenantId: TENANT_A,
+      resourceType: "block",
+      resourceId: blockRow.id,
+      category: "microscopic",
+      objectKey: "rls-check-fixture/does-not-need-to-exist-in-object-storage.jpg",
+      contentType: "image/jpeg",
+      sizeBytes: 1,
+      uploadedByUserId: "99999999-9999-9999-9999-999999999999",
+    })
+    .returning();
+  await db.insert(schema.imageAnnotation).values({
+    tenantId: TENANT_A,
+    imageAttachmentId: imageAttachmentRow.id,
+    coordinates: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 },
+    observationId: obs.id,
+    observationCreatedAt: sql`(SELECT created_at FROM observation WHERE id = ${obs.id})`,
+    annotatedByUserId: "99999999-9999-9999-9999-999999999999",
+  });
+
   // audit_event fixture, via the real writer (TASK-025) rather than a
   // direct insert — exercises the same hash-chain path any real caller
   // would use, matching the same "trigger the real path" reasoning as the
@@ -473,7 +501,7 @@ async function main() {
     "Fixtures inserted for patient/patient_alert/order/ordered_test/specimen/specimen_fulfillment/observation/" +
       "result_history/report/culture_read/instrument_analyte_mapping/invoice/invoice_line_item/payment/" +
       "observation_idempotency_key/outbox_event/sla_breach/workflow_definition/workflow_rule_firing/" +
-      "case/block/slide/block_fulfillment/case_report_version.\n",
+      "case/block/slide/block_fulfillment/case_report_version/image_attachment/image_annotation.\n",
   );
 
   console.log("--- Live cross-tenant leak check: TENANT_B must see 0 rows of TENANT_A's data ---");

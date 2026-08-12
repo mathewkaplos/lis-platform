@@ -1316,6 +1316,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/images/{resourceType}/{resourceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ImageAttachmentController_upload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/images/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ImageAttachmentController_getById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/images/{id}/annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ImageAttachmentController_listAnnotations"];
+        put?: never;
+        post: operations["ImageAttachmentController_annotate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2369,6 +2417,80 @@ export interface components {
             responses: {
                 elementKey: string;
                 value: string | number;
+            }[];
+        };
+        ImageAttachmentDto_Output: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenantId: string;
+            /** @enum {string} */
+            resourceType: "case" | "specimen" | "block" | "slide";
+            /** Format: uuid */
+            resourceId: string;
+            /** @enum {string} */
+            category: "gross" | "microscopic";
+            objectKey: string;
+            contentType: string;
+            sizeBytes: number;
+            /** Format: uuid */
+            uploadedByUserId: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        ImageAttachmentWithUrlDto_Output: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenantId: string;
+            /** @enum {string} */
+            resourceType: "case" | "specimen" | "block" | "slide";
+            /** Format: uuid */
+            resourceId: string;
+            /** @enum {string} */
+            category: "gross" | "microscopic";
+            objectKey: string;
+            contentType: string;
+            sizeBytes: number;
+            /** Format: uuid */
+            uploadedByUserId: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uri */
+            downloadUrl: string;
+        };
+        ImageAnnotationCreateDto: {
+            coordinates: {
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+            };
+            /** Format: uuid */
+            observationId?: string;
+            label?: string;
+        };
+        ImageAnnotationListDto_Output: {
+            annotations: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                tenantId: string;
+                /** Format: uuid */
+                imageAttachmentId: string;
+                coordinates: {
+                    x: number;
+                    y: number;
+                    width: number;
+                    height: number;
+                };
+                /** Format: uuid */
+                observationId: string | null;
+                label: string | null;
+                /** Format: uuid */
+                annotatedByUserId: string;
+                /** Format: date-time */
+                createdAt: string;
             }[];
         };
     };
@@ -4216,6 +4338,95 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["SynopticResponseCreateDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ImageAttachmentController_upload: {
+        parameters: {
+            query: {
+                category: "gross" | "microscopic";
+            };
+            header?: never;
+            path: {
+                resourceType: "case" | "specimen" | "block" | "slide";
+                resourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageAttachmentDto_Output"];
+                };
+            };
+        };
+    };
+    ImageAttachmentController_getById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageAttachmentWithUrlDto_Output"];
+                };
+            };
+        };
+    };
+    ImageAttachmentController_listAnnotations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageAnnotationListDto_Output"];
+                };
+            };
+        };
+    };
+    ImageAttachmentController_annotate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageAnnotationCreateDto"];
             };
         };
         responses: {

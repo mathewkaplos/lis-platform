@@ -26,3 +26,4 @@ export * from "./antibiogram";
 export * from "./amr-surveillance";
 export * from "./anatomic-pathology";
 export * from "./synoptic-protocol";
+export * from "./image-attachment";

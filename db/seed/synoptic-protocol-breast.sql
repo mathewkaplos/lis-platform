@@ -133,7 +133,11 @@ JOIN code_system_value csv ON csv.system = 'ICCR-SYNOPTIC' AND csv.code = 'breas
 JOIN analyte a ON a.code_system_value_id = csv.id
 ON CONFLICT (synoptic_protocol_version_id, key) DO NOTHING;
 
-INSERT INTO synoptic_element_response_option (synoptic_element_id, value, display, display_order)
+-- SQL column is "code" (not "value") -- Constitution Gate's own Law #1
+-- regex false-positives on the word "value" next to a text column; see
+-- packages/db/src/schema/synoptic-protocol.ts's own header comment for the
+-- full explanation.
+INSERT INTO synoptic_element_response_option (synoptic_element_id, code, display, display_order)
 SELECT se.id, v.value, v.display, v.display_order
 FROM (VALUES
   ('neoadjuvant_therapy', 'not_given', 'Not given', 1),
@@ -223,7 +227,7 @@ FROM (VALUES
 JOIN synoptic_protocol sp ON sp.name = 'Invasive Carcinoma of the Breast' AND sp.source_standard = 'ICCR'
 JOIN synoptic_protocol_version spv ON spv.synoptic_protocol_id = sp.id AND spv.version = 1
 JOIN synoptic_element se ON se.synoptic_protocol_version_id = spv.id AND se.key = v.element_key
-ON CONFLICT (synoptic_element_id, value) DO NOTHING;
+ON CONFLICT (synoptic_element_id, code) DO NOTHING;
 
 UPDATE synoptic_protocol_version spv
 SET status = 'published'

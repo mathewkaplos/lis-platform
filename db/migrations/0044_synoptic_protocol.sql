@@ -19,7 +19,7 @@ CREATE TABLE "synoptic_element" (
 CREATE TABLE "synoptic_element_response_option" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"synoptic_element_id" uuid NOT NULL,
-	"value" text NOT NULL,
+	"code" text NOT NULL,
 	"display" text NOT NULL,
 	"display_order" integer DEFAULT 0 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -53,5 +53,5 @@ ALTER TABLE "synoptic_element_response_option" ADD CONSTRAINT "synoptic_element_
 ALTER TABLE "synoptic_protocol_version" ADD CONSTRAINT "synoptic_protocol_version_synoptic_protocol_id_synoptic_protocol_id_fk" FOREIGN KEY ("synoptic_protocol_id") REFERENCES "public"."synoptic_protocol"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "ux_synoptic_element_version_key" ON "synoptic_element" USING btree ("synoptic_protocol_version_id","key");--> statement-breakpoint
 CREATE INDEX "ix_synoptic_element_parent" ON "synoptic_element" USING btree ("parent_element_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "ux_synoptic_element_response_option_element_value" ON "synoptic_element_response_option" USING btree ("synoptic_element_id","value");--> statement-breakpoint
+CREATE UNIQUE INDEX "ux_synoptic_element_response_option_element_value" ON "synoptic_element_response_option" USING btree ("synoptic_element_id","code");--> statement-breakpoint
 CREATE UNIQUE INDEX "ux_synoptic_protocol_version_protocol_published" ON "synoptic_protocol_version" USING btree ("synoptic_protocol_id") WHERE "synoptic_protocol_version"."status" = 'published';

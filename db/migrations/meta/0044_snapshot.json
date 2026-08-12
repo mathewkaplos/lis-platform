@@ -1,5 +1,5 @@
 {
-  "id": "3bf4af12-0906-46aa-9772-095e599409ee",
+  "id": "2fcfccec-290c-4aa4-a4af-cd2d4c76167d",
   "prevId": "46826493-c534-4ea9-ad89-fd32a69c24e7",
   "version": "7",
   "dialect": "postgresql",
@@ -5983,8 +5983,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "value": {
-          "name": "value",
+        "code": {
+          "name": "code",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -6021,7 +6021,7 @@
               "nulls": "last"
             },
             {
-              "expression": "value",
+              "expression": "code",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

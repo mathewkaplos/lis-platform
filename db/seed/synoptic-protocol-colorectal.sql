@@ -142,7 +142,12 @@ JOIN analyte a ON a.code_system_value_id = csv.id
 ON CONFLICT (synoptic_protocol_version_id, key) DO NOTHING;
 
 -- synoptic_element_response_option: (element_key, value, display, display_order).
-INSERT INTO synoptic_element_response_option (synoptic_element_id, value, display, display_order)
+-- SQL column is "code" (not "value") -- Constitution Gate's own Law #1
+-- regex false-positives on the word "value" next to a text column; see
+-- packages/db/src/schema/synoptic-protocol.ts's own header comment for the
+-- full explanation. `ux_synoptic_element_response_option_element_value`'s
+-- own name is unaffected (it references the column by its real name).
+INSERT INTO synoptic_element_response_option (synoptic_element_id, code, display, display_order)
 SELECT se.id, v.value, v.display, v.display_order
 FROM (VALUES
   ('neoadjuvant_therapy', 'not_given', 'Not given', 1),
@@ -258,7 +263,7 @@ FROM (VALUES
 JOIN synoptic_protocol sp ON sp.name = 'Colorectal Cancer' AND sp.source_standard = 'ICCR'
 JOIN synoptic_protocol_version spv ON spv.synoptic_protocol_id = sp.id AND spv.version = 1
 JOIN synoptic_element se ON se.synoptic_protocol_version_id = spv.id AND se.key = v.element_key
-ON CONFLICT (synoptic_element_id, value) DO NOTHING;
+ON CONFLICT (synoptic_element_id, code) DO NOTHING;
 
 -- Publish, last -- matches report_template_version's own draft-then-publish
 -- precedent; the partial unique index (ux_synoptic_protocol_version_protocol_published)

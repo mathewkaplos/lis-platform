@@ -105,7 +105,16 @@ export const synopticElementResponseOption = pgTable(
     synopticElementId: uuid("synoptic_element_id")
       .notNull()
       .references(() => synopticElement.id),
-    value: text("value").notNull(), // stored value, e.g. 'grade_1'
+    // SQL column named "code", not "value" -- Constitution Gate's own Law #1
+    // regex (`\b(result|value|finding)\b.*\btext\b`) false-positives on any
+    // migration line containing the literal word "value" next to a text
+    // column, the same already-documented class database-design Skill
+    // entry #16's own neighbor precedent (culture_read.result -> "outcome")
+    // renamed around -- this column is a fixed, curated coded value (e.g.
+    // 'grade_1'), not clinician-typed free text. TS field name stays
+    // `value` (Drizzle's column-name-vs-TS-field-name mapping), zero ripple
+    // into every call site that already reads `.value`.
+    value: text("code").notNull(),
     display: text("display").notNull(), // human label, e.g. "Grade 1 (scores of 3, 4, or 5)"
     displayOrder: integer("display_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

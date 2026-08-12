@@ -1252,6 +1252,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/cases/{id}/amend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CaseController_amend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/synoptic-protocols": {
         parameters: {
             query?: never;
@@ -2280,6 +2296,9 @@ export interface components {
                     }[];
                 }[];
             }[];
+        };
+        CaseAmendRequestDto: {
+            reason: string;
         };
         SynopticProtocolListDto_Output: {
             protocols: {
@@ -4112,6 +4131,29 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CaseController_amend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaseAmendRequestDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {

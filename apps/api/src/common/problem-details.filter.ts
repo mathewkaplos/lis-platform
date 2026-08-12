@@ -15,6 +15,7 @@ import { UnmatchedResultException } from '../gateway-ingest/unmatched-result.exc
 import type { InteropUnmatchedReason } from '../interop-bridge/interop-order-correlation.service';
 import { UnmatchedOrderException } from '../interop-bridge/unmatched-order.exception';
 import { PanelHoldException } from '../observation/finalization-rollup.interceptor';
+import { StepUpRequiredException } from '../auth/step-up-required.exception';
 
 interface ProblemDetails {
   type: string;
@@ -39,6 +40,9 @@ interface ProblemDetails {
     | 'qc_violation'
     | UnmatchedReason
     | InteropUnmatchedReason;
+  // FEAT-059: apps/web's sign-out flow reacts to this specific code by
+  // redirecting into /api/auth/login?step_up=1, not by treating it as an
+  // ordinary 403.
   heldObservation?: ObservationResult;
   heldCalculatedDependents?: ObservationResult[];
 }
@@ -112,6 +116,10 @@ export class ProblemDetailsFilter implements ExceptionFilter {
       problem.detail = exception.message;
       problem.code = 'unmatched_order';
       problem.reason = exception.reason;
+    } else if (exception instanceof StepUpRequiredException) {
+      problem.title = 'Step-up required';
+      problem.detail = exception.message;
+      problem.code = 'step_up_required';
     } else if (exception instanceof HttpException) {
       const body = exception.getResponse();
       const message =

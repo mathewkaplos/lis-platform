@@ -45,7 +45,7 @@ import { observationIdempotencyKey } from "./schema/observation-idempotency";
 import { outboxEvent } from "./schema/outbox-event";
 import { slaBreach } from "./schema/sla-breach";
 import { workflowDefinition, workflowRuleFiring } from "./schema/workflow-definition";
-import { caseTable, block, slide, blockFulfillment } from "./schema/anatomic-pathology";
+import { caseTable, block, slide, blockFulfillment, caseReportVersion } from "./schema/anatomic-pathology";
 import { writeAuditEvent } from "./audit";
 
 type Db = ReturnType<typeof createDb>;
@@ -403,6 +403,23 @@ async function insertFixtures(db: Db) {
     .returning();
   await db.insert(blockFulfillment).values({ tenantId: TENANT_A, blockId: blockRow.id, orderedTestId: apOrderedTest.id });
 
+  // FEAT-059 (ADR-0051): case_report_version fixture — a genuinely new
+  // tenant table this feature introduces. Direct insert (not the real
+  // sign-out route/signing module) is sufficient here: this check only
+  // proves RLS isolation, not the signing flow itself (covered by
+  // case-sign-out.e2e-spec.ts).
+  await db.insert(caseReportVersion).values({
+    tenantId: TENANT_A,
+    caseId: caseRow.id,
+    versionNumber: 1,
+    contentHash: "rls-check-fixture-hash",
+    includedContent: {},
+    signature: Buffer.from("rls-check-fixture-signature"),
+    signedByUserId: "99999999-9999-9999-9999-999999999999",
+    signedByRole: "verifier",
+    authTimeUsed: new Date(),
+  });
+
   // audit_event fixture, via the real writer (TASK-025) rather than a
   // direct insert — exercises the same hash-chain path any real caller
   // would use, matching the same "trigger the real path" reasoning as the
@@ -456,7 +473,7 @@ async function main() {
     "Fixtures inserted for patient/patient_alert/order/ordered_test/specimen/specimen_fulfillment/observation/" +
       "result_history/report/culture_read/instrument_analyte_mapping/invoice/invoice_line_item/payment/" +
       "observation_idempotency_key/outbox_event/sla_breach/workflow_definition/workflow_rule_firing/" +
-      "case/block/slide/block_fulfillment.\n",
+      "case/block/slide/block_fulfillment/case_report_version.\n",
   );
 
   console.log("--- Live cross-tenant leak check: TENANT_B must see 0 rows of TENANT_A's data ---");

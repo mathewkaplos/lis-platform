@@ -5,6 +5,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { getKeycloakToken } from './get-keycloak-token';
+import { getKeycloakFreshToken } from './get-keycloak-fresh-token';
 
 const TENANT_A_GLUCOSE_CODE = 'GLU';
 
@@ -19,6 +20,16 @@ describe('Case API (e2e)', () => {
   let tokenA: string;
   let tokenB: string;
   let noRoleToken: string;
+  // FEAT-059: finalize() now requires the `verify` capability (not
+  // `manage_specimens`) AND a fresh step-up assertion — test-user-4
+  // (technologist+verifier, same tenant as tokenA/test-user) is the one
+  // fixture account that can both create the case lineage
+  // (manage_specimens) and finalize it (verify), matching
+  // capability-check.e2e-spec.ts's own "dualRoleToken" precedent. Distinct
+  // from tokenB (test-user-2), which is `verifier` but a DIFFERENT tenant.
+  // Fetched via the real Authorization Code flow (getKeycloakFreshToken),
+  // not Direct Grant — see that helper's own header comment for why.
+  let tokenVerifier: string;
   let patientId: string;
   let testDefinitionId: string;
 
@@ -71,10 +82,11 @@ describe('Case API (e2e)', () => {
     app = moduleFixture.createNestApplication();
     await app.init();
 
-    [tokenA, tokenB, noRoleToken] = await Promise.all([
+    [tokenA, tokenB, noRoleToken, tokenVerifier] = await Promise.all([
       getKeycloakToken('test-user', 'test-password'),
       getKeycloakToken('test-user-2', 'test-password-2'),
       getKeycloakToken('test-user-3', 'test-password-3'),
+      getKeycloakFreshToken('test-user-4', 'test-password-4'),
     ]);
 
     const patientRes = await request(app.getHttpServer())
@@ -295,7 +307,7 @@ describe('Case API (e2e)', () => {
 
     await request(app.getHttpServer())
       .post(`/v1/cases/${caseId}/finalize`)
-      .set('Authorization', `Bearer ${tokenA}`)
+      .set('Authorization', `Bearer ${tokenVerifier}`)
       .expect(400); // no block yet
 
     const lineage = await request(app.getHttpServer())
@@ -312,7 +324,7 @@ describe('Case API (e2e)', () => {
 
     await request(app.getHttpServer())
       .post(`/v1/cases/${caseId}/finalize`)
-      .set('Authorization', `Bearer ${tokenA}`)
+      .set('Authorization', `Bearer ${tokenVerifier}`)
       .expect(400); // block has no slide yet
 
     await request(app.getHttpServer())
@@ -322,10 +334,14 @@ describe('Case API (e2e)', () => {
 
     const finalizeRes = await request(app.getHttpServer())
       .post(`/v1/cases/${caseId}/finalize`)
-      .set('Authorization', `Bearer ${tokenA}`)
+      .set('Authorization', `Bearer ${tokenVerifier}`)
       .expect(200);
-    const finalizeBody = finalizeRes.body as { after: { status: string } };
-    if (finalizeBody.after.status !== 'signed_out') {
+    // FEAT-059: finalize() now returns { case, reportVersion } (the real
+    // signed artifact), not the old { resourceId, before, after } shape
+    // AuditInterceptor produced — see case-sign-out.e2e-spec.ts for
+    // signature/audit coverage of this response.
+    const finalizeBody = finalizeRes.body as { case: { status: string } };
+    if (finalizeBody.case.status !== 'signed_out') {
       throw new Error(
         `expected status signed_out, got ${JSON.stringify(finalizeBody)}`,
       );
@@ -333,7 +349,7 @@ describe('Case API (e2e)', () => {
 
     await request(app.getHttpServer())
       .post(`/v1/cases/${caseId}/finalize`)
-      .set('Authorization', `Bearer ${tokenA}`)
+      .set('Authorization', `Bearer ${tokenVerifier}`)
       .expect(400); // already finalized
   });
 

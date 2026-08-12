@@ -1,7 +1,17 @@
-import { pgTable, uuid, text, integer, timestamp, uniqueIndex, index, pgPolicy, check } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, timestamp, jsonb, uniqueIndex, index, pgPolicy, check, customType, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { order, orderedTest } from "./order";
 import { specimen } from "./specimen";
+
+// `pg` (node-postgres) round-trips bytea <-> Buffer natively; drizzle has no
+// built-in bytea helper. Same minimal customType as audit.ts's own -- not
+// extracted to a shared module for two call sites, matching that file's own
+// "minimal customType rather than a deviation to text" reasoning.
+const bytea = customType<{ data: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
 
 // Tenant-scoped per ADR-0004 (contrast case): case/block/slide are
 // operational, tenant-varying clinical-workflow data, same category as
@@ -118,6 +128,73 @@ export const blockFulfillment = pgTable(
   },
   (table) => [
     uniqueIndex("ux_block_fulfillment_block_ordered_test").on(table.blockId, table.orderedTestId),
+    tenantIsolation(),
+  ],
+).enableRLS();
+
+// FEAT-059 (ADR-0051, docs/plans/feat-059-sign-out-step-up-digital-signature.md).
+// The real, signed, versioned AP report artifact FEAT-057's own placeholder
+// `case.finalize()` deferred ("report.ts most naturally gains
+// Case-awareness alongside the content it will actually be signing...
+// FEAT-059"). Deliberately a NEW table, not an extension of report.ts
+// (proposal §5/§10 Q3): report.ts stays chemistry/ordered_test-shaped;
+// AP's content (case lineage + synoptic responses, FEAT-058) is structurally
+// different, and FEAT-057 already named this exact deferral.
+//
+// Append-only from insertion (trigger below, hand-written like
+// fn_observation_append_only/fn_observation_supersede -- drizzle-kit cannot
+// express triggers): a row is only ever inserted already-signed (no
+// preliminary/draft state the way observation has), so ANY update after
+// insert is rejected except the narrow system-internal supersede backfill
+// (pg_trigger_depth() > 1), unlike observation's own status-conditional
+// version of the same rule.
+//
+// amendmentOf (nullable, self-FK): set only on an amendment version,
+// mirrors observation.amendmentOf's own naming/semantics
+// (domain/result-verification Skill) -- points at the specific prior
+// version being corrected, not inferred by "most recent final row for this
+// case" (which would be fragile under any future concurrent-amendment
+// scenario). supersededBy (nullable, self-FK) is the reverse pointer, set
+// by the AFTER INSERT trigger on the row amendmentOf points to -- same
+// old->new / new->old split ADR-0007 already established for observation.
+//
+// signature is HMAC-SHA256 (packages/db/src/case-report-signature.ts), not
+// per-user asymmetric PKI (proposal §5/§10 Q2) -- no user-held keypair
+// exists anywhere in this system; this mirrors the audit trail's own
+// already-accepted hash-chain security model rather than a heavier,
+// inconsistent crypto posture for this one feature alone.
+export const caseReportVersion = pgTable(
+  "case_report_version",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull(),
+    caseId: uuid("case_id")
+      .notNull()
+      .references(() => caseTable.id),
+    versionNumber: integer("version_number").notNull(),
+    contentHash: text("content_hash").notNull(), // sha256 hex, computeCaseReportContentHash
+    // { lineage: {...}, synopticResponses: [...] } -- provenance/display
+    // data, not an enforced constraint, same reasoning as
+    // report.includedObservations's own header comment.
+    includedContent: jsonb("included_content").notNull(),
+    signature: bytea("signature").notNull(),
+    signedByUserId: uuid("signed_by_user_id").notNull(), // no FK: no user table exists yet, mirrors report.generatedByUserId
+    signedByRole: text("signed_by_role").notNull(),
+    // The exact `auth_time` claim value (epoch seconds -> timestamptz) the
+    // signature is bound to (ADR-0051) -- not `signedAt` (when the row was
+    // written), but when the caller actually last re-authenticated.
+    authTimeUsed: timestamp("auth_time_used", { withTimezone: true }).notNull(),
+    amendmentOf: uuid("amendment_of").references((): AnyPgColumn => caseReportVersion.id),
+    reason: text("reason"), // required for amendments -- enforced by the writer, not a blanket NOT NULL, matching audit_event.reason's own convention
+    supersededBy: uuid("superseded_by").references((): AnyPgColumn => caseReportVersion.id),
+    status: text("status").notNull().default("final"),
+    signedAt: timestamp("signed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("ux_case_report_version_case_version").on(table.caseId, table.versionNumber),
+    index("ix_case_report_version_tenant_case").on(table.tenantId, table.caseId),
+    index("ix_case_report_version_amendment_of").on(table.amendmentOf),
+    check("ck_case_report_version_status", sql`${table.status} IN ('final','superseded')`),
     tenantIsolation(),
   ],
 ).enableRLS();

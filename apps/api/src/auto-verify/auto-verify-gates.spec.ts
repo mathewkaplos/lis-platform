@@ -41,6 +41,19 @@ describe('checkAutoVerifyGates', () => {
     expect(checkAutoVerifyGates({ ...base, qcHeld: true })).toBe('qc_held');
   });
 
+  it(
+    'refuses a synoptic-response Observation (FEAT-058/059 AC #4) — every ' +
+      'discrete/grid Observation assembleAndPersistSynopticResponse writes ' +
+      "is source: 'manual' (synoptic-response-recorder.ts), so this gate " +
+      'structurally blocks the auto-verify engine from ever finalizing AP ' +
+      'content, with no AP-specific exclusion code needed anywhere',
+    () => {
+      expect(checkAutoVerifyGates({ ...base, source: 'manual' })).toBe(
+        'not_analyzer',
+      );
+    },
+  );
+
   it('checks critical before any other gate, even when multiple would fail', () => {
     expect(
       checkAutoVerifyGates({

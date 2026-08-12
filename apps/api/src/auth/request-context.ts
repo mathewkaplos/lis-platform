@@ -8,4 +8,10 @@ export interface RequestContext {
   sub: string;
   tenantId: string;
   roles: string[];
+  // FEAT-059: epoch seconds from the token's `auth_time` claim — when the
+  // caller last actually authenticated (password re-entry), not merely when
+  // the current access token was issued/refreshed. A silent refresh-token
+  // grant (apps/web's getValidAccessToken()) never advances this value; only
+  // a real interactive re-login does. See StepUpGuard.
+  authTime: number;
 }

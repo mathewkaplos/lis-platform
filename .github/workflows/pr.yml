@@ -38,6 +38,11 @@ jobs:
       # APP_DATABASE_URL above. CI-only value, never a real secret — must be
       # >=32 bytes (secret.ts enforces this for real HS256 key material).
       SESSION_SECRET: lis_web_ci_session_secret_at_least_32_bytes_long
+      # FEAT-059 (ADR-0051): packages/db/src/case-report-signature.ts
+      # requires this at call time (case.controller.ts finalize()/amend()) --
+      # same reasoning/enforcement as SESSION_SECRET above (>=32 bytes). CI-only
+      # value, never a real secret.
+      SIGNING_SECRET: lis_api_ci_signing_secret_at_least_32_bytes_long
     steps:
       - uses: actions/checkout@v4
       # No explicit `version:` — read from package.json's "packageManager"

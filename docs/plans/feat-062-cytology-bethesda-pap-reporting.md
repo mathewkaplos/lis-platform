@@ -1,5 +1,5 @@
 # Implementation Proposal: FEAT-062 — Cytology v1: Bethesda-coded Pap reporting & adequacy tracking
-Status: APPROVED
+Status: IMPLEMENTED (PR #569, merge commit acae07e4598630d0c281375059d610a231222ad5)
 ADR: none (fits the existing mechanism unchanged — see §5)
 
 **Approved 2026-08-13** via the native options-prompt — all four §10 questions answered with the

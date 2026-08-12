@@ -1206,6 +1206,48 @@
         ]
       }
     },
+    "/v1/reports/operational/adequacy-rate": {
+      "get": {
+        "operationId": "OperationalReportsController_adequacyRate",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdequacyRateReportDto_Output"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "OperationalReports"
+        ]
+      }
+    },
     "/v1/reports/amr-surveillance": {
       "get": {
         "operationId": "AmrSurveillanceController_report",
@@ -4149,6 +4191,31 @@
           "totalSpecimens",
           "rejectedTotal",
           "byReason"
+        ],
+        "additionalProperties": false
+      },
+      "AdequacyRateReportDto_Output": {
+        "type": "object",
+        "properties": {
+          "totalCount": {
+            "type": "number"
+          },
+          "satisfactoryCount": {
+            "type": "number"
+          },
+          "unsatisfactoryCount": {
+            "type": "number"
+          },
+          "satisfactoryRatePct": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "totalCount",
+          "satisfactoryCount",
+          "unsatisfactoryCount",
+          "satisfactoryRatePct"
         ],
         "additionalProperties": false
       },

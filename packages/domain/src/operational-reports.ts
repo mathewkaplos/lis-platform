@@ -78,3 +78,20 @@ export const rejectionRateReportSchema = z.object({
   byReason: z.array(rejectionRateEntrySchema),
 });
 export type RejectionRateReport = z.infer<typeof rejectionRateReportSchema>;
+
+/**
+ * FEAT-062 (docs/plans/feat-062-cytology-bethesda-pap-reporting.md).
+ * KB-18's own "adequacy rates... are computable directly" -- mirrors
+ * `rejectionRateReportSchema`'s exact shape (a real denominator, not just a
+ * raw count). `satisfactoryRatePct` is `null`, not `0`, when `totalCount`
+ * is zero (no adequacy responses recorded in the window) -- same
+ * "undefined, not misleadingly zero" convention `withinTargetPct` already
+ * established for TAT.
+ */
+export const adequacyRateReportSchema = z.object({
+  totalCount: z.number(),
+  satisfactoryCount: z.number(),
+  unsatisfactoryCount: z.number(),
+  satisfactoryRatePct: z.number().nullable(),
+});
+export type AdequacyRateReport = z.infer<typeof adequacyRateReportSchema>;

@@ -6,16 +6,19 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import {
+  adequacyRateReportSchema,
   operationalReportQuerySchema,
   rejectionRateReportSchema,
   tatReportSchema,
   workloadReportSchema,
+  type AdequacyRateReport,
   type RejectionRateReport,
   type TatReport,
   type WorkloadReport,
 } from '@lis/domain';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import {
+  computeAdequacyRateReport,
   computeRejectionRateReport,
   computeTatReport,
   computeWorkloadReport,
@@ -33,6 +36,7 @@ class OperationalReportQueryDto extends createZodDto(
 class TatReportDto extends createZodDto(tatReportSchema) {}
 class WorkloadReportDto extends createZodDto(workloadReportSchema) {}
 class RejectionRateReportDto extends createZodDto(rejectionRateReportSchema) {}
+class AdequacyRateReportDto extends createZodDto(adequacyRateReportSchema) {}
 
 /**
  * FEAT-034 (docs/plans/feat-034-operational-reports-tat-workload.md). Three
@@ -84,5 +88,20 @@ export class OperationalReportsController {
     @DbTx() tx: RequestWithTx['tx'],
   ): Promise<RejectionRateReport> {
     return computeRejectionRateReport(tx, { query });
+  }
+
+  /** FEAT-062: KB-18's own "adequacy rates... are computable directly" --
+   * mirrors this controller's own three existing routes exactly (same
+   * capability gate, same unaudited-read reasoning, same required
+   * from/to). */
+  @Get('adequacy-rate')
+  @RequireCapability('view_operational_reports')
+  @ZodResponse({ type: AdequacyRateReportDto, status: 200 })
+  async adequacyRate(
+    @Query(new ZodValidationPipe(operationalReportQuerySchema))
+    query: OperationalReportQueryDto,
+    @DbTx() tx: RequestWithTx['tx'],
+  ): Promise<AdequacyRateReport> {
+    return computeAdequacyRateReport(tx, { query });
   }
 }

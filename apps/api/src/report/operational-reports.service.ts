@@ -1,4 +1,5 @@
 import type {
+  AdequacyRateReport,
   OperationalReportQuery,
   RejectionRateReport,
   TatReport,
@@ -11,6 +12,7 @@ import {
   orderedTest,
   slaTarget,
   specimen,
+  synopticElement,
   testDefinition,
 } from '@lis/db';
 import { and, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
@@ -289,5 +291,75 @@ export async function computeRejectionRateReport(
       reason,
       count,
     })),
+  };
+}
+
+/**
+ * FEAT-062 (docs/plans/feat-062-cytology-bethesda-pap-reporting.md). Resolves
+ * "the adequacy analyte" via `synoptic_element.key = 'specimen_adequacy'`,
+ * not a hardcoded analyte id -- protocol-agnostic by construction, matching
+ * KB-16's own "the core never learns the name of any specific discipline"
+ * principle applied to a report, not just a write path. Any current or
+ * future synoptic protocol that names its adequacy element this way is
+ * automatically included, with no report-code change.
+ *
+ * Filtered on `observation.producedAt` (not `verifiedAt`) -- discrete
+ * synoptic-response Observations are written directly to `status:
+ * 'preliminary'` by `assembleAndPersistSynopticResponse`
+ * (`synoptic-response-recorder.ts`) and never go through the normal
+ * finalize/verify pipeline, so `verifiedAt` is never set on them; `producedAt`
+ * is the real "when this response was recorded" timestamp, same field
+ * `computeWorkloadReport`'s own operator-count half already uses.
+ *
+ * `'satisfactory'` is the one real response-option code every adequacy
+ * element in this protocol family uses (`synoptic-protocol-cytology-pap.sql`'s
+ * own seeded value) -- every other `valueCode` (including any future
+ * protocol's own differently-worded unsatisfactory reasons) counts as
+ * unsatisfactory, so this doesn't need its own enumerated list of "bad"
+ * codes to stay correct.
+ */
+export async function computeAdequacyRateReport(
+  tx: Tx,
+  params: { query: OperationalReportQuery },
+): Promise<AdequacyRateReport> {
+  const from = new Date(params.query.from);
+  const to = new Date(params.query.to);
+
+  const adequacyElementRows = await tx
+    .select({ analyteId: synopticElement.analyteId })
+    .from(synopticElement)
+    .where(eq(synopticElement.key, 'specimen_adequacy'));
+  const adequacyAnalyteIds = adequacyElementRows.map((row) => row.analyteId);
+  if (adequacyAnalyteIds.length === 0) {
+    return {
+      totalCount: 0,
+      satisfactoryCount: 0,
+      unsatisfactoryCount: 0,
+      satisfactoryRatePct: null,
+    };
+  }
+
+  const rows = await tx
+    .select({ valueCode: observation.valueCode })
+    .from(observation)
+    .where(
+      and(
+        inArray(observation.analyteId, adequacyAnalyteIds),
+        gte(observation.producedAt, from),
+        lte(observation.producedAt, to),
+      ),
+    );
+
+  const satisfactoryCount = rows.filter(
+    (row) => row.valueCode === 'satisfactory',
+  ).length;
+  const totalCount = rows.length;
+
+  return {
+    totalCount,
+    satisfactoryCount,
+    unsatisfactoryCount: totalCount - satisfactoryCount,
+    satisfactoryRatePct:
+      totalCount === 0 ? null : (satisfactoryCount / totalCount) * 100,
   };
 }

@@ -1156,6 +1156,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CaseController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/cases/{id}/blocks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CaseController_addBlock"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/blocks/{id}/slides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CaseController_addSlide"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/blocks/{id}/ordered-tests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CaseController_addOrderedTest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/cases/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CaseController_getById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/cases/{id}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CaseController_finalize"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2067,6 +2163,74 @@ export interface components {
                 interpretation: "S" | "I" | "R";
                 /** Format: uuid */
                 observationId: string;
+            }[];
+        };
+        CaseCreateDto: {
+            /** Format: uuid */
+            orderId: string;
+            parts: {
+                specimenType: string;
+                /** @enum {string} */
+                rejectionReason?: "haemolysed" | "clotted" | "insufficient_volume" | "mislabelled" | "wrong_container" | "improper_temperature" | "expired";
+            }[];
+        };
+        BlockCreateDto: {
+            /** Format: uuid */
+            specimenId: string;
+        };
+        BlockOrderedTestLinkCreateDto: {
+            /** Format: uuid */
+            testDefinitionId: string;
+            /** Format: uuid */
+            parentOrderedTestId?: string;
+        };
+        CaseLineageDto_Output: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: uuid */
+            orderId: string;
+            accessionNumber: string;
+            /** @enum {string} */
+            status: "accessioned" | "in_process" | "signed_out" | "amended";
+            /** Format: date-time */
+            createdAt: string;
+            parts: {
+                /** Format: uuid */
+                id: string;
+                accessionNumber: string;
+                specimenType: string;
+                status: string;
+                blocks: {
+                    /** Format: uuid */
+                    id: string;
+                    /** Format: uuid */
+                    tenantId: string;
+                    /** Format: uuid */
+                    specimenId: string;
+                    blockNumber: number;
+                    code: string;
+                    /** @enum {string} */
+                    status: "active" | "disposed";
+                    /** Format: date-time */
+                    createdAt: string;
+                    orderedTestIds: string[];
+                    slides: {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        tenantId: string;
+                        /** Format: uuid */
+                        blockId: string;
+                        slideNumber: number;
+                        code: string;
+                        /** @enum {string} */
+                        status: "active" | "disposed";
+                        /** Format: date-time */
+                        createdAt: string;
+                    }[];
+                }[];
             }[];
         };
     };
@@ -3709,6 +3873,132 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AntibiogramResultDto_Output"];
                 };
+            };
+        };
+    };
+    CaseController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaseCreateDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CaseController_addBlock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlockCreateDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CaseController_addSlide: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CaseController_addOrderedTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlockOrderedTestLinkCreateDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CaseController_getById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseLineageDto_Output"];
+                };
+            };
+        };
+    };
+    CaseController_finalize: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

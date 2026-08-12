@@ -119,6 +119,10 @@ jobs:
       # above (database-design Skill entry #12: wired here separately from
       # scripts/db-reset.sh, not assumed to share one seed sequence).
       - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/default-report-templates.sql
+      # FEAT-054: a real, deliberately-authored culture/antibiogram report
+      # layout for ORGID, superseding the generic default above -- must run
+      # after it, same ordering as scripts/db-reset.sh.
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/culture-report-template.sql
       - run: pnpm run-golden-datasets
       - run: pnpm test
       # TASK-029: waits here, not right after launch — gives Keycloak's own

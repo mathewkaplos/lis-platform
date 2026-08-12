@@ -27,9 +27,14 @@ provider and upload-mechanism choices are genuinely load-bearing (§10), hence t
 - `docker-compose.yml` — new `minio` service (self-hosted, S3-compatible — §5/§10 Q1), matching
   the existing local-dev pattern for `postgres`/`valkey`/`keycloak` (a plain container, no cloud
   account/credentials this environment can't provision).
-- `infra/docker-compose.staging.yml` — same `minio` service for the single Tailscale-networked
-  staging host, plus a persisted volume (unlike Keycloak's own ephemeral store — image bytes must
-  survive a redeploy).
+- `infra/docker-compose.staging.yml` — **deliberately NOT touched by this proposal** (found during
+  implementation, not anticipated when this proposal was drafted/approved): the staging droplet
+  (`s-1vcpu-1gb`) already budgets 848m of ~961Mi usable RAM across the five existing services,
+  leaving ~110Mi headroom — not enough to safely add MinIO (realistic minimum ~80-150MB) without
+  real OOM risk to the whole host. Filed as issue #564, not fixed here. This feature is built and
+  fully verified against local dev only; staging deployment/demo is blocked on #564's own
+  resolution (droplet resize or similar), a separate, real infra-cost decision this proposal does
+  not make unilaterally.
 - `apps/api/src/storage/object-storage.client.ts` (new) — thin wrapper around
   `@aws-sdk/client-s3` (MinIO is S3-API-compatible; using the real AWS SDK rather than a
   MinIO-specific client means a future move to real cloud S3/GCS-via-S3-interop is a config
@@ -84,8 +89,9 @@ provider and upload-mechanism choices are genuinely load-bearing (§10), hence t
   round-trip (upload, confirm object exists via a real `getObjectStream`, presigned GET URL
   actually resolves the same bytes), annotation creation + coordinate validation, AC #1/#2
   coverage.
-- `.env`/`.env.example`, `.github/workflows/pr.yml`, `infra/docker-compose.staging.yml` — new
-  `OBJECT_STORAGE_*` env vars, same wiring discipline as `SIGNING_SECRET` (FEAT-059).
+- `.env`/`.env.example`, `.github/workflows/pr.yml` — new `OBJECT_STORAGE_*` env vars, same wiring
+  discipline as `SIGNING_SECRET` (FEAT-059). **Not** `infra/docker-compose.staging.yml` (see §2's
+  own note above, issue #564).
 
 **Frontend:** Google Stitch prompt for the upload + annotation viewer (issue's own item) — written
 once this proposal's API shape is approved, not before.
@@ -158,10 +164,11 @@ once this proposal's API shape is approved, not before.
   by keeping the client module narrowly scoped (put/get/delete only, no lifecycle policies,
   versioning, or multi-bucket routing) and proving it against a real local MinIO container, not a
   mock.
-- **MinIO's staging persistence** is a new, real operational surface (a volume that must survive
-  redeploys, unlike Keycloak's own deliberately-ephemeral store) — flagged, not glossed over;
-  `infra/docker-compose.staging.yml`'s own volume declaration is the actual fix, verified by a real
-  redeploy-and-confirm-object-still-present check (§8), not assumed from the compose file alone.
+- **Staging deployment is blocked, not deferred-but-fine** (found during implementation, updated
+  from this proposal's original draft): the staging droplet has no memory headroom left for MinIO
+  (issue #564). This feature ships fully built and verified against local dev only; §8's own
+  redeploy-persistence check and the "Feature demoed on staging" DoD item are both blocked on
+  #564's resolution, not silently skipped or assumed fine.
 - **No image-count/size cap or virus/malware scanning** on upload — explicitly out of this
   proposal's own narrow scope (the issue's ACs don't ask for either); flagged as a real gap for a
   future hardening pass before this is exposed beyond internal staff use, not fixed here.
@@ -195,9 +202,10 @@ Per issue #540's own 2 ACs:
 5. Boot the real compiled server (`api-design` Skill entry #10) with `@fastify/multipart`
    registered — confirm it actually starts, not just that the e2e harness (which always uses
    Express under `createNestApplication()`) accepts the route.
-6. A real staging redeploy check: upload an image, redeploy (or restart the `minio` container),
-   confirm the object and its row are both still present — proves the volume persistence
-   assumption for real, not just from the compose file's own declaration.
+6. A local-dev equivalent redeploy/persistence check: upload an image, restart the local `minio`
+   container, confirm the object and its row are both still present — proves the volume
+   persistence mechanism works for real, at the same fidelity available before #564 unblocks a
+   real staging redeploy check.
 7. Full local verification: fresh db-reset → single new file in isolation → one final
    fresh-reset + full-suite run, this session's own established discipline.
 

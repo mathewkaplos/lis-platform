@@ -1,6 +1,7 @@
 import './instrument';
 
 import { randomUUID } from 'crypto';
+import fastifyMultipart from '@fastify/multipart';
 import { NestFactory } from '@nestjs/core';
 import {
   FastifyAdapter,
@@ -15,6 +16,12 @@ async function bootstrap() {
     AppModule,
     new FastifyAdapter({ genReqId: () => randomUUID(), logger: true }),
   );
+
+  // FEAT-061: registered as a real Fastify plugin (not Nest middleware) --
+  // same pattern @fastify/static already establishes for this app. No
+  // fileSize limit override (proposal §5/§10 Q4: no size cap in this v1
+  // scope) -- the plugin's own defaults apply.
+  await app.register(fastifyMultipart);
 
   // ADR-0013 §1: OpenAPI generated from the same Zod schemas used for
   // request validation — never a hand-maintained parallel spec. `/v1/*`

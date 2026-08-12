@@ -29,3 +29,4 @@ export * from "./culture-read";
 export * from "./microbiology-catalog";
 export * from "./anatomic-pathology";
 export * from "./synoptic-protocol";
+export * from "./image-attachment";

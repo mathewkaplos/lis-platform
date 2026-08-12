@@ -43,6 +43,13 @@ jobs:
       # same reasoning/enforcement as SESSION_SECRET above (>=32 bytes). CI-only
       # value, never a real secret.
       SIGNING_SECRET: lis_api_ci_signing_secret_at_least_32_bytes_long
+      # FEAT-061 (ADR-0052): object-storage.client.ts requiredEnv()s these.
+      # Matches docker-compose.yml's local minio service exactly (same
+      # ports/credentials) -- CI-only values, never real secrets.
+      OBJECT_STORAGE_ENDPOINT: http://localhost:9000
+      OBJECT_STORAGE_ACCESS_KEY: minioadmin
+      OBJECT_STORAGE_SECRET_KEY: minioadmin
+      OBJECT_STORAGE_BUCKET: lis-images
     steps:
       - uses: actions/checkout@v4
       # No explicit `version:` — read from package.json's "packageManager"
@@ -68,6 +75,17 @@ jobs:
             -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
             -v "${{ github.workspace }}/infra/keycloak/lis-realm.json:/opt/keycloak/data/import/lis-realm.json" \
             quay.io/keycloak/keycloak:26.0 start-dev --import-realm
+      # FEAT-061: same "services: can't pass a command" limitation as
+      # Keycloak above -- MinIO's default entrypoint needs an explicit
+      # `server /data --console-address :9001` command. The bucket itself is
+      # created by the app's own ImageAttachmentModule.onModuleInit()
+      # (ensureBucketExists(), object-storage.client.ts), same as local dev
+      # -- no separate CI provisioning step needed.
+      - run: |
+          docker run -d --name minio -p 9000:9000 -p 9001:9001 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:latest server /data --console-address :9001
       - run: pnpm install --frozen-lockfile
       # TASK-030 (FEAT-008): apps/api is the first-ever consumer of a
       # workspace package's real exports (@lis/db) — packages/domain/@lis/ui

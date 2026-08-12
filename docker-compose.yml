@@ -19,5 +19,20 @@ services:
     ports: ["8080:8080"]
     volumes:
       ["./infra/keycloak/lis-realm.json:/opt/keycloak/data/import/lis-realm.json"]
+  # FEAT-061: self-hosted, S3-API-compatible object storage for image
+  # attachments (KB-06: "Big binaries -> object storage, referenced by row")
+  # -- same plain-container pattern as postgres/valkey/keycloak above, no
+  # external cloud account needed (proposal §5/§10 Q1). apps/api talks to it
+  # via the real @aws-sdk/client-s3 (object-storage.client.ts), so a future
+  # move to real cloud S3 is a config change, not a rewrite.
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports: ["9000:9000", "9001:9001"]
+    volumes: ["miniodata:/data"]
 volumes:
   pgdata:
+  miniodata:

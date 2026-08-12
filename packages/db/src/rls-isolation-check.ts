@@ -45,6 +45,7 @@ import { observationIdempotencyKey } from "./schema/observation-idempotency";
 import { outboxEvent } from "./schema/outbox-event";
 import { slaBreach } from "./schema/sla-breach";
 import { workflowDefinition, workflowRuleFiring } from "./schema/workflow-definition";
+import { caseTable, block, slide, blockFulfillment } from "./schema/anatomic-pathology";
 import { writeAuditEvent } from "./audit";
 
 type Db = ReturnType<typeof createDb>;
@@ -366,6 +367,42 @@ async function insertFixtures(db: Db) {
     matched: false,
   });
 
+  // FEAT-057 (ADR-0049): case/block/slide/block_fulfillment fixture chain --
+  // four genuinely new tenant tables this feature introduces, same reasoning
+  // as control_lot's own above. Reuses `pat` for a second order (`ord` above
+  // already belongs to a chemistry ordered_test/specimen chain -- a case is
+  // 1:1 with its own order, ux_case_tenant_order) and `testDef` for the
+  // block's own ordered_test.
+  const [apOrder] = await db.insert(order).values({ tenantId: TENANT_A, patientId: pat.id }).returning();
+  const [caseRow] = await db
+    .insert(caseTable)
+    .values({ tenantId: TENANT_A, orderId: apOrder.id, accessionNumber: `RLS-CHECK-CASE-${Date.now()}` })
+    .returning();
+  const [apSpecimen] = await db
+    .insert(specimen)
+    .values({
+      tenantId: TENANT_A,
+      caseId: caseRow.id,
+      accessionNumber: `${caseRow.accessionNumber}-P1`,
+      specimenType: "tissue",
+    })
+    .returning();
+  const [blockRow] = await db
+    .insert(block)
+    .values({ tenantId: TENANT_A, specimenId: apSpecimen.id, blockNumber: 1, code: `${caseRow.accessionNumber}-B1` })
+    .returning();
+  await db.insert(slide).values({
+    tenantId: TENANT_A,
+    blockId: blockRow.id,
+    slideNumber: 1,
+    code: `${blockRow.code}-S1`,
+  });
+  const [apOrderedTest] = await db
+    .insert(orderedTest)
+    .values({ tenantId: TENANT_A, orderId: apOrder.id, testDefinitionId: testDef.id })
+    .returning();
+  await db.insert(blockFulfillment).values({ tenantId: TENANT_A, blockId: blockRow.id, orderedTestId: apOrderedTest.id });
+
   // audit_event fixture, via the real writer (TASK-025) rather than a
   // direct insert — exercises the same hash-chain path any real caller
   // would use, matching the same "trigger the real path" reasoning as the
@@ -418,7 +455,8 @@ async function main() {
   console.log(
     "Fixtures inserted for patient/patient_alert/order/ordered_test/specimen/specimen_fulfillment/observation/" +
       "result_history/report/culture_read/instrument_analyte_mapping/invoice/invoice_line_item/payment/" +
-      "observation_idempotency_key/outbox_event/sla_breach/workflow_definition/workflow_rule_firing.\n",
+      "observation_idempotency_key/outbox_event/sla_breach/workflow_definition/workflow_rule_firing/" +
+      "case/block/slide/block_fulfillment.\n",
   );
 
   console.log("--- Live cross-tenant leak check: TENANT_B must see 0 rows of TENANT_A's data ---");

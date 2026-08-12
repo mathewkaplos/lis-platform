@@ -44,3 +44,34 @@ export async function generateAccessionNumber(db: DbOrTx): Promise<string> {
 
   return `${datePrefix}-${sequenceValue.padStart(6, "0")}`;
 }
+
+/**
+ * FEAT-057 (ADR-0049, proposal §5): a Case is the real accessioning event for
+ * anatomic pathology -- its own accessionNumber comes from
+ * generateAccessionNumber() above, unchanged. Specimen/part rows under a case
+ * do NOT call generateAccessionNumber() a second time; their (still NOT NULL,
+ * still per-tenant-unique) accessionNumber is this derived suffix instead --
+ * satisfies specimen's existing constraint without consuming a second global
+ * sequence value per part. `partNumber` is 1-indexed, assigned in-memory from
+ * the create-case request's own part array (all parts for a case are created
+ * together in one transaction, so no count query is needed here).
+ */
+export function deriveCaseSpecimenAccessionNumber(caseAccessionNumber: string, partNumber: number): string {
+  return `${caseAccessionNumber}-P${partNumber}`;
+}
+
+/**
+ * KB-24: hierarchical codes encode case -> block -> slide (not
+ * case -> part -> block -> slide) -- read as intentional, since 2D Data
+ * Matrix surfaces (slides) are explicitly space-constrained. `blockNumber` is
+ * case-scoped (not part-scoped, proposal §5), 1-indexed, computed as a
+ * max-plus-one count of existing blocks under the case at insert time.
+ */
+export function deriveBlockCode(caseAccessionNumber: string, blockNumber: number): string {
+  return `${caseAccessionNumber}-B${blockNumber}`;
+}
+
+/** `slideNumber` is block-scoped, 1-indexed, same max-plus-one convention as deriveBlockCode. */
+export function deriveSlideCode(blockCode: string, slideNumber: number): string {
+  return `${blockCode}-S${slideNumber}`;
+}

@@ -27,3 +27,4 @@ export * from "./tenant";
 export * from "./billing";
 export * from "./culture-read";
 export * from "./microbiology-catalog";
+export * from "./anatomic-pathology";

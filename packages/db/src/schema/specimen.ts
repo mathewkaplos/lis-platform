@@ -1,6 +1,7 @@
 import { pgTable, uuid, text, timestamp, jsonb, uniqueIndex, index, pgPolicy, check, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { orderedTest } from "./order";
+import { caseTable } from "./anatomic-pathology";
 
 // Tenant-scoped per ADR-0004 (contrast case): specimens are operational,
 // tenant-varying clinical-workflow data.
@@ -26,6 +27,14 @@ export const specimen = pgTable(
     accessionNumber: text("accession_number").notNull(),
     specimenType: text("specimen_type").notNull(),
     parentSpecimenId: uuid("parent_specimen_id").references((): AnyPgColumn => specimen.id), // aliquot lineage
+    // FEAT-057 (ADR-0049 §Decision 1): nullable -- only anatomic-pathology
+    // specimens/parts belong to a Case; every other discipline's specimen
+    // rows leave this null. Added alongside specimen's real existing
+    // OrderedTest link (the specimen_fulfillment join table below) -- ADR-0049's
+    // own prose says "alongside orderId/orderedTestId", but no such columns
+    // exist on this table; see docs/plans/feat-057-...md §3 for that
+    // discrepancy note.
+    caseId: uuid("case_id").references(() => caseTable.id),
     status: text("status").notNull().default("collected"),
     rejectionReason: text("rejection_reason"), // set only when status = 'rejected'
     collectionContext: jsonb("collection_context"), // fasting/tourniquet-time/etc — KB-06's JSONB carve-out, not a clinical value
@@ -36,6 +45,7 @@ export const specimen = pgTable(
   (table) => [
     uniqueIndex("ux_specimen_tenant_accession").on(table.tenantId, table.accessionNumber),
     index("ix_specimen_parent").on(table.parentSpecimenId),
+    index("ix_specimen_case").on(table.caseId),
     check(
       "ck_specimen_status",
       sql`${table.status} IN ('collected','received','accessioned','in_process','completed','archived','disposed','rejected')`,

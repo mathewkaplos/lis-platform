@@ -33,6 +33,7 @@ import { OnboardingModule } from './onboarding/onboarding.module';
 import { CultureReadModule } from './culture-read/culture-read.module';
 import { MicrobiologyCatalogModule } from './microbiology-catalog/microbiology-catalog.module';
 import { AntibiogramModule } from './antibiogram/antibiogram.module';
+import { CaseModule } from './case/case.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
 @Module({
@@ -73,6 +74,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     CultureReadModule,
     MicrobiologyCatalogModule,
     AntibiogramModule,
+    CaseModule,
   ],
   controllers: [AppController],
   providers: [

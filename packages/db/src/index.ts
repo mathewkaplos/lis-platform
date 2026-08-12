@@ -2,7 +2,12 @@ export * from "./schema";
 export { createDb } from "./client";
 export { writeAuditEvent, verifyAuditChain, stableStringify, type AuditEventInput } from "./audit";
 export { writeOutboxEvent, type OutboxEventInput } from "./outbox";
-export { generateAccessionNumber } from "./accession";
+export {
+  generateAccessionNumber,
+  deriveCaseSpecimenAccessionNumber,
+  deriveBlockCode,
+  deriveSlideCode,
+} from "./accession";
 export {
   resolveReferenceRange,
   resolveObservationRange,

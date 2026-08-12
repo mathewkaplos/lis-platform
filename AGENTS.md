@@ -136,6 +136,25 @@ packages/ui (design system) · packages/sdk (generated API client)
   `until` loop above for this specific wait; it has none of `Monitor`'s
   own detection-reliability risk for a short, bounded, one-shot condition
   like "these checks are all terminal."
+- **If polling the plain `gh pr checks <n>` form directly (rather than the
+  REST equivalent above): `--json` is not supported on this subcommand by
+  the `gh` CLI version installed in this environment (confirmed: `gh
+  --version` → 2.45.0; `gh pr checks <n> --json name,state` fails with
+  `unknown flag: --json`) — check the installed version before assuming
+  `--json` support carries over from a different environment/session.**
+  Confirmed 2026-08-12 (`close` Skill's Engineering Flow Retrospective):
+  a polling loop built around `gh pr checks <n> --json name,state -q
+  '...' 2>/dev/null` returned empty on every iteration (~7 minutes wasted)
+  because the command was failing outright each time, not because the
+  check was still pending — the `2>/dev/null` silently swallowed the real
+  `unknown flag` error, making a broken invocation look identical to
+  legitimate "not ready yet" state. Use the plain-text form instead
+  (`gh pr checks <n>` with no `--json`, matched against its literal
+  `pending`/`pass`/`fail` output via `grep`) if not using the REST
+  `check-runs` query above — and never suppress a polling command's
+  stderr with `2>/dev/null` inside a loop without also handling the
+  possibility that the command itself is failing, not just "not yet
+  ready."
 - **`gh pr create` and `gh pr merge` shell out to GraphQL too, not just `gh
   pr checks --watch` — the same rate-limit exhaustion above can hit either
   of them, and neither had a documented REST substitute until now.**

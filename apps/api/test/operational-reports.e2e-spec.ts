@@ -8,6 +8,7 @@ import {
   createDb,
   observation,
   orderedTest,
+  synopticProtocolVersion,
   testAnalyte,
   testDefinition,
   unit,
@@ -124,6 +125,126 @@ describe('Operational reports (e2e)', () => {
       .expect(200);
 
     return orderedTestId;
+  }
+
+  /**
+   * FEAT-062. Same backdating discipline as `createBackdatedVerifiedResult`
+   * above, adapted for a discrete synoptic-response Observation: unlike a
+   * verified chemistry result, this row stays `status: 'preliminary'`
+   * forever (`assembleAndPersistSynopticResponse` never verifies it), so
+   * `fn_observation_append_only`'s own trigger (`IF OLD.status = 'verified'
+   * THEN ... RAISE EXCEPTION`) does not block a direct `UPDATE` on it --
+   * confirmed directly, not assumed, by this function actually working
+   * against real Postgres (§8). Backdating `producedAt` directly, rather
+   * than relying on real wall-clock elapsed time between fixture setup and
+   * assertion, avoids reproducing issue #565's own class of timing
+   * fragility.
+   */
+  async function createBackdatedAdequacyResponse(
+    adequacyValue: 'satisfactory' | 'unsatisfactory_for_evaluation',
+    minutesAgo: number,
+  ): Promise<void> {
+    const patientId = await createPatient();
+    const orderRes = await request(app.getHttpServer())
+      .post('/v1/orders')
+      .set('Authorization', `Bearer ${verifierToken}`)
+      .send({ patientId, testDefinitionIds: [routineTestDefId] })
+      .expect(201);
+    const orderId = (orderRes.body as { resourceId: string }).resourceId;
+
+    const caseRes = await request(app.getHttpServer())
+      .post('/v1/cases')
+      .set('Authorization', `Bearer ${verifierToken}`)
+      .send({ orderId, parts: [{ specimenType: 'cervical_cytology' }] })
+      .expect(201);
+    const caseId = (caseRes.body as { resourceId: string }).resourceId;
+
+    const lineage = await request(app.getHttpServer())
+      .get(`/v1/cases/${caseId}`)
+      .set('Authorization', `Bearer ${verifierToken}`)
+      .expect(200);
+    const [part] = (lineage.body as { parts: { id: string }[] }).parts;
+    const blockRes = await request(app.getHttpServer())
+      .post(`/v1/cases/${caseId}/blocks`)
+      .set('Authorization', `Bearer ${verifierToken}`)
+      .send({ specimenId: part.id })
+      .expect(201);
+    const blockId = (blockRes.body as { resourceId: string }).resourceId;
+    await request(app.getHttpServer())
+      .post(`/v1/blocks/${blockId}/slides`)
+      .set('Authorization', `Bearer ${verifierToken}`)
+      .expect(201);
+
+    const orderDetail = await request(app.getHttpServer())
+      .get(`/v1/orders/${orderId}`)
+      .set('Authorization', `Bearer ${verifierToken}`)
+      .expect(200);
+    const orderedTestId = (
+      orderDetail.body as { orderedTests: { id: string }[] }
+    ).orderedTests[0].id;
+
+    const protocolsRes = await request(app.getHttpServer())
+      .get('/v1/synoptic-protocols')
+      .set('Authorization', `Bearer ${verifierToken}`)
+      .expect(200);
+    const pap = (
+      protocolsRes.body as { protocols: { id: string; name: string }[] }
+    ).protocols.find((p) => p.name === 'Cervical Cytology (Pap)');
+    if (!pap) {
+      throw new Error(
+        "expected db/seed/synoptic-protocol-cytology-pap.sql's 'Cervical Cytology (Pap)' protocol",
+      );
+    }
+    const [{ id: versionId }] = await db
+      .select({ id: synopticProtocolVersion.id })
+      .from(synopticProtocolVersion)
+      .where(
+        and(
+          eq(synopticProtocolVersion.synopticProtocolId, pap.id),
+          eq(synopticProtocolVersion.status, 'published'),
+        ),
+      )
+      .limit(1);
+
+    const responses =
+      adequacyValue === 'satisfactory'
+        ? [
+            { elementKey: 'specimen_adequacy', value: 'satisfactory' },
+            { elementKey: 'interpretation_category', value: 'nilm' },
+          ]
+        : [
+            {
+              elementKey: 'specimen_adequacy',
+              value: 'unsatisfactory_for_evaluation',
+            },
+            {
+              elementKey: 'adequacy_reason',
+              value: 'scant_squamous_cellularity',
+            },
+            { elementKey: 'interpretation_category', value: 'nilm' },
+          ];
+
+    const responseRes = await request(app.getHttpServer())
+      .post(`/v1/cases/${caseId}/synoptic-responses`)
+      .set('Authorization', `Bearer ${verifierToken}`)
+      .send({ orderedTestId, synopticProtocolVersionId: versionId, responses })
+      .expect(201);
+    const body = responseRes.body as {
+      results: { elementKey: string; observationId: string }[];
+    };
+    const adequacyResult = body.results.find(
+      (r) => r.elementKey === 'specimen_adequacy',
+    );
+    if (!adequacyResult) {
+      throw new Error(
+        `expected a specimen_adequacy result, got ${JSON.stringify(body)}`,
+      );
+    }
+
+    await db
+      .update(observation)
+      .set({ producedAt: new Date(Date.now() - minutesAgo * 60_000) })
+      .where(eq(observation.id, adequacyResult.observationId));
   }
 
   beforeAll(async () => {
@@ -467,6 +588,68 @@ describe('Operational reports (e2e)', () => {
       expect(body.totalSpecimens).toBe(3);
       expect(body.rejectedTotal).toBe(2);
       expect(body.byReason).toEqual([{ reason: 'haemolysed', count: 2 }]);
+    });
+  });
+
+  describe('GET /v1/reports/operational/adequacy-rate', () => {
+    it('rejects a non-qa session (403)', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/reports/operational/adequacy-rate')
+        .set('Authorization', `Bearer ${technologistToken}`)
+        .query({ from: '2020-01-01T00:00:00Z', to: '2020-01-02T00:00:00Z' })
+        .expect(403);
+    });
+
+    it('rejects a request missing from/to (400)', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/reports/operational/adequacy-rate')
+        .set('Authorization', `Bearer ${qaToken}`)
+        .expect(400);
+    });
+
+    it('computes real satisfactory/unsatisfactory counts and a real rate denominator', async () => {
+      const windowFrom = new Date('2021-06-01T00:00:00Z');
+      const windowTo = new Date('2021-06-02T00:00:00Z');
+      const minutesAgo = Math.round(
+        (Date.now() - new Date('2021-06-01T12:00:00Z').getTime()) / 60_000,
+      );
+
+      await createBackdatedAdequacyResponse('satisfactory', minutesAgo);
+      await createBackdatedAdequacyResponse('satisfactory', minutesAgo);
+      await createBackdatedAdequacyResponse(
+        'unsatisfactory_for_evaluation',
+        minutesAgo,
+      );
+
+      const res = await request(app.getHttpServer())
+        .get('/v1/reports/operational/adequacy-rate')
+        .set('Authorization', `Bearer ${qaToken}`)
+        .query({ from: windowFrom.toISOString(), to: windowTo.toISOString() })
+        .expect(200);
+      const body = res.body as {
+        totalCount: number;
+        satisfactoryCount: number;
+        unsatisfactoryCount: number;
+        satisfactoryRatePct: number | null;
+      };
+      expect(body.totalCount).toBe(3);
+      expect(body.satisfactoryCount).toBe(2);
+      expect(body.unsatisfactoryCount).toBe(1);
+      expect(body.satisfactoryRatePct).toBeCloseTo((2 / 3) * 100, 5);
+    });
+
+    it('returns null satisfactoryRatePct (not 0) when no adequacy responses exist in the window', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/v1/reports/operational/adequacy-rate')
+        .set('Authorization', `Bearer ${qaToken}`)
+        .query({ from: '1999-01-01T00:00:00Z', to: '1999-01-02T00:00:00Z' })
+        .expect(200);
+      const body = res.body as {
+        totalCount: number;
+        satisfactoryRatePct: number | null;
+      };
+      expect(body.totalCount).toBe(0);
+      expect(body.satisfactoryRatePct).toBeNull();
     });
   });
 });

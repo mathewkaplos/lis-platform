@@ -580,6 +580,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/reports/operational/adequacy-rate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["OperationalReportsController_adequacyRate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/reports/amr-surveillance": {
         parameters: {
             query?: never;
@@ -1672,6 +1688,12 @@ export interface components {
                 reason: string;
                 count: number;
             }[];
+        };
+        AdequacyRateReportDto_Output: {
+            totalCount: number;
+            satisfactoryCount: number;
+            unsatisfactoryCount: number;
+            satisfactoryRatePct: number | null;
         };
         AmrSurveillanceReportDto_Output: {
             entries: {
@@ -3307,6 +3329,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RejectionRateReportDto_Output"];
+                };
+            };
+        };
+    };
+    OperationalReportsController_adequacyRate: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdequacyRateReportDto_Output"];
                 };
             };
         };

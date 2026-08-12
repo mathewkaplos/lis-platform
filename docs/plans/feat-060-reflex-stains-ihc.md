@@ -1,5 +1,5 @@
 # Implementation Proposal: FEAT-060 — Reflex/add-on stains & IHC on existing blocks
-Status: APPROVED
+Status: IMPLEMENTED (PR #562, merge commit 5e2251400530b6dcc8246bc503459c5c83e757e8)
 ADR: none (no load-bearing decision found — see §5)
 Date: 2026-08-12    Backlog ID: #545 (FEAT-060, depends on FEAT-057 #538, FEAT-030)
 

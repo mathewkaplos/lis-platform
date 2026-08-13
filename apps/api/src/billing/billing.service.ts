@@ -1,6 +1,13 @@
 import { BadRequestException } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
-import { invoice, invoiceLineItem, orderedTest, testDefinition } from '@lis/db';
+import {
+  invoice,
+  invoiceLineItem,
+  orderedTest,
+  referringFacility,
+  testDefinition,
+} from '@lis/db';
+import type { InvoicePayerType } from '@lis/domain';
 import type { RequestWithTx } from '../auth/tenant-context.interceptor';
 
 type Tx = RequestWithTx['tx'];
@@ -9,6 +16,11 @@ export interface GenerateInvoiceInput {
   tenantId: string;
   orderId: string;
   patientId: string;
+  // FEAT-066 (ADR-0053, docs/plans/feat-066-patient-contact-referring-facility.md).
+  // Defaults preserve today's exact behavior (cash, no referring facility)
+  // when omitted -- no existing caller of this method breaks.
+  payerType?: InvoicePayerType;
+  referringFacilityId?: string;
 }
 
 interface InvoiceableLine {
@@ -44,6 +56,25 @@ export function validateAndTotal(lines: readonly InvoiceableLine[]): number {
  */
 export class BillingService {
   async generateInvoice(tx: Tx, input: GenerateInvoiceInput) {
+    const payerType = input.payerType ?? 'cash';
+    if (payerType === 'corporate' && input.referringFacilityId === undefined) {
+      throw new BadRequestException(
+        "referringFacilityId is required when payerType is 'corporate'",
+      );
+    }
+    if (input.referringFacilityId !== undefined) {
+      const [visibleFacility] = await tx
+        .select({ id: referringFacility.id })
+        .from(referringFacility)
+        .where(eq(referringFacility.id, input.referringFacilityId))
+        .limit(1);
+      if (!visibleFacility) {
+        throw new BadRequestException(
+          `Unknown referring facility id: ${input.referringFacilityId}`,
+        );
+      }
+    }
+
     const lines = await tx
       .select({
         testDefinitionId: testDefinition.id,
@@ -68,6 +99,8 @@ export class BillingService {
         orderId: input.orderId,
         patientId: input.patientId,
         totalCents,
+        payerType,
+        referringFacilityId: input.referringFacilityId,
       })
       .returning();
 

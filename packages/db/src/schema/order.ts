@@ -2,6 +2,7 @@ import { pgTable, uuid, text, timestamp, index, pgPolicy, check, type AnyPgColum
 import { sql } from "drizzle-orm";
 import { testDefinition } from "./test-catalog";
 import { patient } from "./patient";
+import { referringFacility } from "./referring-facility";
 
 // Tenant-scoped per ADR-0004 (contrast case): orders/ordered tests are
 // operational, tenant-varying clinical-workflow data.
@@ -78,9 +79,19 @@ export const order = pgTable(
       .references(() => patient.id), // FK backfilled by TASK-038, see ADR-0005
     status: text("status").notNull().default("ordered"), // 'ordered' | 'cancelled' (TASK-042; see header comment)
     priority: text("priority").notNull().default("routine"), // 'routine' | 'stat' (KB-03), TASK-042
+    // FEAT-066 (ADR-0053): which external facility sent this patient/order
+    // in -- fulfills this table's own previously-deferred "ordering-
+    // provider reference" gap (FEAT-006 proposal §5/§10 Q3), now with a
+    // real catalog table to reference. orderingProviderName stays free
+    // text (the real design-partner system's own "Requesting Doctor" field
+    // is plain text, not a structured account) -- no care_relationship-style
+    // FK, per ADR-0053's explicit rejection of that shape here.
+    referringFacilityId: uuid("referring_facility_id").references(() => referringFacility.id),
+    orderingProviderName: text("ordering_provider_name"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    index("ix_order_referring_facility").on(table.referringFacilityId),
     check("ck_order_status", sql`${table.status} IN ('ordered','cancelled')`),
     check("ck_order_priority", sql`${table.priority} IN ('routine','stat')`),
     tenantIsolation(),

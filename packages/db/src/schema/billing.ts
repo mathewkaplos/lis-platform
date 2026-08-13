@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { order } from "./order";
 import { patient } from "./patient";
 import { testDefinition } from "./test-catalog";
+import { referringFacility } from "./referring-facility";
 
 // FEAT-046 (ADR-0041): a thin invoice + payment-status edge, never a
 // ledger/AR subledger/insurance-adjudication record -- see ADR-0041's own
@@ -29,11 +30,23 @@ export const invoice = pgTable(
     // account balance across invoices, no computed/stored AR aging.
     status: text("status").notNull().default("unpaid"),
     totalCents: integer("total_cents").notNull(),
+    // FEAT-066 (ADR-0053): the literal follow-up ADR-0041's own
+    // Consequences section named ("multi-payer (insurance) support... real,
+    // tracked gap"). Stays a thin categorical tag, not a new ledger --
+    // 'corporate' means billed to referringFacilityId instead of the
+    // patient directly; referringFacilityId is independently nullable and
+    // only application-layer-required when payerType = 'corporate' (no
+    // DB-level cross-column dependency, matching invoice.status's own
+    // plain-CHECK precedent).
+    payerType: text("payer_type").notNull().default("cash"),
+    referringFacilityId: uuid("referring_facility_id").references(() => referringFacility.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("ix_invoice_tenant_order").on(table.tenantId, table.orderId),
+    index("ix_invoice_referring_facility").on(table.referringFacilityId),
     check("ck_invoice_status", sql`${table.status} IN ('unpaid','partial','paid')`),
+    check("ck_invoice_payer_type", sql`${table.payerType} IN ('cash','corporate')`),
     tenantIsolation(),
   ],
 ).enableRLS();

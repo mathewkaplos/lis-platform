@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import {
   AlertTriangle,
+  Building2,
   ClipboardList,
   FlaskConical,
   LayoutDashboard,
@@ -39,6 +40,9 @@ import {
 // FEAT-052: "Culture reads" added -- the due-reads worklist earns a real
 // nav entry, same standing as "QC violations" (a real list to link to, not
 // a link-only detail route).
+// FEAT-066 (ADR-0053): "Referring facilities" added -- the same standing as
+// "Reference ranges"/"Add test" (a real admin list+create screen, not
+// role-filtered at the nav level either).
 const NAV_ITEMS = [
   { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
   { href: '/patients', labelKey: 'patients', icon: Users },
@@ -49,6 +53,7 @@ const NAV_ITEMS = [
   { href: '/culture-reads', labelKey: 'cultureReads', icon: Microscope },
   { href: '/admin/reference-ranges', labelKey: 'referenceRanges', icon: Ruler },
   { href: '/admin/tests', labelKey: 'addTest', icon: TestTube },
+  { href: '/admin/referring-facilities', labelKey: 'referringFacilities', icon: Building2 },
 ] as const;
 
 export async function Sidebar() {

@@ -41,6 +41,9 @@ export async function createOrder(
     testDefinitionIds: testDefinitionIds.length > 0 ? testDefinitionIds : undefined,
     panelIds: panelIds.length > 0 ? panelIds : undefined,
     priority: priority || undefined,
+    // FEAT-066 (ADR-0053).
+    referringFacilityId: formData.get('referringFacilityId') || undefined,
+    orderingProviderName: formData.get('orderingProviderName') || undefined,
   });
   if (!parsed.success) {
     return {

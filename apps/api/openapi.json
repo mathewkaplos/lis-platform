@@ -2266,6 +2266,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateInvoiceRequestDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -3023,6 +3033,84 @@
           "ImageAttachment"
         ]
       }
+    },
+    "/v1/referring-facilities": {
+      "post": {
+        "operationId": "ReferringFacilityController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReferringFacilityCreateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ReferringFacility"
+        ]
+      },
+      "get": {
+        "operationId": "ReferringFacilityController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReferringFacilityDto_Output"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "ReferringFacility"
+        ]
+      }
+    },
+    "/v1/referring-facilities/{id}": {
+      "get": {
+        "operationId": "ReferringFacilityController_getById",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferringFacilityDto_Output"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "ReferringFacility"
+        ]
+      }
     }
   },
   "info": {
@@ -3066,6 +3154,26 @@
             "type": "string",
             "format": "date",
             "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "phone": {
+            "type": "string",
+            "minLength": 1
+          },
+          "email": {
+            "type": "string",
+            "minLength": 1
+          },
+          "address": {
+            "type": "string",
+            "minLength": 1
+          },
+          "nextOfKinName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "nextOfKinPhone": {
+            "type": "string",
+            "minLength": 1
           }
         },
         "required": [
@@ -3124,6 +3232,26 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "nullable": true
           },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          },
+          "nextOfKinName": {
+            "type": "string",
+            "nullable": true
+          },
+          "nextOfKinPhone": {
+            "type": "string",
+            "nullable": true
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -3141,6 +3269,11 @@
           "sex",
           "birthDate",
           "mergedInto",
+          "phone",
+          "email",
+          "address",
+          "nextOfKinName",
+          "nextOfKinPhone",
           "createdAt"
         ],
         "additionalProperties": false
@@ -3195,6 +3328,26 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "nullable": true
           },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          },
+          "nextOfKinName": {
+            "type": "string",
+            "nullable": true
+          },
+          "nextOfKinPhone": {
+            "type": "string",
+            "nullable": true
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -3220,6 +3373,11 @@
           "sex",
           "birthDate",
           "mergedInto",
+          "phone",
+          "email",
+          "address",
+          "nextOfKinName",
+          "nextOfKinPhone",
           "createdAt",
           "mergedFrom"
         ],
@@ -3288,6 +3446,15 @@
               "routine",
               "stat"
             ]
+          },
+          "referringFacilityId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "orderingProviderName": {
+            "type": "string",
+            "minLength": 1
           }
         },
         "required": [
@@ -3325,6 +3492,16 @@
               "routine",
               "stat"
             ]
+          },
+          "referringFacilityId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "nullable": true
+          },
+          "orderingProviderName": {
+            "type": "string",
+            "nullable": true
           },
           "createdAt": {
             "type": "string",
@@ -3414,6 +3591,8 @@
           "patientId",
           "status",
           "priority",
+          "referringFacilityId",
+          "orderingProviderName",
           "createdAt",
           "orderedTests"
         ],
@@ -6612,6 +6791,23 @@
           "adminPassword"
         ]
       },
+      "GenerateInvoiceRequestDto": {
+        "type": "object",
+        "properties": {
+          "payerType": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "corporate"
+            ]
+          },
+          "referringFacilityId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        }
+      },
       "InvoiceDto_Output": {
         "type": "object",
         "properties": {
@@ -6647,6 +6843,19 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
+          },
+          "payerType": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "corporate"
+            ]
+          },
+          "referringFacilityId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "nullable": true
           },
           "createdAt": {
             "type": "string",
@@ -6725,6 +6934,8 @@
           "patientId",
           "status",
           "totalCents",
+          "payerType",
+          "referringFacilityId",
           "createdAt",
           "lineItems"
         ],
@@ -8042,6 +8253,75 @@
         },
         "required": [
           "annotations"
+        ],
+        "additionalProperties": false
+      },
+      "ReferringFacilityCreateDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "phone": {
+            "type": "string",
+            "minLength": 1
+          },
+          "email": {
+            "type": "string",
+            "minLength": 1
+          },
+          "address": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "ReferringFacilityDto_Output": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "tenantId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "name",
+          "phone",
+          "email",
+          "address",
+          "createdAt"
         ],
         "additionalProperties": false
       }

@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useState } from 'react';
 import Link from 'next/link';
-import type { Catalog } from '@lis/domain';
+import type { Catalog, ReferringFacility } from '@lis/domain';
 import {
   Badge,
   Button,
@@ -31,16 +31,23 @@ import { createOrderInitialState, type CreateOrderState } from './types';
  * page reuses this exact form against its own `/v1/clinician/orders` action
  * and `/clinician` back-link, rather than a second, parallel ~200-line copy
  * of the same UI.
+ *
+ * `referringFacilities` defaults to `[]` (FEAT-066, ADR-0053) -- the
+ * clinician order-entry page (FEAT-038) doesn't pass one: which outside
+ * facility referred a patient is front-desk/registration-time information,
+ * not something a clinician re-enters on their own portal's order screen.
  */
 export function OrderBuilderForm({
   patientId,
   catalog,
+  referringFacilities = [],
   action = createOrder,
   backHref = `/patients/${patientId}`,
   backLabel = 'Back to patient',
 }: {
   patientId: string;
   catalog: Catalog;
+  referringFacilities?: ReferringFacility[];
   action?: (
     prevState: CreateOrderState,
     formData: FormData,
@@ -221,6 +228,28 @@ export function OrderBuilderForm({
               <option value="routine">Routine</option>
               <option value="stat">STAT</option>
             </select>
+          </FormField>
+
+          {referringFacilities.length > 0 ? (
+            <FormField id="referringFacilityId" label="Referring facility">
+              <select
+                id="referringFacilityId"
+                name="referringFacilityId"
+                defaultValue=""
+                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                <option value="">None</option>
+                {referringFacilities.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          ) : null}
+
+          <FormField id="orderingProviderName" label="Requesting doctor">
+            <Input name="orderingProviderName" placeholder="e.g. Dr. Otieno" />
           </FormField>
 
           {hasSelection ? (

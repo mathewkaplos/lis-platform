@@ -6,6 +6,7 @@ export * from "./sla-target";
 export * from "./control-lot";
 export * from "./qc-rule-violation";
 export * from "./patient";
+export * from "./referring-facility";
 export * from "./patient-alert";
 export * from "./observation";
 export * from "./critical-notification";

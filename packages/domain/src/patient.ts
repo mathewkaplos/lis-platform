@@ -18,6 +18,13 @@ export const patientCreateSchema = z.object({
   lastName: z.string().min(1),
   sex: patientSexSchema,
   birthDate: z.iso.date().optional(),
+  // FEAT-066 (ADR-0053, docs/plans/feat-066-patient-contact-referring-facility.md):
+  // real design-partner field set, blended into the KB-02-minimal core.
+  phone: z.string().min(1).optional(),
+  email: z.string().min(1).optional(),
+  address: z.string().min(1).optional(),
+  nextOfKinName: z.string().min(1).optional(),
+  nextOfKinPhone: z.string().min(1).optional(),
 });
 export type PatientCreateInput = z.infer<typeof patientCreateSchema>;
 
@@ -34,6 +41,12 @@ export const patientSchema = z.object({
   // FEAT-065 (ADR-0052, docs/plans/feat-065-patient-merge.md). Set only on
   // a merged-away (loser) row -- null for every ordinary/surviving patient.
   mergedInto: z.uuid().nullable(),
+  // FEAT-066 (ADR-0053): see patientCreateSchema's own comment above.
+  phone: z.string().nullable(),
+  email: z.string().nullable(),
+  address: z.string().nullable(),
+  nextOfKinName: z.string().nullable(),
+  nextOfKinPhone: z.string().nullable(),
   createdAt: z.iso.datetime(),
 });
 export type Patient = z.infer<typeof patientSchema>;

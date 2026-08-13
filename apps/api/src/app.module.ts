@@ -36,6 +36,7 @@ import { AntibiogramModule } from './antibiogram/antibiogram.module';
 import { CaseModule } from './case/case.module';
 import { SynopticProtocolModule } from './synoptic-protocol/synoptic-protocol.module';
 import { ImageAttachmentModule } from './image-attachment/image-attachment.module';
+import { ReferringFacilityModule } from './referring-facility/referring-facility.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
 @Module({
@@ -79,6 +80,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     CaseModule,
     SynopticProtocolModule,
     ImageAttachmentModule,
+    ReferringFacilityModule,
   ],
   controllers: [AppController],
   providers: [

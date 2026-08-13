@@ -14,11 +14,10 @@ import { registerPatient } from './actions';
 import { registerPatientInitialState } from './types';
 
 /**
- * TASK-040 (FEAT-011): the registration screen. KB-02-minimal field set only
- * (firstName/middleName/lastName/sex/birthDate/nationalId) — matches what
- * TASK-039's own API accepts today; contact/insurance/emergency-contact
- * fields wait for a follow-up once the design partner's real requirements
- * are known (TASK-038 proposal §10 Q1).
+ * TASK-040 (FEAT-011): the registration screen. FEAT-066 (ADR-0053) added
+ * phone/email/address/next-of-kin fields once real design-partner evidence
+ * (Eldoret Pathology Diagnostics) confirmed the field set TASK-038 §10 Q1
+ * had left speculative.
  *
  * `sex` is a native `<select>` wrapped in `FormField`, not a new shared
  * `packages/ui` primitive (proposal §5) — a single three-option field for
@@ -78,6 +77,11 @@ export default function NewPatientPage() {
               <input type="hidden" name="sex" value={values?.sex} />
               <input type="hidden" name="birthDate" value={values?.birthDate} />
               <input type="hidden" name="nationalId" value={values?.nationalId} />
+              <input type="hidden" name="phone" value={values?.phone} />
+              <input type="hidden" name="email" value={values?.email} />
+              <input type="hidden" name="address" value={values?.address} />
+              <input type="hidden" name="nextOfKinName" value={values?.nextOfKinName} />
+              <input type="hidden" name="nextOfKinPhone" value={values?.nextOfKinPhone} />
               <input type="hidden" name="confirmDuplicate" value="true" />
               <Button type="submit" variant="destructive" size="sm" disabled={pending}>
                 Register anyway
@@ -147,6 +151,29 @@ export default function NewPatientPage() {
             errorText={state.fieldErrors?.nationalId?.[0]}
           >
             <Input name="nationalId" defaultValue={values?.nationalId} />
+          </FormField>
+          <FormField id="phone" label="Phone" errorText={state.fieldErrors?.phone?.[0]}>
+            <Input name="phone" defaultValue={values?.phone} />
+          </FormField>
+          <FormField id="email" label="Email" errorText={state.fieldErrors?.email?.[0]}>
+            <Input type="email" name="email" defaultValue={values?.email} />
+          </FormField>
+          <FormField id="address" label="Address" errorText={state.fieldErrors?.address?.[0]}>
+            <Input name="address" defaultValue={values?.address} />
+          </FormField>
+          <FormField
+            id="nextOfKinName"
+            label="Next of kin name"
+            errorText={state.fieldErrors?.nextOfKinName?.[0]}
+          >
+            <Input name="nextOfKinName" defaultValue={values?.nextOfKinName} />
+          </FormField>
+          <FormField
+            id="nextOfKinPhone"
+            label="Next of kin phone"
+            errorText={state.fieldErrors?.nextOfKinPhone?.[0]}
+          >
+            <Input name="nextOfKinPhone" defaultValue={values?.nextOfKinPhone} />
           </FormField>
           <Button type="submit" disabled={pending}>
             {pending ? 'Saving…' : 'Save & register'}

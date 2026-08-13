@@ -47,6 +47,18 @@ export const patient = pgTable(
     // the API, not resolved here -- no chain-walking is ever needed.
     mergedInto: uuid("merged_into").references((): AnyPgColumn => patient.id),
 
+    // FEAT-066 (ADR-0053, docs/plans/feat-066-patient-contact-referring-facility.md):
+    // real design-partner field set (Eldoret Pathology Diagnostics
+    // screenshots), blended into the KB-02-minimal core. All nullable --
+    // none is required by any existing invariant, matching birthDate's own
+    // "null = unknown, never a sentinel" convention rather than inventing
+    // a NOT NULL requirement the evidence doesn't show.
+    phone: text("phone"),
+    email: text("email"),
+    address: text("address"),
+    nextOfKinName: text("next_of_kin_name"),
+    nextOfKinPhone: text("next_of_kin_phone"),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

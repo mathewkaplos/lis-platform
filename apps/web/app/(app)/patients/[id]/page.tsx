@@ -87,6 +87,26 @@ export default async function PatientProfilePage({
               <dt className="text-text-secondary">Age</dt>
               <dd className="mt-1 text-foreground">{ageOf(patient.birthDate)}</dd>
             </div>
+            <div>
+              <dt className="text-text-secondary">Phone</dt>
+              <dd className="mt-1 text-foreground">{patient.phone ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-text-secondary">Email</dt>
+              <dd className="mt-1 text-foreground">{patient.email ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-text-secondary">Address</dt>
+              <dd className="mt-1 text-foreground">{patient.address ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-text-secondary">Next of kin</dt>
+              <dd className="mt-1 text-foreground">
+                {patient.nextOfKinName
+                  ? `${patient.nextOfKinName}${patient.nextOfKinPhone ? ` (${patient.nextOfKinPhone})` : ''}`
+                  : '—'}
+              </dd>
+            </div>
           </dl>
         </CardContent>
       </Card>

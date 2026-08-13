@@ -154,6 +154,8 @@ export class OrderController {
         testDefinitionIds: body.testDefinitionIds,
         panelIds: body.panelIds,
         priority: body.priority,
+        referringFacilityId: body.referringFacilityId,
+        orderingProviderName: body.orderingProviderName,
       });
 
     return {

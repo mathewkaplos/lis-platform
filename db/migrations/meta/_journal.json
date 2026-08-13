@@ -344,6 +344,13 @@
       "when": 1786596924045,
       "tag": "0048_patient_merged_into",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1786609172084,
+      "tag": "0049_referring_facility_patient_contact",
+      "breakpoints": true
     }
   ]
 }

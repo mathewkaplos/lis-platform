@@ -9,7 +9,8 @@
     "qcViolations": "QC violations",
     "cultureReads": "Culture reads",
     "referenceRanges": "Reference ranges",
-    "addTest": "Add test"
+    "addTest": "Add test",
+    "referringFacilities": "Referring facilities"
   },
   "Dashboard": {
     "title": "Worklist",

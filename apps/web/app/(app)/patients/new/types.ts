@@ -21,6 +21,12 @@ export interface SubmittedValues {
   sex: string;
   birthDate: string;
   nationalId: string;
+  // FEAT-066 (ADR-0053, docs/plans/feat-066-patient-contact-referring-facility.md).
+  phone: string;
+  email: string;
+  address: string;
+  nextOfKinName: string;
+  nextOfKinPhone: string;
 }
 
 export interface RegisterPatientState {

@@ -1412,6 +1412,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/referring-facilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ReferringFacilityController_list"];
+        put?: never;
+        post: operations["ReferringFacilityController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/referring-facilities/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ReferringFacilityController_getById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1425,6 +1457,11 @@ export interface components {
             sex: "M" | "F" | "U";
             /** Format: date */
             birthDate?: string;
+            phone?: string;
+            email?: string;
+            address?: string;
+            nextOfKinName?: string;
+            nextOfKinPhone?: string;
         };
         PatientDto_Output: {
             /** Format: uuid */
@@ -1442,6 +1479,11 @@ export interface components {
             birthDate: string | null;
             /** Format: uuid */
             mergedInto: string | null;
+            phone: string | null;
+            email: string | null;
+            address: string | null;
+            nextOfKinName: string | null;
+            nextOfKinPhone: string | null;
             /** Format: date-time */
             createdAt: string;
         };
@@ -1461,6 +1503,11 @@ export interface components {
             birthDate: string | null;
             /** Format: uuid */
             mergedInto: string | null;
+            phone: string | null;
+            email: string | null;
+            address: string | null;
+            nextOfKinName: string | null;
+            nextOfKinPhone: string | null;
             /** Format: date-time */
             createdAt: string;
             mergedFrom: string[];
@@ -1481,6 +1528,9 @@ export interface components {
             panelIds?: string[];
             /** @enum {string} */
             priority?: "routine" | "stat";
+            /** Format: uuid */
+            referringFacilityId?: string;
+            orderingProviderName?: string;
         };
         OrderDto_Output: {
             /** Format: uuid */
@@ -1493,6 +1543,9 @@ export interface components {
             status: "ordered" | "cancelled";
             /** @enum {string} */
             priority: "routine" | "stat";
+            /** Format: uuid */
+            referringFacilityId: string | null;
+            orderingProviderName: string | null;
             /** Format: date-time */
             createdAt: string;
             orderedTests: {
@@ -2234,6 +2287,12 @@ export interface components {
             adminEmail: string;
             adminPassword: string;
         };
+        GenerateInvoiceRequestDto: {
+            /** @enum {string} */
+            payerType?: "cash" | "corporate";
+            /** Format: uuid */
+            referringFacilityId?: string;
+        };
         InvoiceDto_Output: {
             /** Format: uuid */
             id: string;
@@ -2246,6 +2305,10 @@ export interface components {
             /** @enum {string} */
             status: "unpaid" | "partial" | "paid";
             totalCents: number;
+            /** @enum {string} */
+            payerType: "cash" | "corporate";
+            /** Format: uuid */
+            referringFacilityId: string | null;
             /** Format: date-time */
             createdAt: string;
             lineItems: {
@@ -2588,6 +2651,24 @@ export interface components {
                 /** Format: date-time */
                 createdAt: string;
             }[];
+        };
+        ReferringFacilityCreateDto: {
+            name: string;
+            phone?: string;
+            email?: string;
+            address?: string;
+        };
+        ReferringFacilityDto_Output: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenantId: string;
+            name: string;
+            phone: string | null;
+            email: string | null;
+            address: string | null;
+            /** Format: date-time */
+            createdAt: string;
         };
     };
     responses: never;
@@ -4114,7 +4195,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateInvoiceRequestDto"];
+            };
+        };
         responses: {
             201: {
                 headers: {
@@ -4616,6 +4701,67 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    ReferringFacilityController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferringFacilityDto_Output"][];
+                };
+            };
+        };
+    };
+    ReferringFacilityController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferringFacilityCreateDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ReferringFacilityController_getById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferringFacilityDto_Output"];
+                };
             };
         };
     };

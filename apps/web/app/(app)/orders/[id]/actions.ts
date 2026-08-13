@@ -69,6 +69,10 @@ export async function generateInvoice(
 
   const { data, response } = await client.POST('/v1/orders/{id}/invoice', {
     params: { path: { id: orderId } },
+    // FEAT-066 (ADR-0053): payerType/referringFacilityId are both optional
+    // on the wire (defaults to cash) -- an explicit empty body since the
+    // generated SDK type still requires the `body` key to be present.
+    body: {},
   });
   if (!response.ok) {
     if (response.status === 400) {

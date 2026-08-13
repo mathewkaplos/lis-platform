@@ -13,6 +13,12 @@ function rawFormValues(formData: FormData) {
     sex: formData.get('sex') || undefined,
     birthDate: formData.get('birthDate') || undefined,
     nationalId: formData.get('nationalId') || undefined,
+    // FEAT-066 (ADR-0053).
+    phone: formData.get('phone') || undefined,
+    email: formData.get('email') || undefined,
+    address: formData.get('address') || undefined,
+    nextOfKinName: formData.get('nextOfKinName') || undefined,
+    nextOfKinPhone: formData.get('nextOfKinPhone') || undefined,
   };
 }
 
@@ -24,6 +30,11 @@ function submittedValuesOf(formData: FormData): SubmittedValues {
     sex: String(formData.get('sex') ?? ''),
     birthDate: String(formData.get('birthDate') ?? ''),
     nationalId: String(formData.get('nationalId') ?? ''),
+    phone: String(formData.get('phone') ?? ''),
+    email: String(formData.get('email') ?? ''),
+    address: String(formData.get('address') ?? ''),
+    nextOfKinName: String(formData.get('nextOfKinName') ?? ''),
+    nextOfKinPhone: String(formData.get('nextOfKinPhone') ?? ''),
   };
 }
 

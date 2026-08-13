@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import {
+  BadRequestException,
   Body,
   ConflictException,
   Controller,
@@ -15,14 +16,25 @@ import {
 import {
   careRelationshipCreateSchema,
   patientCreateSchema,
+  patientDetailSchema,
+  patientMergeRequestSchema,
   patientSchema,
   patientSearchQuerySchema,
   PATIENT_SEARCH_RESULT_LIMIT,
   type CareRelationship,
   type Patient,
+  type PatientDetail,
 } from '@lis/domain';
-import { careRelationship, patient } from '@lis/db';
-import { and, eq, ilike, inArray, or } from 'drizzle-orm';
+import {
+  careRelationship,
+  invoice,
+  observation,
+  order,
+  patient,
+  patientAlert,
+  patientPortalAccount,
+} from '@lis/db';
+import { and, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { Audit } from '../auth/audit.decorator';
@@ -41,8 +53,10 @@ const patientIdParamSchema = z.object({ id: z.uuid() });
 
 class PatientCreateDto extends createZodDto(patientCreateSchema) {}
 class PatientDto extends createZodDto(patientSchema) {}
+class PatientDetailDto extends createZodDto(patientDetailSchema) {}
 class PatientSearchQueryDto extends createZodDto(patientSearchQuerySchema) {}
 class PatientIdParamDto extends createZodDto(patientIdParamSchema) {}
+class PatientMergeRequestDto extends createZodDto(patientMergeRequestSchema) {}
 class CareRelationshipCreateDto extends createZodDto(
   careRelationshipCreateSchema,
 ) {}
@@ -238,6 +252,17 @@ export class PatientController {
               ilike(patient.mrn, `${term}%`),
               ilike(patient.nationalId, `${term}%`),
             ),
+            // FEAT-065 (ADR-0052 Decision 4): a merged-away patient is no
+            // longer the record a caller should act on going forward --
+            // same default-exclusion precedent worklist.controller.ts's own
+            // ACTIVE_STATUSES and case.controller.ts's own terminal-state
+            // exclusion (FEAT-063) already established. The exact-match
+            // mrn/nationalId/name+DOB branches below are deliberately
+            // unchanged -- a merged-away patient's own identifiers must
+            // still resolve directly to its own row (so a caller can follow
+            // `mergedInto`), and TASK-040's duplicate-detection mode must
+            // keep seeing every row regardless of merge status.
+            isNull(patient.mergedInto),
             scopeToPatientIds
               ? inArray(patient.id, scopeToPatientIds)
               : undefined,
@@ -272,13 +297,13 @@ export class PatientController {
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(TenantContextInterceptor)
-  @ZodResponse({ type: PatientDto, status: 200 })
+  @ZodResponse({ type: PatientDetailDto, status: 200 })
   async getById(
     @Param(new ZodValidationPipe(patientIdParamSchema))
     { id }: PatientIdParamDto,
     @CurrentUser() user: RequestContext,
     @DbTx() tx: RequestWithTx['tx'],
-  ): Promise<Patient> {
+  ): Promise<PatientDetail> {
     const [row] = await tx
       .select()
       .from(patient)
@@ -297,7 +322,18 @@ export class PatientController {
         throw new NotFoundException('Patient not found');
       }
     }
-    return toPatientDto(row);
+    // FEAT-065 (ADR-0052 Decision 3): a merged-away id resolves here with
+    // `mergedInto` set (never a 404/redirect) -- the survivor's own
+    // response includes the reverse `mergedFrom` list, so the merge is
+    // visible from the ordinary read path, not only the audit trail.
+    const mergedFromRows = await tx
+      .select({ id: patient.id })
+      .from(patient)
+      .where(eq(patient.mergedInto, id));
+    return {
+      ...toPatientDto(row),
+      mergedFrom: mergedFromRows.map((r) => r.id),
+    };
   }
 
   /**
@@ -359,5 +395,144 @@ export class PatientController {
       }
       throw err;
     }
+  }
+
+  /**
+   * FEAT-065 (ADR-0052, docs/plans/feat-065-patient-merge.md). `:id` is the
+   * surviving patient; `body.loserPatientId` is merged into it. Physically
+   * rewrites `patient_id` on every dependent table (ADR-0052 Decision 1) --
+   * a one-time cost paid here so no query anywhere else ever needs to
+   * resolve a merge chain. The loser's own row is never deleted, only
+   * tombstoned via `mergedInto` (Decision 2/3) -- same "old row stays,
+   * pointer moves forward" shape `observation.superseded_by`/
+   * `caseReportVersion.supersededBy` already established.
+   *
+   * `manage_patients` (reused, matching `create()`/`assignClinician()`
+   * above) + `@Audit()`/`AuditInterceptor` -- the same simple
+   * `{resourceId, before, after}` shape those two routes already use is
+   * sufficient here (contrast `case.controller.ts finalize()`'s own manual
+   * `writeAuditEvent`, needed there only for step-up context this route has
+   * none of).
+   */
+  @Post(':id/merge')
+  @HttpCode(200) // an action on an existing resource, not a creation
+  @UseGuards(JwtAuthGuard, CapabilityGuard)
+  @RequireCapability('manage_patients')
+  @UseInterceptors(TenantContextInterceptor, AuditInterceptor)
+  @Audit({ action: 'patient.merge', resourceType: 'patient' })
+  async merge(
+    @Param(new ZodValidationPipe(patientIdParamSchema))
+    { id }: PatientIdParamDto,
+    @Body(new ZodValidationPipe(patientMergeRequestSchema))
+    body: PatientMergeRequestDto,
+    @DbTx() tx: RequestWithTx['tx'],
+  ) {
+    if (body.loserPatientId === id) {
+      throw new BadRequestException('Cannot merge a patient into itself');
+    }
+
+    const [survivor] = await tx
+      .select()
+      .from(patient)
+      .where(eq(patient.id, id))
+      .limit(1);
+    if (!survivor) {
+      throw new NotFoundException('Patient not found');
+    }
+    if (survivor.mergedInto) {
+      throw new BadRequestException(
+        `Cannot merge into patient ${id}: it has itself been merged into ${survivor.mergedInto} -- merge into that patient instead`,
+      );
+    }
+
+    const [loser] = await tx
+      .select()
+      .from(patient)
+      .where(eq(patient.id, body.loserPatientId))
+      .limit(1);
+    if (!loser) {
+      throw new NotFoundException('Patient not found');
+    }
+    if (loser.mergedInto) {
+      throw new BadRequestException(
+        `Patient ${body.loserPatientId} has already been merged into ${loser.mergedInto}`,
+      );
+    }
+
+    // ADR-0052 Decision 6: which Keycloak login should survive is a real
+    // human decision this feature does not make automatically.
+    const [survivorPortal] = await tx
+      .select({ id: patientPortalAccount.id })
+      .from(patientPortalAccount)
+      .where(eq(patientPortalAccount.patientId, id))
+      .limit(1);
+    const [loserPortal] = await tx
+      .select({ id: patientPortalAccount.id })
+      .from(patientPortalAccount)
+      .where(eq(patientPortalAccount.patientId, body.loserPatientId))
+      .limit(1);
+    if (survivorPortal && loserPortal) {
+      throw new ConflictException(
+        'Both patients already have their own portal account -- resolve which login should survive before merging',
+      );
+    }
+
+    const movedOrders = await tx
+      .update(order)
+      .set({ patientId: id })
+      .where(eq(order.patientId, body.loserPatientId))
+      .returning({ id: order.id });
+    const movedObservations = await tx
+      .update(observation)
+      .set({ patientId: id })
+      .where(eq(observation.patientId, body.loserPatientId))
+      .returning({ id: observation.id });
+    const movedAlerts = await tx
+      .update(patientAlert)
+      .set({ patientId: id })
+      .where(eq(patientAlert.patientId, body.loserPatientId))
+      .returning({ id: patientAlert.id });
+    const movedCareRelationships = await tx
+      .update(careRelationship)
+      .set({ patientId: id })
+      .where(eq(careRelationship.patientId, body.loserPatientId))
+      .returning({ id: careRelationship.id });
+    const movedPortalAccounts = await tx
+      .update(patientPortalAccount)
+      .set({ patientId: id })
+      .where(eq(patientPortalAccount.patientId, body.loserPatientId))
+      .returning({ id: patientPortalAccount.id });
+    const movedInvoices = await tx
+      .update(invoice)
+      .set({ patientId: id })
+      .where(eq(invoice.patientId, body.loserPatientId))
+      .returning({ id: invoice.id });
+
+    const [updatedLoser] = await tx
+      .update(patient)
+      .set({ mergedInto: id })
+      .where(eq(patient.id, body.loserPatientId))
+      .returning();
+
+    return {
+      resourceId: id,
+      before: {
+        survivorId: id,
+        loserPatientId: body.loserPatientId,
+        reason: body.reason,
+      },
+      after: {
+        survivor: toPatientDto(survivor),
+        loser: toPatientDto(updatedLoser),
+        movedCounts: {
+          order: movedOrders.length,
+          observation: movedObservations.length,
+          patientAlert: movedAlerts.length,
+          careRelationship: movedCareRelationships.length,
+          patientPortalAccount: movedPortalAccounts.length,
+          invoice: movedInvoices.length,
+        },
+      },
+    };
   }
 }

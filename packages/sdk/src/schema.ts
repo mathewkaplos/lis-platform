@@ -212,6 +212,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/patients/{id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["PatientController_merge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/orders": {
         parameters: {
             query?: never;
@@ -1424,12 +1440,39 @@ export interface components {
             sex: "M" | "F" | "U";
             /** Format: date */
             birthDate: string | null;
+            /** Format: uuid */
+            mergedInto: string | null;
             /** Format: date-time */
             createdAt: string;
+        };
+        PatientDetailDto_Output: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenantId: string;
+            mrn: string;
+            nationalId: string | null;
+            firstName: string;
+            middleName: string | null;
+            lastName: string;
+            /** @enum {string} */
+            sex: "M" | "F" | "U";
+            /** Format: date */
+            birthDate: string | null;
+            /** Format: uuid */
+            mergedInto: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            mergedFrom: string[];
         };
         CareRelationshipCreateDto: {
             /** Format: uuid */
             clinicianUserId: string;
+        };
+        PatientMergeRequestDto: {
+            /** Format: uuid */
+            loserPatientId: string;
+            reason: string;
         };
         OrderCreateDto: {
             /** Format: uuid */
@@ -2788,7 +2831,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PatientDto_Output"];
+                    "application/json": components["schemas"]["PatientDetailDto_Output"];
                 };
             };
         };
@@ -2809,6 +2852,29 @@ export interface operations {
         };
         responses: {
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PatientController_merge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatientMergeRequestDto"];
+            };
+        };
+        responses: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

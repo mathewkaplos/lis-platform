@@ -31,9 +31,38 @@ export const patientSchema = z.object({
   lastName: z.string(),
   sex: patientSexSchema,
   birthDate: z.iso.date().nullable(),
+  // FEAT-065 (ADR-0052, docs/plans/feat-065-patient-merge.md). Set only on
+  // a merged-away (loser) row -- null for every ordinary/surviving patient.
+  mergedInto: z.uuid().nullable(),
   createdAt: z.iso.datetime(),
 });
 export type Patient = z.infer<typeof patientSchema>;
+
+/**
+ * FEAT-065. `GET /v1/patients/:id`'s own response shape -- adds the
+ * computed reverse lookup (`mergedFrom`: which patients were merged into
+ * this one) on top of the plain DB-mirroring `patientSchema` every other
+ * consumer reuses. Not a stored column, so it does not belong on
+ * `patientSchema` itself (that file's own "mirrors the DB row 1:1"
+ * convention).
+ */
+export const patientDetailSchema = z.object({
+  ...patientSchema.shape,
+  mergedFrom: z.array(z.uuid()),
+});
+export type PatientDetail = z.infer<typeof patientDetailSchema>;
+
+/**
+ * `POST /v1/patients/:id/merge` body -- `:id` is the surviving patient,
+ * `loserPatientId` is merged into it. `reason` is required, matching
+ * `caseAmendRequestSchema`'s own "required for a correction" convention
+ * (FEAT-059).
+ */
+export const patientMergeRequestSchema = z.object({
+  loserPatientId: z.uuid(),
+  reason: z.string().min(1),
+});
+export type PatientMergeRequestInput = z.infer<typeof patientMergeRequestSchema>;
 
 /**
  * Four mutually-exclusive lookup modes. mrn/nationalId are exact-match

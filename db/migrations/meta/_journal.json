@@ -337,6 +337,13 @@
       "when": 1786582725885,
       "tag": "0047_case_pending_review",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1786596924045,
+      "tag": "0048_patient_merged_into",
+      "breakpoints": true
     }
   ]
 }

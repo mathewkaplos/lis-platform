@@ -27,11 +27,15 @@ const tenantIsolation = () =>
 // TASK-045's generateAccessionNumber()); one Case per Order (ux_case_tenant_order
 // below, proposal §5/§10 Q4 -- a lab needing two independent surgical cases
 // creates two orders). status mirrors specimen.status's own plain-text+CHECK
-// convention (4 values, well under database-design Skill entry #1's "8+ on a
-// central table" ENUM threshold): accessioned -> in_process -> signed_out ->
-// amended. `signed_out` here is a schema-only status transition (proposal §5
+// convention (5 values, well under database-design Skill entry #1's "8+ on a
+// central table" ENUM threshold): accessioned -> in_process -> [pending_review] ->
+// signed_out -> amended. `signed_out` here is a schema-only status transition (proposal §5
 // scope cut) -- the real step-up-signed sign-out is FEAT-059's job, not this
-// feature's.
+// feature's. `pending_review` (FEAT-063, docs/plans/feat-063-cytology-two-tier-workflow.md)
+// is only reachable via the new `screen` action, only for a case whose specimens
+// require two-tier review (case-tiering.ts's `requiresTwoTierReview`) -- a case
+// that doesn't require it skips straight from `in_process` to `signed_out`,
+// unchanged from FEAT-057/059.
 export const caseTable = pgTable(
   "case",
   {
@@ -47,7 +51,7 @@ export const caseTable = pgTable(
   (table) => [
     uniqueIndex("ux_case_tenant_accession").on(table.tenantId, table.accessionNumber),
     uniqueIndex("ux_case_tenant_order").on(table.tenantId, table.orderId),
-    check("ck_case_status", sql`${table.status} IN ('accessioned','in_process','signed_out','amended')`),
+    check("ck_case_status", sql`${table.status} IN ('accessioned','in_process','pending_review','signed_out','amended')`),
     tenantIsolation(),
   ],
 ).enableRLS();

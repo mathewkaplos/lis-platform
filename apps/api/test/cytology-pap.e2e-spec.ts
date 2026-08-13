@@ -271,8 +271,17 @@ describe('Cytology Pap reporting (e2e)', () => {
       })
       .expect(201);
 
+    // FEAT-063: a cervical cytology case now requires screening before
+    // sign-out (case-tiering.ts's requiresTwoTierReview) -- unlike
+    // case-sign-out.e2e-spec.ts's own histology fixture, which finalizes
+    // directly.
+    await request(app.getHttpServer())
+      .post(`/v1/cases/${caseId}/screen`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+
     // Same FEAT-059 mechanism proven for histology in
-    // case-sign-out.e2e-spec.ts -- unmodified for cytology.
+    // case-sign-out.e2e-spec.ts.
     const finalizeRes = await request(app.getHttpServer())
       .post(`/v1/cases/${caseId}/finalize`)
       .set('Authorization', `Bearer ${tokenVerifier}`)

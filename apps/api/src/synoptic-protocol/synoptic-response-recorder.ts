@@ -15,6 +15,7 @@ import {
   synopticElementResponseOption,
   synopticProtocolVersion,
   writeAuditEvent,
+  writeOutboxEvent,
 } from '@lis/db';
 import { evaluateCondition } from '../workflow/workflow-condition-evaluator';
 import type {
@@ -289,6 +290,20 @@ export async function assembleAndPersistSynopticResponse(
       tableObservationId: tableObs.id,
       results: discreteResults,
     },
+  });
+
+  // FEAT-064 (docs/plans/feat-064-cytology-reflex-ascus-hpv.md). Unconditional,
+  // every protocol, every call -- never branches on which protocol or which
+  // element was recorded (this function's own protocol-agnostic invariant,
+  // ADR-0050 §Decision 4, preserved exactly). `context` is the same flat
+  // `Record<elementKey, value>` already built above for visibilityCondition
+  // evaluation, reused verbatim as the event payload body -- a guideline
+  // reflex rule (e.g. ASC-US -> HPV) filters on a specific element/value
+  // entirely via its own `when`, never here.
+  await writeOutboxEvent(tx, {
+    tenantId,
+    eventType: 'SynopticResponseRecorded',
+    payload: { orderedTestId, ...context },
   });
 
   return {

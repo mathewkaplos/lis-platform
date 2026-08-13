@@ -101,6 +101,22 @@ export const synopticResponseResultSchema = z.object({
 });
 export type SynopticResponseResult = z.infer<typeof synopticResponseResultSchema>;
 
+/**
+ * FEAT-064 (docs/plans/feat-064-cytology-reflex-ascus-hpv.md). `SynopticResponseRecorded`
+ * outbox event payload -- emitted unconditionally by `assembleAndPersistSynopticResponse`
+ * for every protocol (ADR-0050 §Decision 4's own protocol-agnostic-writer invariant),
+ * so unlike `cultureGrowthDetectedEventPayloadSchema`'s own two fixed fields, the response
+ * entries here are genuinely open-ended, protocol-defined element keys -- `.catchall()`
+ * admits any of them at the top level (workflow-condition-evaluator.ts's `context[node.field]`
+ * lookup is flat, never nested, which is why these aren't wrapped under a `responses` key).
+ */
+export const synopticResponseRecordedEventPayloadSchema = z
+  .object({ orderedTestId: z.uuid() })
+  .catchall(z.union([z.string(), z.number()]));
+export type SynopticResponseRecordedEventPayload = z.infer<
+  typeof synopticResponseRecordedEventPayloadSchema
+>;
+
 // Re-exported for callers that only need the condition-tree type alongside
 // synoptic-protocol types (mirrors report-template.ts's own precedent).
 export type { ConditionNode };

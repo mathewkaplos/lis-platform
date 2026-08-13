@@ -43,6 +43,12 @@ export {
 // (`@lis/domain`'s `cultureGrowthDetectedEventPayloadSchema`) -- same "fold
 // the new event's genuinely different field into this one flat list"
 // treatment `priority`/`targetMinutes` already got for `SlaBreached`.
+//
+// `interpretation_category` added by FEAT-064 for `SynopticResponseRecorded`
+// (the one field the ASC-US -> HPV rule actually references) -- NOT every
+// possible synoptic element key across every current/future protocol; a
+// future guideline reflex keyed off a different element adds its own field
+// the same way, when it ships (docs/plans/feat-064-cytology-reflex-ascus-hpv.md §5).
 export const ALLOWED_FIELDS = [
   'analyteId',
   'valueNum',
@@ -54,6 +60,7 @@ export const ALLOWED_FIELDS = [
   'priority',
   'targetMinutes',
   'result',
+  'interpretation_category',
 ] as const;
 export type AllowedField = (typeof ALLOWED_FIELDS)[number];
 

@@ -117,3 +117,22 @@ SET status = 'published'
 FROM synoptic_protocol sp
 WHERE spv.synoptic_protocol_id = sp.id AND sp.name = 'Cervical Cytology (Pap)' AND sp.source_standard = 'Bethesda'
   AND spv.version = 1 AND spv.status = 'draft';
+
+-- FEAT-064 (docs/plans/feat-064-cytology-reflex-ascus-hpv.md). The reflex
+-- target for an ASC-US interpretation, per Perkins RB, Guido RS, Castle PE,
+-- et al., "2019 ASCCP Risk-Based Management Consensus Guidelines for
+-- Abnormal Cervical Cancer Screening Tests and Cancer Precursors," J Low
+-- Genit Tract Dis. 2020;24(2):102-131 -- HPV testing (reflex or co-testing)
+-- is the standard triage step following an ASC-US cytology result.
+-- PLACEHOLDER test code, same "PLACEHOLDER, NOT PARTNER DATA" framing as
+-- chemistry-catalog.sql/microbiology-catalog.sql's own header comments --
+-- only the clinical justification for the reflex is a real, cited external
+-- source, not this internal test code. No analyte (HPV result-entry is a
+-- distinct, unscoped future feature, not named in issue #543's own ACs) --
+-- same "CULT carries no analyte of its own" precedent
+-- microbiology-catalog.sql's own step 3/4 already established for a reflex
+-- target whose result-entry is out of scope.
+INSERT INTO test_definition (tenant_id, code, display_name)
+VALUES
+  ('00000000-0000-0000-0000-000000000001', 'HPV', 'High-Risk HPV DNA Test (Reflex)')
+ON CONFLICT (tenant_id, code) DO NOTHING;

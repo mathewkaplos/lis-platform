@@ -1,5 +1,5 @@
 # Implementation Proposal: FEAT-066 — Patient contact fields + referring-facility/payer model
-Status: APPROVED
+Status: IMPLEMENTED (PR #578, merge commit 26d8e531954ccc0e61757bd3fb5dc12a9479594a)
 ADR: ADR-0053 (status: accepted 2026-08-13)
 Date: 2026-08-13    Backlog ID: #577 (FEAT-066, milestone M3, no epic — real design-partner field-set blend)
 

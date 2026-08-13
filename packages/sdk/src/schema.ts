@@ -1179,7 +1179,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["CaseController_list"];
         put?: never;
         post: operations["CaseController_create"];
         delete?: never;
@@ -1246,6 +1246,22 @@ export interface paths {
         get: operations["CaseController_getById"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/cases/{id}/screen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CaseController_screen"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2318,6 +2334,21 @@ export interface components {
             /** Format: uuid */
             parentOrderedTestId?: string;
         };
+        CaseListResponseDto_Output: {
+            items: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                tenantId: string;
+                /** Format: uuid */
+                orderId: string;
+                accessionNumber: string;
+                /** @enum {string} */
+                status: "accessioned" | "in_process" | "pending_review" | "signed_out" | "amended";
+                /** Format: date-time */
+                createdAt: string;
+            }[];
+        };
         CaseLineageDto_Output: {
             /** Format: uuid */
             id: string;
@@ -2327,7 +2358,7 @@ export interface components {
             orderId: string;
             accessionNumber: string;
             /** @enum {string} */
-            status: "accessioned" | "in_process" | "signed_out" | "amended";
+            status: "accessioned" | "in_process" | "pending_review" | "signed_out" | "amended";
             /** Format: date-time */
             createdAt: string;
             parts: {
@@ -4180,6 +4211,27 @@ export interface operations {
             };
         };
     };
+    CaseController_list: {
+        parameters: {
+            query?: {
+                status?: "accessioned" | "in_process" | "pending_review" | "signed_out" | "amended";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseListResponseDto_Output"];
+                };
+            };
+        };
+    };
     CaseController_create: {
         parameters: {
             query?: never;
@@ -4284,6 +4336,25 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CaseLineageDto_Output"];
                 };
+            };
+        };
+    };
+    CaseController_screen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

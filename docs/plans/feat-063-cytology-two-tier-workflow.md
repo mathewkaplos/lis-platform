@@ -1,5 +1,5 @@
 # Implementation Proposal: FEAT-063 — Cytology two-tier workflow (screen → review → sign-out)
-Status: APPROVED
+Status: IMPLEMENTED (PR #571, merge commit 110a886d4d590b6bd5184aae6dfc4dd4bec035aa)
 ADR: none (fits within existing role/capability model — see §5)
 Date: 2026-08-13    Backlog ID: #542 (FEAT-063, depends on FEAT-062 #541, FEAT-029, FEAT-009/FEAT-040)
 

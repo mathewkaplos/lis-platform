@@ -1,91 +1,114 @@
-# Status — 2026-08-12 (session 36)
+# Status — 2026-08-13 (session 37)
 
-Last commit on main: `cc116b0` (`lis-platform`) / `820bf61` (`lis-engineering`) — this breadcrumb
+Last commit on main: `63927a7` (`lis-platform`) / `f1ff8f5` (`lis-engineering`) — this breadcrumb
 refresh itself lands as a further `lis-platform` commit on top of that, so this line will already
 be one commit behind by construction — check `git log origin/main -5` for the real current tip.
 
 **Earlier sessions' breadcrumb entries are not carried in this file — see git history on this
 exact file (`git log -- docs/scope/current.md`) for full detail back through session 12.**
 
-## Correction to session 35's own breadcrumb: EPIC-009 and issue #430 were already resolved before this session started
+## M13 (EPIC-012, Anatomic Pathology: Histology & Cytology) v1 slice complete — all 8 features shipped this session
 
-Session 35's breadcrumb (previous version of this file) carried EPIC-009 (#9, M10) forward as
-"still open" and flagged issue #430 (rls-isolation-check.ts fixture gap) as unconfirmed. Both were
-actually already resolved by the time this session's `/orient` ran: **EPIC-009 was closed
-2026-08-12T04:13:10Z** (comment: M10 6/6 feature-complete, #489 deliberately deferred, not
-blocking), and **issue #430 was closed 2026-08-12T04:28:41Z**, fixed via merged PRs #535 and #536
-(add report fixture + remaining 10 missing fixtures to `rls-isolation-check.ts`). Both landed after
-session 35's own breadcrumb-refresh commit, which is exactly the "one commit behind by construction"
-lag this file's own header warns about — not a real gap, just confirmed here so neither gets
-re-carried-forward by mistake.
+Session 36's breadcrumb scoped M13 and recommended `/plan FEAT-057` as the next step. This session
+built and merged the entire v1 slice in the scoped order, each via its own approved Implementation
+Proposal:
 
-## M13 (EPIC-012, Anatomic Pathology: Histology & Cytology) scoped and created this session — not yet started
+`FEAT-057` Case/Specimen/Block/Slide hierarchy & accessioning (#538, PR #557) → `FEAT-058` generic
+synoptic-protocol engine, ICCR-sourced breast + colorectal v1 (#539, PR #558) → `FEAT-059` human
+sign-out, step-up authentication & digital signature (#544, PR #559) → `FEAT-060` reflex/add-on
+stains & IHC on existing blocks (#545, PR #562) → `FEAT-061` image attachments with coordinate
+annotations (#540, PR #566) → `FEAT-062` cytology v1, Bethesda-coded Pap reporting & adequacy
+tracking (#541, PR #569) → `FEAT-063` cytology two-tier workflow, screen → review → sign-out (#542,
+PR #571) → `FEAT-064` cytology reflex, ASC-US → HPV management (#543, PR #573). All 8 issues closed,
+all 8 proposals marked `IMPLEMENTED`.
 
-With M9/M10/M11/M12 all epic-closed, this session identified the next undelivered roadmap phase
-(`52-product-roadmap.md` Phase 2 — anatomic pathology was the one phase with zero scoping) and did a
-full scoping pass: ADRs, epic, features, and deferred follow-ups. **No implementation has begun —
-every feature below still needs its own Implementation Proposal before any task starts.**
+**EPIC-012 (#537) itself is still open** — same pattern EPIC-009 followed (v1 slice done, epic
+closed as its own deliberate later step once the 9 deferred follow-ups are confirmed non-blocking).
+Worth an explicit close-out pass next session: re-confirm none of #546–554 (WSI viewer, AI pre-fill,
+cancer-registry submission, CAP eCC license path, additional cytology systems, additional CAP/ICCR
+protocols, two-tier workflow configurability, synoptic protocol update process, cytology-histology
+correlation analytics) block a genuine v1 launch, then close #537 with that reasoning recorded,
+mirroring EPIC-009's own close comment.
 
-### ADR-0049 / ADR-0050 / ADR-0051 — drafted and accepted this session
+One real production-code fix landed mid-slice, not part of any single feature's own scope: **`fix:
+don't crash API boot when object storage is unconfigured` (#568)** — an `OnModuleInit` hook
+depending on MinIO/S3 config threw uncaught on boot when object storage env vars were absent,
+taking the whole API down rather than just disabling the image-attachment feature. Fixed to catch
+its own failure and degrade gracefully. Real, staging-relevant class of bug — any future
+`OnModuleInit` hook that depends on external infra/env config needs the same self-contained
+try/catch, not an assumption that config is always present.
 
-- **ADR-0049** — `Case` is a first-class aggregate above Order/Specimen (`Case → Specimen/part →
-  Block → Slide`, each barcoded/custody-tracked), formalizing KB-17's existing resolution of
-  domain-model open question OQ-02-1 into a binding schema decision.
-- **ADR-0050** — synoptic cancer-reporting protocols are one generic, versioned, data-driven schema
-  (`synoptic_protocol`/`synoptic_element`/etc., global reference data, same ADR-0045 precedent) —
-  not one bespoke feature per organ site. **v1 content is sourced from freely-published ICCR
-  datasets, not a paid CAP eCC vendor license** — an explicit human decision made after real online
-  research established CAP eCC's 100+ protocols are only distributed as licensed SDC-XML to vendors
-  (no public feed), while ICCR publishes the same Required/Recommended-element structure freely per
-  cancer type. v1 protocols: breast and colorectal, matching two real CAP template files
-  (`BREAST CAP TEMP`, `COLON TEMPLATE`) already sitting in the design-partner research folder
-  (`/mnt/d/LIS/research`) — worth cross-checking those files against the published ICCR datasets
-  before authoring the actual `synoptic_element` content.
-- **ADR-0051** — no auto-verify path exists for AP reports at all; finalize requires **step-up
-  authentication** (fresh re-auth, not just an active session) cryptographically bound to a digital
-  signature on the report-version's content hash. Note: **step-up auth does not exist in the
-  codebase yet** — confirmed by search, no `stepUp` implementation in `apps/api` — so FEAT-059 is
-  building this mechanism for the first time, not reusing an existing one, even though
-  `09-authentication.md` already describes the intended design.
+## FEAT-065 (patient merge, ADR-0052) and FEAT-066 (patient contact fields + referring-facility/
+payer model, ADR-0053) — both built and merged after the M13 slice, at the user's own direction
 
-All three accepted 2026-08-12, same session they were drafted, via the native options-prompt.
+After M13's v1 slice, the user asked for a full regression pass (login through both apps, driven
+via raw HTTP since no browser tool/Playwright exists), then to expand the patient model based on
+"what implementations that came after" require and "the actual design partner" — deliberately not
+part of any epic, both found/scoped mid-session rather than pre-planned:
 
-### EPIC-012 (#537) + 8 features + 9 deferred follow-ups created on GitHub, milestone M13
+- **FEAT-065** (#574, PR #575): a codebase audit found `patient-identity` Skill entry #6's own
+  flagged-but-unbuilt merge gap was still real. Built `POST /v1/patients/:id/merge` — physical FK
+  rewrite onto the survivor across all six `patient_id`-carrying tables, loser tombstoned via a new
+  `patient.mergedInto` self-FK, never deleted (ADR-0052's central decision, extending
+  `patient-identity` entry #5's "subject metadata, not clinical value" reading one column further).
+- **FEAT-066** (#577, PR #578): the user supplied 4 real screenshots of Eldoret Pathology
+  Diagnostics' production system (`/mnt/d/LIS/research/ref/*.png`) — the first genuine design-
+  partner field-set evidence this project has had, closing `patient-identity` Skill entry #8's own
+  "illustrative, not a spec" caveat. Added patient contact fields (phone/email/address/next-of-kin),
+  and a new tenant-scoped `referring_facility` table deliberately reused for **both** order
+  attribution and invoice payer (ADR-0053's central decision — the real evidence shows the same
+  named organizations serving both roles, not two overlapping directories). `invoice.payerType`
+  (cash/corporate) stays inside ADR-0041's own no-ledger boundary — the literal follow-up gap that
+  ADR-0041's Consequences section already named.
 
-v1 slice: `FEAT-057` Case/Specimen/Block/Slide hierarchy (#538) → `FEAT-058` generic
-synoptic-protocol engine (#539) → `FEAT-059` sign-out/step-up/signature (#544) → `FEAT-060`
-reflex stains/IHC (#545) → `FEAT-061` image attachments (#540) → `FEAT-062` cytology Bethesda Pap
-reporting (#541) → `FEAT-063` cytology two-tier workflow (#542) → `FEAT-064` cytology ASC-US→HPV
-reflex (#543). Deferred, each its own filed issue, none exit-blocking: WSI viewer (#549),
-AI-assisted pre-fill (#546), cancer-registry submission (#547), CAP eCC license path (#548),
-additional cytology systems beyond cervical Bethesda (#550), additional CAP/ICCR protocols beyond
-breast/colorectal (#551), two-tier workflow configurability (#552), synoptic protocol
-update/reconciliation process (#553), cytology-histology correlation analytics (#554).
+Both features: full local verification before merge (real Postgres/Keycloak, not mocked) — FEAT-066
+alone: 499 e2e tests, 205 unit tests, 3 web tests, `rls-check` across all 43 tenant-scoped tables
+(added the new `referring_facility` fixture, same class of gap issue #430/PRs #535/#536 fixed
+previously — a new tenant table always needs its own `rls-isolation-check.ts` fixture, this project
+has now hit that same lesson 3 separate times).
 
-**Recommended next step:** `/plan` FEAT-057 (Case/Specimen/Block/Slide hierarchy) — the foundational
-feature every other FEAT-05x/06x reads from, same role FEAT-051 played for EPIC-010.
+**No `apps/web` UI from either feature has been seen in a real browser this session** — no browser
+tool was available. Everything shipped on `tsc --noEmit`/`eslint`/unit-test coverage only. See the
+Manual Verification Checklist below for the specific screens worth a live pass.
 
-### `/close` cycle this session (two passes: pre-close, then this final refresh)
+## Two process findings from this session's `/close`, drafted not yet applied
 
-Pre-close report (`~/work/lis-engineering/session-close-reports/2026-08-12-1503-pre.md`) found 3
-pending items, all resolved this same session:
-1. ADR-0049/0050/0051 ratified (accepted, see above).
-2. This breadcrumb refresh.
-3. §8 Engineering Flow Retrospective finding **not yet actioned** — a batched 8-way parallel
-   `gh issue create` had 2 transient failures (1 GraphQL `HTTP 499`, 1 classifier-unavailable Bash
-   block) that were easy to miscount from tool-result ordering alone; required an explicit
-   `gh issue list`/`gh issue view` re-verification pass to confirm which 2 of 8 actually failed
-   (FEAT-059, FEAT-060) before retrying them. Drafted AGENTS.md fix (verify any 3+-issue batch
-   creation with a list call before wiring cross-references) — **still awaiting explicit approval,
-   not yet applied.**
+Full detail in `~/work/lis-engineering/session-close-reports/2026-08-13-1257-pre.md`:
+
+1. A resume-after-compaction fires `SessionStart` twice (`source=resume` then `source=compact`),
+   producing two contradictory Rule #0 instructions in the same context — resolved this session by
+   inference (trust the later, more-specific message), but not mechanically guaranteed. Suggested
+   fix: one added sentence in `session-start.sh`'s resume-branch output naming this precedence
+   explicitly. **Awaiting approval.**
+2. Regenerating `openapi.json`/SDK once mid-implementation, then making a later domain-schema fix
+   (found via a real e2e failure) without regenerating again, let staleness back into CI's own drift
+   check — cost one full CI round-trip on FEAT-066's PR. Suggested fix: a `develop` Skill checklist
+   line treating regeneration as the literal last code step before commit, not a mid-implementation
+   checkpoint. **Awaiting approval.**
+
+## Manual Verification Checklist — FEAT-066, none of this session's `apps/web` changes seen live
+
+- `/patients/new` — the 5 new contact fields render correctly; the "possible duplicate found"
+  resubmission path carries all 5 forward via the new hidden inputs rather than dropping them.
+- `/patients/:id` — the new Phone/Email/Address/Next of kin rows display sensibly.
+- `/admin/referring-facilities` — new list+create screen, including the non-technologist/verifier
+  permission-denied fallback.
+- `/orders/new` — the new "Referring facility" `<select>` (only rendered when facilities exist) and
+  "Requesting doctor" field fit the existing Order Summary layout.
+- `/orders/:id` — the new "Requesting doctor" line, present/absent correctly.
+- Sidebar — new "Referring facilities" nav entry, both English and the unreviewed French string
+  ("Établissements référents" — same standing FEAT-048 French-review gap, unchanged, now one entry
+  larger).
 
 ## Carried into next session
 
-- **New this session:** M13/EPIC-012 (#537) + FEAT-057–064 (#538–545) + 9 deferred follow-ups
-  (#546–554) — all `Not Started`. FEAT-057 is the recommended next feature to `/plan`.
-- **New this session:** the §8 batch-issue-verification AGENTS.md fix remains drafted but
-  unapproved — revisit if another session batch-creates 3+ related GitHub issues before this is
-  resolved either way.
+- **New this session:** M13/EPIC-012's 8-feature v1 slice fully shipped; EPIC-012 (#537) itself
+  still open, worth an explicit close-out pass (see above).
+- **New this session:** FEAT-065 (#574, patient merge) and FEAT-066 (#577, patient contact/
+  referring-facility) both shipped and closed, neither part of any epic.
+- **New this session:** the two `/close` process findings above remain drafted, unapproved.
+- **New this session:** the Manual Verification Checklist above (FEAT-066's `apps/web` surfaces)
+  remains unchecked in a live browser.
 - Issue #489 (FEAT-046's own deferred Invoice List/Outstanding Balances/Refunds screens) remains
   open, unstarted, unchanged.
 - M6's own remaining item (FEAT-027) is still blocked on the design partner naming their actual
@@ -102,16 +125,15 @@ pending items, all resolved this same session:
   `tofu apply`.
 - The staging droplet's `restore-drill.sh` cron job still has no active alerting beyond its own log
   file — unchanged, still worth a periodic human spot-check until real alerting exists.
-- **SSH IP drift, found this session by `/orient`'s engineering-radar pass, not yet fixed:**
-  `infra/terraform.tfvars`'s `ssh_allowed_ip` (`102.215.35.16/32`) no longer matches the live egress
-  IP seen this session (`105.160.4.113`) — draft `tofu plan` fix was shown in the session's report
-  but never applied; worth a human decision on whether/when to run it, since it's a real
-  infra-state change.
+- **SSH IP drift**, found several sessions ago by `/orient`'s engineering-radar pass, not yet fixed
+  (no infra work happened this session to re-check the live egress IP): `infra/terraform.tfvars`'s
+  `ssh_allowed_ip` may still not match the real current egress IP — worth a human decision on
+  whether/when to re-check and apply, since it's a real infra-state change.
 - Manual verification still owed by a human, carried forward unchanged: FEAT-047's JSON-mode
   `visibilityCondition` editor (mechanically verified, not yet a live lab-admin pass); FEAT-048's
-  shipped French translations (not yet a native-speaker review); FEAT-049's `/signup` UX + confirming
-  `lis-onboarding`'s dev secret gets rotated before any real deploy; FEAT-046's take-payment UX +
-  confirming the placeholder billing metadata reads unambiguously as placeholder; FEAT-045's
-  Constitution-gate marker-recognition logic; a live technologist pass on FEAT-024's notes-textarea/
-  grade-button spacing; a live pass confirming FEAT-022's SLA amber/red badges read clearly at a
-  glance.
+  shipped French translations (not yet a native-speaker review, now including FEAT-066's own
+  addition); FEAT-049's `/signup` UX + confirming `lis-onboarding`'s dev secret gets rotated before
+  any real deploy; FEAT-046's take-payment UX + confirming the placeholder billing metadata reads
+  unambiguously as placeholder; FEAT-045's Constitution-gate marker-recognition logic; a live
+  technologist pass on FEAT-024's notes-textarea/grade-button spacing; a live pass confirming
+  FEAT-022's SLA amber/red badges read clearly at a glance.

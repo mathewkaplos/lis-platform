@@ -47,6 +47,7 @@ import { outboxEvent } from "./schema/outbox-event";
 import { slaBreach } from "./schema/sla-breach";
 import { workflowDefinition, workflowRuleFiring } from "./schema/workflow-definition";
 import { caseTable, block, slide, blockFulfillment, caseReportVersion } from "./schema/anatomic-pathology";
+import { wholeSlideImage } from "./schema/whole-slide-image";
 import { writeAuditEvent } from "./audit";
 
 type Db = ReturnType<typeof createDb>;
@@ -400,11 +401,23 @@ async function insertFixtures(db: Db) {
     .insert(block)
     .values({ tenantId: TENANT_A, specimenId: apSpecimen.id, blockNumber: 1, code: `${caseRow.accessionNumber}-B1` })
     .returning();
-  await db.insert(slide).values({
+  const [slideRow] = await db
+    .insert(slide)
+    .values({
+      tenantId: TENANT_A,
+      blockId: blockRow.id,
+      slideNumber: 1,
+      code: `${blockRow.code}-S1`,
+    })
+    .returning();
+
+  // FEAT-067 (ADR-0055): whole_slide_image fixture -- a genuinely new
+  // tenant table this feature introduces.
+  await db.insert(wholeSlideImage).values({
     tenantId: TENANT_A,
-    blockId: blockRow.id,
-    slideNumber: 1,
-    code: `${blockRow.code}-S1`,
+    slideId: slideRow.id,
+    tileObjectPrefix: `${TENANT_A}/wsi/rls-check/`,
+    uploadedByUserId: "99999999-9999-9999-9999-999999999999",
   });
   const [apOrderedTest] = await db
     .insert(orderedTest)
@@ -510,7 +523,7 @@ async function main() {
     "Fixtures inserted for patient/patient_alert/referring_facility/order/ordered_test/specimen/specimen_fulfillment/observation/" +
       "result_history/report/culture_read/instrument_analyte_mapping/invoice/invoice_line_item/payment/" +
       "observation_idempotency_key/outbox_event/sla_breach/workflow_definition/workflow_rule_firing/" +
-      "case/block/slide/block_fulfillment/case_report_version/image_attachment/image_annotation.\n",
+      "case/block/slide/block_fulfillment/case_report_version/image_attachment/image_annotation/whole_slide_image.\n",
   );
 
   console.log("--- Live cross-tenant leak check: TENANT_B must see 0 rows of TENANT_A's data ---");

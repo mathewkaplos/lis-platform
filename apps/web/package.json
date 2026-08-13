@@ -19,6 +19,7 @@
     "next": "16.2.12",
     "next-intl": "^4.13.6",
     "openid-client": "^6.8.4",
+    "openseadragon": "^6.1.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },

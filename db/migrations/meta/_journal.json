@@ -351,6 +351,13 @@
       "when": 1786609172084,
       "tag": "0049_referring_facility_patient_contact",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1786624364129,
+      "tag": "0050_whole_slide_image",
+      "breakpoints": true
     }
   ]
 }

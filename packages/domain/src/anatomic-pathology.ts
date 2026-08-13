@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { specimenRejectionReasonSchema, specimenTypeSchema } from "./specimen";
+import { wholeSlideImageSummarySchema } from "./whole-slide-image";
 
 /**
  * FEAT-057 (ADR-0049, docs/plans/feat-057-case-specimen-block-slide-hierarchy.md):
@@ -94,13 +95,23 @@ export const blockOrderedTestLinkCreateSchema = z.object({
 });
 export type BlockOrderedTestLinkCreateInput = z.infer<typeof blockOrderedTestLinkCreateSchema>;
 
+/** FEAT-067 (ADR-0055): each slide in the lineage tree gains its own most-
+ * recent whole-slide-image summary (null if none uploaded yet) -- just
+ * enough for the case detail page to show a "View whole-slide image" link
+ * or an upload form, without a second round trip per slide. */
+export const caseLineageSlideSchema = z.object({
+  ...slideSchema.shape,
+  wholeSlideImage: wholeSlideImageSummarySchema.nullable(),
+});
+export type CaseLineageSlide = z.infer<typeof caseLineageSlideSchema>;
+
 /** Full case → part → block → slide lineage in one response (AC #2), each
  * block annotated with the OrderedTest ids fulfilled on it (via
  * block_fulfillment) so a reflex/add-on stain is visible in the same tree. */
 export const caseLineageBlockSchema = z.object({
   ...blockSchema.shape,
   orderedTestIds: z.array(z.uuid()),
-  slides: z.array(slideSchema),
+  slides: z.array(caseLineageSlideSchema),
 });
 export type CaseLineageBlock = z.infer<typeof caseLineageBlockSchema>;
 

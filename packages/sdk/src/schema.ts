@@ -1444,6 +1444,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/whole-slide-images/slides/{slideId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["WholeSlideImageController_upload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/whole-slide-images/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["WholeSlideImageController_getById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/whole-slide-images/{id}/tiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["WholeSlideImageController_getTile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2501,6 +2549,12 @@ export interface components {
                         status: "active" | "disposed";
                         /** Format: date-time */
                         createdAt: string;
+                        wholeSlideImage: {
+                            /** Format: uuid */
+                            id: string;
+                            /** @enum {string} */
+                            status: "processing" | "ready" | "failed";
+                        } | null;
                     }[];
                 }[];
             }[];
@@ -2668,6 +2722,23 @@ export interface components {
             phone: string | null;
             email: string | null;
             address: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        WholeSlideImageDto_Output: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: uuid */
+            slideId: string;
+            /** @enum {string} */
+            status: "processing" | "ready" | "failed";
+            tileObjectPrefix: string;
+            dziObjectKey: string | null;
+            errorMessage: string | null;
+            /** Format: uuid */
+            uploadedByUserId: string;
             /** Format: date-time */
             createdAt: string;
         };
@@ -4763,6 +4834,69 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ReferringFacilityDto_Output"];
                 };
+            };
+        };
+    };
+    WholeSlideImageController_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slideId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WholeSlideImageDto_Output"];
+                };
+            };
+        };
+    };
+    WholeSlideImageController_getById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WholeSlideImageDto_Output"];
+                };
+            };
+        };
+    };
+    WholeSlideImageController_getTile: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

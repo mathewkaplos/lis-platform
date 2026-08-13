@@ -10,7 +10,7 @@ import {
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-// FEAT-061 (ADR-0052). The first object-storage infrastructure in this
+// FEAT-061 (ADR-0054). The first object-storage infrastructure in this
 // repo -- self-hosted MinIO (S3-API-compatible), not a real cloud provider
 // (proposal §5/§10 Q1: no external account this session can provision).
 // Using the real @aws-sdk/client-s3 (not a MinIO-specific SDK) against

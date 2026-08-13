@@ -5,6 +5,7 @@ import {
   Building2,
   ClipboardList,
   FlaskConical,
+  Layers,
   LayoutDashboard,
   ListChecks,
   Microscope,
@@ -43,10 +44,15 @@ import {
 // FEAT-066 (ADR-0053): "Referring facilities" added -- the same standing as
 // "Reference ranges"/"Add test" (a real admin list+create screen, not
 // role-filtered at the nav level either).
+// FEAT-067 (ADR-0055): "Cases" added -- the first real nav entry into the
+// M13 Anatomic Pathology hierarchy (Case/Specimen/Block/Slide), which had
+// no apps/web UI at all before this feature. Same standing as "Orders"/
+// "Patients" (a real global, cross-patient list to link to).
 const NAV_ITEMS = [
   { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
   { href: '/patients', labelKey: 'patients', icon: Users },
   { href: '/orders', labelKey: 'orders', icon: ClipboardList },
+  { href: '/cases', labelKey: 'cases', icon: Layers },
   { href: '/reception', labelKey: 'reception', icon: FlaskConical },
   { href: '/collection-queue', labelKey: 'collectionQueue', icon: ListChecks },
   { href: '/qc-violations', labelKey: 'qcViolations', icon: AlertTriangle },

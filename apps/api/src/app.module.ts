@@ -37,6 +37,7 @@ import { CaseModule } from './case/case.module';
 import { SynopticProtocolModule } from './synoptic-protocol/synoptic-protocol.module';
 import { ImageAttachmentModule } from './image-attachment/image-attachment.module';
 import { ReferringFacilityModule } from './referring-facility/referring-facility.module';
+import { WholeSlideImageModule } from './whole-slide-image/whole-slide-image.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
 @Module({
@@ -81,6 +82,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     SynopticProtocolModule,
     ImageAttachmentModule,
     ReferringFacilityModule,
+    WholeSlideImageModule,
   ],
   controllers: [AppController],
   providers: [

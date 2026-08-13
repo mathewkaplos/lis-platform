@@ -1,6 +1,6 @@
 # Implementation Proposal: FEAT-061 — Image attachments with coordinate annotations
 Status: IMPLEMENTED (PR #566, merge commit fdd313c72fe4bf9b5112c2fa02636a5c59b3b416)
-ADR: ADR-0052 (object storage provider + upload mechanism — new, this proposal's own load-bearing decision)
+ADR: ADR-0054 (object storage provider + upload mechanism — new, this proposal's own load-bearing decision. Originally referenced as "ADR-0052" here, but that file was never actually committed; backfilled as ADR-0054 during FEAT-067's own /plan research, 2026-08-13 — see lis-engineering/adr/adr-0054-*.md)
 Date: 2026-08-12    Backlog ID: #540 (FEAT-061, depends on FEAT-057 #538, FEAT-058 #539)
 
 **Approved 2026-08-12** via the native options-prompt — all four §10 questions answered with the

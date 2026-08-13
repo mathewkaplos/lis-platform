@@ -10,7 +10,7 @@ const tenantIsolation = () =>
     using: sql`tenant_id = current_setting('app.tenant_id')::uuid`,
   });
 
-// FEAT-061 (ADR-0052, docs/plans/feat-061-image-attachments-annotations.md).
+// FEAT-061 (ADR-0054, docs/plans/feat-061-image-attachments-annotations.md).
 // A gross or microscopic image attached to a Case/Specimen/Block/Slide,
 // stored in object storage (MinIO, self-hosted -- proposal §5/§10 Q1) and
 // referenced by row -- never inline in Postgres (KB-06's own "Big binaries

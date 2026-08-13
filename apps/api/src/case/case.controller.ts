@@ -23,9 +23,11 @@ import {
   type Block,
   type Case,
   type CaseLineage,
+  type CaseLineageSlide,
   type CaseListResponse,
   type CaseReportVersion,
   type Slide,
+  type WholeSlideImageStatus,
 } from '@lis/domain';
 import {
   block,
@@ -43,6 +45,7 @@ import {
   signCaseReportContent,
   slide,
   specimen,
+  wholeSlideImage,
   synopticElement,
   testDefinition,
   writeAuditEvent,
@@ -99,6 +102,28 @@ function toSlideDto(row: typeof slide.$inferSelect): Slide {
     ...row,
     status: row.status as Slide['status'], // CHECK-constrained (ck_slide_status)
     createdAt: row.createdAt.toISOString(),
+  };
+}
+
+// FEAT-067 (ADR-0055): the lineage response's own per-slide shape --
+// wholeSlideImageRow is undefined when no WSI has been uploaded for this
+// slide yet, mapped to null (the wire shape caseLineageSlideSchema expects,
+// not an omitted key -- an omitted key would break AuditInterceptor-style
+// hashing the same way order.controller.ts's own toOrderDto header comment
+// already documents for a different response, though this route isn't
+// itself audited).
+function toCaseLineageSlideDto(
+  row: typeof slide.$inferSelect,
+  wholeSlideImageRow: typeof wholeSlideImage.$inferSelect | undefined,
+): CaseLineageSlide {
+  return {
+    ...toSlideDto(row),
+    wholeSlideImage: wholeSlideImageRow
+      ? {
+          id: wholeSlideImageRow.id,
+          status: wholeSlideImageRow.status as WholeSlideImageStatus,
+        }
+      : null,
   };
 }
 
@@ -641,6 +666,30 @@ export class CaseController {
       existing.push(row.orderedTestId);
       orderedTestIdsByBlockId.set(row.blockId, existing);
     }
+    // FEAT-067 (ADR-0055): each slide's own most-recent whole-slide-image
+    // row, batch-fetched the same way blocks/slides/fulfillments already
+    // are -- ordered newest-first so the first row seen per slideId in the
+    // loop below is the one the case detail page should surface (a rescan
+    // is a real, plausible event; no supersede/version chain exists, "most
+    // recent wins" is the whole policy).
+    const slideIds = slideRows.map((row) => row.id);
+    const wholeSlideImageRows =
+      slideIds.length > 0
+        ? await tx
+            .select()
+            .from(wholeSlideImage)
+            .where(inArray(wholeSlideImage.slideId, slideIds))
+            .orderBy(desc(wholeSlideImage.createdAt))
+        : [];
+    const wholeSlideImageBySlideId = new Map<
+      string,
+      (typeof wholeSlideImageRows)[number]
+    >();
+    for (const row of wholeSlideImageRows) {
+      if (!wholeSlideImageBySlideId.has(row.slideId)) {
+        wholeSlideImageBySlideId.set(row.slideId, row);
+      }
+    }
     const slidesByBlockId = new Map<string, typeof slideRows>();
     for (const row of slideRows) {
       const existing = slidesByBlockId.get(row.blockId) ?? [];
@@ -665,7 +714,12 @@ export class CaseController {
           (blockRow) => ({
             ...toBlockDto(blockRow),
             orderedTestIds: orderedTestIdsByBlockId.get(blockRow.id) ?? [],
-            slides: (slidesByBlockId.get(blockRow.id) ?? []).map(toSlideDto),
+            slides: (slidesByBlockId.get(blockRow.id) ?? []).map((slideRow) =>
+              toCaseLineageSlideDto(
+                slideRow,
+                wholeSlideImageBySlideId.get(slideRow.id),
+              ),
+            ),
           }),
         ),
       })),

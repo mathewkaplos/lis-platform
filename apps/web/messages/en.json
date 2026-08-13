@@ -10,7 +10,8 @@
     "cultureReads": "Culture reads",
     "referenceRanges": "Reference ranges",
     "addTest": "Add test",
-    "referringFacilities": "Referring facilities"
+    "referringFacilities": "Referring facilities",
+    "cases": "Cases"
   },
   "Dashboard": {
     "title": "Worklist",

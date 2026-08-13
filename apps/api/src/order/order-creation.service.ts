@@ -1,6 +1,13 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { order, orderedTest, panel, panelTest, testDefinition } from '@lis/db';
-import { inArray } from 'drizzle-orm';
+import {
+  order,
+  orderedTest,
+  panel,
+  panelTest,
+  referringFacility,
+  testDefinition,
+} from '@lis/db';
+import { eq, inArray } from 'drizzle-orm';
 import type { OrderPriority } from '@lis/domain';
 import type { RequestWithTx } from '../auth/tenant-context.interceptor';
 
@@ -12,6 +19,9 @@ export interface CreateOrderInput {
   testDefinitionIds?: string[];
   panelIds?: string[];
   priority?: OrderPriority;
+  // FEAT-066 (ADR-0053, docs/plans/feat-066-patient-contact-referring-facility.md).
+  referringFacilityId?: string;
+  orderingProviderName?: string;
 }
 
 /**
@@ -36,6 +46,19 @@ export class OrderCreationService {
   async create(tx: Tx, input: CreateOrderInput) {
     const requestedPanelIds = input.panelIds ?? [];
     const requestedTestIds = input.testDefinitionIds ?? [];
+
+    if (input.referringFacilityId !== undefined) {
+      const [visibleFacility] = await tx
+        .select({ id: referringFacility.id })
+        .from(referringFacility)
+        .where(eq(referringFacility.id, input.referringFacilityId))
+        .limit(1);
+      if (!visibleFacility) {
+        throw new BadRequestException(
+          `Unknown referring facility id: ${input.referringFacilityId}`,
+        );
+      }
+    }
 
     if (requestedPanelIds.length > 0) {
       const visiblePanels = await tx
@@ -91,6 +114,8 @@ export class OrderCreationService {
         patientId: input.patientId,
         status: 'ordered',
         priority: input.priority ?? 'routine',
+        referringFacilityId: input.referringFacilityId,
+        orderingProviderName: input.orderingProviderName,
       })
       .returning();
 

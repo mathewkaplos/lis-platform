@@ -42,9 +42,11 @@ export default async function NewOrderPage({
   const [
     { data: patient, response: patientResponse },
     { data: catalog, response: catalogResponse },
+    { data: referringFacilities },
   ] = await Promise.all([
     client.GET('/v1/patients/{id}', { params: { path: { id: patientId } } }),
     client.GET('/v1/catalog'),
+    client.GET('/v1/referring-facilities'),
   ]);
 
   // RLS makes a cross-tenant patient id structurally invisible, same as
@@ -68,7 +70,11 @@ export default async function NewOrderPage({
           <span className="font-mono">{patient.mrn}</span>
         </p>
       </div>
-      <OrderBuilderForm patientId={patientId} catalog={catalog} />
+      <OrderBuilderForm
+        patientId={patientId}
+        catalog={catalog}
+        referringFacilities={referringFacilities ?? []}
+      />
     </div>
   );
 }

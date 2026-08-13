@@ -9,10 +9,12 @@ import { GenerateInvoiceButton } from './generate-invoice-button';
 /**
  * TASK-044 (FEAT-012 proposal §1/§5). Overview only -- no Specimens/
  * Timeline/Results/Billing/Documents tabs (FEAT-013/014+, not started), no
- * accession number (TASK-045, not started), no ordering-doctor/insurance
- * rail (no supporting column). "Cancel order" is the one deliberate
- * addition beyond the screen's own literal AC -- see the proposal §5 for
- * why.
+ * accession number (TASK-045, not started). "Cancel order" is the one
+ * deliberate addition beyond the screen's own literal AC -- see the
+ * proposal §5 for why. FEAT-066 (ADR-0053) later added a requesting-doctor
+ * line once that column existed; the referring-facility id is not resolved
+ * to a display name here (no order-response join for it, matching this
+ * screen's own "don't build ahead of a named requirement" discipline).
  *
  * A cross-tenant or nonexistent id surfaces the API's real 404 via
  * `notFound()`, matching `patients/[id]/page.tsx`'s own convention
@@ -96,6 +98,11 @@ export default async function OrderDetailPage({
           <p className="text-sm text-text-secondary">
             Ordered at {new Date(order.createdAt).toLocaleString()}
           </p>
+          {order.orderingProviderName ? (
+            <p className="text-sm text-text-secondary">
+              Requesting doctor: <span className="text-foreground">{order.orderingProviderName}</span>
+            </p>
+          ) : null}
           <div>
             <h3 className="mb-2 text-sm font-medium text-foreground">Tests</h3>
             <ul className="flex flex-col gap-1 text-sm">

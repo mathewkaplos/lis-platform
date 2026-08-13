@@ -47,3 +47,19 @@ export function hasQaRole(session: SessionPayload | undefined): boolean {
 export function hasTechnologistRole(session: SessionPayload | undefined): boolean {
   return Boolean(session && Array.isArray(session.roles) && session.roles.includes('technologist'));
 }
+
+/**
+ * FEAT-066 (ADR-0053, docs/plans/feat-066-patient-contact-referring-facility.md):
+ * gates the "add referring facility" form. `manage_patients`
+ * (`apps/api/src/auth/capabilities.ts`) -- the real capability guarding
+ * `POST /v1/referring-facilities` (reused, not a new capability) -- is
+ * granted to both `technologist` and `verifier`. Same fail-closed shape and
+ * same "UI-visibility convenience only" caveat as the checks above.
+ */
+export function hasPatientManagementRole(session: SessionPayload | undefined): boolean {
+  return Boolean(
+    session &&
+      Array.isArray(session.roles) &&
+      (session.roles.includes('technologist') || session.roles.includes('verifier')),
+  );
+}

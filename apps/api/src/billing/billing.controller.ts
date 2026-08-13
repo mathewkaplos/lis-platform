@@ -10,7 +10,12 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { invoiceSchema, paymentRequestSchema, type Invoice } from '@lis/domain';
+import {
+  generateInvoiceRequestSchema,
+  invoiceSchema,
+  paymentRequestSchema,
+  type Invoice,
+} from '@lis/domain';
 import { invoice, invoiceLineItem, payment, order } from '@lis/db';
 import { eq } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
@@ -40,6 +45,9 @@ class OrderIdParamDto extends createZodDto(orderIdParamSchema) {}
 class InvoiceIdParamDto extends createZodDto(invoiceIdParamSchema) {}
 class PaymentRequestDto extends createZodDto(paymentRequestSchema) {}
 class InvoiceDto extends createZodDto(invoiceSchema) {}
+class GenerateInvoiceRequestDto extends createZodDto(
+  generateInvoiceRequestSchema,
+) {}
 
 // `createdAt` converted to an ISO string, same as `toCareRelationshipDto`'s
 // own precedent -- required for the audit `after` payload, not just API
@@ -65,6 +73,7 @@ function toInvoiceDto(
     // match the response schema's literal union, same as every other
     // text-discriminator response DTO in this codebase.
     status: row.status as Invoice['status'],
+    payerType: row.payerType as Invoice['payerType'], // CHECK-constrained (ck_invoice_payer_type)
     createdAt: row.createdAt.toISOString(),
     lineItems: lineItems.map(toInvoiceLineItemDto),
   };
@@ -93,6 +102,8 @@ export class BillingController {
   @Audit({ action: 'invoice.generate', resourceType: 'invoice' })
   async generateInvoice(
     @Param(new ZodValidationPipe(orderIdParamSchema)) { id }: OrderIdParamDto,
+    @Body(new ZodValidationPipe(generateInvoiceRequestSchema))
+    body: GenerateInvoiceRequestDto,
     @DbTx() tx: RequestWithTx['tx'],
   ) {
     const [orderRow] = await tx
@@ -109,6 +120,8 @@ export class BillingController {
         tenantId: orderRow.tenantId,
         orderId: id,
         patientId: orderRow.patientId,
+        payerType: body.payerType,
+        referringFacilityId: body.referringFacilityId,
       });
 
     return {

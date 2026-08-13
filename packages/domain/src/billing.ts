@@ -20,6 +20,32 @@ export type PaymentRequestInput = z.infer<typeof paymentRequestSchema>;
 export const invoiceStatusSchema = z.enum(["unpaid", "partial", "paid"]);
 export type InvoiceStatus = z.infer<typeof invoiceStatusSchema>;
 
+/**
+ * FEAT-066 (ADR-0053, docs/plans/feat-066-patient-contact-referring-facility.md):
+ * the literal follow-up ADR-0041's own Consequences section named
+ * ("multi-payer (insurance) support... real, tracked gap"). 'corporate'
+ * means billed to referringFacilityId instead of the patient directly --
+ * stays a thin categorical tag, never a ledger/adjudication record.
+ */
+export const invoicePayerTypeSchema = z.enum(["cash", "corporate"]);
+export type InvoicePayerType = z.infer<typeof invoicePayerTypeSchema>;
+
+export const generateInvoiceRequestSchema = z
+  .object({
+    payerType: invoicePayerTypeSchema.optional(),
+    referringFacilityId: z.uuid().optional(),
+  })
+  .refine((body) => body.payerType !== "corporate" || body.referringFacilityId !== undefined, {
+    message: "referringFacilityId is required when payerType is 'corporate'",
+  })
+  // Every existing caller of POST /v1/orders/:id/invoice (FEAT-046) sends no
+  // body at all -- `.default({})` so a request with no Content-Type/body
+  // still parses (as cash/no referring facility) instead of failing Zod's
+  // "expected object, received undefined" before this route's own optional
+  // fields ever get a chance to apply their own defaults.
+  .default({});
+export type GenerateInvoiceRequestInput = z.infer<typeof generateInvoiceRequestSchema>;
+
 export const paymentStatusSchema = z.enum(["pending", "succeeded", "failed"]);
 export type PaymentStatus = z.infer<typeof paymentStatusSchema>;
 
@@ -47,6 +73,8 @@ export const invoiceSchema = z.object({
   patientId: z.uuid(),
   status: invoiceStatusSchema,
   totalCents: z.number().int(),
+  payerType: invoicePayerTypeSchema,
+  referringFacilityId: z.uuid().nullable(),
   createdAt: z.iso.datetime(),
   lineItems: z.array(invoiceLineItemSchema),
 });

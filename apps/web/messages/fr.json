@@ -9,7 +9,8 @@
     "qcViolations": "Anomalies CQ",
     "cultureReads": "Lectures de culture",
     "referenceRanges": "Valeurs de référence",
-    "addTest": "Ajouter un test"
+    "addTest": "Ajouter un test",
+    "referringFacilities": "Établissements référents"
   },
   "Dashboard": {
     "title": "Liste de travail",

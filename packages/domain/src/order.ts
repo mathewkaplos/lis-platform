@@ -50,6 +50,9 @@ export const orderCreateSchema = z
     testDefinitionIds: z.array(z.uuid()).min(1).optional(),
     panelIds: z.array(z.uuid()).min(1).optional(),
     priority: orderPrioritySchema.optional(),
+    // FEAT-066 (ADR-0053, docs/plans/feat-066-patient-contact-referring-facility.md).
+    referringFacilityId: z.uuid().optional(),
+    orderingProviderName: z.string().min(1).optional(),
   })
   .refine(
     (body) =>
@@ -85,6 +88,9 @@ export const orderSchema = z.object({
   patientId: z.uuid(),
   status: orderStatusSchema,
   priority: orderPrioritySchema,
+  // FEAT-066 (ADR-0053): see orderCreateSchema's own comment above.
+  referringFacilityId: z.uuid().nullable(),
+  orderingProviderName: z.string().nullable(),
   createdAt: z.iso.datetime(),
   orderedTests: z.array(orderedTestSchema),
   // Optional: only POST /v1/orders' and POST /v1/orders/:id/cancel's

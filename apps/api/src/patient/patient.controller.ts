@@ -172,6 +172,12 @@ export class PatientController {
             // Zod's `z.iso.date()` yields a plain date string; drizzle's
             // `date(..., { mode: "date" })` column expects a real `Date`.
             birthDate: body.birthDate ? new Date(body.birthDate) : undefined,
+            // FEAT-066 (ADR-0053).
+            phone: body.phone,
+            email: body.email,
+            address: body.address,
+            nextOfKinName: body.nextOfKinName,
+            nextOfKinPhone: body.nextOfKinPhone,
           })
           .returning();
         return { resourceId: row.id, before: null, after: toPatientDto(row) };

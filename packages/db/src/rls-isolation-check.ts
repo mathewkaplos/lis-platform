@@ -31,6 +31,7 @@ import { specimen, specimenFulfillment } from "./schema/specimen";
 import { observation } from "./schema/observation";
 import { patient } from "./schema/patient";
 import { patientAlert } from "./schema/patient-alert";
+import { referringFacility } from "./schema/referring-facility";
 import { controlLot } from "./schema/control-lot";
 import { criticalNotification } from "./schema/critical-notification";
 import { qcRuleViolation } from "./schema/qc-rule-violation";
@@ -180,6 +181,14 @@ async function insertFixtures(db: Db) {
     severity: "low",
     description: "RLS isolation check fixture",
     addedByPrincipalId: "99999999-9999-9999-9999-999999999999",
+  });
+
+  // FEAT-066 (ADR-0053): referring_facility fixture, same reasoning as
+  // care_relationship's own below -- a genuinely new tenant table this
+  // feature introduces.
+  await db.insert(referringFacility).values({
+    tenantId: TENANT_A,
+    name: "RLS Check Referring Facility",
   });
 
   // FEAT-040: care_relationship fixture, same reasoning as control_lot's own
@@ -498,7 +507,7 @@ async function main() {
   console.log("--- Fixture setup under TENANT_A ---");
   await insertFixtures(db);
   console.log(
-    "Fixtures inserted for patient/patient_alert/order/ordered_test/specimen/specimen_fulfillment/observation/" +
+    "Fixtures inserted for patient/patient_alert/referring_facility/order/ordered_test/specimen/specimen_fulfillment/observation/" +
       "result_history/report/culture_read/instrument_analyte_mapping/invoice/invoice_line_item/payment/" +
       "observation_idempotency_key/outbox_event/sla_breach/workflow_definition/workflow_rule_firing/" +
       "case/block/slide/block_fulfillment/case_report_version/image_attachment/image_annotation.\n",

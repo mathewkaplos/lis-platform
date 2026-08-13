@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, date, timestamp, index, uniqueIndex, pgPolicy, check } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, date, timestamp, index, uniqueIndex, pgPolicy, check, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 // Tenant-scoped per ADR-0004 (contrast case): patients are operational,
@@ -37,6 +37,16 @@ export const patient = pgTable(
     sex: text("sex").notNull(), // 'M' | 'F' | 'U' (explicit unknown, see header comment)
     birthDate: date("birth_date", { mode: "date" }), // null = unknown, per KB-02
 
+    // FEAT-065 (ADR-0052, docs/plans/feat-065-patient-merge.md). Set only on
+    // the merged-away (loser) row, pointing at the surviving patient --
+    // never deleted, never any other column altered (KB-02's own "never
+    // destroy source identity"). Same "old row stays, pointer moves
+    // forward" shape as observation.superseded_by (ADR-0007) and
+    // caseReportVersion.supersededBy (ADR-0051), applied to patient for the
+    // first time. A merge into/of an already-merged-away row is rejected by
+    // the API, not resolved here -- no chain-walking is ever needed.
+    mergedInto: uuid("merged_into").references((): AnyPgColumn => patient.id),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -48,7 +58,9 @@ export const patient = pgTable(
       .on(table.tenantId, table.nationalId)
       .where(sql`${table.nationalId} IS NOT NULL`),
     index("ix_patient_tenant_name").on(table.tenantId, table.lastName, table.firstName),
+    index("ix_patient_merged_into").on(table.mergedInto),
     check("ck_patient_sex", sql`${table.sex} IN ('M','F','U')`),
+    check("ck_patient_merged_into_not_self", sql`${table.mergedInto} IS NULL OR ${table.mergedInto} != ${table.id}`),
     tenantIsolation(),
   ],
 ).enableRLS();

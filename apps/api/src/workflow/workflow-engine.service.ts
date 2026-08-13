@@ -65,6 +65,16 @@ export class WorkflowEngineService implements OnModuleInit {
     this.outboxHandlers.register('CultureGrowthDetected', (payload, tenantId) =>
       this.handleEvent('CultureGrowthDetected', payload, tenantId),
     );
+    // FEAT-064 (ADR-0050 §Decision 4): fired unconditionally by
+    // assembleAndPersistSynopticResponse for every protocol -- a published
+    // rule (e.g. `when: interpretation_category == 'asc_us'`) dispatches the
+    // existing AddReflexTest handler unmodified, same reuse shape
+    // CultureGrowthDetected already established for organism-ID.
+    this.outboxHandlers.register(
+      'SynopticResponseRecorded',
+      (payload, tenantId) =>
+        this.handleEvent('SynopticResponseRecorded', payload, tenantId),
+    );
   }
 
   async handleEvent(

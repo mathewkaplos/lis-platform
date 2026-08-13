@@ -2287,6 +2287,7 @@ export interface components {
             adminEmail: string;
             adminPassword: string;
         };
+        /** @default {} */
         GenerateInvoiceRequestDto: {
             /** @enum {string} */
             payerType?: "cash" | "corporate";

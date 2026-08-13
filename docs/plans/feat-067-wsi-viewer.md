@@ -1,5 +1,5 @@
 # Implementation Proposal: FEAT-067 — Digital pathology / whole-slide-image (WSI) viewer
-Status: APPROVED
+Status: IMPLEMENTED (PR #582, merge commit f3a7080995facf5fca505d4c7e4a65010b8d2c14)
 ADR: ADR-0054 (backfill — FEAT-061's own object-storage decision, never actually committed) +
 ADR-0055 (new — WSI tile representation/storage/serving, KB-17's own named open question)
 Date: 2026-08-13    Backlog ID: #549 (FEAT-067, milestone M13, no epic — EPIC-012 already closed;

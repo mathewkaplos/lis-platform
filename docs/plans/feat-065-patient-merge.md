@@ -1,5 +1,5 @@
 # Implementation Proposal: FEAT-065 — Patient merge
-Status: APPROVED
+Status: IMPLEMENTED (PR #575, merge commit d85752f6b491af170c063b1c4e7eabeed94ca078)
 ADR: ADR-0052 (status: accepted 2026-08-13)
 Date: 2026-08-13    Backlog ID: #574 (FEAT-065, no epic — standalone gap closure found by codebase audit)
 

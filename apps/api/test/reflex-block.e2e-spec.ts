@@ -200,28 +200,10 @@ describe('Reflex/add-on stains & IHC on existing blocks (e2e)', () => {
       .expect(201);
     const orderedTestId = (linkRes.body as { resourceId: string }).resourceId;
 
-    // Real, pre-existing gap surfaced by this feature, not created by it:
-    // `POST /v1/blocks/:id/ordered-tests` (FEAT-057) links via
-    // block_fulfillment only, leaving `status: 'ordered'` (the schema
-    // default) and no `specimen_fulfillment` row -- but the generic result-
-    // entry path (`ObservationWriteService.loadWriteContext`) hard-requires
-    // both (`ENTERABLE_ORDERED_TEST_STATUSES` + a `specimen_fulfillment`
-    // row, unconditionally, regardless of block_fulfillment). A block's own
-    // specimen (the part it was grossed from) is a real, valid
-    // specimen_fulfillment target -- not a hack, the coherent real-world
-    // fact that a block descends from a specimen -- so this fixture adds it
-    // directly, the same way FEAT-030's own reflex handler sets
-    // `status: 'received'` directly on insert rather than through the
-    // normal ordered/collected progression.
-    await db
-      .update(orderedTest)
-      .set({ status: 'received' })
-      .where(eq(orderedTest.id, orderedTestId));
-    await db.insert(specimenFulfillment).values({
-      tenantId: TENANT_A,
-      specimenId: part.id,
-      orderedTestId,
-    });
+    // Issue #561: `POST /v1/blocks/:id/ordered-tests` now sets
+    // `status: 'received'` and inserts the required `specimen_fulfillment`
+    // row itself (targeting the block's own parent specimen), so no manual
+    // workaround is needed here anymore.
 
     return { caseId, blockId, orderedTestId };
   }
@@ -295,6 +277,22 @@ describe('Reflex/add-on stains & IHC on existing blocks (e2e)', () => {
       .where(eq(blockFulfillment.orderedTestId, reflex.id));
     expect(fulfillmentRows).toHaveLength(1);
     expect(fulfillmentRows[0].blockId).toBe(blockId);
+
+    // Issue #561: a block_fulfillment row alone previously left the reflex
+    // ordered_test permanently un-enterable (loadWriteContext also requires
+    // specimen_fulfillment). Prove a result can actually be drafted and
+    // finalized against it -- createIhcTargetTestDefinition binds the new
+    // test definition to the same seeded TSH analyte.
+    await request(app.getHttpServer())
+      .put(`/v1/ordered-tests/${reflex.id}/results/${tshAnalyteId}`)
+      .set('Authorization', `Bearer ${verifierToken}`)
+      .send({ dataType: 'quantity', valueNum: 2.5 })
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(`/v1/ordered-tests/${reflex.id}/results/${tshAnalyteId}/finalize`)
+      .set('Authorization', `Bearer ${verifierToken}`)
+      .send({ dataType: 'quantity', valueNum: 2.5 })
+      .expect(200);
 
     // AC #1: no new Case or Specimen row -- lineage part/block counts unchanged.
     const lineageAfter = await request(app.getHttpServer())

@@ -45,6 +45,7 @@ import {
   signCaseReportContent,
   slide,
   specimen,
+  specimenFulfillment,
   wholeSlideImage,
   synopticElement,
   testDefinition,
@@ -500,6 +501,12 @@ export class CaseController {
    * unchanged, just a new `block_fulfillment` row linking the new
    * OrderedTest to the existing block (the exact join-table mechanism
    * `specimen_fulfillment` already established for other disciplines).
+   *
+   * Issue #561: also insert a `specimen_fulfillment` row (targeting the
+   * block's own parent specimen, already loaded as `specimenRow` below) and
+   * set `status: 'received'` directly -- `ObservationWriteService.loadWriteContext`
+   * hard-requires both for any result-entry route, and `block_fulfillment`
+   * alone was leaving every block-linked OrderedTest permanently un-enterable.
    */
   @Post('v1/blocks/:id/ordered-tests')
   @UseGuards(JwtAuthGuard, CapabilityGuard)
@@ -560,12 +567,22 @@ export class CaseController {
         orderId: caseRow.orderId,
         testDefinitionId: body.testDefinitionId,
         parentOrderedTestId: body.parentOrderedTestId ?? null,
+        // 'received' directly, skipping 'ordered'/'collected' -- no physical
+        // recollection for a block already in hand (same reasoning as
+        // add-block-reflex-test.command.ts's identical direct-set).
+        status: 'received',
       })
       .returning();
 
     await tx.insert(blockFulfillment).values({
       tenantId: user.tenantId,
       blockId: id,
+      orderedTestId: orderedTestRow.id,
+    });
+
+    await tx.insert(specimenFulfillment).values({
+      tenantId: user.tenantId,
+      specimenId: specimenRow.id,
       orderedTestId: orderedTestRow.id,
     });
 

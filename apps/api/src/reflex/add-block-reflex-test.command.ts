@@ -1,7 +1,9 @@
 import { Logger } from '@nestjs/common';
 import {
+  block,
   blockFulfillment,
   orderedTest,
+  specimenFulfillment,
   testDefinition,
   writeAuditEvent,
 } from '@lis/db';
@@ -186,6 +188,24 @@ export const addBlockReflexTestHandler: WorkflowCommandHandler = async (
     return;
   }
 
+  // Issue #561: a block_fulfillment row alone leaves the new ordered_test
+  // permanently un-enterable -- ObservationWriteService.loadWriteContext
+  // hard-requires a specimen_fulfillment row too, with no block_fulfillment
+  // fallback. The block's own parent specimen (case.controller.ts's
+  // addOrderedTest already established this as the correct target) is a
+  // simple lookup via the block's own specimenId FK.
+  const [blockRow] = await tx
+    .select({ specimenId: block.specimenId })
+    .from(block)
+    .where(eq(block.id, fulfillment.blockId))
+    .limit(1);
+  if (!blockRow) {
+    logger.warn(
+      `block ${fulfillment.blockId} not found (tenant ${tenantId}) -- no-op`,
+    );
+    return;
+  }
+
   const [created] = await tx
     .insert(orderedTest)
     .values({
@@ -204,6 +224,12 @@ export const addBlockReflexTestHandler: WorkflowCommandHandler = async (
   await tx.insert(blockFulfillment).values({
     tenantId,
     blockId: fulfillment.blockId,
+    orderedTestId: created.id,
+  });
+
+  await tx.insert(specimenFulfillment).values({
+    tenantId,
+    specimenId: blockRow.specimenId,
     orderedTestId: created.id,
   });
 

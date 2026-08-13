@@ -10,8 +10,13 @@ import { specimenRejectionReasonSchema, specimenTypeSchema } from "./specimen";
  */
 
 /** Mirrors `ck_case_status`. `signed_out` is set by the real, step-up-signed
- * `finalize` action (FEAT-059); `amended` is set by `amend`. */
-export const caseStatusSchema = z.enum(["accessioned", "in_process", "signed_out", "amended"]);
+ * `finalize` action (FEAT-059); `amended` is set by `amend`. `pending_review`
+ * (FEAT-063, docs/plans/feat-063-cytology-two-tier-workflow.md) is set by the
+ * new `screen` action, only reachable for a case that
+ * `requiresTwoTierReview` -- `finalize` then requires this status instead of
+ * `in_process` for such a case (AC #1). A case that does not require two-tier
+ * review never passes through `pending_review` at all. */
+export const caseStatusSchema = z.enum(["accessioned", "in_process", "pending_review", "signed_out", "amended"]);
 export type CaseStatus = z.infer<typeof caseStatusSchema>;
 
 /** Mirrors `ck_block_status`/`ck_slide_status` — a minimal active/disposed
@@ -150,3 +155,26 @@ export const caseAmendRequestSchema = z.object({
   reason: z.string().min(1),
 });
 export type CaseAmendRequestInput = z.infer<typeof caseAmendRequestSchema>;
+
+/**
+ * FEAT-063 (docs/plans/feat-063-cytology-two-tier-workflow.md, §10 Q3/Q4).
+ * `GET /v1/cases` -- a live query over `case.status` (KB-26's "worklist"
+ * half, mirroring `worklistQuerySchema`'s own shape), not a stored Task
+ * record. No `status` filter returns every case NOT in a terminal state
+ * (`signed_out`/`amended` excluded by default, matching
+ * `worklist.controller.ts`'s own `ACTIVE_STATUSES` precedent) -- an explicit
+ * `status` value overrides that default entirely, including to a terminal
+ * one. Reuses `caseSchema` directly for items rather than a narrower
+ * projection: this repo's own "reuse before inventing" precedent, and every
+ * field on `Case` is already worklist-relevant (id, accessionNumber, status,
+ * createdAt).
+ */
+export const caseListQuerySchema = z.object({
+  status: caseStatusSchema.optional(),
+});
+export type CaseListQuery = z.infer<typeof caseListQuerySchema>;
+
+export const caseListResponseSchema = z.object({
+  items: z.array(caseSchema),
+});
+export type CaseListResponse = z.infer<typeof caseListResponseSchema>;

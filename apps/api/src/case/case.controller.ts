@@ -7,6 +7,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
   UseInterceptors,
@@ -17,9 +18,12 @@ import {
   caseAmendRequestSchema,
   caseCreateSchema,
   caseLineageSchema,
+  caseListQuerySchema,
+  caseListResponseSchema,
   type Block,
   type Case,
   type CaseLineage,
+  type CaseListResponse,
   type CaseReportVersion,
   type Slide,
 } from '@lis/domain';
@@ -43,7 +47,7 @@ import {
   testDefinition,
   writeAuditEvent,
 } from '@lis/db';
-import { and, count, desc, eq, inArray } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, notInArray } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { Audit } from '../auth/audit.decorator';
@@ -59,12 +63,15 @@ import type { RequestContext } from '../auth/request-context';
 import { StepUpGuard } from '../auth/step-up.guard';
 import type { RequestWithTx } from '../auth/tenant-context.interceptor';
 import { TenantContextInterceptor } from '../auth/tenant-context.interceptor';
+import { requiresTwoTierReview } from './case-tiering';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
 class CaseCreateDto extends createZodDto(caseCreateSchema) {}
 class CaseLineageDto extends createZodDto(caseLineageSchema) {}
 class CaseAmendRequestDto extends createZodDto(caseAmendRequestSchema) {}
+class CaseListQueryDto extends createZodDto(caseListQuerySchema) {}
+class CaseListResponseDto extends createZodDto(caseListResponseSchema) {}
 class BlockCreateDto extends createZodDto(blockCreateSchema) {}
 class BlockOrderedTestLinkCreateDto extends createZodDto(
   blockOrderedTestLinkCreateSchema,
@@ -108,6 +115,76 @@ function toCaseReportVersionDto(
 }
 
 /**
+ * FEAT-057/059/063 shared. The full part/block/slide lineage for a case,
+ * with no observation/content assembly -- used by `screen()` and `finalize()`
+ * alike (both need this same tree, `finalize()`'s own `buildCaseReportContent`
+ * below layers the signed-content assembly on top of it).
+ */
+async function loadCaseLineage(
+  tx: RequestWithTx['tx'],
+  caseId: string,
+): Promise<{
+  specimenRows: (typeof specimen.$inferSelect)[];
+  blockRows: (typeof block.$inferSelect)[];
+  slideRows: (typeof slide.$inferSelect)[];
+}> {
+  const specimenRows = await tx
+    .select()
+    .from(specimen)
+    .where(eq(specimen.caseId, caseId));
+  const specimenIds = specimenRows.map((row) => row.id);
+  const blockRows =
+    specimenIds.length > 0
+      ? await tx
+          .select()
+          .from(block)
+          .where(inArray(block.specimenId, specimenIds))
+      : [];
+  const blockIds = blockRows.map((row) => row.id);
+  const slideRows =
+    blockIds.length > 0
+      ? await tx.select().from(slide).where(inArray(slide.blockId, blockIds))
+      : [];
+  return { specimenRows, blockRows, slideRows };
+}
+
+/**
+ * FEAT-057/059/063 shared (AC #3's own "single report-finalize action covers
+ * every part/block/slide under one case"). Extracted out of `finalize()` so
+ * `screen()` can require the same completeness before a case leaves
+ * cytotechnologist hands, not just at final sign-out.
+ */
+function assertCompleteLineage(
+  specimenRows: (typeof specimen.$inferSelect)[],
+  blockRows: (typeof block.$inferSelect)[],
+  slideRows: (typeof slide.$inferSelect)[],
+): void {
+  if (specimenRows.length === 0) {
+    throw new BadRequestException('Case has no specimen/parts');
+  }
+  for (const specimenRow of specimenRows) {
+    const activeBlocks = blockRows.filter(
+      (row) => row.specimenId === specimenRow.id && row.status === 'active',
+    );
+    if (activeBlocks.length === 0) {
+      throw new BadRequestException(
+        `Part ${specimenRow.id} has no active block`,
+      );
+    }
+    for (const blockRow of activeBlocks) {
+      const activeSlides = slideRows.filter(
+        (row) => row.blockId === blockRow.id && row.status === 'active',
+      );
+      if (activeSlides.length === 0) {
+        throw new BadRequestException(
+          `Block ${blockRow.id} has no active slide`,
+        );
+      }
+    }
+  }
+}
+
+/**
  * FEAT-059. The signed content for a case: lineage ids (provenance, not a
  * full snapshot -- same "id + createdAt, not the whole row" minimalism as
  * report.includedObservations's own header comment) plus the ids of every
@@ -127,23 +204,10 @@ async function buildCaseReportContent(
   blockRows: (typeof block.$inferSelect)[];
   slideRows: (typeof slide.$inferSelect)[];
 }> {
-  const specimenRows = await tx
-    .select()
-    .from(specimen)
-    .where(eq(specimen.caseId, caseRow.id));
-  const specimenIds = specimenRows.map((row) => row.id);
-  const blockRows =
-    specimenIds.length > 0
-      ? await tx
-          .select()
-          .from(block)
-          .where(inArray(block.specimenId, specimenIds))
-      : [];
-  const blockIds = blockRows.map((row) => row.id);
-  const slideRows =
-    blockIds.length > 0
-      ? await tx.select().from(slide).where(inArray(slide.blockId, blockIds))
-      : [];
+  const { specimenRows, blockRows, slideRows } = await loadCaseLineage(
+    tx,
+    caseRow.id,
+  );
 
   const orderedTestRows = await tx
     .select({ id: orderedTest.id })
@@ -490,6 +554,41 @@ export class CaseController {
     };
   }
 
+  /**
+   * FEAT-063 (§10 Q3/Q4). A live query over `case.status` (KB-26's own
+   * "worklist = live query" principle), this repo's first case-listing
+   * route -- satisfies AC #3's "the screening tier's own task appears on the
+   * correct role's worklist" via `?status=accessioned` (a freshly-accessioned
+   * case's own default status, and `?status=in_process` once some future
+   * feature starts writing that value -- neither `case.controller.ts` nor
+   * any other code sets it today) for the cytotechnologist's screening
+   * queue, and `?status=pending_review` for the cytopathologist's
+   * review/sign-out queue -- without a new Task-record mechanism. No
+   * `status` filter excludes terminal states (`signed_out`/`amended`) by
+   * default, matching `worklist.controller.ts`'s own `ACTIVE_STATUSES`
+   * precedent -- read-only, no capability gate, same as `getById` below.
+   */
+  @Get('v1/cases')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(TenantContextInterceptor)
+  @ZodResponse({ type: CaseListResponseDto, status: 200 })
+  async list(
+    @Query(new ZodValidationPipe(caseListQuerySchema)) query: CaseListQueryDto,
+    @DbTx() tx: RequestWithTx['tx'],
+  ): Promise<CaseListResponse> {
+    const rows = await tx
+      .select()
+      .from(caseTable)
+      .where(
+        query.status
+          ? eq(caseTable.status, query.status)
+          : notInArray(caseTable.status, ['signed_out', 'amended']),
+      )
+      .orderBy(desc(caseTable.createdAt));
+
+    return { items: rows.map(toCaseDto) };
+  }
+
   /** Full case → part → block → slide lineage in one response (AC #2). */
   @Get('v1/cases/:id')
   @UseGuards(JwtAuthGuard)
@@ -574,6 +673,72 @@ export class CaseController {
   }
 
   /**
+   * FEAT-063 (docs/plans/feat-063-cytology-two-tier-workflow.md, §10 Q1/Q2).
+   * Transitions a case that requires cytopathologist two-tier review
+   * (case-tiering.ts's `requiresTwoTierReview`, derived from specimen type)
+   * from `accessioned`/`in_process` to `pending_review`, gating `finalize`
+   * below (AC #1). Rejects a case that doesn't require two-tier review at
+   * all (nothing to screen -- histology goes straight to `finalize`,
+   * unchanged) and a case whose lineage isn't yet complete (same
+   * `assertCompleteLineage` gate `finalize` itself uses).
+   *
+   * `manage_specimens` (not `verify`) -- granted to both `technologist` and
+   * `verifier`, the same capability every other AP mutation route in this
+   * controller uses. `finalize` staying `verify`-only (unchanged) is what
+   * makes AC #2 ("a cytotechnologist cannot sign out") true by construction:
+   * no new capability needed. No `@RequireStepUp()` here -- ADR-0051 scopes
+   * step-up + digital signature to the actual diagnostic release
+   * (`finalize`/`amend`), not this routine tier transition.
+   */
+  @Post('v1/cases/:id/screen')
+  @HttpCode(200) // an action on an existing resource, not a creation
+  @UseGuards(JwtAuthGuard, CapabilityGuard)
+  @RequireCapability('manage_specimens')
+  @UseInterceptors(TenantContextInterceptor, AuditInterceptor)
+  @Audit({ action: 'case.screen', resourceType: 'case' })
+  async screen(
+    @Param(new ZodValidationPipe(idParamSchema)) { id }: IdParamDto,
+    @DbTx() tx: RequestWithTx['tx'],
+  ) {
+    const [caseRow] = await tx
+      .select()
+      .from(caseTable)
+      .where(eq(caseTable.id, id))
+      .limit(1);
+    if (!caseRow) {
+      throw new NotFoundException('Case not found');
+    }
+    if (caseRow.status !== 'accessioned' && caseRow.status !== 'in_process') {
+      throw new BadRequestException(
+        `Case ${id} cannot be screened from its current status (status: ${caseRow.status})`,
+      );
+    }
+
+    const { specimenRows, blockRows, slideRows } = await loadCaseLineage(
+      tx,
+      id,
+    );
+    if (!requiresTwoTierReview(specimenRows.map((row) => row.specimenType))) {
+      throw new BadRequestException(
+        `Case ${id} does not require screening (no cytopathologist two-tier review needed)`,
+      );
+    }
+    assertCompleteLineage(specimenRows, blockRows, slideRows);
+
+    const [after] = await tx
+      .update(caseTable)
+      .set({ status: 'pending_review' })
+      .where(eq(caseTable.id, id))
+      .returning();
+
+    return {
+      resourceId: after.id,
+      before: toCaseDto(caseRow),
+      after: toCaseDto(after),
+    };
+  }
+
+  /**
    * FEAT-059 (ADR-0051). The real, step-up-signed sign-out FEAT-057's own
    * placeholder deferred -- see this method's git history for that
    * placeholder's own header comment. Confirms every part has ≥1 active
@@ -621,28 +786,19 @@ export class CaseController {
 
     const { content, specimenRows, blockRows, slideRows } =
       await buildCaseReportContent(tx, caseRow);
-    if (specimenRows.length === 0) {
-      throw new BadRequestException('Case has no specimen/parts');
-    }
-    for (const specimenRow of specimenRows) {
-      const activeBlocks = blockRows.filter(
-        (row) => row.specimenId === specimenRow.id && row.status === 'active',
+    assertCompleteLineage(specimenRows, blockRows, slideRows);
+
+    // FEAT-063 (AC #1): a case requiring cytopathologist two-tier review
+    // must have been screened first -- caseRow.status here is whatever it
+    // was before this transaction (accessioned/in_process/pending_review),
+    // not yet updated to signed_out below.
+    if (
+      requiresTwoTierReview(specimenRows.map((row) => row.specimenType)) &&
+      caseRow.status !== 'pending_review'
+    ) {
+      throw new BadRequestException(
+        `Case ${id} requires screening before sign-out (status: ${caseRow.status})`,
       );
-      if (activeBlocks.length === 0) {
-        throw new BadRequestException(
-          `Part ${specimenRow.id} has no active block`,
-        );
-      }
-      for (const blockRow of activeBlocks) {
-        const activeSlides = slideRows.filter(
-          (row) => row.blockId === blockRow.id && row.status === 'active',
-        );
-        if (activeSlides.length === 0) {
-          throw new BadRequestException(
-            `Block ${blockRow.id} has no active slide`,
-          );
-        }
-      }
     }
 
     const contentHash = computeCaseReportContentHash(content);

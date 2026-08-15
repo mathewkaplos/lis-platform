@@ -1,7 +1,10 @@
 packages:
   - "apps/*"
   - "packages/*"
+overrides:
+  vite: 6.4.3
 allowBuilds:
+  '@parcel/watcher': true
   '@scarf/scarf': false
   '@sentry/node-cpu-profiler': false
   '@swc/core': true

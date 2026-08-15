@@ -249,6 +249,10 @@ jobs:
           # request, not a container crash-loop, but must still be a real
           # secret before staging sign-out is exercised for real.
           SIGNING_SECRET=${{ secrets.SIGNING_SECRET }}
+          # #564: new secret, must be added under repo Settings -> Secrets
+          # before this deploy step will have a real value -- same
+          # generate-and-store convention as POSTGRES_PASSWORD etc.
+          MINIO_ROOT_PASSWORD=${{ secrets.MINIO_ROOT_PASSWORD }}
           ENVEOF
           # Appended separately, not inside the quoted heredoc above -- these
           # need real bash variable expansion (computed this run, not a GH

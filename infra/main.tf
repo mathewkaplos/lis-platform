@@ -5,8 +5,16 @@ provider "digitalocean" {
 resource "digitalocean_droplet" "staging" {
   name   = "lis-staging"
   region = "nyc1"
-  size   = "s-1vcpu-1gb"
-  image  = "ubuntu-24-04-x64"
+  # #564: bumped from s-1vcpu-1gb (1GiB RAM, 848Mi already budgeted across
+  # postgres/valkey/keycloak/api/web -- only ~110Mi headroom, not enough for
+  # MinIO's ~80-150MB realistic minimum). s-1vcpu-2gb doubles usable RAM to
+  # ~1949Mi. The disk bump (25GB->50GB) that comes with this size class is a
+  # no-op in practice -- docker's data-root already lives on the separately
+  # attached digitalocean_volume.staging_docker_data below, not the root
+  # disk. DigitalOcean powers the droplet off briefly to apply a size change
+  # that includes a disk increase; acceptable for a staging box.
+  size  = "s-1vcpu-2gb"
+  image = "ubuntu-24-04-x64"
 }
 
 import {

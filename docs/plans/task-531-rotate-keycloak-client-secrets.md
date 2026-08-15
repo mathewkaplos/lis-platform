@@ -1,11 +1,21 @@
 # Implementation Proposal: Rotate checked-in dev-only Keycloak client secrets out of real staging
-Status: APPROVED
+Status: IMPLEMENTED
 ADR: none (no existing ADR covers machine-client secret provisioning)    Date: 2026-08-15    Backlog ID: issue #531 (lis-platform)
 
 **Approved 2026-08-15** via the native options-prompt. §10 answered: scope is
 `lis-platform-analytics` + `lis-onboarding` (not gateway/interop, since neither is deployed to
 staging yet); secret values self-generated via `openssl rand`, set via `gh secret set`; lands as
 its own standalone PR, same merge/verify flow as PR #587 earlier this session.
+
+**Implemented 2026-08-15, PR #588, verified live on the real droplet — not just CI-green:**
+- Deploy log confirms both PUTs succeeded: `lis-onboarding secret PUT: HTTP 204`,
+  `lis-platform-analytics secret PUT: HTTP 204`.
+- Direct verification against real staging Keycloak (`157.230.10.221`): a client-credentials grant
+  with the OLD checked-in placeholder now gets `401 unauthorized_client`; the same grant with the
+  new value `api`'s own `ONBOARDING_CLIENT_SECRET` env var actually holds gets `200` with a real
+  `access_token` — proving Keycloak and `apps/api` agree on the new secret, not just that each was
+  independently updated.
+- Issue #531 auto-closed on merge (`Closes #531` in the PR body).
 
 ## 1. Goal
 

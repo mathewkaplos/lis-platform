@@ -15,10 +15,18 @@ services:
   # during the migration-bootstrap deploy. Every service below now has an
   # explicit mem_limit so one runaway container (Keycloak's JVM, historically
   # the heaviest) can be OOM-killed on its own instead of starving the whole
-  # host. Budget: 192+48+320+128+160 = 848m of ~961Mi total, leaving ~110Mi
-  # for the OS/docker daemon -- paired with the swapfile added directly on
-  # the droplet (not here; see infra/keycloak/README.md-adjacent note in the
-  # deploy workflow) as the safety net for brief overshoots.
+  # host. Original budget on the 1GB box: 192+48+320+128+160 = 848m of
+  # ~961Mi total, leaving ~110Mi for the OS/docker daemon -- paired with the
+  # swapfile added directly on the droplet (not here; see
+  # infra/keycloak/README.md-adjacent note in the deploy workflow) as the
+  # safety net for brief overshoots.
+  #
+  # #564: infra/main.tf's droplet resized 1GB->2GB specifically because this
+  # budget had no room for MinIO (realistic minimum ~80-150MB). New budget:
+  # 192+48+320+128+160+160 = 1008m of ~1949Mi total on the 2GB box -- MinIO's
+  # mem_limit below is set generously (160m, matching web's) since the new
+  # headroom (~940Mi) no longer requires the same tight tuning the other
+  # five services needed on the 1GB box.
   postgres:
     image: postgres:16
     restart: unless-stopped
@@ -33,6 +41,22 @@ services:
     image: valkey/valkey:8
     restart: unless-stopped
     mem_limit: 48m
+
+  # #564 (ADR-0054/ADR-0055): self-hosted object storage, same image as the
+  # local docker-compose.yml minio service. No ports: mapping -- like api,
+  # never browser-facing directly. apps/api generates presigned GET URLs
+  # (ADR-0055's authenticated-redirect chain: api 302 -> apps/web proxy ->
+  # short-lived presigned MinIO URL) reachable only on lis_staging_net, never
+  # a public bucket.
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    restart: unless-stopped
+    mem_limit: 160m
+    environment:
+      MINIO_ROOT_USER: lis-staging
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes: ["miniodata:/data"]
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
@@ -138,10 +162,19 @@ services:
       # this at call time (case.controller.ts finalize()/amend()) -- same
       # secret-management convention as web's SESSION_SECRET below.
       SIGNING_SECRET: ${SIGNING_SECRET}
+      # #564: apps/api/src/storage/object-storage.client.ts's OnModuleInit
+      # already catches its own failure and degrades gracefully (#568) if
+      # these are absent -- adding them now for real, wired to the new minio
+      # service on this same network. The bucket itself is self-provisioned
+      # by ensureBucketExists() at module init, no manual `mc mb` step needed.
+      OBJECT_STORAGE_ENDPOINT: http://minio:9000
+      OBJECT_STORAGE_ACCESS_KEY: lis-staging
+      OBJECT_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      OBJECT_STORAGE_BUCKET: lis-images
     # No ports: mapping -- #188. apps/web never calls api from the browser
     # (confirmed: no client-side reference to it anywhere in apps/web),
     # only server-to-server on lis_staging_net, which doesn't need one.
-    depends_on: [postgres, valkey, keycloak]
+    depends_on: [postgres, valkey, keycloak, minio]
 
   web:
     image: ghcr.io/mathewkaplos/lis-platform-web:latest
@@ -183,6 +216,7 @@ services:
 
 volumes:
   pgdata:
+  miniodata:
 
 networks:
   # TASK-198: pinned so the deploy workflow's `docker run --network

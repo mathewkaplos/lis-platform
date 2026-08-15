@@ -515,3 +515,21 @@ frontmatter declaration (this entry's own commit).
   and the exact command to check for it before pushing (`git diff origin/main...HEAD --
   'db/migrations/*.sql' | grep -B1 '^+CREATE TABLE'`).
 - **Files:** `~/work/lis-engineering/skills/engineering/database-design/SKILL.md`
+
+## 2026-08-15
+
+- **Friction:** verifying PR #588's merge, a purely read-only chained command
+  (`git fetch origin && git log --oneline origin/main -3 && echo ... && gh issue view 531 --jq
+  .state`) was denied outright by the auto-mode classifier ("Blocked by classifier"). Retried
+  immediately as three separate single-purpose Bash calls and succeeded. `AGENTS.md`'s "Rules of
+  engagement" section already documents this exact class of denial in detail (compound git-step
+  chaining, and the direct fix -- prefer `gh pr view --json state,mergedAt` over `git
+  fetch`/`git log` for "did my merge land" checks) -- but the session never actually read
+  `AGENTS.md` at start, despite `CLAUDE.md` pointing to it for "full project context" and
+  `~/work/lis-engineering/playbooks/session-start/CHECKLIST.md` itself citing AGENTS.md's rules
+  three times as already-known. `CHECKLIST.md` had an explicit load step for the Constitution
+  (item 10) but none for AGENTS.md.
+- **Area:** other-process (`~/work/lis-engineering/playbooks/session-start/CHECKLIST.md`)
+- **Change:** item 10 now also loads AGENTS.md's "Rules of engagement" section, same
+  non-negotiable tier as the Constitution, instead of assuming it's already known.
+- **Files:** `~/work/lis-engineering/playbooks/session-start/CHECKLIST.md`

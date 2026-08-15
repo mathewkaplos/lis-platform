@@ -503,19 +503,37 @@ describe('Operational reports (e2e)', () => {
         }[];
       };
 
+      // `byPriority` aggregates every `ordered_test` row in the tenant whose
+      // `createdAt` falls in the query window -- not scoped to this fixture's
+      // own `testDefinitionId` the way `byTest` below is. Under a full e2e
+      // suite run, other spec files' own `routine`/`stat`-priority activity
+      // (real, near-zero-TAT rows, or `sla-breach.e2e-spec.ts`'s own
+      // deliberately backdated fixtures) can land inside this fixture's
+      // necessarily-wide window and dilute the bucket's mean -- confirmed
+      // real, not hypothetical (issue #565, task-565's own proposal): a full-
+      // suite run observed `routineRow.meanMinutes` as low as 0.19-0.63, far
+      // below this fixture's own 5-minute backdate. `count` was already
+      // loosened to a floor for the identical reason (see the comment above
+      // this `it` block); `meanMinutes`/`withinTargetPct` are loosened here
+      // too, to structural/plausible checks rather than exact ranges tied to
+      // a bucket that can't be isolated from full-suite contamination.
+      // `byTestRow` below (scoped to this fixture's own unique test
+      // definition, which no other spec file shares) remains the real,
+      // contamination-immune proof of the TAT arithmetic; exact
+      // `withinTargetPct` correctness is proven separately by
+      // `computeWithinTargetPct`'s own unit tests
+      // (`operational-reports.service.spec.ts`).
       const routineRow = body.byPriority.find((r) => r.priority === 'routine');
       expect(routineRow?.count).toBeGreaterThanOrEqual(1);
-      expect(routineRow?.meanMinutes).toBeGreaterThan(4.9);
-      expect(routineRow?.meanMinutes).toBeLessThan(6);
-      // 5 real minutes is trivially within the seeded 1440-minute target.
-      expect(routineRow?.withinTargetPct).toBe(100);
+      expect(routineRow?.meanMinutes).toBeGreaterThan(0);
+      expect(routineRow?.withinTargetPct).toBeGreaterThanOrEqual(0);
+      expect(routineRow?.withinTargetPct).toBeLessThanOrEqual(100);
 
       const statRow = body.byPriority.find((r) => r.priority === 'stat');
       expect(statRow?.count).toBeGreaterThanOrEqual(1);
-      expect(statRow?.meanMinutes).toBeGreaterThan(89.9);
-      expect(statRow?.meanMinutes).toBeLessThan(91);
-      // 90 real minutes exceeds the seeded 60-minute stat target.
-      expect(statRow?.withinTargetPct).toBe(0);
+      expect(statRow?.meanMinutes).toBeGreaterThan(0);
+      expect(statRow?.withinTargetPct).toBeGreaterThanOrEqual(0);
+      expect(statRow?.withinTargetPct).toBeLessThanOrEqual(100);
 
       const byTestRow = body.byTest.find(
         (r) => r.testDefinitionId === routineTestDefId,

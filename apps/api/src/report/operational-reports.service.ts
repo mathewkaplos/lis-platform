@@ -36,6 +36,17 @@ export function median(values: number[]): number {
     : sorted[mid];
 }
 
+/** Exported for direct unit testing, same rationale as `mean`/`median` above. */
+export function computeWithinTargetPct(
+  values: number[],
+  targetMinutes: number | undefined,
+): number | null {
+  if (targetMinutes === undefined) return null;
+  return (
+    (values.filter((v) => v <= targetMinutes).length / values.length) * 100
+  );
+}
+
 /**
  * FEAT-034 (docs/plans/feat-034-operational-reports-tat-workload.md finding
  * #4). TAT is scoped to `ordered_test` (KB-02's own "chemistry = per panel"
@@ -166,20 +177,16 @@ export async function computeTatReport(
   }
 
   const byPriority = Array.from(tatMinutesByPriority.entries()).map(
-    ([priority, values]) => {
-      const target = targetMinutesByPriority.get(priority);
-      const withinTargetPct =
-        target === undefined
-          ? null
-          : (values.filter((v) => v <= target).length / values.length) * 100;
-      return {
-        priority,
-        count: values.length,
-        meanMinutes: mean(values),
-        medianMinutes: median(values),
-        withinTargetPct,
-      };
-    },
+    ([priority, values]) => ({
+      priority,
+      count: values.length,
+      meanMinutes: mean(values),
+      medianMinutes: median(values),
+      withinTargetPct: computeWithinTargetPct(
+        values,
+        targetMinutesByPriority.get(priority),
+      ),
+    }),
   );
 
   const byTest = Array.from(tatMinutesByTest.entries()).map(

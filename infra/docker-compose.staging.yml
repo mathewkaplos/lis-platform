@@ -171,6 +171,14 @@ services:
       OBJECT_STORAGE_ACCESS_KEY: lis-staging
       OBJECT_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       OBJECT_STORAGE_BUCKET: lis-images
+      # #531: apps/api/src/onboarding/keycloak-admin-auth.service.ts
+      # (FEAT-049, ADR-0040) reads this for its own client-credentials
+      # grant against lis-onboarding -- falls back to the checked-in
+      # dev-only placeholder if unset, which is exactly the exposure this
+      # closes. Must match the real value deploy-staging.yml's own
+      # client-secret rotation step PUTs into Keycloak itself (same
+      # ONBOARDING_CLIENT_SECRET repo secret, both places).
+      ONBOARDING_CLIENT_SECRET: ${ONBOARDING_CLIENT_SECRET}
     # No ports: mapping -- #188. apps/web never calls api from the browser
     # (confirmed: no client-side reference to it anywhere in apps/web),
     # only server-to-server on lis_staging_net, which doesn't need one.

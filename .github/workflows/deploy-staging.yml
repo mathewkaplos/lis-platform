@@ -253,6 +253,19 @@ jobs:
           # before this deploy step will have a real value -- same
           # generate-and-store convention as POSTGRES_PASSWORD etc.
           MINIO_ROOT_PASSWORD=${{ secrets.MINIO_ROOT_PASSWORD }}
+          # #531: real values for two of the machine service-account clients
+          # infra/keycloak/lis-realm.json checks in only as dev-only
+          # placeholders (`dev-only-lis-<name>-secret`) -- that file is
+          # imported into this real staging Keycloak verbatim on every
+          # deploy (see the client-secret rotation block below), so without
+          # this, staging would authenticate these clients using a secret
+          # sitting in git. ONBOARDING_CLIENT_SECRET also gets read directly
+          # by apps/api's own KeycloakAdminAuthService (see api's
+          # environment: block in docker-compose.staging.yml) -- lis-gateway/
+          # lis-interop deliberately excluded, neither is deployed to
+          # staging yet (task-531 proposal §10).
+          ONBOARDING_CLIENT_SECRET=${{ secrets.ONBOARDING_CLIENT_SECRET }}
+          PLATFORM_ANALYTICS_CLIENT_SECRET=${{ secrets.PLATFORM_ANALYTICS_CLIENT_SECRET }}
           ENVEOF
           # Appended separately, not inside the quoted heredoc above -- these
           # need real bash variable expansion (computed this run, not a GH
@@ -438,6 +451,50 @@ jobs:
                   -d "$NEW_PROFILE" -w "\nunmanagedAttributePolicy PUT: HTTP %{http_code}\n" < /dev/null || \
                   echo "WARNING: unmanagedAttributePolicy PUT failed -- api/web will still restart" >&2
               fi
+
+              # #531 (task-531 proposal): infra/keycloak/lis-realm.json's
+              # per-client `secret` field is a checked-in dev-only
+              # placeholder, imported into this real Keycloak verbatim by
+              # --import-realm above -- same must-reapply-every-deploy shape
+              # as unmanagedAttributePolicy just above (Keycloak has no
+              # persisted volume on this droplet, see the `docker compose
+              # rm -f -s keycloak` comment above; entry #8/#10,
+              # authentication Skill). Same GET/PUT idiom, different
+              # endpoint: fetch each client's real Keycloak UUID by its
+              # clientId, then PUT the full representation back with
+              # `secret` overridden to the real repo-secret value. Uses the
+              # full-representation PUT, not Keycloak's own
+              # POST .../client-secret regenerate endpoint -- that endpoint
+              # picks a random value server-side with no way to pin it to
+              # the exact value the consuming service's own env var also
+              # needs (ONBOARDING_CLIENT_SECRET, below). Non-fatal by
+              # design, same reasoning as unmanagedAttributePolicy above: a
+              # skipped rotation for one deploy leaves that one client on
+              # its prior secret (which api/web already have wired via
+              # their own environment: block), not a site outage.
+              for CLIENT_PAIR in "lis-onboarding:$ONBOARDING_CLIENT_SECRET" "lis-platform-analytics:$PLATFORM_ANALYTICS_CLIENT_SECRET"; do
+                CLIENT_ID="${CLIENT_PAIR%%:*}"
+                NEW_SECRET="${CLIENT_PAIR#*:}"
+                CLIENT_UUID=$(curl -sSf --connect-timeout 10 --max-time 10 \
+                  "http://localhost:8080/admin/realms/lis/clients?clientId=$CLIENT_ID" \
+                  -H "Authorization: Bearer $ADMIN_TOKEN" < /dev/null | jq -r '.[0].id // empty' || true)
+                if [ -z "$CLIENT_UUID" ]; then
+                  echo "WARNING: could not resolve Keycloak client UUID for $CLIENT_ID -- skipping its secret rotation this deploy" >&2
+                  continue
+                fi
+                CLIENT_REPR=$(curl -sSf --connect-timeout 10 --max-time 10 \
+                  "http://localhost:8080/admin/realms/lis/clients/$CLIENT_UUID" \
+                  -H "Authorization: Bearer $ADMIN_TOKEN" < /dev/null || true)
+                if [ -z "$CLIENT_REPR" ]; then
+                  echo "WARNING: could not fetch Keycloak client representation for $CLIENT_ID -- skipping its secret rotation this deploy" >&2
+                  continue
+                fi
+                NEW_CLIENT_REPR=$(echo "$CLIENT_REPR" | jq --arg secret "$NEW_SECRET" '. + {secret: $secret}')
+                curl -sS --connect-timeout 10 --max-time 10 -X PUT "http://localhost:8080/admin/realms/lis/clients/$CLIENT_UUID" \
+                  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+                  -d "$NEW_CLIENT_REPR" -w "\n$CLIENT_ID secret PUT: HTTP %{http_code}\n" < /dev/null || \
+                  echo "WARNING: $CLIENT_ID secret PUT failed -- api/web will still restart" >&2
+              done
             fi
           fi
 

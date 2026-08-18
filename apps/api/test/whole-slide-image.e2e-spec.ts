@@ -24,6 +24,13 @@ const FIXTURES_DIR = join(__dirname, 'fixtures');
 const VALID_ZIP = readFileSync(join(FIXTURES_DIR, 'test-dzi.zip'));
 const NO_DZI_ZIP = readFileSync(join(FIXTURES_DIR, 'no-dzi.zip'));
 const TWO_DZI_ZIP = readFileSync(join(FIXTURES_DIR, 'two-dzi.zip'));
+// AP browser acceptance report, BUG-01: same content as VALID_ZIP, but every
+// entry name uses `\` instead of `/` -- the exact shape PowerShell's
+// Compress-Archive produces, which previously uploaded to `ready` with
+// unretrievable tiles (see dzi-unzip.service.ts's own header comment).
+const BACKSLASH_PATHS_ZIP = readFileSync(
+  join(FIXTURES_DIR, 'backslash-paths.zip'),
+);
 
 /**
  * FEAT-067 (ADR-0054, ADR-0055, docs/plans/feat-067-wsi-viewer.md). Proves
@@ -158,6 +165,45 @@ describe('Whole-slide images (e2e)', () => {
       .where(eq(wholeSlideImage.id, body.id));
     expect(row.status).toBe('ready');
     expect(row.dziObjectKey).toBe(body.dziObjectKey);
+  });
+
+  it('AC (BUG-01 regression): a zip whose entries use backslash separators still reaches status ready with correctly forward-slash, retrievable object keys', async () => {
+    const slideId = await createSlide();
+
+    const res = await request(app.getHttpServer())
+      .post(`/v1/whole-slide-images/slides/${slideId}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .attach('file', BACKSLASH_PATHS_ZIP, {
+        filename: 'backslash-paths.zip',
+        contentType: 'application/zip',
+      })
+      .expect(201);
+    const body = res.body as {
+      id: string;
+      status: string;
+      dziObjectKey: string | null;
+      tileObjectPrefix: string;
+    };
+    expect(body.status).toBe('ready');
+    // The returned key itself must be forward-slash -- and the object it
+    // names must actually exist, not just look right as a string.
+    expect(body.dziObjectKey).toBe(`${body.tileObjectPrefix}fixture.dzi`);
+    expect(body.dziObjectKey).not.toMatch(/\\/);
+
+    expect(await objectExists(`${body.tileObjectPrefix}fixture.dzi`)).toBe(
+      true,
+    );
+    expect(
+      await objectExists(`${body.tileObjectPrefix}fixture_files/0/0_0.jpeg`),
+    ).toBe(true);
+    expect(
+      await objectExists(`${body.tileObjectPrefix}fixture_files/2/0_0.jpeg`),
+    ).toBe(true);
+    // The bug's own failure mode: no object should exist under a
+    // backslash-containing key.
+    expect(
+      await objectExists(`${body.tileObjectPrefix}fixture_files\\0\\0_0.jpeg`),
+    ).toBe(false);
   });
 
   it('AC: a malformed zip with no .dzi file reaches status failed with a real errorMessage', async () => {

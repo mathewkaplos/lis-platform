@@ -74,6 +74,15 @@ packages/ui (design system) · packages/sdk (generated API client)
 - Standards: ../lis-engineering/standards/
 - Skills: ../lis-engineering/skills/
 
+**On this Windows dev machine, `~/work/` does not exist** (`/c/Users/matt/work/`
+is not a real path). The two repos are siblings on disk at
+`D:/LIS/lis-platform` and `D:/LIS/lis-engineering`. Any `~/work/lis-platform`
+or `~/work/lis-engineering` path seen elsewhere in this file, or inside
+`lis-engineering`'s own Skill content (`close`, `orient`, `engineering-radar`,
+etc.), refers to that real location — read it as such rather than
+re-discovering it via a filesystem search each session. Confirmed 2026-08-18
+(close Skill's Engineering Flow Retrospective, Section 8).
+
 ## Rules of engagement (Rule #0)
 - Before writing production code, always produce an Implementation Proposal
   (docs/plans/<id>-<slug>.md) and wait for explicit approval (Status: APPROVED).

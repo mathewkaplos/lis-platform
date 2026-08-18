@@ -20,9 +20,25 @@ despite AGENTS.md's merge-autonomy rule normally covering this — worth a futur
 recurs). Merged as `714890f`. Branch deleted locally and on origin. Working tree confirmed clean
 afterward.
 
-**Not yet done:** no live/browser verification that a real 403 response actually renders the new
-error state in any of the four routes (noted explicitly in the PR body) — see Carried into next
-session.
+**Live browser verification done (same session, PR #602 follow-up):** minted a real session
+cookie (`apps/web/auth/session.ts` shape) around a genuine Keycloak password-grant token for a
+`qa`-role test user (`test-user-5`, lacks `manage_billing`), drove headless Chromium
+(`ms-playwright/chromium-1223`, native Windows -- no libnss3 workaround needed) against the
+already-running local `pnpm dev` stack.
+- `/billing/invoices/[invoiceId]`: a real `403` from `GET /v1/invoices/:id` (the
+  `CapabilityGuard`, `manage_billing`) renders the exact "You do not have permission to view this
+  invoice." message through the new `error.tsx` boundary with a working "Try again" button --
+  confirmed in both light and dark mode via screenshot.
+- **Real finding, not yet acted on:** `GET /v1/cases`, `GET /v1/cases/:id`, and
+  `GET /v1/whole-slide-images/:id` are gated only by `JwtAuthGuard` -- **no `CapabilityGuard` at
+  all** (`case.controller.ts`'s own comment: "read-only, no capability gate"). Confirmed directly:
+  a `qa`-role token got `200` on both case routes and `400` (bad param, not `403`) on the WSI
+  route. So 3 of PR #602's 4 new `if (response.status === 403)` branches (`cases`,
+  `cases/[caseId]`, the WSI slide-fetch) are currently **unreachable dead code** -- only the
+  invoice route's check corresponds to a real authorization gate today. Human decision: leave as
+  defensive code (matches the already-gated `orders` precedent this whole pattern was copied
+  from; correct the day someone adds a capability gate to these routes) -- no follow-up issue
+  filed, no code reverted.
 
 **Earlier sessions' breadcrumb entries are not carried in this file — see git history on this
 exact file (`git log -- docs/scope/current.md`) for full detail back through session 12.**
@@ -101,9 +117,9 @@ for this second cycle is still owed once that's resolved.
 ## Carried into next session
 
 - **New this session (40):** PR #602 (403 handling + error boundaries for cases/invoice detail
-  pages) merged as `714890f` — see session 40 section above. Still owed: a live browser check that
-  a real 403 response renders the new error state correctly in each of the four routes (`cases`,
-  `cases/[caseId]`, the WSI slide viewer, `billing/invoices/[invoiceId]`).
+  pages) merged as `714890f`, live-verified in a real browser same session — see session 40
+  section above. Nothing owed from this item; the "3 of 4 routes have no capability gate" finding
+  was a deliberate human decision to leave as-is, not a pending task.
 - **New in session 39:** WSL→Windows migration complete for `lis-platform` dev workflow (Docker,
   `pnpm dev`, build scripts, line endings); `lis-engineering` re-established as a real git repo;
   three Engineering Flow Retrospective findings from `/close` approved and applied (see above).

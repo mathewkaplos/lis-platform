@@ -506,3 +506,24 @@ packages/ui (design system) · packages/sdk (generated API client)
   directly. `cd ~/work/lis-platform && bash scripts/db-reset.sh` in one
   command is immune to this regardless of whatever cwd a prior call left
   behind.
+- **The standard git line-ending "renormalize" recipe
+  (`git rm -r --cached . && git checkout -- .`) is a broken pairing — do
+  not use it.** `git checkout --` restores from the **index**, not HEAD;
+  after `git rm -r --cached .` the index has nothing left in it, so the
+  `checkout` half silently does nothing (or errors with
+  `pathspec '.' did not match any file(s) known to git`), leaving the repo
+  in a transient `D`/`??` state that needs `git reset --mixed HEAD` to
+  recover. Separately, `git checkout HEAD -- <path>` (or plain
+  `git checkout -- <path>`) alone does **not** reliably rewrite an
+  already-checked-out working-tree file just because `.gitattributes`
+  changed — confirmed 2026-08-18 via direct byte inspection: a `.sh` file
+  with CRLF on disk stayed CRLF after `git checkout HEAD -- scripts/
+  db-reset.sh`, even though the committed blob was already pure LF and
+  `git check-attr` correctly reported the new `eol=lf` rule. **The
+  verified-working fix:** delete the tracked file from the working tree,
+  then re-checkout it — `rm -- <path> && git checkout -- <path>` — which
+  forces git to actually rewrite it from the index under the current
+  attributes. For a whole-tree renormalize after a `.gitattributes` change,
+  loop this over the affected tracked files rather than trying to clear
+  the whole index first:
+  `git ls-files -- '<pattern>' | while read -r f; do rm -- "$f"; git checkout -- "$f"; done`.

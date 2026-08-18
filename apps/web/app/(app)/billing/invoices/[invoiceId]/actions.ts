@@ -44,7 +44,7 @@ export async function recordPayment(
   }
   const client = createLisApiClient(accessToken);
 
-  const { response } = await client.POST('/v1/invoices/{id}/payments', {
+  const { response, error } = await client.POST('/v1/invoices/{id}/payments', {
     params: { path: { id: invoiceId } },
     body: {
       method: parsed.data.method as PaymentMethod,
@@ -54,9 +54,15 @@ export async function recordPayment(
   });
   if (!response.ok) {
     if (response.status === 400) {
+      // `ProblemDetailsFilter` (apps/api/src/common/problem-details.filter.ts)
+      // puts the real reason in `detail` -- e.g. "already fully paid" vs.
+      // "exceeds the remaining balance" are genuinely different situations
+      // a cashier needs to see, not one blended fallback string.
+      const detail = (error as { detail?: string } | undefined)?.detail;
       return {
         status: 'error',
-        formError: 'This invoice is already fully paid, or the amount is invalid.',
+        formError:
+          detail ?? 'This invoice is already fully paid, or the amount is invalid.',
       };
     }
     return {

@@ -179,6 +179,7 @@ describe('Billing & payments (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(201);
     const invoiceId = (invoiceRes.body as { resourceId: string }).resourceId;
+    const totalCents = GLUCOSE_PRICE_CENTS + BUN_PRICE_CENTS;
 
     await request(app.getHttpServer())
       .post(`/v1/invoices/${invoiceId}/payments`)
@@ -189,9 +190,24 @@ describe('Billing & payments (e2e)', () => {
       .get(`/v1/invoices/${invoiceId}`)
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(200);
-    if ((afterPartial.body as { status: string }).status !== 'partial') {
+    const partialBody = afterPartial.body as {
+      status: string;
+      amountPaidCents: number;
+      balanceDueCents: number;
+    };
+    if (partialBody.status !== 'partial') {
       throw new Error(
-        `expected partial after a partial cash payment, got ${(afterPartial.body as { status: string }).status}`,
+        `expected partial after a partial cash payment, got ${partialBody.status}`,
+      );
+    }
+    if (partialBody.amountPaidCents !== GLUCOSE_PRICE_CENTS) {
+      throw new Error(
+        `expected amountPaidCents ${GLUCOSE_PRICE_CENTS}, got ${partialBody.amountPaidCents}`,
+      );
+    }
+    if (partialBody.balanceDueCents !== totalCents - GLUCOSE_PRICE_CENTS) {
+      throw new Error(
+        `expected balanceDueCents ${totalCents - GLUCOSE_PRICE_CENTS}, got ${partialBody.balanceDueCents}`,
       );
     }
 
@@ -200,7 +216,11 @@ describe('Billing & payments (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .send({
         method: 'mobile_money',
-        amountCents: BUN_PRICE_CENTS,
+        // Pays exactly the remaining balance, not just "the BUN price" --
+        // proves "pay the exact remaining balance after a partial payment"
+        // as its own assertion, not merely a coincidence of this fixture's
+        // two-line-item total.
+        amountCents: totalCents - GLUCOSE_PRICE_CENTS,
         reference: '+254700000000',
       })
       .expect(201);
@@ -220,10 +240,21 @@ describe('Billing & payments (e2e)', () => {
       .get(`/v1/invoices/${invoiceId}`)
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(200);
-    if ((afterPaid.body as { status: string }).status !== 'paid') {
+    const paidBody = afterPaid.body as {
+      status: string;
+      amountPaidCents: number;
+      balanceDueCents: number;
+    };
+    if (paidBody.status !== 'paid') {
+      throw new Error(`expected paid after full payment, got ${paidBody.status}`);
+    }
+    if (paidBody.amountPaidCents !== totalCents) {
       throw new Error(
-        `expected paid after full payment, got ${(afterPaid.body as { status: string }).status}`,
+        `expected amountPaidCents ${totalCents}, got ${paidBody.amountPaidCents}`,
       );
+    }
+    if (paidBody.balanceDueCents !== 0) {
+      throw new Error(`expected balanceDueCents 0, got ${paidBody.balanceDueCents}`);
     }
 
     await request(app.getHttpServer())
@@ -231,6 +262,221 @@ describe('Billing & payments (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .send({ method: 'cash', amountCents: 100 })
       .expect(400);
+  });
+
+  it('pays an unpaid invoice in full in one payment', async () => {
+    const orderId = await createOrder([glucoseId]);
+    const invoiceRes = await request(app.getHttpServer())
+      .post(`/v1/orders/${orderId}/invoice`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(201);
+    const invoiceId = (invoiceRes.body as { resourceId: string }).resourceId;
+
+    await request(app.getHttpServer())
+      .post(`/v1/invoices/${invoiceId}/payments`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ method: 'cash', amountCents: GLUCOSE_PRICE_CENTS })
+      .expect(201);
+
+    const res = await request(app.getHttpServer())
+      .get(`/v1/invoices/${invoiceId}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const body = res.body as {
+      status: string;
+      amountPaidCents: number;
+      balanceDueCents: number;
+    };
+    if (
+      body.status !== 'paid' ||
+      body.amountPaidCents !== GLUCOSE_PRICE_CENTS ||
+      body.balanceDueCents !== 0
+    ) {
+      throw new Error(`unexpected invoice state after full payment: ${JSON.stringify(body)}`);
+    }
+  });
+
+  /**
+   * Regression test for the real, confirmed overpayment bug: a $210
+   * invoice ($GLUCOSE + $BUN, this fixture's own prices, see the two
+   * `testDefinition.priceCents` values set in `beforeAll`) took a $100
+   * partial payment, then the take-payment form defaulted to the *full*
+   * $210 again (not the real $110 remaining) with nothing server-side
+   * stopping that amount from being accepted -- confirmed live,
+   * 2026-08-18, ending in $310 collected against a $210 invoice. This test
+   * reproduces the exact scenario end-to-end against the fix.
+   */
+  it('rejects a payment that would exceed the remaining balance -- the original overpayment regression', async () => {
+    const orderId = await createOrder([glucoseId, bunId]);
+    const invoiceRes = await request(app.getHttpServer())
+      .post(`/v1/orders/${orderId}/invoice`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(201);
+    const invoiceId = (invoiceRes.body as { resourceId: string }).resourceId;
+    const totalCents = GLUCOSE_PRICE_CENTS + BUN_PRICE_CENTS; // 1200 ("$210" in the human-reported scenario)
+    const partialCents = 400; // "$100" in the human-reported scenario
+    const remainingCents = totalCents - partialCents; // "$110"
+
+    await request(app.getHttpServer())
+      .post(`/v1/invoices/${invoiceId}/payments`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ method: 'cash', amountCents: partialCents })
+      .expect(201);
+
+    const afterPartial = await request(app.getHttpServer())
+      .get(`/v1/invoices/${invoiceId}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const partialBody = afterPartial.body as {
+      status: string;
+      balanceDueCents: number;
+    };
+    // "reload invoice -> payment form should show $110 remaining"
+    if (partialBody.balanceDueCents !== remainingCents) {
+      throw new Error(
+        `expected balanceDueCents ${remainingCents}, got ${partialBody.balanceDueCents}`,
+      );
+    }
+
+    // "attempt $210 payment -> server must reject it"
+    const overpayRes = await request(app.getHttpServer())
+      .post(`/v1/invoices/${invoiceId}/payments`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ method: 'cash', amountCents: totalCents })
+      .expect(400);
+    if (
+      !(overpayRes.body as { detail?: string }).detail
+        ?.toLowerCase()
+        .includes('exceeds the remaining balance')
+    ) {
+      throw new Error(
+        `expected a clear "exceeds the remaining balance" error, got ${JSON.stringify(overpayRes.body)}`,
+      );
+    }
+
+    // "invoice must remain partially paid with $110 outstanding"
+    const stillPartial = await request(app.getHttpServer())
+      .get(`/v1/invoices/${invoiceId}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const stillPartialBody = stillPartial.body as {
+      status: string;
+      amountPaidCents: number;
+      balanceDueCents: number;
+    };
+    if (
+      stillPartialBody.status !== 'partial' ||
+      stillPartialBody.amountPaidCents !== partialCents ||
+      stillPartialBody.balanceDueCents !== remainingCents
+    ) {
+      throw new Error(
+        `expected the rejected overpayment to leave the invoice unchanged, got ${JSON.stringify(stillPartialBody)}`,
+      );
+    }
+
+    // "pay $110 -> invoice should become paid"
+    await request(app.getHttpServer())
+      .post(`/v1/invoices/${invoiceId}/payments`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ method: 'cash', amountCents: remainingCents })
+      .expect(201);
+
+    const afterFull = await request(app.getHttpServer())
+      .get(`/v1/invoices/${invoiceId}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const finalBody = afterFull.body as {
+      status: string;
+      amountPaidCents: number;
+      balanceDueCents: number;
+    };
+    // "total successful payments must equal exactly $210"
+    if (
+      finalBody.status !== 'paid' ||
+      finalBody.amountPaidCents !== totalCents ||
+      finalBody.balanceDueCents !== 0
+    ) {
+      throw new Error(
+        `expected the invoice fully paid at exactly ${totalCents} cents, got ${JSON.stringify(finalBody)}`,
+      );
+    }
+  });
+
+  it('rejects any payment on an already-fully-paid invoice, even a small one', async () => {
+    const orderId = await createOrder([glucoseId]);
+    const invoiceRes = await request(app.getHttpServer())
+      .post(`/v1/orders/${orderId}/invoice`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(201);
+    const invoiceId = (invoiceRes.body as { resourceId: string }).resourceId;
+
+    await request(app.getHttpServer())
+      .post(`/v1/invoices/${invoiceId}/payments`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ method: 'cash', amountCents: GLUCOSE_PRICE_CENTS })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/v1/invoices/${invoiceId}/payments`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ method: 'cash', amountCents: 1 })
+      .expect(400);
+  });
+
+  /**
+   * Concurrency proof for the `FOR UPDATE` row lock (payment.service.ts):
+   * fires two payment requests at the same invoice simultaneously, each
+   * individually valid (each <= the total) but which together would
+   * overpay it. Without the lock, both `recordPayment` calls could read
+   * "nothing paid yet" before either writes, and both would succeed --
+   * the exact shape of the original bug, just via a race instead of a
+   * stale frontend default. With the lock, the second call blocks until
+   * the first commits, then correctly sees the updated remaining balance
+   * and rejects.
+   */
+  it('does not allow two concurrent payments to together overpay an invoice', async () => {
+    const orderId = await createOrder([glucoseId, bunId]);
+    const invoiceRes = await request(app.getHttpServer())
+      .post(`/v1/orders/${orderId}/invoice`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(201);
+    const invoiceId = (invoiceRes.body as { resourceId: string }).resourceId;
+    const totalCents = GLUCOSE_PRICE_CENTS + BUN_PRICE_CENTS; // 1200
+    const eachCents = 700; // 700 + 700 = 1400 > 1200, but 700 alone is valid
+
+    const [resA, resB] = await Promise.all([
+      request(app.getHttpServer())
+        .post(`/v1/invoices/${invoiceId}/payments`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ method: 'cash', amountCents: eachCents }),
+      request(app.getHttpServer())
+        .post(`/v1/invoices/${invoiceId}/payments`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ method: 'cash', amountCents: eachCents }),
+    ]);
+
+    const statuses = [resA.status, resB.status].sort();
+    if (statuses[0] !== 201 || statuses[1] !== 400) {
+      throw new Error(
+        `expected exactly one of the two concurrent payments to succeed (201) and the other to be rejected (400), got ${JSON.stringify(statuses)}`,
+      );
+    }
+
+    const final = await request(app.getHttpServer())
+      .get(`/v1/invoices/${invoiceId}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const finalBody = final.body as { amountPaidCents: number };
+    if (finalBody.amountPaidCents !== eachCents) {
+      throw new Error(
+        `expected exactly one payment (${eachCents} cents) to have gone through, got amountPaidCents ${finalBody.amountPaidCents}`,
+      );
+    }
+    if (finalBody.amountPaidCents > totalCents) {
+      throw new Error(
+        `invoice was overpaid: amountPaidCents ${finalBody.amountPaidCents} > totalCents ${totalCents}`,
+      );
+    }
   });
 
   it('is fully tenant-isolated: a different tenant cannot see the invoice, its line items, or its payments (404, not a leak)', async () => {

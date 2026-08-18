@@ -86,8 +86,13 @@ export class PaymentService {
     const paidBeforeCents = await getPaidCents(tx, input.invoiceId);
     const remainingCents = invoiceRow.totalCents - paidBeforeCents;
     if (input.amountCents > remainingCents) {
+      // Dollars, not cents -- every other amount on this cashier-facing
+      // screen (invoice total, take-payment field, receipt) is already
+      // shown in dollars; a cents-denominated error would be the one
+      // inconsistent number on the page.
+      const formatDollars = (cents: number) => (cents / 100).toFixed(2);
       throw new BadRequestException(
-        `Payment amount (${input.amountCents} cents) exceeds the remaining balance (${remainingCents} cents) on this invoice`,
+        `Payment amount ($${formatDollars(input.amountCents)}) exceeds the remaining balance ($${formatDollars(remainingCents)}) on this invoice`,
       );
     }
 

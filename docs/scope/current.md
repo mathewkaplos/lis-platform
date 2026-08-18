@@ -1,9 +1,15 @@
-# Status — 2026-08-18 (session 39, refreshed)
+# Status — 2026-08-18 (session 39, refreshed twice)
 
-Last commit on main: `c3a6a06` (`lis-engineering`) — `lis-platform`'s own last commit before this
-breadcrumb refresh itself lands is `5cc014c`; this refresh will land as a further `lis-platform`
+Last commit on main: `68e234d` (`lis-engineering`) — `lis-platform`'s own last commit before this
+breadcrumb refresh itself lands is `5d7e043`; this refresh will land as a further `lis-platform`
 commit on top of that, so that line will already be one commit behind by construction — check
 `git log origin/main -5` for the real current tip.
+
+**Second refresh this session (first refresh, PR #596, went stale again within the hour — PR #597
+landed right after it and was unrecorded until now; see `/close`'s own
+`2026-08-18-1326-pre.md`).** The three sections below (WSL→Windows migration, `/close`, Carried
+into next session) are the same session's work as the first refresh, updated to also cover what
+landed afterward — not a new session.
 
 **Earlier sessions' breadcrumb entries are not carried in this file — see git history on this
 exact file (`git log -- docs/scope/current.md`) for full detail back through session 12.**
@@ -55,31 +61,37 @@ errors). `.env` files recreated from each `.example` template (dev-only placehol
 required inventing secrets). Separately: `git push` initially failed with a 403 (Windows' stored
 git credential was a different GitHub account than `gh`'s) — fixed via `gh auth setup-git`.
 
-## `/close` this session — Pre-Close Report produced, pending items not yet resolved
+## `/close` this session — two Pre-Close Reports, one Final, findings A/B/C now applied
 
-`~/work/lis-engineering/session-close-reports/2026-08-18-1134-pre.md`. Three Engineering Flow
-Retrospective findings drafted (not yet approved/applied): (A) this session's permission mode
-silently blocked `lis-engineering` access mid-task, discovered only by trial and error — proposed
-AGENTS.md/`orient` note to proactively probe cross-repo access at session start; (B) the standard
-git line-ending "renormalize" recipe (`git rm -r --cached . && git checkout -- .`) is a two-part
-footgun — `checkout --` restores from the index, not HEAD, so pairing it with `rm --cached` first
-leaves nothing to restore from; the verified-working per-file fix is delete-then-`git checkout --
-<path>` — proposed as a documented recipe somewhere git-conventions-shaped; (C) four real,
-previously-undocumented native-Windows dev blockers surfaced this session (native Postgres port
-conflict, silent `pnpm dev` script skip, `nest start --watch` dist race, git credential mismatch)
-— proposed as a new `skills/engineering/windows-native-dev/SKILL.md`. This breadcrumb refresh is
-itself one of the Pre-Close Report's five pending items; the other four (approve/reject findings
-A/B/C, and a 5-item Manual Verification Checklist — none yet actually checked in a browser/real
-client: `apps/web` UI, Keycloak login, MinIO console, gateway/interop endpoints, `.env` sign-off)
-remain open. A Final Close Report is still owed once those are resolved.
+Cycle 1: `~/work/lis-engineering/session-close-reports/2026-08-18-1134-pre.md` →
+`2026-08-18-1201-final.md` (breadcrumb was the only item resolved at that point; the three
+Engineering Flow Retrospective findings and the Manual Verification Checklist were still
+outstanding, reported plainly as such — "no — 4 item(s) still outstanding").
+
+Findings A/B/C were then approved and applied: (A) `lis-engineering`'s `CHECKLIST.md` item 1 now
+distinguishes a real missing-repo failure from a tool-permission denial, direct commit
+`7eefd1b`; (B) `AGENTS.md` now documents the broken `git rm -r --cached . && git checkout -- .`
+renormalize recipe and the verified-working delete-then-checkout fix, PR #597 (merged `5d7e043`
+— this PR needed the human to run the actual `gh api .../merge` command directly, per AGENTS.md's
+own rule that AGENTS.md-touching changes get extra classifier scrutiny; a bare "Merge PR #597"
+was denied twice before an explicit instruction succeeded); (C) new
+`skills/engineering/windows-native-dev/SKILL.md` (5 entries: Docker Desktop launch, native-Postgres
+port conflict, silent `pnpm dev` script skip, `nest start --watch` dist race, git credential
+mismatch), direct commit `7eefd1b`.
+
+Cycle 2: `~/work/lis-engineering/session-close-reports/2026-08-18-1326-pre.md` (this breadcrumb
+refresh is itself one of that report's two pending items — the other is the same 5-item Manual
+Verification Checklist, still none actually checked in a browser/real client: `apps/web` UI,
+Keycloak login, MinIO console, gateway/interop endpoints, `.env` sign-off). A Final Close Report
+for this second cycle is still owed once that's resolved.
 
 ## Carried into next session
 
 - **New this session:** WSL→Windows migration complete for `lis-platform` dev workflow (Docker,
-  `pnpm dev`, build scripts, line endings); `lis-engineering` re-established as a real git repo.
-- **New this session, pending human decision:** three Engineering Flow Retrospective findings
-  (permission-scope probe note, git renormalize recipe doc, new `windows-native-dev` Skill) and a
-  5-item Manual Verification Checklist — see `/close` section above. Not yet a Final Close Report.
+  `pnpm dev`, build scripts, line endings); `lis-engineering` re-established as a real git repo;
+  three Engineering Flow Retrospective findings from `/close` approved and applied (see above).
+- **New this session, still pending human action:** the 5-item Manual Verification Checklist —
+  see `/close` section above. No Final Close Report yet for cycle 2.
 - No feature/issue work happened this session — every item below is unchanged from session 38.
 - No new milestone/epic has been scoped yet for what comes after M13 — the roadmap's own Phase 5
   (AI & advanced: molecular/blood bank packs, digital pathology) is the one clearly-unstarted major

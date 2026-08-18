@@ -64,11 +64,19 @@ export async function unzipDziToObjectStorage(
       entry.autodrain();
       continue;
     }
-    const objectKey = `${objectPrefix}${entry.path}`;
-    if (entry.path.toLowerCase().endsWith(DZI_EXTENSION)) {
+    // Some Windows-native zip tools (e.g. PowerShell's Compress-Archive) write
+    // entry paths with `\` instead of the ZIP-spec-mandated `/` -- `unzipper`
+    // passes them through verbatim. Normalizing here is what every
+    // well-behaved zip reader already does transparently; a real pyramid
+    // re-zipped by such a tool is still fully usable once normalized (found
+    // during the AP browser acceptance pass -- an un-normalized key silently
+    // produces a `ready` WholeSlideImage whose tiles all 404 at view time).
+    const entryPath = entry.path.replace(/\\/g, '/');
+    const objectKey = `${objectPrefix}${entryPath}`;
+    if (entryPath.toLowerCase().endsWith(DZI_EXTENSION)) {
       dziKeys.push(objectKey);
     }
-    await putObjectStream(objectKey, entry, contentTypeFor(entry.path));
+    await putObjectStream(objectKey, entry, contentTypeFor(entryPath));
   }
 
   if (dziKeys.length !== 1) {

@@ -16,6 +16,9 @@ export default async function CasesPage() {
   const client = createLisApiClient(accessToken);
 
   const { data, response } = await client.GET('/v1/cases');
+  if (response.status === 403) {
+    throw new Error('You do not have permission to view cases.');
+  }
   if (!response.ok || !data) {
     throw new Error('Something went wrong loading cases. Please try again.');
   }

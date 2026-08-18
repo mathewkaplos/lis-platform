@@ -44,6 +44,9 @@ export default async function CaseDetailPage({
   if (response.status === 404) {
     notFound();
   }
+  if (response.status === 403) {
+    throw new Error('You do not have permission to view this case.');
+  }
   if (!response.ok || !caseData) {
     throw new Error('Something went wrong loading this case. Please try again.');
   }

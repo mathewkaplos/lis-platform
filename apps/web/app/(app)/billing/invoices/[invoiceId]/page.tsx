@@ -30,6 +30,9 @@ export default async function InvoiceDetailPage({
   if (response.status === 404) {
     notFound();
   }
+  if (response.status === 403) {
+    throw new Error('You do not have permission to view this invoice.');
+  }
   if (!response.ok || !invoice) {
     throw new Error('Something went wrong loading this invoice. Please try again.');
   }

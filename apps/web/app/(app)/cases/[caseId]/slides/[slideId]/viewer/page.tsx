@@ -33,6 +33,9 @@ export default async function SlideViewerPage({
   if (response.status === 404) {
     notFound();
   }
+  if (response.status === 403) {
+    throw new Error('You do not have permission to view this case.');
+  }
   if (!response.ok || !caseData) {
     throw new Error('Something went wrong loading this case. Please try again.');
   }
@@ -48,6 +51,9 @@ export default async function SlideViewerPage({
   const wsiRes = await client.GET('/v1/whole-slide-images/{id}', {
     params: { path: { id: slide.wholeSlideImage.id } },
   });
+  if (wsiRes.response.status === 403) {
+    throw new Error('You do not have permission to view this whole-slide image.');
+  }
   if (!wsiRes.response.ok || !wsiRes.data?.dziObjectKey) {
     throw new Error('Something went wrong loading this whole-slide image. Please try again.');
   }

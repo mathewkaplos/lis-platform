@@ -1,0 +1,25 @@
+# Default: normalize all text files to LF in the repo; Git checks them out
+# using the platform's native line ending (CRLF on Windows, per this
+# machine's core.autocrlf=true) unless a more specific rule below forces
+# LF regardless of platform.
+* text=auto
+
+# Scripts run via a bash shebang (#!/usr/bin/env bash) break on Windows
+# checkout if they pick up CRLF -- force LF unconditionally.
+*.sh text eol=lf
+
+# YAML/JSON config and lockfiles: keep LF so diffs stay clean across
+# contributors regardless of OS.
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+
+# Common binary assets -- never subject to line-ending conversion.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary

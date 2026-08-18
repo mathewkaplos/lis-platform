@@ -9,7 +9,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "rm -f tsconfig.build.tsbuildinfo && nest build",
+    "build": "node -e \"require('fs').rmSync('tsconfig.build.tsbuildinfo',{force:true})\" && nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",

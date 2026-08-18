@@ -128,6 +128,20 @@ convention `docker-compose.yml` already uses for its plain-text local `POSTGRES_
 staging/production; a real deployment needs its own user provisioning, not a
 checked-in test password.
 
+**Every other seeded user's password is `test-password-<suffix>`, matching that user's own
+username suffix, not the shared `test-password`** — e.g. `test-user-2`'s password is
+`test-password-2`, `test-user-5`'s is `test-password-5`, `test-user-dedicated`'s is
+`test-password-dedicated`. This per-user password convention is only otherwise
+discoverable by reading the e2e
+spec files' own `getKeycloakToken('test-user-N', 'test-password-N')` call sites
+(`apps/api/test/*.e2e-spec.ts`) — confirmed a real, live trap 2026-08-18: assuming every
+seeded user shared `test-user`'s own `test-password` produces a genuine, deterministic
+`invalid_grant` from Keycloak's real token endpoint for every user except `test-user`
+itself (reproduced across a fresh `docker compose rm -f -s keycloak && docker compose up
+-d keycloak` reimport, ruling out stale-container state as the cause) — easy to
+misdiagnose as a broken/stale local Keycloak import rather than the actual, much simpler
+cause (wrong password guessed from an incomplete reading of this file).
+
 ## Staging TLS + hostname (#188)
 
 Staging previously ran Keycloak as `start-dev` with no TLS and no `KC_HOSTNAME` — the full

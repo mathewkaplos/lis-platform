@@ -1,7 +1,63 @@
-# Status — 2026-08-18 (session 40)
+# Status — 2026-08-19 (session 40, continued)
 
-Last commit on main: `e58f243` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908`. Check
-`git log origin/main -5` for the real current tip if this has drifted.
+Last commit on main: `65488df` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
+this leg). Check `git log origin/main -5` for the real current tip if this has drifted.
+
+## Session 40 (continued) — AP browser acceptance pass + WSI backslash-path fix
+
+Human asked for an extensive browser-driven acceptance pass of Anatomic Pathology functionality
+(Chrome extension as primary test interface, real Keycloak login, not the session-cookie
+shortcut). Full report published as an Artifact
+(`https://claude.ai/code/artifact/58cd19fa-e980-4425-87d0-2779f60c178f`).
+
+**Headline finding:** the AP browser UI is far smaller than the backend. Confirmed by reading the
+three real page components (each says so in its own header comment) plus a repo-wide grep: only
+`/cases` (read-only list), `/cases/[caseId]` (read-only parts→blocks→slides tree), and the WSI
+upload/viewer exist in `apps/web`. Case accessioning, gross/microscopic/diagnosis entry, synoptic
+protocols, cytology two-tier screening, sign-out, amendments, and reflex/IHC ordering all have real
+`apps/api` routes (`case.controller.ts`'s `create`/`blocks`/`slides`/`ordered-tests`/`screen`/
+`finalize`/`amend`) but zero browser UI.
+
+**Testing performed for real, in the browser** (not just API calls): real OIDC login as
+`test-user` (technologist) and `test-user-5` (qa, no AP capability); seeded AP test data via direct
+API calls (no create-UI exists) — tenant A case `260818-000407` (2 parts, 4 blocks, WSI uploads),
+tenant B case `260818-000408` (isolation-probe target only); hierarchy rendering verified correct
+across multiple parts/blocks/slides incl. empty states; WSI upload — valid pyramid, both documented
+rejection paths (no `.dzi`, two `.dzi`) — all correct with proper retry UI; multi-tenant isolation
+verified on list/detail/viewer (cross-tenant URLs correctly 404 via RLS); RBAC verified on WSI
+upload (button visible to `qa` but server correctly rejects — "hidden button isn't proof of
+authorization" concern explicitly tested, not just assumed from guard code).
+
+**Found and root-caused BUG-01 (P2, real):** `dzi-unzip.service.ts`'s `unzipDziToObjectStorage`
+trusted zip entry paths verbatim as object-storage keys — a zip whose entries use `\` instead of
+`/` (confirmed producible by PowerShell's `Compress-Archive`) uploaded to `status: 'ready'` with
+every tile silently unretrievable (404s), and the viewer just showed black with zero error state
+anywhere. Isolated by progressively building three synthetic DZI fixtures (a 1×1px tile, a
+`sharp`-generated full pyramid zipped with PowerShell, then a spec-compliant hand-rolled zip) —
+confirmed the repo's own pre-existing `test-dzi.zip` fixture already used correct forward slashes
+and worked, isolating the bug to the path-separator handling itself, not the pipeline.
+
+**Fix:** Implementation Proposal `docs/plans/task-wsi-backslash-path-fix.md` (APPROVED, scoped to
+separator-normalization only per §10 Q1 — the file's own already-named path-traversal-hardening gap
+and a "verify-before-ready" hardening idea were both deliberately deferred as separate concerns,
+not bundled in). PR #607 (`fix: normalize backslash path separators in WSI zip unzip`) — one
+`.replace(/\\/g, '/')` on `entry.path` before it's used as a key or extension-checked. New e2e
+regression case (backslash-path zip → `ready` status, forward-slash keys, every object confirmed
+actually retrievable via `objectExists()`, not just asserted on the returned key string). Full
+`apps/api` suite (65 e2e files/511 tests, 28 unit files/210 tests) verified clean against a freshly
+reset DB. Live-reconfirmed in the browser: re-uploaded the exact original repro fixture against the
+running dev stack — viewer now renders the tile instead of black. Merged as `65488df` (autonomous
+`gh pr merge` succeeded this time — first success after several classifier denials earlier this
+session, worth noting but not chasing further). Branch deleted locally and on origin.
+
+**Test-data cleanup:** the human asked to clean up the seeded AP test data. Turned out
+`bash scripts/db-reset.sh` (run twice during the bug-fix verification phase, each a real
+`docker compose down -v postgres`) had already destroyed all of it — confirmed by direct query,
+not assumed. `db-reset.sh` does not touch MinIO, though: found and removed 78 genuinely orphaned
+WSI tile/descriptor objects (no DB row referencing them anymore) under the 7 specific slide-id
+prefixes the session's own uploads used; left the ~100 other objects under that same tenant prefix
+alone since they belong to the repo's own e2e test suite's repeated runs, not this session's seed
+data.
 
 ## Session 40 — TASK-440: specimen expiry tracking + reflex recollection fallback (issue #440)
 
@@ -142,7 +198,23 @@ for this second cycle is still owed once that's resolved.
 
 ## Carried into next session
 
-- **New this session (40):** TASK-440 (specimen expiry + reflex recollection) merged as PR #605
+- **New this session (40, continued):** AP browser acceptance pass complete (report:
+  `https://claude.ai/code/artifact/58cd19fa-e980-4425-87d0-2779f60c178f`); BUG-01 (WSI backslash
+  path separators) found, fixed, and merged as PR #607 (`65488df`); seeded test data cleaned up
+  (already gone from Postgres via this session's own db-resets; 78 orphaned MinIO objects removed).
+  Nothing owed from this item.
+- **Real, still-open product question surfaced by the acceptance report, not yet a filed
+  issue:** almost the entire AP diagnostic workflow (accessioning, result entry, synoptic,
+  sign-out, amendments, cytology screening, reflex/IHC ordering) has a complete backend but zero
+  browser UI — no pathologist can complete a real case end-to-end through the browser today. The
+  report's own §10 lists this as its top recommended-fix item, framed as a product decision, not a
+  bug. Worth raising explicitly next session if it hasn't been triaged by then.
+- **Two P3 recommendations from the same report, not yet actioned (deliberately, per this
+  session's own scoping call on the P2 fix):** (1) surface WSI tile-load failures in the viewer UI
+  instead of a silent black canvas — OpenSeadragon already emits the event; (2) the file's own
+  already-named path-traversal-hardening gap in `dzi-unzip.service.ts`. Neither has a filed issue
+  yet.
+- **New this session:** TASK-440 (specimen expiry + reflex recollection) merged as PR #605
   (`e58f243`), issue #440 closed — see session 40 section above. Nothing owed from this item.
   Volume/exhaustion tracking was deliberately cut from scope (§10 Q1) — a real, separate follow-up
   if a future session wants to pick it up, but no issue filed for it yet (the human's own call was

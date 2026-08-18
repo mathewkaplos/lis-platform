@@ -66,6 +66,9 @@ export const specimenCreateSchema = z.object({
   specimenType: specimenTypeSchema,
   orderedTestIds: z.array(z.uuid()).min(1).optional(),
   collectedAt: z.iso.datetime().optional(),
+  // TASK-440 (issue #440): caller-supplied only, no auto-derivation -- see
+  // packages/db/src/schema/specimen.ts's own column comment.
+  expiresAt: z.iso.datetime().optional(),
   collectionContext: z.record(z.string(), z.unknown()).optional(),
   rejectionReason: specimenRejectionReasonSchema.optional(),
 });
@@ -81,6 +84,7 @@ export const specimenSchema = z.object({
   rejectionReason: specimenRejectionReasonSchema.nullable(),
   collectionContext: z.record(z.string(), z.unknown()).nullable(),
   collectedAt: z.iso.datetime().nullable(),
+  expiresAt: z.iso.datetime().nullable(),
   receivedAt: z.iso.datetime().nullable(),
   createdAt: z.iso.datetime(),
   // TASK-047 revision §2: fulfilled OrderedTest ids, populated on

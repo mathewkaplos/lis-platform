@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import {
   orderedTest,
+  specimen,
   specimenFulfillment,
   testDefinition,
   writeAuditEvent,
@@ -163,9 +164,10 @@ export const addReflexTestHandler: WorkflowCommandHandler = async (
     return;
   }
 
-  // Acts on the existing specimen (KB-25's own stated preference, no
-  // recollection) -- specimen exhaustion/expiry is explicitly out of scope
-  // (issue #440): no volume/expiry field exists on `specimen` to check.
+  // Acts on the existing specimen where possible (KB-25's own stated
+  // preference); raises a recollection instead when it's expired
+  // (TASK-440, issue #440 -- see reflex-guardrails.ts's sibling docs and
+  // `engineering/workflow-engine` Skill entry #6 for the original gap).
   const [fulfillment] = await tx
     .select({ specimenId: specimenFulfillment.specimenId })
     .from(specimenFulfillment)
@@ -174,6 +176,57 @@ export const addReflexTestHandler: WorkflowCommandHandler = async (
   if (!fulfillment) {
     logger.warn(
       `no specimen_fulfillment found for parent ordered_test ${parentOrderedTestId} (tenant ${tenantId}) -- no-op`,
+    );
+    return;
+  }
+
+  const [specimenRow] = await tx
+    .select({ expiresAt: specimen.expiresAt })
+    .from(specimen)
+    .where(eq(specimen.id, fulfillment.specimenId))
+    .limit(1);
+  const isExpired = Boolean(
+    specimenRow?.expiresAt && specimenRow.expiresAt <= new Date(),
+  );
+
+  if (isExpired) {
+    // Recollection: a fresh `ordered_test` with status 'ordered' and no
+    // `specimen_fulfillment` row -- reuses the exact predicate the
+    // Collection Queue screen already renders on
+    // (apps/web/app/(app)/collection-queue/page.tsx: any orderedTest row
+    // still 'ordered'), so this surfaces with zero new UI/endpoint.
+    // `parentOrderedTestId` is still set -- reflex lineage is unconditional
+    // regardless of which branch a firing takes (workflow-engine Skill
+    // entry #5).
+    const [created] = await tx
+      .insert(orderedTest)
+      .values({
+        tenantId,
+        orderId: parent.orderId,
+        testDefinitionId: targetTest.id,
+        status: 'ordered',
+        parentOrderedTestId,
+      })
+      .returning();
+
+    await writeAuditEvent(tx, {
+      tenantId,
+      actorPrincipalId: REFLEX_ENGINE_ACTOR_ID,
+      actorRole: 'system',
+      actorType: 'service',
+      action: 'ordered_test.reflex_recollection_required',
+      resourceType: 'ordered_test',
+      resourceId: created.id,
+      after: {
+        id: created.id,
+        testDefinitionId: created.testDefinitionId,
+        parentOrderedTestId: created.parentOrderedTestId,
+        status: created.status,
+      },
+    });
+
+    logger.log(
+      `specimen ${fulfillment.specimenId} expired -- created recollection ordered_test ${created.id} ('${testCode}') from parent ${parentOrderedTestId} (tenant ${tenantId})`,
     );
     return;
   }

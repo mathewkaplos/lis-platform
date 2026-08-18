@@ -1708,6 +1708,8 @@ export interface components {
             orderedTestIds?: string[];
             /** Format: date-time */
             collectedAt?: string;
+            /** Format: date-time */
+            expiresAt?: string;
             collectionContext?: {
                 [key: string]: unknown;
             };
@@ -1732,6 +1734,8 @@ export interface components {
             } | null;
             /** Format: date-time */
             collectedAt: string | null;
+            /** Format: date-time */
+            expiresAt: string | null;
             /** Format: date-time */
             receivedAt: string | null;
             /** Format: date-time */

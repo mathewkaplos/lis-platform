@@ -60,6 +60,11 @@ function toSpecimenDto(
     collectionContext:
       (row.collectionContext as Record<string, unknown> | null) ?? null,
     collectedAt: row.collectedAt ? row.collectedAt.toISOString() : null,
+    // TASK-440: always an explicit key (never omitted-when-undefined) --
+    // create()'s `after` payload feeds AuditInterceptor's hash, same
+    // stability requirement this file's own header comment already states
+    // for `fulfilledOrderedTestIds`.
+    expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
     receivedAt: row.receivedAt ? row.receivedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     // Only set when actually resolved (search()/getById()) — never an
@@ -180,6 +185,7 @@ export class SpecimenController {
         rejectionReason: body.rejectionReason ?? null,
         collectionContext: body.collectionContext ?? null,
         collectedAt: body.collectedAt ? new Date(body.collectedAt) : undefined,
+        expiresAt: body.expiresAt ? new Date(body.expiresAt) : undefined,
         receivedAt: new Date(),
       })
       .returning();

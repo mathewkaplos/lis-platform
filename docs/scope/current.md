@@ -1,20 +1,33 @@
-# Status — 2026-08-18 (session 39, refreshed twice)
+# Status — 2026-08-18 (session 40)
 
-Last commit on main: `68e234d` (`lis-engineering`) — `lis-platform`'s own last commit before this
-breadcrumb refresh itself lands is `5d7e043`; this refresh will land as a further `lis-platform`
-commit on top of that, so that line will already be one commit behind by construction — check
-`git log origin/main -5` for the real current tip.
+Last commit on main: `714890f` (`lis-platform`) — `lis-engineering`'s tip is `e90987a`. Check
+`git log origin/main -5` for the real current tip if this has drifted.
 
-**Second refresh this session (first refresh, PR #596, went stale again within the hour — PR #597
-landed right after it and was unrecorded until now; see `/close`'s own
-`2026-08-18-1326-pre.md`).** The three sections below (WSL→Windows migration, `/close`, Carried
-into next session) are the same session's work as the first refresh, updated to also cover what
-landed afterward — not a new session.
+## Session 40 — unexplained dirty repo at orient, resolved as PR #602
+
+`/orient` found `lis-platform` dirty at session start: 4 modified pages + 3 new `error.tsx` files
+adding explicit 403 (permission-denied) handling to `cases`, `cases/[caseId]` (incl. the WSI slide
+viewer), and `billing/invoices/[invoiceId]`, following the pattern already shipped for `orders`
+(TASK-044). None of it was referenced anywhere in this breadcrumb, so per
+`lis-engineering`'s `DECISION_TREE.md` ("Repository dirty at session start") orientation stopped
+and presented it as a blocker rather than guessing at its origin.
+
+Human reviewed and chose to keep it: typechecked clean, PR #602
+(`fix: add explicit 403 handling and error boundaries to cases/invoice detail pages`) opened,
+all 3 CI checks (`check-invariants`, `build-and-test`, `storybook-a11y`) went green, merged
+squash by the human directly (the `gh pr merge` classifier denied the autonomous merge attempt
+despite AGENTS.md's merge-autonomy rule normally covering this — worth a future `/retro` if it
+recurs). Merged as `714890f`. Branch deleted locally and on origin. Working tree confirmed clean
+afterward.
+
+**Not yet done:** no live/browser verification that a real 403 response actually renders the new
+error state in any of the four routes (noted explicitly in the PR body) — see Carried into next
+session.
 
 **Earlier sessions' breadcrumb entries are not carried in this file — see git history on this
 exact file (`git log -- docs/scope/current.md`) for full detail back through session 12.**
 
-## WSL → native Windows dev-environment migration — this session's entire scope
+## Session 39 — WSL → native Windows dev-environment migration
 
 The human's laptop crashed, losing the previous WSL dev environment; both repos were re-cloned to
 `D:\LIS\lis-platform` / `D:\LIS\lis-engineering` and the human asked for a full audit + migration
@@ -87,12 +100,16 @@ for this second cycle is still owed once that's resolved.
 
 ## Carried into next session
 
-- **New this session:** WSL→Windows migration complete for `lis-platform` dev workflow (Docker,
+- **New this session (40):** PR #602 (403 handling + error boundaries for cases/invoice detail
+  pages) merged as `714890f` — see session 40 section above. Still owed: a live browser check that
+  a real 403 response renders the new error state correctly in each of the four routes (`cases`,
+  `cases/[caseId]`, the WSI slide viewer, `billing/invoices/[invoiceId]`).
+- **New in session 39:** WSL→Windows migration complete for `lis-platform` dev workflow (Docker,
   `pnpm dev`, build scripts, line endings); `lis-engineering` re-established as a real git repo;
   three Engineering Flow Retrospective findings from `/close` approved and applied (see above).
-- **New this session, still pending human action:** the 5-item Manual Verification Checklist —
+- **New in session 39, still pending human action:** the 5-item Manual Verification Checklist —
   see `/close` section above. No Final Close Report yet for cycle 2.
-- No feature/issue work happened this session — every item below is unchanged from session 38.
+- No other feature/issue work happened in session 39 — every item below is unchanged from session 38.
 - No new milestone/epic has been scoped yet for what comes after M13 — the roadmap's own Phase 5
   (AI & advanced: molecular/blood bank packs, digital pathology) is the one clearly-unstarted major
   direction; #546 (AI-assisted synoptic pre-fill, deferred from EPIC-012) is a real, already-filed

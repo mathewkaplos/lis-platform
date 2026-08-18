@@ -51,13 +51,19 @@ export function InvoiceView({ invoice }: { invoice: Invoice }) {
     }
   }, [state.status, router]);
 
-  const balanceDueCents =
-    invoice.totalCents -
-    // The server is the source of truth for status; balance shown here is
-    // derived only for display, never used to decide whether payment is
-    // still possible (the API's own 400 on an already-paid invoice is the
-    // real guard).
-    (invoice.status === 'paid' ? invoice.totalCents : 0);
+  // The real remaining balance, from the API's own `PaymentService
+  // .getPaidCents`-derived field -- never recomputed client-side from
+  // `invoice.status` alone, which only has three coarse buckets
+  // (unpaid/partial/paid) and can't distinguish "$10 left" from "$200
+  // left" on a partially-paid invoice. This was a real, confirmed bug:
+  // the previous `totalCents - (status === 'paid' ? totalCents : 0)`
+  // formula defaulted to the *full* total on every partial invoice, and
+  // nothing server-side stopped that wrong amount from actually being
+  // charged. The server remains the real guard (a 400 on any amount
+  // exceeding this balance) -- `balanceDueCents` here only drives the
+  // form's default and its `max`, both a UX convenience, not the
+  // authoritative check.
+  const balanceDueCents = invoice.balanceDueCents;
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
@@ -131,6 +137,11 @@ export function InvoiceView({ invoice }: { invoice: Invoice }) {
                   name="amountCentsDollars"
                   step="0.01"
                   min="0.01"
+                  // A UX guard only (blocks the native browser submit) --
+                  // the server's own check in `recordPayment` is the real
+                  // authority, since `max` alone would do nothing against
+                  // a direct API call or a stale/tampered value.
+                  max={(balanceDueCents / 100).toFixed(2)}
                   required
                   defaultValue={(balanceDueCents / 100).toFixed(2)}
                   onChange={(e) => {

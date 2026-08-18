@@ -2354,6 +2354,8 @@ export interface components {
             /** @enum {string} */
             status: "unpaid" | "partial" | "paid";
             totalCents: number;
+            amountPaidCents: number;
+            balanceDueCents: number;
             /** @enum {string} */
             payerType: "cash" | "corporate";
             /** Format: uuid */

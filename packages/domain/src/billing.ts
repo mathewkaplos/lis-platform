@@ -73,6 +73,16 @@ export const invoiceSchema = z.object({
   patientId: z.uuid(),
   status: invoiceStatusSchema,
   totalCents: z.number().int(),
+  // Derived from the sum of `succeeded` payment rows (never stored) --
+  // `PaymentService.getPaidCents`, apps/api/src/billing/payment.service.ts
+  // -- the single source of truth the take-payment form uses to default to
+  // the real remaining balance instead of the invoice's full total. Fixes
+  // a real, confirmed bug: without these fields the frontend had no way to
+  // tell "partial with $10 left" from "partial with $200 left" and
+  // defaulted to the full total on every partial invoice, which a missing
+  // server-side guard then let through as a real overpayment.
+  amountPaidCents: z.number().int(),
+  balanceDueCents: z.number().int(),
   payerType: invoicePayerTypeSchema,
   referringFacilityId: z.uuid().nullable(),
   createdAt: z.iso.datetime(),

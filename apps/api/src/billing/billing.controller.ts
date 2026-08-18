@@ -29,7 +29,7 @@ import { RequireCapability } from '../auth/require-capability.decorator';
 import type { RequestWithTx } from '../auth/tenant-context.interceptor';
 import { TenantContextInterceptor } from '../auth/tenant-context.interceptor';
 import { BillingService } from './billing.service';
-import { PaymentService } from './payment.service';
+import { getPaidCents, PaymentService } from './payment.service';
 
 const orderIdParamSchema = z.object({ id: z.uuid() });
 const invoiceIdParamSchema = z.object({ id: z.uuid() });
@@ -64,6 +64,7 @@ function toInvoiceLineItemDto(row: typeof invoiceLineItem.$inferSelect) {
 function toInvoiceDto(
   row: typeof invoice.$inferSelect,
   lineItems: (typeof invoiceLineItem.$inferSelect)[],
+  paidCents: number,
 ): Invoice {
   return {
     ...row,
@@ -76,6 +77,10 @@ function toInvoiceDto(
     payerType: row.payerType as Invoice['payerType'], // CHECK-constrained (ck_invoice_payer_type)
     createdAt: row.createdAt.toISOString(),
     lineItems: lineItems.map(toInvoiceLineItemDto),
+    // `PaymentService.getPaidCents`'s own real sum -- never a second,
+    // independently-maintained computation of the same number.
+    amountPaidCents: paidCents,
+    balanceDueCents: row.totalCents - paidCents,
   };
 }
 function toPaymentDto(row: typeof payment.$inferSelect) {
@@ -126,7 +131,9 @@ export class BillingController {
 
     return {
       resourceId: invoiceRow.id,
-      after: toInvoiceDto(invoiceRow, lineItems),
+      // A just-generated invoice has no payments yet -- `0`, not a query,
+      // same reasoning as not re-deriving `totalCents` from a fresh read.
+      after: toInvoiceDto(invoiceRow, lineItems, 0),
     };
   }
 
@@ -151,7 +158,8 @@ export class BillingController {
       .select()
       .from(invoiceLineItem)
       .where(eq(invoiceLineItem.invoiceId, id));
-    return toInvoiceDto(invoiceRow, lineItems);
+    const paidCents = await getPaidCents(tx, id);
+    return toInvoiceDto(invoiceRow, lineItems, paidCents);
   }
 
   @Post('v1/invoices/:id/payments')

@@ -6943,6 +6943,16 @@
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
           },
+          "amountPaidCents": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "balanceDueCents": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
           "payerType": {
             "type": "string",
             "enum": [
@@ -7033,6 +7043,8 @@
           "patientId",
           "status",
           "totalCents",
+          "amountPaidCents",
+          "balanceDueCents",
           "payerType",
           "referringFacilityId",
           "createdAt",

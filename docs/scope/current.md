@@ -1,9 +1,35 @@
 # Status — 2026-08-18 (session 40)
 
-Last commit on main: `714890f` (`lis-platform`) — `lis-engineering`'s tip is `e90987a`. Check
+Last commit on main: `e58f243` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908`. Check
 `git log origin/main -5` for the real current tip if this has drifted.
 
-## Session 40 — unexplained dirty repo at orient, resolved as PR #602
+## Session 40 — TASK-440: specimen expiry tracking + reflex recollection fallback (issue #440)
+
+Picked from the backlog during `/orient`'s Engineering Action Plan: every milestone-tagged open
+issue (M13's 8 EPIC-012 follow-ups, M10's #489) was gated on external design-partner/product input
+not yet available; #440 (filed from FEAT-030's own proposal, `engineering/workflow-engine` Skill
+entry #6) was the one real, self-contained, engineering-ready item — KB-25's reflex/cascade
+sub-engine spec says an exhausted/expired specimen should raise a recollection instead of silently
+linking, and `specimen` had no expiry field of any kind to check.
+
+Implementation Proposal `docs/plans/task-440-specimen-expiry-tracking.md` (APPROVED, all 3 §10
+questions resolved as recommended: volume/exhaustion tracking cut from this pass — needs a real
+consumption ledger that doesn't exist anywhere in this codebase; `expiresAt` caller-supplied only,
+no stability-window catalog; audit action `ordered_test.reflex_recollection_required`). PR #605
+(`feat: specimen expiry tracking + reflex recollection fallback`) — adds nullable
+`specimen.expiresAt`; `AddReflexTest` now raises a recollection (a fresh `ordered_test` row,
+`status: 'ordered'`, no `specimen_fulfillment` row) instead of linking to an expired specimen,
+deliberately reusing the exact predicate the existing Collection Queue screen already renders on
+(zero new UI/table). New e2e case proves the full path — recollection row shape, appears on the
+real `GET /v1/orders?status=ordered` query, distinct audit action, idempotent under redelivery.
+Full `apps/api` e2e suite (65 files/510 tests) verified clean against a freshly reset local DB;
+existing direct-link reflex behavior unchanged. `openapi.json`/SDK regenerated as the last step.
+Merged as `e58f243`; issue #440 auto-closed via the PR's `Closes #440` line (confirmed, not
+assumed). `lis-engineering`'s `workflow-engine` Skill entry #6 updated with a follow-up note
+(direct commit `9dc9908`, matching this repo's Skill-update convention). Branch deleted locally
+and on origin.
+
+## Session 40 (earlier) — unexplained dirty repo at orient, resolved as PR #602
 
 `/orient` found `lis-platform` dirty at session start: 4 modified pages + 3 new `error.tsx` files
 adding explicit 403 (permission-denied) handling to `cases`, `cases/[caseId]` (incl. the WSI slide
@@ -116,6 +142,11 @@ for this second cycle is still owed once that's resolved.
 
 ## Carried into next session
 
+- **New this session (40):** TASK-440 (specimen expiry + reflex recollection) merged as PR #605
+  (`e58f243`), issue #440 closed — see session 40 section above. Nothing owed from this item.
+  Volume/exhaustion tracking was deliberately cut from scope (§10 Q1) — a real, separate follow-up
+  if a future session wants to pick it up, but no issue filed for it yet (the human's own call was
+  to wait for real usage data first, not pre-file speculative scope).
 - **New this session (40):** PR #602 (403 handling + error boundaries for cases/invoice detail
   pages) merged as `714890f`, live-verified in a real browser same session — see session 40
   section above. Nothing owed from this item; the "3 of 4 routes have no capability gate" finding
@@ -134,7 +165,6 @@ for this second cycle is still owed once that's resolved.
   open, unstarted, unchanged.
 - M6's own remaining item (FEAT-027) is still blocked on the design partner naming their actual
   instrument, unchanged.
-- Issue #440 (specimen exhaustion/expiry tracking) remains open, unstarted, unchanged.
 - Issues #427 (backfill missing M1-M5 retrospectives), #267 (pnpm-workspace config ignored in CI)
   both remain open, untouched since filed.
 - Deliberately-deferred M11/M12 follow-ups remain open, tracked, not blocking (#506, #507, #509,

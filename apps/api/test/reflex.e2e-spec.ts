@@ -146,7 +146,8 @@ describe('Reflex rules (e2e)', () => {
    * createPreliminaryObservation, parametrized to the test being ordered. */
   async function createFixture(
     testDefinitionId: string,
-  ): Promise<{ orderedTestId: string; specimenId: string }> {
+    specimenExpiresAt?: Date,
+  ): Promise<{ orderedTestId: string; specimenId: string; patientId: string }> {
     const [pat] = await db
       .insert(patient)
       .values({
@@ -177,13 +178,14 @@ describe('Reflex rules (e2e)', () => {
         accessionNumber: `REFLEX-E2E-ACC-${Date.now()}-${randomUUID()}`,
         specimenType: 'blood_edta',
         status: 'received',
+        expiresAt: specimenExpiresAt,
       })
       .returning();
     await db
       .insert(specimenFulfillment)
       .values({ tenantId: TENANT_A, specimenId: sp.id, orderedTestId: ot.id });
 
-    return { orderedTestId: ot.id, specimenId: sp.id };
+    return { orderedTestId: ot.id, specimenId: sp.id, patientId: pat.id };
   }
 
   async function verifyTsh(
@@ -297,6 +299,116 @@ describe('Reflex rules (e2e)', () => {
       );
     await app.get(OutboxRelayService).tick();
 
+    const afterRedelivery = await db
+      .select()
+      .from(orderedTest)
+      .where(eq(orderedTest.parentOrderedTestId, orderedTestId));
+    expect(afterRedelivery).toHaveLength(1); // still exactly one, no duplicate
+  });
+
+  it('raises a recollection instead of linking when the specimen is expired (TASK-440, issue #440)', async () => {
+    await publishRule([
+      {
+        id: `reflex-tsh-ft4-${randomUUID()}`,
+        on: 'ObservationVerified',
+        when: { field: 'valueNum', op: 'gt', value: 5.0 },
+        do: { command: 'AddReflexTest', testCode: FT4_CODE },
+      },
+    ]);
+
+    const expiredAt = new Date(Date.now() - 60 * 60 * 1000); // 1h in the past
+    const { orderedTestId, patientId } = await createFixture(
+      tshTestDefinitionId,
+      expiredAt,
+    );
+    await verifyTsh(orderedTestId, 6.0); // > 5.0 -- triggers the reflex
+
+    await app.get(OutboxRelayService).tick();
+
+    const reflexRows = await db
+      .select()
+      .from(orderedTest)
+      .where(
+        and(
+          eq(orderedTest.tenantId, TENANT_A),
+          eq(orderedTest.parentOrderedTestId, orderedTestId),
+        ),
+      );
+    expect(reflexRows).toHaveLength(1);
+    const reflex = reflexRows[0];
+    expect(reflex.testDefinitionId).toBe(ft4TestDefinitionId);
+    // Recollection, not a direct link: 'ordered', same status a fresh
+    // ordered_test starts at -- this is exactly what makes it appear on the
+    // real Collection Queue query below.
+    expect(reflex.status).toBe('ordered');
+
+    // No specimen_fulfillment row -- proves this did NOT link to the
+    // (expired) existing specimen.
+    const fulfillmentRows = await db
+      .select()
+      .from(specimenFulfillment)
+      .where(eq(specimenFulfillment.orderedTestId, reflex.id));
+    expect(fulfillmentRows).toHaveLength(0);
+
+    // Appears on the real Collection Queue query
+    // (apps/web/app/(app)/collection-queue/page.tsx's own predicate: at
+    // least one orderedTest row still status 'ordered' on
+    // GET /v1/orders?status=ordered), proving the reuse claim is real, not
+    // assumed. Scoped to this fixture's own patientId -- `/v1/orders`
+    // search has a fixed-cap result set with no cursor pagination
+    // (order.controller.ts's own doc comment, `engineering/api-design`
+    // entry #4, still deferred), so an unscoped query is flaky under a full
+    // suite run with many other tests' orders competing for the cap.
+    const [reflexOrder] = await db
+      .select({ orderId: orderedTest.orderId })
+      .from(orderedTest)
+      .where(eq(orderedTest.id, reflex.id));
+    const collectionQueueRes = await request(app.getHttpServer())
+      .get('/v1/orders')
+      .query({ status: 'ordered', patientId })
+      .set('Authorization', `Bearer ${verifierToken}`)
+      .expect(200);
+    const ordersOnQueue = collectionQueueRes.body as Array<{
+      id: string;
+      orderedTests: Array<{ id: string; status: string }>;
+    }>;
+    const matchedOrder = ordersOnQueue.find(
+      (o) => o.id === reflexOrder.orderId,
+    );
+    expect(matchedOrder).toBeDefined();
+    expect(
+      matchedOrder?.orderedTests.some(
+        (t) => t.id === reflex.id && t.status === 'ordered',
+      ),
+    ).toBe(true);
+
+    // Audited with the distinct recollection action, not reflex_create.
+    const auditRows = await db
+      .select()
+      .from(auditEvent)
+      .where(
+        and(
+          eq(auditEvent.tenantId, TENANT_A),
+          eq(auditEvent.resourceType, 'ordered_test'),
+          eq(auditEvent.resourceId, reflex.id),
+          eq(auditEvent.action, 'ordered_test.reflex_recollection_required'),
+        ),
+      );
+    expect(auditRows).toHaveLength(1);
+    expect(auditRows[0].actorType).toBe('service');
+
+    // Idempotent under redelivery, same as the direct-link branch.
+    await db
+      .update(outboxEvent)
+      .set({ status: 'pending' })
+      .where(
+        and(
+          eq(outboxEvent.tenantId, TENANT_A),
+          eq(outboxEvent.eventType, 'ObservationVerified'),
+          sql`${outboxEvent.payload}->>'orderedTestId' = ${orderedTestId}`,
+        ),
+      );
+    await app.get(OutboxRelayService).tick();
     const afterRedelivery = await db
       .select()
       .from(orderedTest)

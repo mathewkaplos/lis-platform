@@ -40,6 +40,12 @@ export const specimen = pgTable(
     collectionContext: jsonb("collection_context"), // fasting/tourniquet-time/etc — KB-06's JSONB carve-out, not a clinical value
     collectedAt: timestamp("collected_at", { withTimezone: true }),
     receivedAt: timestamp("received_at", { withTimezone: true }),
+    // TASK-440 (issue #440, KB-25 reflex/cascade sub-engine): caller-supplied
+    // only -- no specimenType-keyed stability-window catalog exists to
+    // auto-derive this from (domain/specimen-lifecycle Skill entry #4,
+    // specimenType is uncontrolled free text). Null means "not tracked",
+    // identical to today's behavior (AddReflexTest always links directly).
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

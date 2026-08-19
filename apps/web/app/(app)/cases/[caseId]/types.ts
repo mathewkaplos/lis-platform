@@ -75,3 +75,12 @@ export interface UpdateNarrativeState {
 export const updateNarrativeInitialState: UpdateNarrativeState = {
   status: 'idle',
 };
+
+export interface ReturnToScreeningState {
+  status: 'idle' | 'submitting' | 'done' | 'error';
+  formError?: string;
+}
+
+export const returnToScreeningInitialState: ReturnToScreeningState = {
+  status: 'idle',
+};

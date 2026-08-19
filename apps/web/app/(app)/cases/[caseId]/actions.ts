@@ -8,6 +8,7 @@ import type {
   AddOrderedTestState,
   AddSlideState,
   AmendCaseState,
+  ReturnToScreeningState,
   ScreenCaseState,
   SignOutCaseState,
   UpdateNarrativeState,
@@ -428,6 +429,62 @@ export async function updateNarrative(
     return {
       status: 'error',
       formError: 'Something went wrong saving the narrative. Please try again.',
+    };
+  }
+
+  revalidatePath(`/cases/${caseId}`);
+  return { status: 'done' };
+}
+
+/**
+ * Issue #639. `POST /v1/cases/:id/return-to-screening` has no `@ZodResponse`
+ * (same `AuditInterceptor`-wraps-every-response situation `updateNarrative`
+ * above already documents) -- a raw `fetch`, not the typed `@lis/sdk`
+ * client. No `step_up_required` branch -- this route has no
+ * `@RequireStepUp()`, same as `screenCase`.
+ */
+export async function returnToScreening(
+  _prevState: ReturnToScreeningState,
+  formData: FormData,
+): Promise<ReturnToScreeningState> {
+  const caseId = String(formData.get('caseId') ?? '');
+  const reason = String(formData.get('reason') ?? '').trim();
+  if (!reason) {
+    return { status: 'error', formError: 'Enter a reason for returning this case to screening.' };
+  }
+
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    return { status: 'error', formError: 'Your session has expired — please log in again.' };
+  }
+
+  const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
+  const res = await fetch(`${baseUrl}/v1/cases/${caseId}/return-to-screening`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ reason }),
+  });
+
+  if (!res.ok) {
+    if (res.status === 403) {
+      return {
+        status: 'error',
+        formError: 'You do not have permission to return this case to screening.',
+      };
+    }
+    if (res.status === 400) {
+      const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+      return {
+        status: 'error',
+        formError: body?.detail ?? 'This case cannot be returned to screening right now.',
+      };
+    }
+    return {
+      status: 'error',
+      formError: 'Something went wrong returning this case to screening. Please try again.',
     };
   }
 

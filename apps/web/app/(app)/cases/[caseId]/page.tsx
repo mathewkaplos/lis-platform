@@ -10,6 +10,7 @@ import { AddOrderedTestForm } from './add-ordered-test-form';
 import { AddSlideForm } from './add-slide-form';
 import { AmendCaseForm } from './amend-case-form';
 import { NarrativeForm } from './narrative-form';
+import { ReturnToScreeningForm } from './return-to-screening-form';
 import { ScreenCaseForm } from './screen-case-form';
 import { SignOutCaseForm } from './sign-out-case-form';
 import { UploadWsiForm } from './upload-wsi-form';
@@ -188,6 +189,17 @@ export default async function CaseDetailPage({
           </CardHeader>
           <CardContent>
             <ScreenCaseForm caseId={id} />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {caseData.status === 'pending_review' && hasVerifierRole(session) ? (
+        <Card className="mx-auto w-full max-w-3xl">
+          <CardHeader>
+            <CardTitle>Return to screening</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ReturnToScreeningForm caseId={id} />
           </CardContent>
         </Card>
       ) : null}

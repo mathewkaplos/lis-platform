@@ -350,10 +350,12 @@ for this second cycle is still owed once that's resolved.
   pass. **BUG-CYTO-01, now filed as issue #613** (M13): both `signed_out` and `amended` cases
   vanish from the Cases list (default `?status=` filter excludes both, no UI ever sets it) — cheap
   P3 fix recommended in the issue itself (a "completed" tab using the parameter that already
-  exists), not yet picked up. Amendment backend confirmed
-  correct (3-version chained supersession, real DB trigger, verified not assumed) but has zero UI,
-  same as every other AP mutation — already covered by issue #610's own list, no new issue needed.
-  Real positive finding worth remembering: a reflex/IHC-ordered test **is** result-enterable
+  exists), not yet picked up. Amendment backend confirmed correct (3-version chained supersession,
+  real DB trigger, verified not assumed) but has zero UI; broken out from issue #610's own list
+  into its own dedicated issue #615 (M13) once the human asked for it, carrying the actual verified
+  testing detail (RBAC/step-up/wrong-state all confirmed, not just guard-code reads) rather than
+  #610's original one-line mention. Real positive finding worth remembering: a reflex/IHC-ordered
+  test **is** result-enterable
   through the existing generic (`/orders/[id]/results`) screen, once ordered via API — a
   half-closed corner of the "no result entry UI" gap, not the whole thing. Test data added this
   round left in place, tagged (`AMENDQA NotSignedOut`, two new report versions, one reflex-ordered

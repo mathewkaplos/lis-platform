@@ -1,23 +1,24 @@
 # Status — 2026-08-19 (session 40, continued)
 
-Last commit on main: `fae7525` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
-this leg). Since the AP testing passes below (pure QA, no code touched), seven issues broken out
+Last commit on main: `beadef3` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
+this leg). Since the AP testing passes below (pure QA, no code touched), eight issues broken out
 of #610 were each filed, planned, implemented, and merged this session: issue #613 as PR #617
 (Cases list status-filter tabs, breadcrumb PR #618); issue #615 as PR #619 (case amendment browser
 UI, breadcrumb PR #620); issue #621 as PR #622 (case sign-out/finalize browser UI, breadcrumb PR
 #623); issue #624 as PR #625 (cytology two-tier screening browser UI, breadcrumb PR #626); issue
 #627 as PR #628 (block/slide creation browser UI, breadcrumb PR #629); issue #630 as PR #631
-(block-level reflex/add-on test ordering browser UI, breadcrumb PR #632); and **issue #633 as PR
-#634** (case/specimen accessioning browser UI) — see updated bullet below. A histology case can go
-accessioned → signed_out → amended entirely through the browser; a cytology case can go
-accessioned → pending_review → signed_out → amended entirely through the browser; a case's own
-block/slide hierarchy can be built out in the browser; a reflex/add-on test can be ordered onto a
-block from the browser, immediately result-enterable via the existing generic results screen; and
-**a case can now be created from scratch in the browser too** (`/cases/new?orderId=`), closing the
-loop on the entire chain — the full AP path (accession → build out specimen hierarchy → screen if
-cytology → sign out → amend) is now genuinely browser-reachable end to end for a simple case with
-no synoptic/gross-narrative needs. Check `git log origin/main -5` for the real current tip if this
-has drifted.
+(block-level reflex/add-on test ordering browser UI, breadcrumb PR #632); issue #633 as PR #634
+(case/specimen accessioning browser UI, breadcrumb PR #635); and **issue #636 as PR #637**
+(gross/microscopic/diagnosis narrative entry — the first of these eight requiring new schema, not
+just a thin UI layer) — see updated bullet below. A histology case can go accessioned →
+signed_out → amended entirely through the browser; a cytology case can go accessioned →
+pending_review → signed_out → amended entirely through the browser; a case's own block/slide
+hierarchy can be built out in the browser; a reflex/add-on test can be ordered onto a block from
+the browser, immediately result-enterable via the existing generic results screen; a case can be
+created from scratch in the browser (`/cases/new?orderId=`); and **a pathologist can now enter and
+persist gross/microscopic/diagnosis narrative on a case, correctly captured into the signed report
+at finalize/amend time**. Check `git log origin/main -5` for the real current tip if this has
+drifted.
 
 ## Session 40 (continued) — AP full acceptance pass #4: Amendments, Reflex/IHC, Reporting
 
@@ -597,12 +598,59 @@ for this second cycle is still owed once that's resolved.
   accession → build out the specimen hierarchy (blocks/slides) → screen if cytology → sign out →
   amend, with reflex/add-on tests orderable at any point along the way — is now genuinely
   browser-reachable end to end for a simple case with no synoptic-data-entry or
-  gross/microscopic-narrative needs (both still require new backend/schema work, not just UI, and
-  remain the two largest items left on #610's own list, along with report/PDF viewing and the
-  cytology reviewer queue). **New test data from this session's #633 work, left in place, not
-  cleaned up:** two fresh tenant-A orders/cases under patients "ACCESSIONQA WebVerify" (accession
-  number `260819-000754`, two parts: `tissue` + `cervical_cytology`, both still `accessioned`, no
-  blocks) and "ACCESSIONQA2 RejectTest" (one `rejected`-status `tissue` part).
+  gross/microscopic-narrative needs. The narrative half of that gap **now itself filed, researched,
+  planned, implemented, and merged the same session as issue #636 (PR #637)**, see its own bullet
+  immediately below; synoptic-data-entry, report/PDF viewing, and the cytology reviewer queue
+  remain the largest items left on #610's own list. **New test data from this session's #633 work,
+  left in place, not cleaned up:** two fresh tenant-A orders/cases under patients "ACCESSIONQA
+  WebVerify" (accession number `260819-000754`, two parts: `tissue` + `cervical_cytology`, both
+  still `accessioned`, no blocks) and "ACCESSIONQA2 RejectTest" (one `rejected`-status `tissue`
+  part).
+- **New this session: issue #636 filed, researched, planned, implemented, and merged as PR #637
+  (`Closes #636`).** Gross/microscopic/diagnosis narrative entry — the eighth AP slice this
+  session, and the first requiring real new backend/schema work rather than a thin UI layer over an
+  already-correct backend. Preceded by a dedicated forked research pass (not just a plan) because
+  no existing mechanism in this codebase persisted per-case AP narrative text at all — confirmed
+  directly: `case_report_version.includedContent` is a provenance snapshot with no draft state;
+  `report_template_version`'s `richText` field is static per-template chrome, identical across
+  every case; the generic `observation` table needs an `orderedTestId` anchor that has no
+  case-level equivalent, a gap FEAT-058's own proposal (§10 Q3) raised and deferred to FEAT-059,
+  which shipped without resolving it. Every claim from that research pass was independently
+  re-verified against the live checkout during planning (per this project's own "never draft from
+  a summary alone" discipline) — and that re-verification caught something the research missed:
+  `CaseReportContent` (`packages/db/src/case-report-signature.ts`) is a closed three-key
+  TypeScript interface, so folding narrative into the signed content needed a real type change, not
+  just a data change. Shipped: a new `case_narrative` table (1:1 with `case`, deliberately mutable
+  — no append-only trigger, unlike every other AP table), `PUT /v1/cases/:id/narrative`
+  (`manage_specimens`-gated, upsert via `onConflictDoUpdate` — a genuinely new pattern for this
+  codebase, justified by a real concurrent-save race no single-shot AP mutation has ever had to
+  handle before), folded into `GET /v1/cases/:id`'s own lineage response the same way
+  `wholeSlideImage` already is, and a new "Narrative" card on the case detail page (three
+  `<textarea>`s, always visible/editable regardless of case status). `buildCaseReportContent()`
+  extended to snapshot — never reference — the current narrative into
+  `case_report_version.includedContent` at finalize/amend time, proven by a real new e2e test, not
+  just reasoned about: finalize with narrative A, edit to B, confirm the *already-signed* v1's own
+  `includedContent` still shows A; amend afterward correctly captures B in the new v2. **A second
+  real course-correction caught during implementation, worth remembering for future
+  `@Audit()`-decorated routes:** the proposal's own plan to add `@ZodResponse` to the new route
+  (reasoning: "the response shape is simple and fully known upfront") was wrong and fixed before
+  shipping — `AuditInterceptor` (`apps/api/src/auth/audit.interceptor.ts:82`) wraps *every*
+  `@Audit()` route's return value into `{resourceId, before, after, actorRole}` before it reaches
+  the client, the exact same reason `addBlock`/`addSlide`/`addOrderedTest` all leave their own
+  responses undocumented too — a real, previously-unstated architectural rule now written down
+  here for the next session that adds an audited mutation route. All four scope questions from the
+  research pass shipped exactly as the human approved (recommended defaults): single
+  `manage_specimens` capability for all three fields (not split with `verify` for diagnosis); a new
+  table (not bare columns on `case`); narrative stays editable at any case status, including after
+  sign-out (finalize/amend just snapshot whatever's current); exactly gross/microscopic/diagnosis,
+  no Clinical History/Comment this pass. Regression-checked: `case.e2e-spec.ts` (8/8) and
+  `cytology-two-tier.e2e-spec.ts` + `reflex-block.e2e-spec.ts` (9/9) all still pass unchanged.
+  Live-verified in a real browser: the Narrative card renders for a `manage_specimens`-granted
+  user and not for a no-role user; values persist correctly across a reload; a save that only edits
+  one field leaves the other two untouched. **New test data from this session's #636 work, left in
+  place, not cleaned up:** narrative text saved on the existing tenant-A case `260819-000753`
+  ("BLOCKQA1 WebVerify", from #627's own test data) — gross/microscopic/diagnosis all set to
+  browser-verification text, diagnosis further overwritten once to confirm the partial-update path.
 - **New this session:** TASK-440 (specimen expiry + reflex recollection) merged as PR #605
   (`e58f243`), issue #440 closed — see session 40 section above. Nothing owed from this item.
   Volume/exhaustion tracking was deliberately cut from scope (§10 Q1) — a real, separate follow-up

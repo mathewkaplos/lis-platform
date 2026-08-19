@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getValidAccessToken } from '@/auth/access-token';
-import type { AmendCaseState, UploadWholeSlideImageState } from './types';
+import type { AmendCaseState, SignOutCaseState, UploadWholeSlideImageState } from './types';
 
 /**
  * FEAT-067 (docs/plans/feat-067-wsi-viewer.md). `POST /v1/whole-slide-
@@ -121,6 +121,55 @@ export async function amendCase(
     return {
       status: 'error',
       formError: 'Something went wrong submitting this amendment. Please try again.',
+    };
+  }
+
+  revalidatePath(`/cases/${caseId}`);
+  return { status: 'done' };
+}
+
+/**
+ * Issue #621. `POST /v1/cases/:id/finalize` has no `@ZodResponse` and no
+ * request body -- same raw-`fetch` precedent as `amendCase` above, minus a
+ * form field to read. Second real caller (after `amendCase`) of the
+ * `step_up=1` redirect -- same branch, already proven working end-to-end by
+ * issue #615's own live browser verification.
+ */
+export async function signOutCase(
+  _prevState: SignOutCaseState,
+  formData: FormData,
+): Promise<SignOutCaseState> {
+  const caseId = String(formData.get('caseId') ?? '');
+
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    return { status: 'error', formError: 'Your session has expired — please log in again.' };
+  }
+
+  const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
+  const res = await fetch(`${baseUrl}/v1/cases/${caseId}/finalize`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!res.ok) {
+    if (res.status === 403) {
+      const body = (await res.json().catch(() => null)) as { code?: string } | null;
+      if (body?.code === 'step_up_required') {
+        redirect(`/api/auth/login?step_up=1&rd=${encodeURIComponent(`/cases/${caseId}`)}`);
+      }
+      return { status: 'error', formError: 'You do not have permission to sign out this case.' };
+    }
+    if (res.status === 400) {
+      const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+      return {
+        status: 'error',
+        formError: body?.detail ?? 'This case cannot be signed out right now.',
+      };
+    }
+    return {
+      status: 'error',
+      formError: 'Something went wrong signing out this case. Please try again.',
     };
   }
 

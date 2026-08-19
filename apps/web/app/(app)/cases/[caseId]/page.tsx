@@ -2,8 +2,13 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Badge, Card, CardContent, CardHeader, CardTitle } from '@lis/ui';
 import { getValidAccessToken } from '@/auth/access-token';
+import { getSession } from '@/auth/get-session';
+import { hasVerifierRole } from '@/auth/roles';
 import { createLisApiClient } from '@/lib/api-client';
+import { AmendCaseForm } from './amend-case-form';
 import { UploadWsiForm } from './upload-wsi-form';
+
+const AMENDABLE_STATUSES = new Set(['signed_out', 'amended']);
 
 /**
  * FEAT-067 (docs/plans/feat-067-wsi-viewer.md). The minimal case UI this
@@ -32,7 +37,7 @@ export default async function CaseDetailPage({
   params: Promise<{ caseId: string }>;
 }) {
   const { caseId: id } = await params;
-  const accessToken = await getValidAccessToken();
+  const [accessToken, session] = await Promise.all([getValidAccessToken(), getSession()]);
   if (!accessToken) {
     throw new Error('Your session has expired — please log in again.');
   }
@@ -50,6 +55,13 @@ export default async function CaseDetailPage({
   if (!response.ok || !caseData) {
     throw new Error('Something went wrong loading this case. Please try again.');
   }
+
+  const isAmendable = AMENDABLE_STATUSES.has(caseData.status);
+  const reportVersions = isAmendable
+    ? await client
+        .GET('/v1/cases/{id}/report-versions', { params: { path: { id } } })
+        .then(({ data }) => data?.items ?? [])
+    : [];
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
@@ -121,6 +133,45 @@ export default async function CaseDetailPage({
           )}
         </CardContent>
       </Card>
+
+      {isAmendable ? (
+        <Card className="mx-auto w-full max-w-3xl">
+          <CardHeader>
+            <CardTitle>Report versions</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {reportVersions.length === 0 ? (
+              <p className="text-sm text-text-secondary">No report versions found.</p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {reportVersions.map((version) => (
+                  <li
+                    key={version.id}
+                    className="flex flex-col gap-1 rounded-md border border-border p-3 text-sm"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-foreground">
+                        Version {version.versionNumber}
+                      </span>
+                      <Badge variant={version.status === 'final' ? 'default' : 'outline'}>
+                        {version.status}
+                      </Badge>
+                    </div>
+                    <p className="text-text-secondary">
+                      Signed by {version.signedByRole} on{' '}
+                      {new Date(version.signedAt).toLocaleString()}
+                    </p>
+                    {version.reason ? (
+                      <p className="text-text-secondary">Reason: {version.reason}</p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {hasVerifierRole(session) ? <AmendCaseForm caseId={id} /> : null}
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

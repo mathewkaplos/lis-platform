@@ -12,3 +12,12 @@ export interface UploadWholeSlideImageState {
 export const uploadWholeSlideImageInitialState: UploadWholeSlideImageState = {
   status: 'idle',
 };
+
+export interface AmendCaseState {
+  status: 'idle' | 'submitting' | 'done' | 'error';
+  formError?: string;
+}
+
+export const amendCaseInitialState: AmendCaseState = {
+  status: 'idle',
+};

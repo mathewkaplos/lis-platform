@@ -47,6 +47,7 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
   let tokenA: string; // test-user: technologist, tenant A -- manage_specimens only
   let tokenVerifier: string; // test-user-4: technologist+verifier, tenant A -- has `verify`
   let noRoleToken: string; // test-user-3: no realm role, tenant A
+  let tokenB: string; // test-user-2: verifier, tenant B -- for cross-tenant isolation (issue #615)
   let patientId: string;
   let testDefinitionId: string;
 
@@ -129,7 +130,7 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
     app = moduleFixture.createNestApplication();
     await app.init();
 
-    [tokenA, tokenVerifier, noRoleToken] = await Promise.all([
+    [tokenA, tokenVerifier, noRoleToken, tokenB] = await Promise.all([
       getKeycloakToken('test-user', 'test-password'),
       // Real Authorization Code + PKCE flow, not Direct Grant -- the
       // finalize/amend positive paths need a genuinely fresh `auth_time`,
@@ -137,6 +138,7 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
       // get-keycloak-fresh-token.ts's own header comment).
       getKeycloakFreshToken('test-user-4', 'test-password-4'),
       getKeycloakToken('test-user-3', 'test-password-3'),
+      getKeycloakToken('test-user-2', 'test-password-2'),
     ]);
 
     const patientRes = await request(app.getHttpServer())
@@ -341,5 +343,91 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .send({ reason: 'should be rejected before reaching any amend logic' })
       .expect(403);
+  });
+
+  describe('GET /v1/cases/:id/report-versions (issue #615)', () => {
+    it('returns the full version chain newest-first, correctly reflecting a real sign-out -> amend -> amend chain', async () => {
+      const caseId = await createFinalizableCase();
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/finalize`)
+        .set('Authorization', `Bearer ${tokenVerifier}`)
+        .expect(200);
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/amend`)
+        .set('Authorization', `Bearer ${tokenVerifier}`)
+        .send({ reason: 'first amendment' })
+        .expect(200);
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/amend`)
+        .set('Authorization', `Bearer ${tokenVerifier}`)
+        .send({ reason: 'second amendment' })
+        .expect(200);
+
+      const res = await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/report-versions`)
+        .set('Authorization', `Bearer ${tokenVerifier}`)
+        .expect(200);
+      const body = res.body as {
+        items: {
+          versionNumber: number;
+          status: string;
+          amendmentOf: string | null;
+          supersededBy: string | null;
+          reason: string | null;
+        }[];
+      };
+
+      if (body.items.length !== 3) {
+        throw new Error(`expected 3 versions, got ${JSON.stringify(body.items)}`);
+      }
+      const [v3, v2, v1] = body.items;
+      if (
+        v3.versionNumber !== 3 ||
+        v2.versionNumber !== 2 ||
+        v1.versionNumber !== 1
+      ) {
+        throw new Error(
+          `expected newest-first ordering [3,2,1], got ${JSON.stringify(body.items.map((i) => i.versionNumber))}`,
+        );
+      }
+      if (v3.status !== 'final' || v3.reason !== 'second amendment') {
+        throw new Error(`expected v3 to be the current final version, got ${JSON.stringify(v3)}`);
+      }
+      if (v2.status !== 'superseded' || v2.supersededBy === null) {
+        throw new Error(`expected v2 superseded by v3, got ${JSON.stringify(v2)}`);
+      }
+      if (v1.status !== 'superseded' || v1.supersededBy === null || v1.amendmentOf !== null) {
+        throw new Error(`expected v1 superseded, no amendmentOf, got ${JSON.stringify(v1)}`);
+      }
+    });
+
+    it('is reachable with only a valid JWT -- no capability required', async () => {
+      const caseId = await createFinalizableCase();
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/finalize`)
+        .set('Authorization', `Bearer ${tokenVerifier}`)
+        .expect(200);
+
+      // noRoleToken has no realm role granting any capability, but this is a
+      // read-only route with no @RequireCapability -- matches getById's own
+      // precedent (case.e2e-spec.ts).
+      await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/report-versions`)
+        .set('Authorization', `Bearer ${noRoleToken}`)
+        .expect(200);
+    });
+
+    it('returns 404 for a case created under a different tenant (RLS), not an empty list', async () => {
+      const caseId = await createFinalizableCase();
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/finalize`)
+        .set('Authorization', `Bearer ${tokenVerifier}`)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/report-versions`)
+        .set('Authorization', `Bearer ${tokenB}`)
+        .expect(404);
+    });
   });
 });

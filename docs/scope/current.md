@@ -1,9 +1,9 @@
 # Status — 2026-08-19 (session 40, continued)
 
-Last commit on main: `9c5114f` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
-this leg). No new commits from either of the two AP testing passes below (pure QA — read-only
-source/route inspection, live browser + API testing, no code touched, `git status` confirmed clean
-before and after both). Check `git log origin/main -5` for the real current tip if this has drifted.
+Last commit on main: `247117f` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
+this leg). Since the AP testing passes below (pure QA, no code touched): issue #615 filed (breadcrumb
+PR #616, merged) and **issue #613 fixed and merged as PR #617** (Cases list status-filter tabs) — see
+new bullet below. Check `git log origin/main -5` for the real current tip if this has drifted.
 
 ## Session 40 (continued) — AP full acceptance pass #4: Amendments, Reflex/IHC, Reporting
 
@@ -347,10 +347,14 @@ for this second cycle is still owed once that's resolved.
   (`https://claude.ai/code/artifact/39d33951-5517-417d-9140-e3aefb7929c0`) and a 4th, consolidated
   full-acceptance pass covering Amendments/Reflex-IHC/Reporting for the first time
   (`https://claude.ai/code/artifact/64c45b7b-460a-4a64-9fe4-577f9afcbcab`). No code changes either
-  pass. **BUG-CYTO-01, now filed as issue #613** (M13): both `signed_out` and `amended` cases
-  vanish from the Cases list (default `?status=` filter excludes both, no UI ever sets it) — cheap
-  P3 fix recommended in the issue itself (a "completed" tab using the parameter that already
-  exists), not yet picked up. Amendment backend confirmed correct (3-version chained supersession,
+  pass. **BUG-CYTO-01, filed as issue #613, now fixed and merged (PR #617, closed the issue via
+  `Closes #613`):** both `signed_out` and `amended` cases were vanishing from the Cases list
+  (default `?status=` filter excludes both, no UI ever set it) — fixed by adding Active/Pending
+  Review/Signed Out/Amended status tabs to `cases/page.tsx`, `searchParams`-driven, same pattern as
+  the worklist home page's own `STAGE_TABS`; no backend change (the API already supported the
+  param). Live-verified in a real browser post-merge: previously-invisible `signed_out` (6) and
+  `amended` (2) cases now correctly appear under their tabs. Nothing owed from this item.
+  Amendment backend confirmed correct (3-version chained supersession,
   real DB trigger, verified not assumed) but has zero UI; broken out from issue #610's own list
   into its own dedicated issue #615 (M13) once the human asked for it, carrying the actual verified
   testing detail (RBAC/step-up/wrong-state all confirmed, not just guard-code reads) rather than

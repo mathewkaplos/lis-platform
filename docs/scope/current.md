@@ -1,10 +1,13 @@
 # Status — 2026-08-19 (session 40, continued)
 
-Last commit on main: `2dddcd0` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
+Last commit on main: `499ec8b` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
 this leg). Since the AP testing passes below (pure QA, no code touched): issue #613 fixed and
-merged as PR #617 (Cases list status-filter tabs, breadcrumb PR #618) and **issue #615 fixed and
-merged as PR #619** (case amendment browser UI) — see updated bullet below. Check
-`git log origin/main -5` for the real current tip if this has drifted.
+merged as PR #617 (Cases list status-filter tabs, breadcrumb PR #618); issue #615 fixed and merged
+as PR #619 (case amendment browser UI, breadcrumb PR #620); and **issue #621 (filed this session,
+broken out of #610) fixed and merged as PR #622** (case sign-out/finalize browser UI) — see updated
+bullet below. A histology case can now go accessioned → signed_out → amended entirely through the
+browser (no synoptic/result-entry needs). Check `git log origin/main -5` for the real current tip
+if this has drifted.
 
 ## Session 40 (continued) — AP full acceptance pass #4: Amendments, Reflex/IHC, Reporting
 
@@ -364,7 +367,9 @@ for this second cycle is still owed once that's resolved.
   content diff) plus a "Report versions" list and a verifier-gated Amend form on the case detail
   page. Deliberately does not add finalize/sign-out UI — Amend only ever renders on a case already
   `signed_out`/`amended` (reachable via issue #613's own Cases-list tabs); building browser
-  sign-out stays issue #610's separately-scoped gap. **Genuinely interesting finding along the
+  sign-out was deliberately deferred as issue #610's own separately-scoped gap — **now itself
+  filed, fixed, and merged the same session as issue #621 (PR #622, `Closes #621`)**, see its own
+  bullet immediately below. **Genuinely interesting finding along the
   way:** `apps/web` had a fully-built step-up re-authentication redirect
   (`/api/auth/login?step_up=1`) that a stale code comment in
   `apps/api/src/auth/step-up-required.exception.ts` claimed was already wired up to "apps/web's own
@@ -388,6 +393,34 @@ for this second cycle is still owed once that's resolved.
   through `260819-000698` range), and one real browser-driven amendment on pre-existing case
   `260818-000141` (now v2/`amended`, reason "web-verify: correction after browser-driven amend
   test").
+- **New this session: issue #621 filed, planned, implemented, and merged as PR #622
+  (`Closes #621`).** Sign-out (finalize) browser UI — the direct prerequisite issue #615's own
+  Amend UI needed but didn't have: before this, the only way to reach `signed_out` at all was a
+  direct API call. Adds a "Sign out" card to the case detail page, the exact sibling of #615's
+  "Amend" card (same verifier gating via `hasVerifierRole`, same `step_up=1` redirect handling —
+  now proven twice, `amendCase` and `signOutCase` both use the identical branch — same raw-`fetch`
+  precedent since `finalize()` has no `@ZodResponse` either). Deliberately does **not** add a
+  "Screen" action for two-tier cytology cases or a client-side lineage-completeness pre-check —
+  both explicitly out of scope per the issue's own text; `finalize()`'s own rejection messages
+  (`"Part ... has no active block"`, `"requires screening before sign-out"`) surface verbatim, not
+  translated to clinician-facing copy. No `apps/api`/domain changes at all — pure frontend wiring
+  against an already-correct, already-e2e-tested backend action. Live-verified in a real browser
+  with a freshly-seeded tissue case (no synoptic/two-tier complexity, deliberately, to isolate this
+  change from #610's still-open scope items): a verifier saw the Sign out card on an
+  incomplete-lineage case, submitted, and got the raw `assertCompleteLineage` message back
+  verbatim with status unchanged; after completing the lineage via API, submitting again with a
+  fresh step-up (a real interactive login, not a stale one) created v1, flipped the case to
+  `signed_out`, and the page correctly swapped to showing the Report versions/Amend UI in its
+  place; a technologist viewing the same non-terminal case saw neither card. **Net effect worth
+  remembering:** a simple histology case (no synoptic, no reflex/IHC, no cytology two-tier) can
+  now go accessioned → signed_out → amended entirely through the browser — the first AP status
+  chain, however narrow, that doesn't require a single direct API call. Everything else on #610's
+  own list (accessioning forms, result/synoptic entry, cytology two-tier screen→review UI, reflex
+  ordering UI, gross/microscopic description entry) remains unbuilt and untouched by this work.
+  **New test data from this session's #621 work, left in place, not cleaned up:** two fresh
+  tenant-A tissue cases under patients "SIGNOUTQA WebVerify" and "SIGNOUTQA2 TechView" (accession
+  numbers `260819-000747`/`260819-000748`) — the first now `signed_out` with a real v1 report
+  version, the second still `accessioned` with an intentionally-incomplete block/slide tree.
 - **New this session:** TASK-440 (specimen expiry + reflex recollection) merged as PR #605
   (`e58f243`), issue #440 closed — see session 40 section above. Nothing owed from this item.
   Volume/exhaustion tracking was deliberately cut from scope (§10 Q1) — a real, separate follow-up

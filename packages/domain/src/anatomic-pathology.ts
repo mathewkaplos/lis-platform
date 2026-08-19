@@ -124,9 +124,33 @@ export const caseLineagePartSchema = z.object({
 });
 export type CaseLineagePart = z.infer<typeof caseLineagePartSchema>;
 
+/** Issue #636: gross/microscopic/diagnosis narrative -- case-scoped (§3 of
+ * the proposal: a multi-part case gets one diagnosis addressing all parts
+ * together, not one per part), not part/block/slide-scoped. All three
+ * fields nullable free text, no enum -- matches `specimen.specimenType`'s
+ * own genuinely-unconstrained-text precedent. */
+export const caseNarrativeSchema = z.object({
+  grossDescription: z.string().nullable(),
+  microscopicDescription: z.string().nullable(),
+  diagnosis: z.string().nullable(),
+});
+export type CaseNarrative = z.infer<typeof caseNarrativeSchema>;
+
+/** `PUT /v1/cases/:id/narrative` body -- all three fields optional so a
+ * partial save (e.g. only the diagnosis field) doesn't require resending
+ * the others; `updateNarrative()` only overwrites the fields actually
+ * present in the request. */
+export const caseNarrativeUpdateSchema = z.object({
+  grossDescription: z.string().optional(),
+  microscopicDescription: z.string().optional(),
+  diagnosis: z.string().optional(),
+});
+export type CaseNarrativeUpdateInput = z.infer<typeof caseNarrativeUpdateSchema>;
+
 export const caseLineageSchema = z.object({
   ...caseSchema.shape,
   parts: z.array(caseLineagePartSchema),
+  narrative: caseNarrativeSchema.nullable(),
 });
 export type CaseLineage = z.infer<typeof caseLineageSchema>;
 

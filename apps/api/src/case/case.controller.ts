@@ -7,6 +7,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -20,12 +21,14 @@ import {
   caseLineageSchema,
   caseListQuerySchema,
   caseListResponseSchema,
+  caseNarrativeUpdateSchema,
   caseReportVersionListResponseSchema,
   type Block,
   type Case,
   type CaseLineage,
   type CaseLineageSlide,
   type CaseListResponse,
+  type CaseNarrative,
   type CaseReportVersion,
   type CaseReportVersionListResponse,
   type Slide,
@@ -34,6 +37,7 @@ import {
 import {
   block,
   blockFulfillment,
+  caseNarrative,
   caseReportVersion,
   caseTable,
   computeCaseReportContentHash,
@@ -76,6 +80,7 @@ const idParamSchema = z.object({ id: z.uuid() });
 class CaseCreateDto extends createZodDto(caseCreateSchema) {}
 class CaseLineageDto extends createZodDto(caseLineageSchema) {}
 class CaseAmendRequestDto extends createZodDto(caseAmendRequestSchema) {}
+class CaseNarrativeUpdateDto extends createZodDto(caseNarrativeUpdateSchema) {}
 class CaseListQueryDto extends createZodDto(caseListQuerySchema) {}
 class CaseListResponseDto extends createZodDto(caseListResponseSchema) {}
 class CaseReportVersionListResponseDto extends createZodDto(
@@ -92,6 +97,16 @@ function toCaseDto(row: typeof caseTable.$inferSelect): Case {
     ...row,
     status: row.status as Case['status'], // CHECK-constrained (ck_case_status)
     createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function toCaseNarrativeDto(
+  row: typeof caseNarrative.$inferSelect,
+): CaseNarrative {
+  return {
+    grossDescription: row.grossDescription,
+    microscopicDescription: row.microscopicDescription,
+    diagnosis: row.diagnosis,
   };
 }
 
@@ -268,6 +283,19 @@ async function buildCaseReportContent(
     .filter((row) => synopticAnalyteIds.has(row.analyteId))
     .map((row) => ({ id: row.id, createdAt: row.createdAt.toISOString() }));
 
+  // Issue #636: a real value snapshot, not a reference by id -- unlike
+  // synoptic responses (safely referenced because a verified `observation`
+  // row is immutable via a real trigger), `case_narrative` has no such
+  // protection. Copying the current values in here, at the one point
+  // finalize()/amend() both already call before signing, is what keeps an
+  // already-signed version's own `includedContent` from silently changing
+  // if the narrative is edited afterward (proposal §2/§6).
+  const [narrativeRow] = await tx
+    .select()
+    .from(caseNarrative)
+    .where(eq(caseNarrative.caseId, caseRow.id))
+    .limit(1);
+
   return {
     content: {
       case: {
@@ -282,6 +310,11 @@ async function buildCaseReportContent(
           .map((b) => b.id),
       })),
       synopticResponses,
+      narrative: {
+        grossDescription: narrativeRow?.grossDescription ?? null,
+        microscopicDescription: narrativeRow?.microscopicDescription ?? null,
+        diagnosis: narrativeRow?.diagnosis ?? null,
+      },
     },
     specimenRows,
     blockRows,
@@ -725,6 +758,15 @@ export class CaseController {
       blocksBySpecimenId.set(row.specimenId, existing);
     }
 
+    // Issue #636: folded into the lineage response the same way
+    // `wholeSlideImage` already is on each slide -- avoids a second round
+    // trip from the case detail page, which already calls this route once.
+    const [narrativeRow] = await tx
+      .select()
+      .from(caseNarrative)
+      .where(eq(caseNarrative.caseId, id))
+      .limit(1);
+
     return {
       ...toCaseDto(caseRow),
       parts: specimenRows.map((specimenRow) => ({
@@ -745,6 +787,94 @@ export class CaseController {
           }),
         ),
       })),
+      narrative: narrativeRow ? toCaseNarrativeDto(narrativeRow) : null,
+    };
+  }
+
+  /**
+   * Issue #636. Upserts the case's own narrative row -- `manage_specimens`
+   * (same routine-mutation gate as accession/block/slide/ordered-test/
+   * screen), no step-up (the real diagnostic gate stays `finalize()`'s own
+   * `verify` + step-up; narrative is draft documentation until signed,
+   * matching #621/#624's own "draft-time gates are UI convenience" pattern).
+   * Genuinely mutable at any case status (proposal §5) -- unlike every other
+   * AP mutation here, deliberately no wrong-status guard.
+   *
+   * `onConflictDoUpdate` rather than this file's own usual select-then-
+   * branch convention: an always-editable field genuinely invites a
+   * concurrent-save race no other AP mutation here has (proposal §5/§6) --
+   * two overlapping saves under select-then-decide could otherwise violate
+   * `ux_case_narrative_case` or silently drop one writer's edit.
+   *
+   * No `@ZodResponse` here, correcting the proposal's own initial
+   * assumption -- `AuditInterceptor` (`audit.interceptor.ts:82`) wraps
+   * every `@Audit()` route's return value into `{resourceId, before, after,
+   * actorRole}` before it reaches the client, the exact same reason every
+   * other `@Audit()`-decorated route in this file (`addBlock`/`addSlide`/
+   * `addOrderedTest`) also leaves its response undocumented: documenting
+   * this as a clean `CaseNarrative` shape would misdescribe the real wire
+   * response. Confirmed by reading the interceptor directly during
+   * implementation, not assumed from the proposal.
+   */
+  @Put('v1/cases/:id/narrative')
+  @UseGuards(JwtAuthGuard, CapabilityGuard)
+  @RequireCapability('manage_specimens')
+  @UseInterceptors(TenantContextInterceptor, AuditInterceptor)
+  @Audit({ action: 'case.record_narrative', resourceType: 'case_narrative' })
+  async updateNarrative(
+    @Param(new ZodValidationPipe(idParamSchema)) { id }: IdParamDto,
+    @Body(new ZodValidationPipe(caseNarrativeUpdateSchema))
+    body: CaseNarrativeUpdateDto,
+    @CurrentUser() user: RequestContext,
+    @DbTx() tx: RequestWithTx['tx'],
+  ) {
+    const [caseRow] = await tx
+      .select({ id: caseTable.id })
+      .from(caseTable)
+      .where(eq(caseTable.id, id))
+      .limit(1);
+    if (!caseRow) {
+      throw new NotFoundException('Case not found');
+    }
+
+    const [existingRow] = await tx
+      .select()
+      .from(caseNarrative)
+      .where(eq(caseNarrative.caseId, id))
+      .limit(1);
+
+    const [narrativeRow] = await tx
+      .insert(caseNarrative)
+      .values({
+        tenantId: user.tenantId,
+        caseId: id,
+        grossDescription: body.grossDescription ?? null,
+        microscopicDescription: body.microscopicDescription ?? null,
+        diagnosis: body.diagnosis ?? null,
+        updatedByUserId: user.sub,
+      })
+      .onConflictDoUpdate({
+        target: caseNarrative.caseId,
+        set: {
+          ...(body.grossDescription !== undefined
+            ? { grossDescription: body.grossDescription }
+            : {}),
+          ...(body.microscopicDescription !== undefined
+            ? { microscopicDescription: body.microscopicDescription }
+            : {}),
+          ...(body.diagnosis !== undefined
+            ? { diagnosis: body.diagnosis }
+            : {}),
+          updatedAt: new Date(),
+          updatedByUserId: user.sub,
+        },
+      })
+      .returning();
+
+    return {
+      resourceId: narrativeRow.id,
+      before: existingRow ? toCaseNarrativeDto(existingRow) : null,
+      after: toCaseNarrativeDto(narrativeRow),
     };
   }
 

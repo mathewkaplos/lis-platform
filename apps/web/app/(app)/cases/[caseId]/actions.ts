@@ -10,6 +10,7 @@ import type {
   AmendCaseState,
   ScreenCaseState,
   SignOutCaseState,
+  UpdateNarrativeState,
   UploadWholeSlideImageState,
 } from './types';
 
@@ -370,6 +371,63 @@ export async function addOrderedTest(
     return {
       status: 'error',
       formError: 'Something went wrong adding this test. Please try again.',
+    };
+  }
+
+  revalidatePath(`/cases/${caseId}`);
+  return { status: 'done' };
+}
+
+/**
+ * Issue #636. `PUT /v1/cases/:id/narrative` has no `@ZodResponse` -- same
+ * raw-`fetch` precedent as every prior action on this page, for the same
+ * reason: `AuditInterceptor` wraps every `@Audit()` route's return value
+ * into `{resourceId, before, after, actorRole}` before it reaches the
+ * client (confirmed directly in `audit.interceptor.ts` during backend
+ * implementation), so there is no clean, documentable response shape to
+ * type against. No `step_up_required` branch -- `updateNarrative()` has no
+ * `@RequireStepUp()`. Only the fields actually present in the form are
+ * sent, so a blank field means "don't touch this field," not "clear it" --
+ * matching the route's own partial-update semantics.
+ */
+export async function updateNarrative(
+  _prevState: UpdateNarrativeState,
+  formData: FormData,
+): Promise<UpdateNarrativeState> {
+  const caseId = String(formData.get('caseId') ?? '');
+  const body: Record<string, string> = {};
+  for (const field of ['grossDescription', 'microscopicDescription', 'diagnosis'] as const) {
+    const value = formData.get(field);
+    if (value !== null) {
+      body[field] = String(value);
+    }
+  }
+
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    return { status: 'error', formError: 'Your session has expired — please log in again.' };
+  }
+
+  const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
+  const res = await fetch(`${baseUrl}/v1/cases/${caseId}/narrative`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    if (res.status === 403) {
+      return {
+        status: 'error',
+        formError: 'You do not have permission to edit this case’s narrative.',
+      };
+    }
+    return {
+      status: 'error',
+      formError: 'Something went wrong saving the narrative. Please try again.',
     };
   }
 

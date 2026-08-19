@@ -9,6 +9,7 @@ import { AddBlockForm } from './add-block-form';
 import { AddOrderedTestForm } from './add-ordered-test-form';
 import { AddSlideForm } from './add-slide-form';
 import { AmendCaseForm } from './amend-case-form';
+import { NarrativeForm } from './narrative-form';
 import { ScreenCaseForm } from './screen-case-form';
 import { SignOutCaseForm } from './sign-out-case-form';
 import { UploadWsiForm } from './upload-wsi-form';
@@ -168,6 +169,17 @@ export default async function CaseDetailPage({
           )}
         </CardContent>
       </Card>
+
+      {hasSpecimenManagementRole(session) ? (
+        <Card className="mx-auto w-full max-w-3xl">
+          <CardHeader>
+            <CardTitle>Narrative</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <NarrativeForm caseId={id} narrative={caseData.narrative} />
+          </CardContent>
+        </Card>
+      ) : null}
 
       {SCREENABLE_STATUSES.has(caseData.status) && hasSpecimenManagementRole(session) ? (
         <Card className="mx-auto w-full max-w-3xl">

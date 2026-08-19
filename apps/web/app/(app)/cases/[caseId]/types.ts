@@ -66,3 +66,12 @@ export interface AddOrderedTestState {
 export const addOrderedTestInitialState: AddOrderedTestState = {
   status: 'idle',
 };
+
+export interface UpdateNarrativeState {
+  status: 'idle' | 'submitting' | 'done' | 'error';
+  formError?: string;
+}
+
+export const updateNarrativeInitialState: UpdateNarrativeState = {
+  status: 'idle',
+};

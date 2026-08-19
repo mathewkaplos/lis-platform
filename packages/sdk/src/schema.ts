@@ -1268,6 +1268,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/cases/{id}/narrative": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["CaseController_updateNarrative"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/cases/{id}/report-versions": {
         parameters: {
             query?: never;
@@ -2580,6 +2596,16 @@ export interface components {
                     }[];
                 }[];
             }[];
+            narrative: {
+                grossDescription: string | null;
+                microscopicDescription: string | null;
+                diagnosis: string | null;
+            } | null;
+        };
+        CaseNarrativeUpdateDto: {
+            grossDescription?: string;
+            microscopicDescription?: string;
+            diagnosis?: string;
         };
         CaseReportVersionListResponseDto_Output: {
             items: {
@@ -4608,6 +4634,29 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CaseLineageDto_Output"];
                 };
+            };
+        };
+    };
+    CaseController_updateNarrative: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaseNarrativeUpdateDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

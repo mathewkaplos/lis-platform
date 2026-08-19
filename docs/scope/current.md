@@ -1,18 +1,23 @@
 # Status — 2026-08-19 (session 40, continued)
 
-Last commit on main: `8112b4a` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
-this leg). Since the AP testing passes below (pure QA, no code touched), six issues broken out of
-#610 were each filed, planned, implemented, and merged this session: issue #613 as PR #617 (Cases
-list status-filter tabs, breadcrumb PR #618); issue #615 as PR #619 (case amendment browser UI,
-breadcrumb PR #620); issue #621 as PR #622 (case sign-out/finalize browser UI, breadcrumb PR #623);
-issue #624 as PR #625 (cytology two-tier screening browser UI, breadcrumb PR #626); issue #627 as
-PR #628 (block/slide creation browser UI, breadcrumb PR #629); and **issue #630 as PR #631**
-(block-level reflex/add-on test ordering browser UI) — see updated bullet below. A histology case
-can go accessioned → signed_out → amended entirely through the browser; a cytology case can go
+Last commit on main: `fae7525` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
+this leg). Since the AP testing passes below (pure QA, no code touched), seven issues broken out
+of #610 were each filed, planned, implemented, and merged this session: issue #613 as PR #617
+(Cases list status-filter tabs, breadcrumb PR #618); issue #615 as PR #619 (case amendment browser
+UI, breadcrumb PR #620); issue #621 as PR #622 (case sign-out/finalize browser UI, breadcrumb PR
+#623); issue #624 as PR #625 (cytology two-tier screening browser UI, breadcrumb PR #626); issue
+#627 as PR #628 (block/slide creation browser UI, breadcrumb PR #629); issue #630 as PR #631
+(block-level reflex/add-on test ordering browser UI, breadcrumb PR #632); and **issue #633 as PR
+#634** (case/specimen accessioning browser UI) — see updated bullet below. A histology case can go
+accessioned → signed_out → amended entirely through the browser; a cytology case can go
 accessioned → pending_review → signed_out → amended entirely through the browser; a case's own
-block/slide hierarchy can be built out in the browser; and a reflex/add-on test can now be ordered
-onto a block from the browser too, immediately result-enterable via the existing generic results
-screen. Check `git log origin/main -5` for the real current tip if this has drifted.
+block/slide hierarchy can be built out in the browser; a reflex/add-on test can be ordered onto a
+block from the browser, immediately result-enterable via the existing generic results screen; and
+**a case can now be created from scratch in the browser too** (`/cases/new?orderId=`), closing the
+loop on the entire chain — the full AP path (accession → build out specimen hierarchy → screen if
+cytology → sign out → amend) is now genuinely browser-reachable end to end for a simple case with
+no synoptic/gross-narrative needs. Check `git log origin/main -5` for the real current tip if this
+has drifted.
 
 ## Session 40 (continued) — AP full acceptance pass #4: Amendments, Reflex/IHC, Reporting
 
@@ -556,7 +561,48 @@ for this second cycle is still owed once that's resolved.
   left in place, not cleaned up:** two additional `ordered_test` rows (Albumin, ALT (SGPT)) added
   via direct API to block `260819-000753-B2` during the API-fallback pass, plus one more (Calcium)
   added via a real browser click to block `260819-000753-B1` during the live re-verification pass
-  — all on the same tenant-A case from #627's own test data, reusing its existing order.
+  — all on the same tenant-A case from #627's own test data, reusing its existing order. This was
+  also the last of the "single-field-or-less addition to the existing case detail page" items --
+  case/specimen accessioning itself, the one remaining #610 item still shaped like "backend
+  already correct, just needs a UI," now filed, planned, implemented, and merged the same session
+  as **issue #633 (PR #634)**, see its own bullet immediately below.
+- **New this session: issue #633 filed, planned, implemented, and merged as PR #634
+  (`Closes #633`).** Case/specimen accessioning browser UI — the seventh AP slice this session,
+  and the first that's a genuinely new page (`/cases/new?orderId=<uuid>`, a dynamic multi-part
+  form) rather than an addition to the existing case detail page. Every test case created during
+  this session's own six prior AP PRs was seeded via direct `POST /v1/cases` API calls, because
+  there was still no browser path to create one at all — this closes that gap. Follows
+  `orders/new`'s own established page conventions closely (required-query-param entry, hidden-
+  field-JSON dynamic-list state for the parts array, a `state.status === 'created'` confirmation
+  card rather than a hard `redirect()`, and the same typed-client-plus-explicit-cast pattern
+  `createOrder` already uses for its own undocumented-response create route — confirmed directly
+  that `POST /v1/cases` has the identical shape: a documented request body, no `@ZodResponse` on
+  the response). Entry point: a "New AP case" link on the order detail page, gated on
+  `order.status !== 'cancelled'` — the exact same condition `GenerateInvoiceButton` already uses on
+  that row, not a new one invented. `specimenType` stayed a free-text input, matching the schema's
+  own genuinely unconstrained field (confirmed directly: no enum/CHECK constraint exists for it
+  anywhere) — a deliberate choice over inventing this codebase's first client-side specimen-type
+  value list, accepting the named real risk that a typo silently skips
+  `requiresTwoTierReview()`'s own exact-string cytology match. **Genuinely satisfying
+  full-chain verification, worth remembering:** with the browser extension connected for this
+  entire pass (first full-pass connection since #627's own outage began), created a real two-part
+  case (`tissue` + `cervical_cytology`) through the new form and confirmed it flowed correctly into
+  *every* downstream AP action built earlier this session — block creation, Screen, Sign out all
+  rendered and worked on it — the first time all session any of that UI was exercised against a
+  browser-created case rather than an API-seeded one. Also confirmed live: the duplicate-case
+  `ux_case_tenant_order` 400 surfaces verbatim on a repeat attempt; a rejection-reason part is
+  created with `status: 'rejected'` (confirmed via direct API read, not just UI inspection); the
+  native HTML `required` attribute blocks submission with an empty specimen-type field before the
+  action even fires. **Net effect worth remembering, session-wide:** the full AP path —
+  accession → build out the specimen hierarchy (blocks/slides) → screen if cytology → sign out →
+  amend, with reflex/add-on tests orderable at any point along the way — is now genuinely
+  browser-reachable end to end for a simple case with no synoptic-data-entry or
+  gross/microscopic-narrative needs (both still require new backend/schema work, not just UI, and
+  remain the two largest items left on #610's own list, along with report/PDF viewing and the
+  cytology reviewer queue). **New test data from this session's #633 work, left in place, not
+  cleaned up:** two fresh tenant-A orders/cases under patients "ACCESSIONQA WebVerify" (accession
+  number `260819-000754`, two parts: `tissue` + `cervical_cytology`, both still `accessioned`, no
+  blocks) and "ACCESSIONQA2 RejectTest" (one `rejected`-status `tissue` part).
 - **New this session:** TASK-440 (specimen expiry + reflex recollection) merged as PR #605
   (`e58f243`), issue #440 closed — see session 40 section above. Nothing owed from this item.
   Volume/exhaustion tracking was deliberately cut from scope (§10 Q1) — a real, separate follow-up

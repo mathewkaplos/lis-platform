@@ -5,6 +5,8 @@ import { getValidAccessToken } from '@/auth/access-token';
 import { getSession } from '@/auth/get-session';
 import { hasSpecimenManagementRole, hasVerifierRole } from '@/auth/roles';
 import { createLisApiClient } from '@/lib/api-client';
+import { AddBlockForm } from './add-block-form';
+import { AddSlideForm } from './add-slide-form';
 import { AmendCaseForm } from './amend-case-form';
 import { ScreenCaseForm } from './screen-case-form';
 import { SignOutCaseForm } from './sign-out-case-form';
@@ -138,10 +140,18 @@ export default async function CaseDetailPage({
                             ))}
                           </ul>
                         )}
+                        {hasSpecimenManagementRole(session) ? (
+                          <div className="pl-4">
+                            <AddSlideForm caseId={id} blockId={block.id} />
+                          </div>
+                        ) : null}
                       </li>
                     ))}
                   </ul>
                 )}
+                {hasSpecimenManagementRole(session) ? (
+                  <AddBlockForm caseId={id} specimenId={part.id} />
+                ) : null}
               </div>
             ))
           )}

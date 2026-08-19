@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getValidAccessToken } from '@/auth/access-token';
 import type {
+  AddBlockState,
+  AddSlideState,
   AmendCaseState,
   ScreenCaseState,
   SignOutCaseState,
@@ -220,6 +222,100 @@ export async function screenCase(
     return {
       status: 'error',
       formError: 'Something went wrong screening this case. Please try again.',
+    };
+  }
+
+  revalidatePath(`/cases/${caseId}`);
+  return { status: 'done' };
+}
+
+/**
+ * Issue #627. `POST /v1/cases/:id/blocks` has no `@ZodResponse` -- same
+ * raw-`fetch` precedent as every prior action on this page. No
+ * `step_up_required` branch (confirmed directly -- `addBlock()` has no
+ * `@RequireStepUp()`), same as `screenCase`.
+ */
+export async function addBlock(
+  _prevState: AddBlockState,
+  formData: FormData,
+): Promise<AddBlockState> {
+  const caseId = String(formData.get('caseId') ?? '');
+  const specimenId = String(formData.get('specimenId') ?? '');
+
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    return { status: 'error', formError: 'Your session has expired — please log in again.' };
+  }
+
+  const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
+  const res = await fetch(`${baseUrl}/v1/cases/${caseId}/blocks`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ specimenId }),
+  });
+
+  if (!res.ok) {
+    if (res.status === 403) {
+      return { status: 'error', formError: 'You do not have permission to add a block.' };
+    }
+    if (res.status === 400) {
+      const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+      return {
+        status: 'error',
+        formError: body?.detail ?? 'This block could not be added right now.',
+      };
+    }
+    return {
+      status: 'error',
+      formError: 'Something went wrong adding this block. Please try again.',
+    };
+  }
+
+  revalidatePath(`/cases/${caseId}`);
+  return { status: 'done' };
+}
+
+/**
+ * Issue #627. `POST /v1/blocks/:id/slides` has no `@ZodResponse` and no
+ * request body -- same raw-`fetch` precedent as `addBlock` above. No
+ * `step_up_required` branch (confirmed directly -- `addSlide()` has no
+ * `@RequireStepUp()`).
+ */
+export async function addSlide(
+  _prevState: AddSlideState,
+  formData: FormData,
+): Promise<AddSlideState> {
+  const caseId = String(formData.get('caseId') ?? '');
+  const blockId = String(formData.get('blockId') ?? '');
+
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    return { status: 'error', formError: 'Your session has expired — please log in again.' };
+  }
+
+  const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
+  const res = await fetch(`${baseUrl}/v1/blocks/${blockId}/slides`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!res.ok) {
+    if (res.status === 403) {
+      return { status: 'error', formError: 'You do not have permission to add a slide.' };
+    }
+    if (res.status === 400) {
+      const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+      return {
+        status: 'error',
+        formError: body?.detail ?? 'This slide could not be added right now.',
+      };
+    }
+    return {
+      status: 'error',
+      formError: 'Something went wrong adding this slide. Please try again.',
     };
   }
 

@@ -3,7 +3,12 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getValidAccessToken } from '@/auth/access-token';
-import type { AmendCaseState, SignOutCaseState, UploadWholeSlideImageState } from './types';
+import type {
+  AmendCaseState,
+  ScreenCaseState,
+  SignOutCaseState,
+  UploadWholeSlideImageState,
+} from './types';
 
 /**
  * FEAT-067 (docs/plans/feat-067-wsi-viewer.md). `POST /v1/whole-slide-
@@ -170,6 +175,51 @@ export async function signOutCase(
     return {
       status: 'error',
       formError: 'Something went wrong signing out this case. Please try again.',
+    };
+  }
+
+  revalidatePath(`/cases/${caseId}`);
+  return { status: 'done' };
+}
+
+/**
+ * Issue #624. `POST /v1/cases/:id/screen` has no `@ZodResponse` and no
+ * request body -- same raw-`fetch` precedent as `signOutCase` above. Unlike
+ * `amendCase`/`signOutCase`, `screen()` has no `@RequireStepUp()` (confirmed
+ * directly in the controller) -- no `step_up_required` branch to handle
+ * here, a plain 403 always means a genuine permission denial.
+ */
+export async function screenCase(
+  _prevState: ScreenCaseState,
+  formData: FormData,
+): Promise<ScreenCaseState> {
+  const caseId = String(formData.get('caseId') ?? '');
+
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    return { status: 'error', formError: 'Your session has expired — please log in again.' };
+  }
+
+  const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
+  const res = await fetch(`${baseUrl}/v1/cases/${caseId}/screen`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!res.ok) {
+    if (res.status === 403) {
+      return { status: 'error', formError: 'You do not have permission to screen this case.' };
+    }
+    if (res.status === 400) {
+      const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+      return {
+        status: 'error',
+        formError: body?.detail ?? 'This case cannot be screened right now.',
+      };
+    }
+    return {
+      status: 'error',
+      formError: 'Something went wrong screening this case. Please try again.',
     };
   }
 

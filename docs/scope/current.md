@@ -247,12 +247,13 @@ for this second cycle is still owed once that's resolved.
   (first round: already gone via this session's own db-resets, 78 orphaned MinIO objects removed;
   second round: 13 rows across 8 tables + 24 MinIO objects deleted after showing the human the
   exact records first, per their explicit request). Nothing owed from this item.
-- **Real, still-open product question surfaced by the acceptance report, not yet a filed
-  issue:** almost the entire AP diagnostic workflow (accessioning, result entry, synoptic,
-  sign-out, amendments, cytology screening, reflex/IHC ordering) has a complete backend but zero
-  browser UI — no pathologist can complete a real case end-to-end through the browser today. The
-  report's own §10 lists this as its top recommended-fix item, framed as a product decision, not a
-  bug. Worth raising explicitly next session if it hasn't been triaged by then.
+- **Real product gap surfaced by the acceptance report, now filed as issue #610** (M13): almost
+  the entire AP diagnostic workflow (accessioning, result entry, synoptic, sign-out, amendments,
+  cytology screening, reflex/IHC ordering) has a complete backend but zero browser UI — no
+  pathologist can complete a real case end-to-end through the browser today. Traced to FEAT-067's
+  own proposal scope cut, not a regression. Flagged in the issue as likely needing its own
+  Implementation Proposal per screen/workflow, not one proposal for all of it — not yet triaged
+  against M13's remaining scope or picked up.
 - **Two P3 recommendations from the same report, not yet actioned (deliberately, per this
   session's own scoping call on the P2 fix):** (1) surface WSI tile-load failures in the viewer UI
   instead of a silent black canvas — OpenSeadragon already emits the event; (2) the file's own

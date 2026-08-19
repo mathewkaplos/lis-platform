@@ -202,6 +202,19 @@ export const caseAmendRequestSchema = z.object({
 });
 export type CaseAmendRequestInput = z.infer<typeof caseAmendRequestSchema>;
 
+/** `POST /v1/cases/:id/return-to-screening` body (issue #639): a `reason`
+ * is mandatory, mirroring `caseAmendRequestSchema`'s own convention --
+ * a reviewer sending a case back to screening must say why, same as an
+ * amendment. A separate, purpose-named schema rather than reusing
+ * `caseAmendRequestSchema` directly, matching this session's own
+ * "one named type per action, even when shapes coincide" preference. */
+export const caseReturnToScreeningRequestSchema = z.object({
+  reason: z.string().min(1),
+});
+export type CaseReturnToScreeningRequestInput = z.infer<
+  typeof caseReturnToScreeningRequestSchema
+>;
+
 /**
  * FEAT-063 (docs/plans/feat-063-cytology-two-tier-workflow.md, §10 Q3/Q4).
  * `GET /v1/cases` -- a live query over `case.status` (KB-26's "worklist"

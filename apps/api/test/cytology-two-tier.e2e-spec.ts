@@ -32,9 +32,7 @@ describe('Cytology two-tier workflow: screen -> review -> sign-out (e2e)', () =>
       tests: { id: string; code: string }[];
     };
     if (!testDefinitionId) {
-      const found = catalog.tests.find(
-        (t) => t.code === TENANT_A_GLUCOSE_CODE,
-      );
+      const found = catalog.tests.find((t) => t.code === TENANT_A_GLUCOSE_CODE);
       if (!found) {
         throw new Error(
           `expected db/seed/chemistry-catalog.sql fixture '${TENANT_A_GLUCOSE_CODE}' in /v1/catalog`,
@@ -199,7 +197,7 @@ describe('Cytology two-tier workflow: screen -> review -> sign-out (e2e)', () =>
       .expect(400);
   });
 
-  it('AC #3: GET /v1/cases?status=... reflects the screening tier on the correct role\'s worklist', async () => {
+  it("AC #3: GET /v1/cases?status=... reflects the screening tier on the correct role's worklist", async () => {
     const caseId = await createCase('cervical_cytology');
 
     // A freshly-accessioned case's own status is 'accessioned' -- nothing in
@@ -261,5 +259,100 @@ describe('Cytology two-tier workflow: screen -> review -> sign-out (e2e)', () =>
         'expected the signed_out case when explicitly filtering for it',
       );
     }
+  });
+
+  describe('POST /v1/cases/:id/return-to-screening (issue #639)', () => {
+    async function auditCount(): Promise<number> {
+      const res = await request(app.getHttpServer())
+        .get('/auth/tenant-audit-count')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      return (res.body as { count: number }).count;
+    }
+
+    it('full round trip: screen -> return-to-screening -> screen again -> finalize', async () => {
+      const caseId = await createCase('cervical_cytology');
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/screen`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+
+      const before = await auditCount();
+      const returnRes = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/return-to-screening`)
+        .set('Authorization', `Bearer ${tokenVerifier}`)
+        .send({
+          reason: 'screening was inadequate, missing adequacy assessment',
+        })
+        .expect(200);
+      const returnBody = returnRes.body as { after: { status: string } };
+      if (returnBody.after.status !== 'in_process') {
+        throw new Error(
+          `expected status in_process after return-to-screening, got ${JSON.stringify(returnBody)}`,
+        );
+      }
+      const after = await auditCount();
+      if (after !== before + 1) {
+        throw new Error(
+          `expected exactly one new audit_event row, before=${before} after=${after}`,
+        );
+      }
+
+      // Corrected -- re-screen and finalize normally.
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/screen`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const finalizeRes = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/finalize`)
+        .set('Authorization', `Bearer ${tokenVerifier}`)
+        .expect(200);
+      const finalizeBody = finalizeRes.body as { case: { status: string } };
+      if (finalizeBody.case.status !== 'signed_out') {
+        throw new Error(
+          `expected status signed_out after re-screen + finalize, got ${JSON.stringify(finalizeBody)}`,
+        );
+      }
+    });
+
+    it('rejects a manage_specimens-only token (no verify) with 403', async () => {
+      const caseId = await createCase('cervical_cytology');
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/screen`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/return-to-screening`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          reason: 'should be rejected before reaching any handler logic',
+        })
+        .expect(403);
+    });
+
+    it('rejects a case not currently in pending_review (400)', async () => {
+      const caseId = await createCase('cervical_cytology');
+      // Still 'accessioned' -- never screened.
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/return-to-screening`)
+        .set('Authorization', `Bearer ${tokenVerifier}`)
+        .send({ reason: 'no prior screening to return' })
+        .expect(400);
+    });
+
+    it('rejects an empty reason (400, schema validation)', async () => {
+      const caseId = await createCase('cervical_cytology');
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/screen`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/return-to-screening`)
+        .set('Authorization', `Bearer ${tokenVerifier}`)
+        .send({})
+        .expect(400);
+    });
   });
 });

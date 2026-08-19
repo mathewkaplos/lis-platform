@@ -17,6 +17,7 @@ import {
   blockCreateSchema,
   blockOrderedTestLinkCreateSchema,
   caseAmendRequestSchema,
+  caseReturnToScreeningRequestSchema,
   caseCreateSchema,
   caseLineageSchema,
   caseListQuerySchema,
@@ -80,6 +81,9 @@ const idParamSchema = z.object({ id: z.uuid() });
 class CaseCreateDto extends createZodDto(caseCreateSchema) {}
 class CaseLineageDto extends createZodDto(caseLineageSchema) {}
 class CaseAmendRequestDto extends createZodDto(caseAmendRequestSchema) {}
+class CaseReturnToScreeningRequestDto extends createZodDto(
+  caseReturnToScreeningRequestSchema,
+) {}
 class CaseNarrativeUpdateDto extends createZodDto(caseNarrativeUpdateSchema) {}
 class CaseListQueryDto extends createZodDto(caseListQuerySchema) {}
 class CaseListResponseDto extends createZodDto(caseListResponseSchema) {}
@@ -974,6 +978,57 @@ export class CaseController {
       resourceId: after.id,
       before: toCaseDto(caseRow),
       after: toCaseDto(after),
+    };
+  }
+
+  /**
+   * Issue #639. The reverse of `screen()` above -- a cytopathologist
+   * reviewing a `pending_review` case sends it back for correction.
+   * `verify` (not `manage_specimens`): a reviewer's own decision, the same
+   * actor category as `finalize`/`amend`, not a routine technologist
+   * action. No `@RequireStepUp()` -- same "routine tier transition, not the
+   * actual diagnostic release" reasoning `screen()`'s own header comment
+   * already establishes. Transitions to `in_process`, the same re-entry
+   * status `screen()` itself accepts (`accessioned` OR `in_process`), so a
+   * corrected case can be re-screened via the existing route unchanged.
+   */
+  @Post('v1/cases/:id/return-to-screening')
+  @HttpCode(200) // an action on an existing resource, not a creation
+  @UseGuards(JwtAuthGuard, CapabilityGuard)
+  @RequireCapability('verify')
+  @UseInterceptors(TenantContextInterceptor, AuditInterceptor)
+  @Audit({ action: 'case.return_to_screening', resourceType: 'case' })
+  async returnToScreening(
+    @Param(new ZodValidationPipe(idParamSchema)) { id }: IdParamDto,
+    @Body(new ZodValidationPipe(caseReturnToScreeningRequestSchema))
+    body: CaseReturnToScreeningRequestDto,
+    @DbTx() tx: RequestWithTx['tx'],
+  ) {
+    const [caseRow] = await tx
+      .select()
+      .from(caseTable)
+      .where(eq(caseTable.id, id))
+      .limit(1);
+    if (!caseRow) {
+      throw new NotFoundException('Case not found');
+    }
+    if (caseRow.status !== 'pending_review') {
+      throw new BadRequestException(
+        `Case ${id} cannot be returned to screening from its current status (status: ${caseRow.status})`,
+      );
+    }
+
+    const [after] = await tx
+      .update(caseTable)
+      .set({ status: 'in_process' })
+      .where(eq(caseTable.id, id))
+      .returning();
+
+    return {
+      resourceId: after.id,
+      before: toCaseDto(caseRow),
+      after: toCaseDto(after),
+      reason: body.reason,
     };
   }
 

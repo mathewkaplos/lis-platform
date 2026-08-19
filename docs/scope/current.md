@@ -1,16 +1,18 @@
 # Status — 2026-08-19 (session 40, continued)
 
-Last commit on main: `08c3fa4` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
-this leg). Since the AP testing passes below (pure QA, no code touched), five issues broken out of
+Last commit on main: `8112b4a` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
+this leg). Since the AP testing passes below (pure QA, no code touched), six issues broken out of
 #610 were each filed, planned, implemented, and merged this session: issue #613 as PR #617 (Cases
 list status-filter tabs, breadcrumb PR #618); issue #615 as PR #619 (case amendment browser UI,
 breadcrumb PR #620); issue #621 as PR #622 (case sign-out/finalize browser UI, breadcrumb PR #623);
-issue #624 as PR #625 (cytology two-tier screening browser UI, breadcrumb PR #626); and **issue
-#627 as PR #628** (block/slide creation browser UI) — see updated bullet below. A histology case
+issue #624 as PR #625 (cytology two-tier screening browser UI, breadcrumb PR #626); issue #627 as
+PR #628 (block/slide creation browser UI, breadcrumb PR #629); and **issue #630 as PR #631**
+(block-level reflex/add-on test ordering browser UI) — see updated bullet below. A histology case
 can go accessioned → signed_out → amended entirely through the browser; a cytology case can go
-accessioned → pending_review → signed_out → amended entirely through the browser; and a case's own
-block/slide hierarchy can now be built out in the browser too, not just viewed. Check
-`git log origin/main -5` for the real current tip if this has drifted.
+accessioned → pending_review → signed_out → amended entirely through the browser; a case's own
+block/slide hierarchy can be built out in the browser; and a reflex/add-on test can now be ordered
+onto a block from the browser too, immediately result-enterable via the existing generic results
+screen. Check `git log origin/main -5` for the real current tip if this has drifted.
 
 ## Session 40 (continued) — AP full acceptance pass #4: Amendments, Reflex/IHC, Reporting
 
@@ -509,10 +511,52 @@ for this second cycle is still owed once that's resolved.
   live-click-verified earlier this same session — so residual risk is low, not zero. **Net effect
   worth remembering:** a case can now be built out (blocks, slides) and taken through its full
   status chain (screen → sign-out → amend) entirely in the browser, for a case with no
-  synoptic/reflex-IHC/result-entry needs. **New test data from this session's #627 work, left in
+  synoptic/reflex-IHC/result-entry needs. Reflex/add-on test ordering itself now filed, fixed, and
+  merged the same session as **issue #630 (PR #631)**, see its own bullet immediately below.
+  **New test data from this session's #627 work, left in
   place, not cleaned up:** one fresh tenant-A tissue case under patient "BLOCKQA1 WebVerify"
   (accession number `260819-000753`), with 2 blocks (`B1`, `B2`) and 2 slides under `B2` (`S1`,
   `S2`) created during verification.
+- **New this session: issue #630 filed, planned, implemented, and merged as PR #631
+  (`Closes #630`).** Block-level reflex/add-on test ordering browser UI — the sixth AP
+  case-detail-page slice this session, and the first with a real data-entry field (a test picker)
+  rather than a status-transition or bare creation action. Adds a per-block "Add test" `<select>`
+  populated from `GET /v1/catalog` (fetched alongside the case, same precedent
+  `orders/new/page.tsx` already established), submitting to `POST /v1/blocks/:id/ordered-tests`
+  (ADR-0049 §Decision 4). `parentOrderedTestId` deliberately never sent from this manual UI — that
+  field is for the automated reflex-rule engine's own lineage tracking, not a human picking a test
+  from a dropdown. No step-up requirement, matching `addBlock`/`addSlide`/`screen`. Per the human's
+  own explicit walkthrough answers (both recommended options taken): no ordered-tests-list added
+  this pass (add-only — a technologist has no way to see what's already been ordered on a block
+  without navigating to the order's own results screen); success shown as a transient
+  auto-resetting "Test added." message rather than a persistent banner, since a newly-ordered test
+  has no new tree node to serve as visible proof the way a block/slide does. Implementation detail
+  worth remembering for future `useActionState`-based forms on this page: the first attempt at the
+  transient-message logic called `setState` synchronously inside a `useEffect` body and was
+  rejected by `react-hooks/set-state-in-effect` — fixed using React's own "adjust state during
+  render" pattern (compare `state` object identity against a ref/previous-state variable, call
+  `setState` directly in the render body when it changes) for setting the flag, with a *separate*
+  effect, keyed on the flag itself, doing only the `setTimeout`-based reset. **Browser-extension
+  saga, worth remembering:** the Claude-in-Chrome extension was disconnected for the entirety of
+  #627's verification pass and the first half of #630's — reconnected partway through #630's own
+  merge-wait cycle. Once back, did a full live re-verification of #630's UI specifically (not
+  #627's, which stayed on the API-only verification already reported in its own PR): logged in as
+  technologist, confirmed both blocks' own "Add test" dropdown rendered with the full real
+  catalog, and drove one real interactive submission (selected "Calcium", clicked submit) that
+  succeeded — confirmed both via the UI's own JS state inspection and, after hitting one *stale
+  minted-session-cookie* red herring (a 15+-minute-old cookie silently 401'd and rendered the
+  results page's own generic "Something went wrong" error, indistinguishable from a real bug
+  without noticing the specific error text — this project's own documented "always mint a fresh
+  session immediately before use, not once at the start of a long verification session" gotcha,
+  rediscovered here rather than assumed), by re-minting a truly fresh cookie and confirming
+  Calcium's own result input rendered with no `disabled` attribute. **Net effect worth
+  remembering:** every AP mutation action built this session (#615/#621/#624/#627/#630) is now
+  confirmed live-working in a real browser at least once, including #630's own interactive click
+  path specifically (not just its API-equivalent). **New test data from this session's #630 work,
+  left in place, not cleaned up:** two additional `ordered_test` rows (Albumin, ALT (SGPT)) added
+  via direct API to block `260819-000753-B2` during the API-fallback pass, plus one more (Calcium)
+  added via a real browser click to block `260819-000753-B1` during the live re-verification pass
+  — all on the same tenant-A case from #627's own test data, reusing its existing order.
 - **New this session:** TASK-440 (specimen expiry + reflex recollection) merged as PR #605
   (`e58f243`), issue #440 closed — see session 40 section above. Nothing owed from this item.
   Volume/exhaustion tracking was deliberately cut from scope (§10 Q1) — a real, separate follow-up

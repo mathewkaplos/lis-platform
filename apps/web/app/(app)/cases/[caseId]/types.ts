@@ -39,3 +39,21 @@ export interface ScreenCaseState {
 export const screenCaseInitialState: ScreenCaseState = {
   status: 'idle',
 };
+
+export interface AddBlockState {
+  status: 'idle' | 'submitting' | 'done' | 'error';
+  formError?: string;
+}
+
+export const addBlockInitialState: AddBlockState = {
+  status: 'idle',
+};
+
+export interface AddSlideState {
+  status: 'idle' | 'submitting' | 'done' | 'error';
+  formError?: string;
+}
+
+export const addSlideInitialState: AddSlideState = {
+  status: 'idle',
+};

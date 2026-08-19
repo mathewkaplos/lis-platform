@@ -21,3 +21,12 @@ export interface AmendCaseState {
 export const amendCaseInitialState: AmendCaseState = {
   status: 'idle',
 };
+
+export interface SignOutCaseState {
+  status: 'idle' | 'submitting' | 'done' | 'error';
+  formError?: string;
+}
+
+export const signOutCaseInitialState: SignOutCaseState = {
+  status: 'idle',
+};

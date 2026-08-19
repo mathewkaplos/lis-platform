@@ -6,9 +6,13 @@ import { getSession } from '@/auth/get-session';
 import { hasVerifierRole } from '@/auth/roles';
 import { createLisApiClient } from '@/lib/api-client';
 import { AmendCaseForm } from './amend-case-form';
+import { SignOutCaseForm } from './sign-out-case-form';
 import { UploadWsiForm } from './upload-wsi-form';
 
 const AMENDABLE_STATUSES = new Set(['signed_out', 'amended']);
+// issue #621: exactly the complement of AMENDABLE_STATUSES over
+// caseStatusSchema's 5-value enum -- a case is never in both sets at once.
+const NOT_YET_SIGNED_STATUSES = new Set(['accessioned', 'in_process', 'pending_review']);
 
 /**
  * FEAT-067 (docs/plans/feat-067-wsi-viewer.md). The minimal case UI this
@@ -133,6 +137,17 @@ export default async function CaseDetailPage({
           )}
         </CardContent>
       </Card>
+
+      {NOT_YET_SIGNED_STATUSES.has(caseData.status) && hasVerifierRole(session) ? (
+        <Card className="mx-auto w-full max-w-3xl">
+          <CardHeader>
+            <CardTitle>Sign out</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SignOutCaseForm caseId={id} />
+          </CardContent>
+        </Card>
+      ) : null}
 
       {isAmendable ? (
         <Card className="mx-auto w-full max-w-3xl">

@@ -1,7 +1,91 @@
 # Status — 2026-08-19 (session 40, continued)
 
-Last commit on main: `6a33fde` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
-this leg). Check `git log origin/main -5` for the real current tip if this has drifted.
+Last commit on main: `9c5114f` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
+this leg). No new commits from either of the two AP testing passes below (pure QA — read-only
+source/route inspection, live browser + API testing, no code touched, `git status` confirmed clean
+before and after both). Check `git log origin/main -5` for the real current tip if this has drifted.
+
+## Session 40 (continued) — AP full acceptance pass #4: Amendments, Reflex/IHC, Reporting
+
+Human asked for a comprehensive AP acceptance pass explicitly re-verifying all three prior passes'
+findings against the (unchanged) current checkout, plus covering what those passes had explicitly
+flagged as untested: Amendments, Reflex/IHC ordering, and Reporting. Report:
+`https://claude.ai/code/artifact/64c45b7b-460a-4a64-9fe4-577f9afcbcab`.
+
+**Amendments (`POST /cases/:id/amend`), tested for the first time — backend confirmed correct and
+robust:** RBAC (technologist 403), wrong-state rejection (a case never signed out correctly 400s),
+validation (empty `reason` 400s), and — the real substance of the test — a genuine **3-version
+chained amendment** on the cytology case from the earlier pass: v1 signed out → amended (v2,
+`amendmentOf` v1) → amended again (v3, `amendmentOf` v2). The `trg_case_report_version_supersede`
+DB trigger correctly, atomically flipped v1 then v2 to `status: 'superseded'` with `superseded_by`
+pointing forward each time — a real database guarantee, not application logic, verified by direct
+query, not assumed. Full correct audit trail (`case.sign_out`, `case.amend` ×2) confirmed. Zero
+browser UI exists for any of it — confirmed again by grep, matching every other AP mutation.
+
+**Reflex/IHC ordering (`POST /blocks/:id/ordered-tests`), tested for the first time:** RBAC
+correct (qa role 403); a technologist-ordered add-on test correctly links to the *same* existing
+case/order (no accidental duplicate case — confirmed by a `count(*) = 1` check on the order's own
+case), with both `block_fulfillment` and `specimen_fulfillment` rows present (matching issue #561's
+prior fix). **Real, non-obvious positive finding:** the newly-ordered test turned out to be
+genuinely enterable through the *pre-existing generic* chemistry/hematology result-entry screen
+(`/orders/[id]/results`) — confirmed live in the browser: the original "ordered"-status test row
+renders correctly disabled, the new "received"-status AP test row is live, accepts real input, and
+autosaves a draft. This partially closes the "result entry" gap specifically for reflex/add-on
+tests, since that mechanism deliberately reuses the same `ordered_test` shape every other
+discipline already uses.
+
+**Reporting — a stronger finding than "no UI":** no `GET` route of any kind exists anywhere for
+`case_report_version` (confirmed by grepping every file that touches the table) — the *only* way
+its content is ever visible to any caller, human or API, is the synchronous JSON response of the
+`finalize`/`amend` POST itself, at the instant it's created. Distinct from, and not to be confused
+with, the real and working per-ordered-test PDF report (`POST /v1/ordered-tests/:id/report`,
+TASK-060/FEAT-016) — a different, already-implemented artifact for a different (non-AP-case-level)
+scope.
+
+**BUG-CYTO-01 extended:** confirmed the same "vanishes from the Cases list" root cause
+(`case.controller.ts`'s `list()` excludes `signed_out`/`amended` by default, no UI ever passes
+`?status=`) applies to `amended` cases too, not just `signed_out` ones — same fix recommendation,
+now covering both terminal statuses.
+
+**One tooling-flakiness incident, correctly diagnosed rather than filed as a bug:** the generic
+results page appeared stuck on "Loading results…" indefinitely in-browser. Per the human's own
+explicit instruction to distinguish automation flakiness from product bugs, verified independently
+via three methods before concluding anything: a direct `curl` to the underlying API (200 in
+0.34s), a direct `curl` of the actual server-rendered HTML with a minted session cookie (200,
+0.7s, real data present in the streamed RSC payload), and a clean retry in a brand-new tab group
+(rendered correctly on the very next attempt). The browser extension itself was independently
+unresponsive across several unrelated tool calls in the same window (tab-close, screenshot,
+page-text all failing with "cannot determine which page") — consistent, distinct symptom pointing
+at extension-side instability, not the app. Logged as inconclusive/tooling in the report, not as a
+bug.
+
+No code changes; four bugs total found across all AP passes this session (BUG-01, fixed/merged;
+BUG-CYTO-01, tracked under issue #610's broader UI-gap umbrella, now scope-clarified to cover both
+terminal statuses) — zero new bugs this specific pass. Test data added (an "AMENDQA NotSignedOut"
+patient/case, two new `case_report_version` rows on the existing cytology case, one new
+reflex-ordered test with a real draft result) left in place, tagged, not cleaned up.
+
+## Session 40 (continued) — Cytology two-tier workflow deep-dive
+
+A separate, focused follow-up pass (human's own instruction: "do NOT repeat the general AP/WSI
+regression suite") specifically exhausting the cytology `screen`→`pending_review`→`finalize`
+state machine. Report:
+`https://claude.ai/code/artifact/39d33951-5517-417d-9140-e3aefb7929c0`.
+
+Confirmed the real state machine is **two** transitions, not the four-stage framing the request
+used — "reviewer assessment" and "finalization" are the same single `finalize()` call. Every gate
+tested as a genuine attempt, not a guard-code read: capability (`manage_specimens`/`verify`),
+step-up freshness (a Direct-Grant token — which never carries `auth_time` on this realm — correctly
+rejected even for a fully-capable verifier; a real Authorization-Code+PKCE-flow token, minted via a
+script mirroring exactly what a real browser login produces, was required to reach the actual
+business-logic gate), and the two-tier state invariant itself (a fresh, capable verifier still
+correctly blocked from finalizing an unscreened case). Real bug found: **BUG-CYTO-01** — a
+finalized case vanishes from the Cases list because the UI never calls the backend's own
+purpose-built `?status=` queue-filtering parameter (its own code comment names cytotechnologist
+screening queues and cytopathologist review queues as the literal intended use) — confirmed
+precisely by uploading/screening/finalizing a real case live and then failing to find it in the
+list. No `reject`/return-to-screener endpoint exists anywhere (exhaustive route check). Zero
+browser UI for screening, review, or sign-out.
 
 ## Session 40 (continued) — AP regression pass (re-verifying BUG-01's fix) + test-data cleanup
 
@@ -259,6 +343,21 @@ for this second cycle is still owed once that's resolved.
   instead of a silent black canvas — OpenSeadragon already emits the event; (2) the file's own
   already-named path-traversal-hardening gap in `dzi-unzip.service.ts`. Neither has a filed issue
   yet.
+- **New this session (40, continued):** two more AP testing passes — cytology two-tier deep-dive
+  (`https://claude.ai/code/artifact/39d33951-5517-417d-9140-e3aefb7929c0`) and a 4th, consolidated
+  full-acceptance pass covering Amendments/Reflex-IHC/Reporting for the first time
+  (`https://claude.ai/code/artifact/64c45b7b-460a-4a64-9fe4-577f9afcbcab`). No code changes either
+  pass. **BUG-CYTO-01** found and not yet fixed: both `signed_out` and `amended` cases vanish from
+  the Cases list (default `?status=` filter excludes both, no UI ever sets it) — cheap P3 fix
+  recommended (a "completed" tab using the parameter that already exists), not yet actioned or
+  filed as its own issue; currently just documented in both reports. Amendment backend confirmed
+  correct (3-version chained supersession, real DB trigger, verified not assumed) but has zero UI,
+  same as every other AP mutation — already covered by issue #610's own list, no new issue needed.
+  Real positive finding worth remembering: a reflex/IHC-ordered test **is** result-enterable
+  through the existing generic (`/orders/[id]/results`) screen, once ordered via API — a
+  half-closed corner of the "no result entry UI" gap, not the whole thing. Test data added this
+  round left in place, tagged (`AMENDQA NotSignedOut`, two new report versions, one reflex-ordered
+  test with a real draft result), not cleaned up.
 - **New this session:** TASK-440 (specimen expiry + reflex recollection) merged as PR #605
   (`e58f243`), issue #440 closed — see session 40 section above. Nothing owed from this item.
   Volume/exhaustion tracking was deliberately cut from scope (§10 Q1) — a real, separate follow-up

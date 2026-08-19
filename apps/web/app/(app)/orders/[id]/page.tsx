@@ -89,6 +89,15 @@ export default async function OrderDetailPage({
               </Button>
             ) : null}
             {order.status === 'ordered' ? <CancelOrderButton orderId={order.id} /> : null}
+            {/* Issue #633: same gate as GenerateInvoiceButton below -- a
+                cancelled order accessioning a new case is a genuine
+                nonsense state, matching every other gate on this row being
+                about order lifecycle, not test content. */}
+            {order.status !== 'cancelled' ? (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/cases/new?orderId=${order.id}`}>New AP case</Link>
+              </Button>
+            ) : null}
             {order.status !== 'cancelled' ? (
               <GenerateInvoiceButton orderId={order.id} />
             ) : null}

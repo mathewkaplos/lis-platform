@@ -1,9 +1,50 @@
 # Status — 2026-08-19 (session 40, continued)
 
-Last commit on main: `65488df` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
+Last commit on main: `6a33fde` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
 this leg). Check `git log origin/main -5` for the real current tip if this has drifted.
 
-## Session 40 (continued) — AP browser acceptance pass + WSI backslash-path fix
+## Session 40 (continued) — AP regression pass (re-verifying BUG-01's fix) + test-data cleanup
+
+Human asked for a second AP acceptance pass to re-verify the WSI backslash-path fix (PR #607) and
+check for regressions, explicitly scoped down from a full redo (confirmed via a clarifying
+question first) since nothing but the fix itself had changed since the first pass. Report updated
+in place, same Artifact URL as the first pass
+(`https://claude.ai/code/artifact/58cd19fa-e980-4425-87d0-2779f60c178f`), new "Regression pass"
+section added rather than a second document.
+
+Seeded fresh data (patients "APAUTO2 TenantA2"/"APAUTO2 TenantB2", cases `260819-000408`/`-409`,
+since the first pass's own seed data no longer existed — see the earlier cleanup entry below).
+**BUG-01 fix reconfirmed live:** re-uploaded the exact original PowerShell-built repro zip against
+a fresh slide — every object key now forward-slash (`mc ls` verified), all 15 tile/descriptor
+requests return `200` (previously `503`). No regressions in hierarchy render, the no-`.dzi`
+rejection path, cross-tenant case-URL isolation, or RBAC on WSI upload (`qa` role still correctly
+rejected, no orphan row).
+
+**Tooling note, not a product finding:** this pass hit real Chrome-automation flakiness (synthetic
+clicks intermittently not registering, one transient WebGL-texture warning leaving the viewer
+canvas black even after the network layer confirmed every tile returned `200`, checked directly —
+not a BUG-01 recurrence, a different symptom class entirely). Worked around by triggering form
+submission via a direct `form.requestSubmit()` against the real, genuinely-populated DOM state
+where synthetic clicks didn't land — still real application code, not skipped or faked. Given the
+same tooling worked cleanly for dozens of interactions in the first pass, reads as session-specific
+flakiness, not a pattern worth designing around.
+
+**Test-data cleanup, human-requested and scoped precisely:** identified all 13 rows across 8
+tables (`whole_slide_image` ×2, `slide` ×3, `block` ×1, `specimen` ×2, `case` ×2, `ordered_test`
+×2, `order` ×2, `patient` ×2) plus 24 MinIO objects belonging to this regression pass specifically
+— confirmed via FK-relationship walk and creation timestamps (`2026-08-19 01:30–01:58 UTC`) before
+deleting anything, per the human's explicit "show me what will be removed first" instruction.
+Deleted in one transaction, strict child→parent order (no cascades exist on any of these FKs —
+`confdeltype='a'` on all of them, confirmed by querying `pg_constraint` rather than assumed).
+**Deliberately left untouched:** 6 `audit_event` rows referencing the deleted resources — that
+table is hash-chained (`prev_hash`/`hash` columns, Constitution Law #2's append-only audit trail);
+deleting from it would corrupt the chain for every later tenant entry. No FK exists on
+`resource_id` specifically so the audit log can outlive the resource it logged — orphaned-but-valid
+audit rows pointing at a since-deleted test resource are expected, correct behavior here, not a
+gap. Verified afterward: both cases gone, zero orphaned children anywhere in the hierarchy, both
+MinIO prefixes empty, `git status` clean (no source changes).
+
+## Session 40 (continued, earlier) — AP browser acceptance pass + WSI backslash-path fix
 
 Human asked for an extensive browser-driven acceptance pass of Anatomic Pathology functionality
 (Chrome extension as primary test interface, real Keycloak login, not the session-cookie
@@ -198,11 +239,14 @@ for this second cycle is still owed once that's resolved.
 
 ## Carried into next session
 
-- **New this session (40, continued):** AP browser acceptance pass complete (report:
+- **New this session (40, continued):** AP browser acceptance pass complete, then a second
+  regression pass re-confirming the fix (report, updated in place with both passes:
   `https://claude.ai/code/artifact/58cd19fa-e980-4425-87d0-2779f60c178f`); BUG-01 (WSI backslash
-  path separators) found, fixed, and merged as PR #607 (`65488df`); seeded test data cleaned up
-  (already gone from Postgres via this session's own db-resets; 78 orphaned MinIO objects removed).
-  Nothing owed from this item.
+  path separators) found, fixed, merged as PR #607 (`65488df`), and live-reconfirmed against the
+  original repro fixture in a second pass. Both rounds' seeded test data cleaned up precisely
+  (first round: already gone via this session's own db-resets, 78 orphaned MinIO objects removed;
+  second round: 13 rows across 8 tables + 24 MinIO objects deleted after showing the human the
+  exact records first, per their explicit request). Nothing owed from this item.
 - **Real, still-open product question surfaced by the acceptance report, not yet a filed
   issue:** almost the entire AP diagnostic workflow (accessioning, result entry, synoptic,
   sign-out, amendments, cytology screening, reflex/IHC ordering) has a complete backend but zero

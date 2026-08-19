@@ -60,8 +60,8 @@ at extension-side instability, not the app. Logged as inconclusive/tooling in th
 bug.
 
 No code changes; four bugs total found across all AP passes this session (BUG-01, fixed/merged;
-BUG-CYTO-01, tracked under issue #610's broader UI-gap umbrella, now scope-clarified to cover both
-terminal statuses) — zero new bugs this specific pass. Test data added (an "AMENDQA NotSignedOut"
+BUG-CYTO-01, now filed as its own issue #613 — see below — scope-clarified to cover both terminal
+statuses) — zero new bugs this specific pass. Test data added (an "AMENDQA NotSignedOut"
 patient/case, two new `case_report_version` rows on the existing cytology case, one new
 reflex-ordered test with a real draft result) left in place, tagged, not cleaned up.
 
@@ -347,10 +347,10 @@ for this second cycle is still owed once that's resolved.
   (`https://claude.ai/code/artifact/39d33951-5517-417d-9140-e3aefb7929c0`) and a 4th, consolidated
   full-acceptance pass covering Amendments/Reflex-IHC/Reporting for the first time
   (`https://claude.ai/code/artifact/64c45b7b-460a-4a64-9fe4-577f9afcbcab`). No code changes either
-  pass. **BUG-CYTO-01** found and not yet fixed: both `signed_out` and `amended` cases vanish from
-  the Cases list (default `?status=` filter excludes both, no UI ever sets it) — cheap P3 fix
-  recommended (a "completed" tab using the parameter that already exists), not yet actioned or
-  filed as its own issue; currently just documented in both reports. Amendment backend confirmed
+  pass. **BUG-CYTO-01, now filed as issue #613** (M13): both `signed_out` and `amended` cases
+  vanish from the Cases list (default `?status=` filter excludes both, no UI ever sets it) — cheap
+  P3 fix recommended in the issue itself (a "completed" tab using the parameter that already
+  exists), not yet picked up. Amendment backend confirmed
   correct (3-version chained supersession, real DB trigger, verified not assumed) but has zero UI,
   same as every other AP mutation — already covered by issue #610's own list, no new issue needed.
   Real positive finding worth remembering: a reflex/IHC-ordered test **is** result-enterable

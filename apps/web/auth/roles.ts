@@ -63,3 +63,20 @@ export function hasPatientManagementRole(session: SessionPayload | undefined): b
       (session.roles.includes('technologist') || session.roles.includes('verifier')),
   );
 }
+
+/**
+ * Issue #624: gates the "Screen" action on the case detail page. `manage_specimens`
+ * (`apps/api/src/auth/capabilities.ts`) -- the real capability guarding `POST /v1/cases/:id/screen`
+ * -- is granted to both `technologist` and `verifier`, identical to `manage_patients`'s own grant
+ * (confirmed directly). A separate helper rather than reusing `hasPatientManagementRole` under the
+ * wrong name -- matches this file's own convention of one narrowly-named helper per real
+ * capability, even when two capabilities happen to share a role set. Same fail-closed shape and
+ * same "UI-visibility convenience only" caveat as every other helper above.
+ */
+export function hasSpecimenManagementRole(session: SessionPayload | undefined): boolean {
+  return Boolean(
+    session &&
+      Array.isArray(session.roles) &&
+      (session.roles.includes('technologist') || session.roles.includes('verifier')),
+  );
+}

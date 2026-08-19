@@ -30,3 +30,12 @@ export interface SignOutCaseState {
 export const signOutCaseInitialState: SignOutCaseState = {
   status: 'idle',
 };
+
+export interface ScreenCaseState {
+  status: 'idle' | 'submitting' | 'done' | 'error';
+  formError?: string;
+}
+
+export const screenCaseInitialState: ScreenCaseState = {
+  status: 'idle',
+};

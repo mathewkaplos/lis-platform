@@ -6,6 +6,7 @@ import { getSession } from '@/auth/get-session';
 import { hasSpecimenManagementRole, hasVerifierRole } from '@/auth/roles';
 import { createLisApiClient } from '@/lib/api-client';
 import { AddBlockForm } from './add-block-form';
+import { AddOrderedTestForm } from './add-ordered-test-form';
 import { AddSlideForm } from './add-slide-form';
 import { AmendCaseForm } from './amend-case-form';
 import { ScreenCaseForm } from './screen-case-form';
@@ -59,9 +60,11 @@ export default async function CaseDetailPage({
   }
   const client = createLisApiClient(accessToken);
 
-  const { data: caseData, response } = await client.GET('/v1/cases/{id}', {
-    params: { path: { id } },
-  });
+  const [{ data: caseData, response }, { data: catalog, response: catalogResponse }] =
+    await Promise.all([
+      client.GET('/v1/cases/{id}', { params: { path: { id } } }),
+      client.GET('/v1/catalog'),
+    ]);
   if (response.status === 404) {
     notFound();
   }
@@ -70,6 +73,9 @@ export default async function CaseDetailPage({
   }
   if (!response.ok || !caseData) {
     throw new Error('Something went wrong loading this case. Please try again.');
+  }
+  if (!catalogResponse.ok || !catalog) {
+    throw new Error('Something went wrong loading the test catalog. Please try again.');
   }
 
   const isAmendable = AMENDABLE_STATUSES.has(caseData.status);
@@ -141,8 +147,13 @@ export default async function CaseDetailPage({
                           </ul>
                         )}
                         {hasSpecimenManagementRole(session) ? (
-                          <div className="pl-4">
+                          <div className="flex flex-col gap-2 pl-4">
                             <AddSlideForm caseId={id} blockId={block.id} />
+                            <AddOrderedTestForm
+                              caseId={id}
+                              blockId={block.id}
+                              tests={catalog.tests}
+                            />
                           </div>
                         ) : null}
                       </li>

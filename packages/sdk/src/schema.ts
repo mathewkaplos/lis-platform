@@ -1268,6 +1268,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/cases/{id}/report-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CaseController_listReportVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/cases/{id}/screen": {
         parameters: {
             query?: never;
@@ -2563,6 +2579,33 @@ export interface components {
                         } | null;
                     }[];
                 }[];
+            }[];
+        };
+        CaseReportVersionListResponseDto_Output: {
+            items: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                tenantId: string;
+                /** Format: uuid */
+                caseId: string;
+                versionNumber: number;
+                contentHash: string;
+                signature: string;
+                /** Format: uuid */
+                signedByUserId: string;
+                signedByRole: string;
+                /** Format: date-time */
+                authTimeUsed: string;
+                /** Format: uuid */
+                amendmentOf: string | null;
+                reason: string | null;
+                /** Format: uuid */
+                supersededBy: string | null;
+                /** @enum {string} */
+                status: "final" | "superseded";
+                /** Format: date-time */
+                signedAt: string;
             }[];
         };
         CaseAmendRequestDto: {
@@ -4564,6 +4607,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CaseLineageDto_Output"];
+                };
+            };
+        };
+    };
+    CaseController_listReportVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseReportVersionListResponseDto_Output"];
                 };
             };
         };

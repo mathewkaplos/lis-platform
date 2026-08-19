@@ -159,6 +159,17 @@ export const caseReportVersionSchema = z.object({
 });
 export type CaseReportVersion = z.infer<typeof caseReportVersionSchema>;
 
+/** `GET /v1/cases/:id/report-versions` response (issue #615): metadata-only
+ * list, newest-first -- no `includedContent` field exists on
+ * `caseReportVersionSchema` to begin with, so this is not a redaction, just
+ * a reuse of the same shape `amend`/`finalize` already return synchronously. */
+export const caseReportVersionListResponseSchema = z.object({
+  items: z.array(caseReportVersionSchema),
+});
+export type CaseReportVersionListResponse = z.infer<
+  typeof caseReportVersionListResponseSchema
+>;
+
 /** `POST /v1/cases/:id/amend` body (AC #3): a `reason` is mandatory for
  * every amendment, matching `audit_event.reason`'s own "required for
  * amendments" convention. */

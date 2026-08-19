@@ -20,12 +20,14 @@ import {
   caseLineageSchema,
   caseListQuerySchema,
   caseListResponseSchema,
+  caseReportVersionListResponseSchema,
   type Block,
   type Case,
   type CaseLineage,
   type CaseLineageSlide,
   type CaseListResponse,
   type CaseReportVersion,
+  type CaseReportVersionListResponse,
   type Slide,
   type WholeSlideImageStatus,
 } from '@lis/domain';
@@ -76,6 +78,9 @@ class CaseLineageDto extends createZodDto(caseLineageSchema) {}
 class CaseAmendRequestDto extends createZodDto(caseAmendRequestSchema) {}
 class CaseListQueryDto extends createZodDto(caseListQuerySchema) {}
 class CaseListResponseDto extends createZodDto(caseListResponseSchema) {}
+class CaseReportVersionListResponseDto extends createZodDto(
+  caseReportVersionListResponseSchema,
+) {}
 class BlockCreateDto extends createZodDto(blockCreateSchema) {}
 class BlockOrderedTestLinkCreateDto extends createZodDto(
   blockOrderedTestLinkCreateSchema,
@@ -741,6 +746,39 @@ export class CaseController {
         ),
       })),
     };
+  }
+
+  /**
+   * Issue #615: metadata-only version history for a case's signed/amended
+   * report chain -- read-only, no capability gate, same precedent as
+   * `getById` above (RLS via `TenantContextInterceptor` is the only tenant
+   * boundary, matching `engineering/api-design` entry #7). Ordered
+   * newest-first so a caller can show "current" first without re-sorting.
+   */
+  @Get('v1/cases/:id/report-versions')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(TenantContextInterceptor)
+  @ZodResponse({ type: CaseReportVersionListResponseDto, status: 200 })
+  async listReportVersions(
+    @Param(new ZodValidationPipe(idParamSchema)) { id }: IdParamDto,
+    @DbTx() tx: RequestWithTx['tx'],
+  ): Promise<CaseReportVersionListResponse> {
+    const [caseRow] = await tx
+      .select()
+      .from(caseTable)
+      .where(eq(caseTable.id, id))
+      .limit(1);
+    if (!caseRow) {
+      throw new NotFoundException('Case not found');
+    }
+
+    const rows = await tx
+      .select()
+      .from(caseReportVersion)
+      .where(eq(caseReportVersion.caseId, id))
+      .orderBy(desc(caseReportVersion.versionNumber));
+
+    return { items: rows.map(toCaseReportVersionDto) };
   }
 
   /**

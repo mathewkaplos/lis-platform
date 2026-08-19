@@ -1,7 +1,9 @@
 'use server';
 
+import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
 import { getValidAccessToken } from '@/auth/access-token';
-import type { UploadWholeSlideImageState } from './types';
+import type { AmendCaseState, UploadWholeSlideImageState } from './types';
 
 /**
  * FEAT-067 (docs/plans/feat-067-wsi-viewer.md). `POST /v1/whole-slide-
@@ -62,4 +64,66 @@ export async function uploadWholeSlideImage(
     resultStatus: body.status === 'ready' ? 'ready' : 'failed',
     resultErrorMessage: body.errorMessage,
   };
+}
+
+/**
+ * Issue #615. `POST /v1/cases/:id/amend` has no `@ZodResponse` (same
+ * undocumented-shape situation `uploadWholeSlideImage` above already
+ * documents) -- a raw `fetch`, not the typed `@lis/sdk` client.
+ *
+ * `apps/api`'s `ProblemDetailsFilter` (`apps/api/src/common/problem-details.filter.ts`)
+ * puts a machine-readable `code: 'step_up_required'` on a `StepUpRequiredException`'s
+ * 403 body -- confirmed by reading that file directly, not assumed. This is the
+ * first real caller anywhere in `apps/web` of the `step_up=1` re-authentication
+ * redirect `apps/web/app/api/auth/login/route.ts` has carried since FEAT-059
+ * but that nothing before this action ever actually triggered.
+ */
+export async function amendCase(
+  _prevState: AmendCaseState,
+  formData: FormData,
+): Promise<AmendCaseState> {
+  const caseId = String(formData.get('caseId') ?? '');
+  const reason = String(formData.get('reason') ?? '').trim();
+  if (!reason) {
+    return { status: 'error', formError: 'Enter a reason for this amendment.' };
+  }
+
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    return { status: 'error', formError: 'Your session has expired — please log in again.' };
+  }
+
+  const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
+  const res = await fetch(`${baseUrl}/v1/cases/${caseId}/amend`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ reason }),
+  });
+
+  if (!res.ok) {
+    if (res.status === 403) {
+      const body = (await res.json().catch(() => null)) as { code?: string } | null;
+      if (body?.code === 'step_up_required') {
+        redirect(`/api/auth/login?step_up=1&rd=${encodeURIComponent(`/cases/${caseId}`)}`);
+      }
+      return { status: 'error', formError: 'You do not have permission to amend this case.' };
+    }
+    if (res.status === 400) {
+      const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+      return {
+        status: 'error',
+        formError: body?.detail ?? 'This case cannot be amended right now.',
+      };
+    }
+    return {
+      status: 'error',
+      formError: 'Something went wrong submitting this amendment. Please try again.',
+    };
+  }
+
+  revalidatePath(`/cases/${caseId}`);
+  return { status: 'done' };
 }

@@ -430,4 +430,176 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
         .expect(404);
     });
   });
+
+  describe('PUT /v1/cases/:id/narrative (issue #636)', () => {
+    it('upserts: first call creates the row, second call updates it in place', async () => {
+      const caseId = await createFinalizableCase();
+
+      const created = await request(app.getHttpServer())
+        .put(`/v1/cases/${caseId}/narrative`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ grossDescription: 'gross v1' })
+        .expect(200);
+      const createdBody = created.body as { after: { grossDescription: string | null } };
+      if (createdBody.after.grossDescription !== 'gross v1') {
+        throw new Error(
+          `expected first save to create grossDescription 'gross v1', got ${JSON.stringify(createdBody)}`,
+        );
+      }
+
+      const updated = await request(app.getHttpServer())
+        .put(`/v1/cases/${caseId}/narrative`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ grossDescription: 'gross v2', diagnosis: 'diagnosis v1' })
+        .expect(200);
+      const updatedBody = updated.body as {
+        after: { grossDescription: string | null; diagnosis: string | null };
+      };
+      if (
+        updatedBody.after.grossDescription !== 'gross v2' ||
+        updatedBody.after.diagnosis !== 'diagnosis v1'
+      ) {
+        throw new Error(
+          `expected second save to update in place (not duplicate the row), got ${JSON.stringify(updatedBody)}`,
+        );
+      }
+
+      const getRes = await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const lineage = getRes.body as {
+        narrative: { grossDescription: string | null; diagnosis: string | null } | null;
+      };
+      if (
+        lineage.narrative?.grossDescription !== 'gross v2' ||
+        lineage.narrative?.diagnosis !== 'diagnosis v1'
+      ) {
+        throw new Error(
+          `expected GET /v1/cases/:id to reflect the current narrative, got ${JSON.stringify(lineage.narrative)}`,
+        );
+      }
+    });
+
+    it('a partial save does not clear fields it did not include', async () => {
+      const caseId = await createFinalizableCase();
+      await request(app.getHttpServer())
+        .put(`/v1/cases/${caseId}/narrative`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ grossDescription: 'gross', microscopicDescription: 'micro' })
+        .expect(200);
+
+      const res = await request(app.getHttpServer())
+        .put(`/v1/cases/${caseId}/narrative`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ diagnosis: 'final diagnosis' })
+        .expect(200);
+      const body = res.body as {
+        after: {
+          grossDescription: string | null;
+          microscopicDescription: string | null;
+          diagnosis: string | null;
+        };
+      };
+      if (
+        body.after.grossDescription !== 'gross' ||
+        body.after.microscopicDescription !== 'micro' ||
+        body.after.diagnosis !== 'final diagnosis'
+      ) {
+        throw new Error(
+          `expected gross/microscopic to survive an update that only sent diagnosis, got ${JSON.stringify(body.after)}`,
+        );
+      }
+    });
+
+    it('rejects a caller without manage_specimens (403)', async () => {
+      const caseId = await createFinalizableCase();
+      await request(app.getHttpServer())
+        .put(`/v1/cases/${caseId}/narrative`)
+        .set('Authorization', `Bearer ${noRoleToken}`)
+        .send({ grossDescription: 'should be rejected' })
+        .expect(403);
+    });
+
+    it('returns 404 for a case created under a different tenant (RLS)', async () => {
+      const caseId = await createFinalizableCase();
+      await request(app.getHttpServer())
+        .put(`/v1/cases/${caseId}/narrative`)
+        .set('Authorization', `Bearer ${tokenB}`)
+        .send({ grossDescription: 'cross-tenant write attempt' })
+        .expect(404);
+    });
+
+    it("finalize snapshots the current narrative into the signed version's own includedContent, and an edit afterward does not change the already-signed version (issue #636's core correctness property)", async () => {
+      const caseId = await createFinalizableCase();
+      await request(app.getHttpServer())
+        .put(`/v1/cases/${caseId}/narrative`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          grossDescription: 'ORIGINAL gross',
+          microscopicDescription: 'ORIGINAL micro',
+          diagnosis: 'ORIGINAL diagnosis',
+        })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/finalize`)
+        .set('Authorization', `Bearer ${tokenVerifier}`)
+        .expect(200);
+
+      // Edit the narrative AFTER sign-out -- permitted (proposal §5: always
+      // editable, no lock on case.status).
+      await request(app.getHttpServer())
+        .put(`/v1/cases/${caseId}/narrative`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          grossDescription: 'EDITED gross',
+          microscopicDescription: 'EDITED micro',
+          diagnosis: 'EDITED diagnosis',
+        })
+        .expect(200);
+
+      const rows = await reportVersionRows(caseId);
+      const v1 = rows.find((r) => r.versionNumber === 1);
+      if (!v1) {
+        throw new Error(`expected a v1 report version, got ${JSON.stringify(rows)}`);
+      }
+      const v1Content = v1.includedContent as {
+        narrative: { grossDescription: string | null; diagnosis: string | null };
+      };
+      if (
+        v1Content.narrative.grossDescription !== 'ORIGINAL gross' ||
+        v1Content.narrative.diagnosis !== 'ORIGINAL diagnosis'
+      ) {
+        throw new Error(
+          `expected v1's own includedContent to still show the pre-edit ORIGINAL values, got ${JSON.stringify(v1Content.narrative)} -- narrative was referenced, not snapshotted`,
+        );
+      }
+
+      // Amend now -- the new version must capture the CURRENT (post-edit)
+      // narrative, not v1's original values.
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/amend`)
+        .set('Authorization', `Bearer ${tokenVerifier}`)
+        .send({ reason: 'correcting the narrative' })
+        .expect(200);
+
+      const rowsAfterAmend = await reportVersionRows(caseId);
+      const v2 = rowsAfterAmend.find((r) => r.versionNumber === 2);
+      if (!v2) {
+        throw new Error(`expected a v2 report version, got ${JSON.stringify(rowsAfterAmend)}`);
+      }
+      const v2Content = v2.includedContent as {
+        narrative: { grossDescription: string | null; diagnosis: string | null };
+      };
+      if (
+        v2Content.narrative.grossDescription !== 'EDITED gross' ||
+        v2Content.narrative.diagnosis !== 'EDITED diagnosis'
+      ) {
+        throw new Error(
+          `expected v2's own includedContent to capture the current EDITED values, got ${JSON.stringify(v2Content.narrative)}`,
+        );
+      }
+    });
+  });
 });

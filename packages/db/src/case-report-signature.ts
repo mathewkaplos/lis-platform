@@ -31,6 +31,7 @@ export interface CaseReportContent {
   case: unknown;
   parts: unknown;
   synopticResponses: unknown;
+  narrative: unknown; // issue #636: a real value snapshot, never a reference
 }
 
 /**

@@ -202,3 +202,32 @@ export const caseReportVersion = pgTable(
     tenantIsolation(),
   ],
 ).enableRLS();
+
+// Issue #636: a new, deliberately mutable table -- NOT an extension of
+// `case` itself, same "new table for structurally different content"
+// reasoning `case_report_version`'s own header comment already established
+// (`:143-146` above). Unlike every other AP table, this one has no
+// append-only trigger: narrative is genuinely, continuously editable at any
+// case status (proposal §5) -- `buildCaseReportContent()` is what captures
+// a real value snapshot into the signed, immutable `case_report_version`
+// row at finalize/amend time, not this table itself. One row per case
+// (`ux_case_narrative_case`), upserted via `onConflictDoUpdate`.
+export const caseNarrative = pgTable(
+  "case_narrative",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull(),
+    caseId: uuid("case_id")
+      .notNull()
+      .references(() => caseTable.id),
+    grossDescription: text("gross_description"),
+    microscopicDescription: text("microscopic_description"),
+    diagnosis: text("diagnosis"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedByUserId: uuid("updated_by_user_id"), // no FK: no user table exists yet, mirrors caseReportVersion.signedByUserId
+  },
+  (table) => [
+    uniqueIndex("ux_case_narrative_case").on(table.caseId),
+    tenantIsolation(),
+  ],
+).enableRLS();

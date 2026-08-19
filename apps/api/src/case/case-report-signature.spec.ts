@@ -7,7 +7,12 @@ import {
 
 describe('computeCaseReportContentHash', () => {
   it('is deterministic for identical content', () => {
-    const content = { case: { id: '1' }, parts: [], synopticResponses: [] };
+    const content = {
+      case: { id: '1' },
+      parts: [],
+      synopticResponses: [],
+      narrative: null,
+    };
     expect(computeCaseReportContentHash(content)).toBe(
       computeCaseReportContentHash(content),
     );
@@ -18,10 +23,12 @@ describe('computeCaseReportContentHash', () => {
       case: { id: '1', accessionNumber: 'C1' },
       parts: [],
       synopticResponses: [],
+      narrative: null,
     };
     const b = {
       synopticResponses: [],
       parts: [],
+      narrative: null,
       case: { accessionNumber: 'C1', id: '1' },
     };
     expect(computeCaseReportContentHash(a)).toBe(
@@ -30,8 +37,18 @@ describe('computeCaseReportContentHash', () => {
   });
 
   it('differs for different content', () => {
-    const a = { case: { id: '1' }, parts: [], synopticResponses: [] };
-    const b = { case: { id: '2' }, parts: [], synopticResponses: [] };
+    const a = {
+      case: { id: '1' },
+      parts: [],
+      synopticResponses: [],
+      narrative: null,
+    };
+    const b = {
+      case: { id: '2' },
+      parts: [],
+      synopticResponses: [],
+      narrative: null,
+    };
     expect(computeCaseReportContentHash(a)).not.toBe(
       computeCaseReportContentHash(b),
     );

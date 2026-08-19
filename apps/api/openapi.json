@@ -2696,6 +2696,41 @@
         ]
       }
     },
+    "/v1/cases/{id}/narrative": {
+      "put": {
+        "operationId": "CaseController_updateNarrative",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaseNarrativeUpdateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Case"
+        ]
+      }
+    },
     "/v1/cases/{id}/report-versions": {
       "get": {
         "operationId": "CaseController_listReportVersions",
@@ -7797,6 +7832,30 @@
               ],
               "additionalProperties": false
             }
+          },
+          "narrative": {
+            "type": "object",
+            "properties": {
+              "grossDescription": {
+                "type": "string",
+                "nullable": true
+              },
+              "microscopicDescription": {
+                "type": "string",
+                "nullable": true
+              },
+              "diagnosis": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "grossDescription",
+              "microscopicDescription",
+              "diagnosis"
+            ],
+            "additionalProperties": false,
+            "nullable": true
           }
         },
         "required": [
@@ -7806,9 +7865,24 @@
           "accessionNumber",
           "status",
           "createdAt",
-          "parts"
+          "parts",
+          "narrative"
         ],
         "additionalProperties": false
+      },
+      "CaseNarrativeUpdateDto": {
+        "type": "object",
+        "properties": {
+          "grossDescription": {
+            "type": "string"
+          },
+          "microscopicDescription": {
+            "type": "string"
+          },
+          "diagnosis": {
+            "type": "string"
+          }
+        }
       },
       "CaseReportVersionListResponseDto_Output": {
         "type": "object",

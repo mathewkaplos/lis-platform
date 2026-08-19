@@ -1,14 +1,16 @@
 # Status — 2026-08-19 (session 40, continued)
 
-Last commit on main: `00afa24` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
-this leg). Since the AP testing passes below (pure QA, no code touched), three issues broken out of
+Last commit on main: `08c3fa4` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
+this leg). Since the AP testing passes below (pure QA, no code touched), five issues broken out of
 #610 were each filed, planned, implemented, and merged this session: issue #613 as PR #617 (Cases
 list status-filter tabs, breadcrumb PR #618); issue #615 as PR #619 (case amendment browser UI,
 breadcrumb PR #620); issue #621 as PR #622 (case sign-out/finalize browser UI, breadcrumb PR #623);
-and **issue #624 as PR #625** (cytology two-tier screening browser UI) — see updated bullet below.
-A histology case can go accessioned → signed_out → amended entirely through the browser; a
-cytology case can go accessioned → pending_review → signed_out → amended entirely through the
-browser. Check `git log origin/main -5` for the real current tip if this has drifted.
+issue #624 as PR #625 (cytology two-tier screening browser UI, breadcrumb PR #626); and **issue
+#627 as PR #628** (block/slide creation browser UI) — see updated bullet below. A histology case
+can go accessioned → signed_out → amended entirely through the browser; a cytology case can go
+accessioned → pending_review → signed_out → amended entirely through the browser; and a case's own
+block/slide hierarchy can now be built out in the browser too, not just viewed. Check
+`git log origin/main -5` for the real current tip if this has drifted.
 
 ## Session 40 (continued) — AP full acceptance pass #4: Amendments, Reflex/IHC, Reporting
 
@@ -459,11 +461,58 @@ for this second cycle is still owed once that's resolved.
   else on #610's own list (accessioning forms, result/synoptic entry, reflex/IHC ordering UI,
   gross/microscopic description entry, a reviewer-facing "pending review queue" or
   reject/return-to-screener action — the last two confirmed to have no backing route at all, not
-  just no UI) remains unbuilt and untouched by this work. **New test data from this session's #624
+  just no UI) remained unbuilt after this item — **block/slide creation itself now filed, planned,
+  implemented, and merged the same session as issue #627 (PR #628)**, see its own bullet
+  immediately below; everything else on #610's list is still untouched. **New test data from this
+  session's #624
   work, left in place, not cleaned up:** four fresh tenant-A cases under patients "SCREENQA1
   CytoComplete" (now `pending_review`), "SCREENQA2 HistoComplete" (still `accessioned`, screen
   rejected as expected), "SCREENQA3 CytoIncomplete" (still `accessioned`, incomplete lineage), and
   "SCREENQA4 VerifierBoth" (still `accessioned`, used only to view both cards, never submitted).
+- **New this session: issue #627 filed, planned, implemented, and merged as PR #628
+  (`Closes #627`).** Block/slide creation browser UI — the most routine, highest-frequency action
+  in the AP workflow, still missing after #615/#621/#624 closed every status-transition gap: the
+  case detail page already rendered the parts→blocks→slides tree, but purely read-only, with no
+  way to actually build it out except a direct API call. Adds "Add block"/"Add slide" controls
+  nested directly into the existing tree (following `UploadWsiForm`'s own nested-in-tree placement,
+  not the page-level-card pattern used for Amend/Sign out/Screen). Controls always render
+  regardless of existing count — a part/block legitimately gets more than one block/slide over
+  time — gated by `hasSpecimenManagementRole` (reused from #624, not a new near-duplicate helper).
+  Neither `addBlock()` nor `addSlide()` has a step-up requirement, so neither new action needed the
+  `step_up_required` redirect branch the other three actions on this page all carry. Human
+  explicitly asked to check `D:\LIS\research` and `D:\LIS\research\partner documents` before
+  planning — worth remembering for future sessions that this second directory exists and holds real
+  design-partner materials (CAP synoptic templates, a QC tracking sheet, an MoU, and a 35k-row CSV
+  export of the current legacy system's real specimen-request data), distinct from the general
+  `D:\LIS\research` domain-research set already referenced throughout this session. Two real
+  findings came out of that review, both confirming rather than changing this issue's own scope:
+  (1) the partner's real QC tracking sheet captures grossing-date/tech-attribution/slide-quality
+  data nothing in `block`/`slide`'s own schema models today; (2) the partner's real breast-cancer
+  gross-description template shows blocks are conventionally labeled with tissue content ("Block 1
+  – nipple, tumor..."), not just a bare code. Neither was added to this issue — both flagged as
+  candidate future backlog items (a block-description field; a slide-QC/processing-tracking
+  feature) and left for the human to decide on filing, not decided unilaterally. A third finding,
+  the legacy system's own `{PREFIX}/{sequence}/{year}` block-labelling convention (found in the CSV
+  export's free-text microscopy descriptions, e.g. `H/1639/26`), was noted as differing from
+  lis-platform's own already-implemented `{accessionNumber}-B{n}` scheme (ADR-0049) but explicitly
+  determined out of scope for a UI-only proposal — a numbering-convention change would be a
+  separate, more disruptive decision. **Verification note:** the Claude-in-Chrome browser extension
+  disconnected mid-session and stayed down through repeated reconnect attempts during this item's
+  verification pass — fell back to a minted-session-cookie + direct-API-call approach (this
+  session's own established alternative, first used earlier for a similar reason), exercising the
+  identical rendering/auth/creation code paths a live click would: role gating confirmed both
+  directions via SSR fetch, correct incrementing codes (`B1`→`B2`, `S1`→`S2`) confirmed via direct
+  API calls matching the server actions' own requests, and tree re-rendering (including a freshly
+  created slide's own Upload WSI form) confirmed via a second SSR fetch after creation. The actual
+  `useActionState`/form-submission client wiring itself was not live-click-tested this pass, but is
+  structurally identical to `amendCase`/`signOutCase`/`screenCase` — all three already
+  live-click-verified earlier this same session — so residual risk is low, not zero. **Net effect
+  worth remembering:** a case can now be built out (blocks, slides) and taken through its full
+  status chain (screen → sign-out → amend) entirely in the browser, for a case with no
+  synoptic/reflex-IHC/result-entry needs. **New test data from this session's #627 work, left in
+  place, not cleaned up:** one fresh tenant-A tissue case under patient "BLOCKQA1 WebVerify"
+  (accession number `260819-000753`), with 2 blocks (`B1`, `B2`) and 2 slides under `B2` (`S1`,
+  `S2`) created during verification.
 - **New this session:** TASK-440 (specimen expiry + reflex recollection) merged as PR #605
   (`e58f243`), issue #440 closed — see session 40 section above. Nothing owed from this item.
   Volume/exhaustion tracking was deliberately cut from scope (§10 Q1) — a real, separate follow-up

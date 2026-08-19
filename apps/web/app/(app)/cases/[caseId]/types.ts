@@ -57,3 +57,12 @@ export interface AddSlideState {
 export const addSlideInitialState: AddSlideState = {
   status: 'idle',
 };
+
+export interface AddOrderedTestState {
+  status: 'idle' | 'submitting' | 'done' | 'error';
+  formError?: string;
+}
+
+export const addOrderedTestInitialState: AddOrderedTestState = {
+  status: 'idle',
+};

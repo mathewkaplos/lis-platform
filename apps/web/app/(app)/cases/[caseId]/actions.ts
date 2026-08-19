@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { getValidAccessToken } from '@/auth/access-token';
 import type {
   AddBlockState,
+  AddOrderedTestState,
   AddSlideState,
   AmendCaseState,
   ScreenCaseState,
@@ -316,6 +317,59 @@ export async function addSlide(
     return {
       status: 'error',
       formError: 'Something went wrong adding this slide. Please try again.',
+    };
+  }
+
+  revalidatePath(`/cases/${caseId}`);
+  return { status: 'done' };
+}
+
+/**
+ * Issue #630. `POST /v1/blocks/:id/ordered-tests` has no `@ZodResponse` --
+ * same raw-`fetch` precedent as every prior action on this page. No
+ * `step_up_required` branch (confirmed directly -- `addOrderedTest()` has
+ * no `@RequireStepUp()`). `parentOrderedTestId` is deliberately never sent
+ * from this manual UI (proposal §5) -- it's for the automated reflex-rule
+ * engine's own lineage tracking, not a human picking a test from a
+ * dropdown.
+ */
+export async function addOrderedTest(
+  _prevState: AddOrderedTestState,
+  formData: FormData,
+): Promise<AddOrderedTestState> {
+  const caseId = String(formData.get('caseId') ?? '');
+  const blockId = String(formData.get('blockId') ?? '');
+  const testDefinitionId = String(formData.get('testDefinitionId') ?? '');
+
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    return { status: 'error', formError: 'Your session has expired — please log in again.' };
+  }
+
+  const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
+  const res = await fetch(`${baseUrl}/v1/blocks/${blockId}/ordered-tests`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ testDefinitionId }),
+  });
+
+  if (!res.ok) {
+    if (res.status === 403) {
+      return { status: 'error', formError: 'You do not have permission to add a test.' };
+    }
+    if (res.status === 400) {
+      const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+      return {
+        status: 'error',
+        formError: body?.detail ?? 'This test could not be added right now.',
+      };
+    }
+    return {
+      status: 'error',
+      formError: 'Something went wrong adding this test. Please try again.',
     };
   }
 

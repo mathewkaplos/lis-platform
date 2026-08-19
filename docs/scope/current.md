@@ -1,13 +1,14 @@
 # Status — 2026-08-19 (session 40, continued)
 
-Last commit on main: `499ec8b` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
-this leg). Since the AP testing passes below (pure QA, no code touched): issue #613 fixed and
-merged as PR #617 (Cases list status-filter tabs, breadcrumb PR #618); issue #615 fixed and merged
-as PR #619 (case amendment browser UI, breadcrumb PR #620); and **issue #621 (filed this session,
-broken out of #610) fixed and merged as PR #622** (case sign-out/finalize browser UI) — see updated
-bullet below. A histology case can now go accessioned → signed_out → amended entirely through the
-browser (no synoptic/result-entry needs). Check `git log origin/main -5` for the real current tip
-if this has drifted.
+Last commit on main: `00afa24` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
+this leg). Since the AP testing passes below (pure QA, no code touched), three issues broken out of
+#610 were each filed, planned, implemented, and merged this session: issue #613 as PR #617 (Cases
+list status-filter tabs, breadcrumb PR #618); issue #615 as PR #619 (case amendment browser UI,
+breadcrumb PR #620); issue #621 as PR #622 (case sign-out/finalize browser UI, breadcrumb PR #623);
+and **issue #624 as PR #625** (cytology two-tier screening browser UI) — see updated bullet below.
+A histology case can go accessioned → signed_out → amended entirely through the browser; a
+cytology case can go accessioned → pending_review → signed_out → amended entirely through the
+browser. Check `git log origin/main -5` for the real current tip if this has drifted.
 
 ## Session 40 (continued) — AP full acceptance pass #4: Amendments, Reflex/IHC, Reporting
 
@@ -401,7 +402,9 @@ for this second cycle is still owed once that's resolved.
   now proven twice, `amendCase` and `signOutCase` both use the identical branch — same raw-`fetch`
   precedent since `finalize()` has no `@ZodResponse` either). Deliberately does **not** add a
   "Screen" action for two-tier cytology cases or a client-side lineage-completeness pre-check —
-  both explicitly out of scope per the issue's own text; `finalize()`'s own rejection messages
+  both explicitly out of scope per the issue's own text (Screen itself **now filed, fixed, and
+  merged the same session as issue #624, PR #625** — see its own bullet immediately below);
+  `finalize()`'s own rejection messages
   (`"Part ... has no active block"`, `"requires screening before sign-out"`) surface verbatim, not
   translated to clinician-facing copy. No `apps/api`/domain changes at all — pure frontend wiring
   against an already-correct, already-e2e-tested backend action. Live-verified in a real browser
@@ -421,6 +424,46 @@ for this second cycle is still owed once that's resolved.
   tenant-A tissue cases under patients "SIGNOUTQA WebVerify" and "SIGNOUTQA2 TechView" (accession
   numbers `260819-000747`/`260819-000748`) — the first now `signed_out` with a real v1 report
   version, the second still `accessioned` with an intentionally-incomplete block/slide tree.
+- **New this session: issue #624 filed, planned, implemented, and merged as PR #625
+  (`Closes #624`).** Cytology two-tier screening browser UI — the third and final sibling on the
+  case detail page alongside #615's Amend and #621's Sign out cards, closing the last remaining gap
+  in reaching every real case status through the browser: a cytology case couldn't reach
+  `pending_review` (a prerequisite for #621's own Sign out) without a direct API call. New
+  `apps/web/auth/roles.ts` helper `hasSpecimenManagementRole` (technologist OR verifier, matching
+  `manage_specimens`'s real grant — confirmed identical to `manage_patients`'s own grant, but kept
+  as its own separate helper rather than reusing `hasPatientManagementRole` under the wrong name,
+  per that file's own one-helper-per-capability convention). `screen()` has no step-up requirement
+  (unlike `amend`/`finalize`), so `screenCase` needed no `step_up_required` redirect branch — the
+  simplest of the three actions built this session. **Deliberate scope call, flagged explicitly to
+  the human and approved:** the Screen card is NOT gated on specimen type client-side — showing
+  unconditionally on any `accessioned`/`in_process` case rather than duplicating
+  `requiresTwoTierReview`'s `CYTOLOGY_SPECIMEN_TYPES` logic (which lives in `apps/api/src`, not an
+  importable shared package, so copying it client-side risks silent drift). A histology case's
+  Screen attempt just 400s with the API's own "does not require screening" message, verbatim — same
+  "plain error message over client-side business-rule duplication" precedent #621's own proposal
+  already established for lineage-completeness. Both Screen and Sign out render together on a
+  screenable case (not mutually hidden), since a histology case's Sign Out already works directly
+  from `accessioned` — hiding Sign Out whenever Screen shows would have broken that already-working
+  path. No `apps/api`/domain changes at all. Live-verified in a real browser across five scenarios
+  with freshly-seeded cases (one complete cytology, one complete histology, one incomplete-lineage
+  cytology, one fresh case for the verifier both-cards check): technologist saw Screen and
+  successfully screened a lineage-complete cytology case to `pending_review`; the same
+  technologist's Screen attempt on the histology case 400'd with the exact "does not require
+  screening" message; the incomplete-lineage cytology case's Screen attempt 400'd with the exact
+  "has no active block" message; a verifier viewing a fresh non-terminal case saw both Screen and
+  Sign out cards together, Screen listed first; a no-realm-role user (`test-user-3`) saw neither
+  card. **Net effect worth remembering:** both real AP status chains — histology
+  (`accessioned → signed_out → amended`, from #621) and cytology
+  (`accessioned → pending_review → signed_out → amended`, from this item) — are now fully
+  browser-reachable for a simple case with no synoptic/reflex-IHC/result-entry needs. Everything
+  else on #610's own list (accessioning forms, result/synoptic entry, reflex/IHC ordering UI,
+  gross/microscopic description entry, a reviewer-facing "pending review queue" or
+  reject/return-to-screener action — the last two confirmed to have no backing route at all, not
+  just no UI) remains unbuilt and untouched by this work. **New test data from this session's #624
+  work, left in place, not cleaned up:** four fresh tenant-A cases under patients "SCREENQA1
+  CytoComplete" (now `pending_review`), "SCREENQA2 HistoComplete" (still `accessioned`, screen
+  rejected as expected), "SCREENQA3 CytoIncomplete" (still `accessioned`, incomplete lineage), and
+  "SCREENQA4 VerifierBoth" (still `accessioned`, used only to view both cards, never submitted).
 - **New this session:** TASK-440 (specimen expiry + reflex recollection) merged as PR #605
   (`e58f243`), issue #440 closed — see session 40 section above. Nothing owed from this item.
   Volume/exhaustion tracking was deliberately cut from scope (§10 Q1) — a real, separate follow-up

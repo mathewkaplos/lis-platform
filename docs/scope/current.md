@@ -1,9 +1,10 @@
 # Status — 2026-08-19 (session 40, continued)
 
-Last commit on main: `247117f` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
-this leg). Since the AP testing passes below (pure QA, no code touched): issue #615 filed (breadcrumb
-PR #616, merged) and **issue #613 fixed and merged as PR #617** (Cases list status-filter tabs) — see
-new bullet below. Check `git log origin/main -5` for the real current tip if this has drifted.
+Last commit on main: `2dddcd0` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
+this leg). Since the AP testing passes below (pure QA, no code touched): issue #613 fixed and
+merged as PR #617 (Cases list status-filter tabs, breadcrumb PR #618) and **issue #615 fixed and
+merged as PR #619** (case amendment browser UI) — see updated bullet below. Check
+`git log origin/main -5` for the real current tip if this has drifted.
 
 ## Session 40 (continued) — AP full acceptance pass #4: Amendments, Reflex/IHC, Reporting
 
@@ -355,15 +356,38 @@ for this second cycle is still owed once that's resolved.
   param). Live-verified in a real browser post-merge: previously-invisible `signed_out` (6) and
   `amended` (2) cases now correctly appear under their tabs. Nothing owed from this item.
   Amendment backend confirmed correct (3-version chained supersession,
-  real DB trigger, verified not assumed) but has zero UI; broken out from issue #610's own list
+  real DB trigger, verified not assumed) but had zero UI; broken out from issue #610's own list
   into its own dedicated issue #615 (M13) once the human asked for it, carrying the actual verified
   testing detail (RBAC/step-up/wrong-state all confirmed, not just guard-code reads) rather than
-  #610's original one-line mention. Real positive finding worth remembering: a reflex/IHC-ordered
+  #610's original one-line mention. **Issue #615 now fixed and merged as PR #619 (`Closes #615`):**
+  added a read-only `GET /v1/cases/:id/report-versions` route (metadata-only version list, no
+  content diff) plus a "Report versions" list and a verifier-gated Amend form on the case detail
+  page. Deliberately does not add finalize/sign-out UI — Amend only ever renders on a case already
+  `signed_out`/`amended` (reachable via issue #613's own Cases-list tabs); building browser
+  sign-out stays issue #610's separately-scoped gap. **Genuinely interesting finding along the
+  way:** `apps/web` had a fully-built step-up re-authentication redirect
+  (`/api/auth/login?step_up=1`) that a stale code comment in
+  `apps/api/src/auth/step-up-required.exception.ts` claimed was already wired up to "apps/web's own
+  sign-out flow" — confirmed false by grep (zero callers anywhere in `apps/web`) before this PR;
+  the new `amendCase` server action is the first real caller of it. Live-verified in a real browser
+  post-merge with both roles: a verifier submitting a valid reason with a fresh step-up correctly
+  created v2, flipped the case to `amended`, marked v1 `superseded`, and the version list updated
+  live; a technologist sees the version list but not the Amend control. The *stale*-step-up
+  redirect branch itself was verified only at the code level (exact `code: 'step_up_required'`
+  field match against `ProblemDetailsFilter`, read directly, not assumed) — not live-driven through
+  an actual 5-minute-stale token, since that wasn't practical in this session; a future session
+  could close that gap with a real wait or a pre-aged token if it ever becomes load-bearing. Nothing
+  else owed from this item. Real positive finding worth remembering: a reflex/IHC-ordered
   test **is** result-enterable
   through the existing generic (`/orders/[id]/results`) screen, once ordered via API — a
   half-closed corner of the "no result entry UI" gap, not the whole thing. Test data added this
   round left in place, tagged (`AMENDQA NotSignedOut`, two new report versions, one reflex-ordered
-  test with a real draft result), not cleaned up.
+  test with a real draft result), not cleaned up. **New test data from this session's #615 work,
+  also left in place, not cleaned up:** roughly a dozen `SignOut Fixture`-patient cases created by
+  repeated local `apps/api` e2e suite runs (tenant A, accession numbers in the `260819-000415`
+  through `260819-000698` range), and one real browser-driven amendment on pre-existing case
+  `260818-000141` (now v2/`amended`, reason "web-verify: correction after browser-driven amend
+  test").
 - **New this session:** TASK-440 (specimen expiry + reflex recollection) merged as PR #605
   (`e58f243`), issue #440 closed — see session 40 section above. Nothing owed from this item.
   Volume/exhaustion tracking was deliberately cut from scope (§10 Q1) — a real, separate follow-up

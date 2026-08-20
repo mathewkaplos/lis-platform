@@ -1,7 +1,9 @@
 # Status — 2026-08-20 (session 41)
 
-Last commit on main: `6236cc5` (`lis-platform`, PR #651) — `lis-engineering`'s tip is `a9f54d9`
-(unchanged this leg). Session 40 closed cleanly (Final Close Report,
+Last commit on main: `3f77ec9` (`lis-platform`, PR #653 — this line's own pointer refresh, per
+session 41's own Pre-Close Report finding #6 that it had drifted two commits stale) —
+`lis-engineering`'s tip is `2cc3e87` (this session's own Pre-Close Report commit). Session 40
+closed cleanly (Final Close Report,
 `~/work/lis-engineering/session-close-reports/2026-08-20-1441-final.md`, 0 outstanding items).
 This session (41) picked issue #489 (§17.1 Invoice List only) off the backlog via `/orient`'s own
 milestone scan — see this session's own section immediately below for detail — before returning

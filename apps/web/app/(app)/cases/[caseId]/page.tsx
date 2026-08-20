@@ -66,10 +66,12 @@ export default async function CaseDetailPage({
     { data: caseData, response },
     { data: catalog, response: catalogResponse },
     { data: synopticProtocols },
+    { data: synopticResponses },
   ] = await Promise.all([
     client.GET('/v1/cases/{id}', { params: { path: { id } } }),
     client.GET('/v1/catalog'),
     client.GET('/v1/synoptic-protocols'),
+    client.GET('/v1/cases/{id}/synoptic-responses', { params: { path: { id } } }),
   ]);
   if (response.status === 404) {
     notFound();
@@ -91,6 +93,16 @@ export default async function CaseDetailPage({
   // can produce today.
   const synopticProtocolBySpecimenType = new Map(
     (synopticProtocols?.protocols ?? []).map((protocol) => [protocol.specimenType, protocol]),
+  );
+
+  // Issue #659: responses aren't part-scoped in the write path today (only
+  // orderedTestId + synopticProtocolVersionId) — matched here by protocol
+  // identity, same "one eligible protocol per specimenType" assumption
+  // `synopticProtocolBySpecimenType` above already makes. If two parts ever
+  // share the same eligible protocol, both would show the same recorded
+  // response until issue #674 (part-scoping) lands.
+  const synopticResponseByProtocolId = new Map(
+    (synopticResponses?.responses ?? []).map((r) => [r.synopticProtocolId, r]),
   );
 
   const isAmendable = AMENDABLE_STATUSES.has(caseData.status);
@@ -115,6 +127,9 @@ export default async function CaseDetailPage({
           ) : (
             caseData.parts.map((part) => {
               const eligibleProtocol = synopticProtocolBySpecimenType.get(part.specimenType);
+              const recordedResponse = eligibleProtocol
+                ? synopticResponseByProtocolId.get(eligibleProtocol.id)
+                : undefined;
               return (
               <div key={part.id} className="flex flex-col gap-3">
                 <h3 className="text-sm font-medium text-foreground">
@@ -126,8 +141,21 @@ export default async function CaseDetailPage({
                     href={`/cases/${id}/synoptic/${part.id}`}
                     className="w-fit text-sm text-primary hover:underline"
                   >
-                    Record synoptic protocol ({eligibleProtocol.name})
+                    {recordedResponse ? 'Record synoptic protocol again' : 'Record synoptic protocol'} (
+                    {eligibleProtocol.name})
                   </Link>
+                ) : null}
+                {recordedResponse ? (
+                  <div className="rounded-md border border-border p-3">
+                    <p className="text-xs font-medium text-text-secondary">
+                      Recorded {new Date(recordedResponse.recordedAt).toLocaleString()}
+                    </p>
+                    <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-sm">
+                      {recordedResponse.results.map((result) => (
+                        <FragmentResultRow key={result.elementKey} result={result} />
+                      ))}
+                    </dl>
+                  </div>
                 ) : null}
                 {part.blocks.length === 0 ? (
                   <p className="pl-4 text-sm text-text-secondary">No blocks yet.</p>
@@ -289,5 +317,26 @@ export default async function CaseDetailPage({
         </Card>
       ) : null}
     </div>
+  );
+}
+
+// Issue #659: read-only formatting for an already-recorded synoptic element
+// result — reused as-is regardless of dataType, matching the `results`
+// entries' own already-labeled shape (no need to re-fetch or re-join
+// `synoptic_element` here; `elementLabel`/`value` are already a point-in-time
+// copy from when the response was recorded).
+function FragmentResultRow({
+  result,
+}: {
+  result: { elementKey: string; elementLabel: string; value: string | number | string[] };
+}) {
+  const formattedValue = Array.isArray(result.value)
+    ? result.value.join(', ')
+    : String(result.value);
+  return (
+    <>
+      <dt className="text-text-secondary">{result.elementLabel}</dt>
+      <dd className="font-medium text-foreground">{formattedValue}</dd>
+    </>
   );
 }

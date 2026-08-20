@@ -25,6 +25,7 @@ import {
   caseListResponseSchema,
   caseNarrativeUpdateSchema,
   caseReportVersionListResponseSchema,
+  caseSynopticResponseListSchema,
   type Block,
   type Case,
   type CaseLineage,
@@ -33,6 +34,7 @@ import {
   type CaseNarrative,
   type CaseReportVersion,
   type CaseReportVersionListResponse,
+  type CaseSynopticResponseList,
   type Slide,
   type WholeSlideImageStatus,
 } from '@lis/domain';
@@ -56,11 +58,14 @@ import {
   specimenFulfillment,
   wholeSlideImage,
   synopticElement,
+  synopticProtocol,
+  synopticProtocolVersion,
   testDefinition,
   writeAuditEvent,
 } from '@lis/db';
 import { assembleCaseReportContent } from './case-report-content-assembler';
 import { renderCaseReportPdf } from './case-report-render';
+import { findSynopticGridAnalyte } from '../synoptic-protocol/synoptic-response-recorder';
 import { and, count, desc, eq, inArray, notInArray } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
@@ -96,6 +101,9 @@ class CaseListQueryDto extends createZodDto(caseListQuerySchema) {}
 class CaseListResponseDto extends createZodDto(caseListResponseSchema) {}
 class CaseReportVersionListResponseDto extends createZodDto(
   caseReportVersionListResponseSchema,
+) {}
+class CaseSynopticResponseListDto extends createZodDto(
+  caseSynopticResponseListSchema,
 ) {}
 class BlockCreateDto extends createZodDto(blockCreateSchema) {}
 class BlockOrderedTestLinkCreateDto extends createZodDto(
@@ -923,6 +931,146 @@ export class CaseController {
       .orderBy(desc(caseReportVersion.versionNumber));
 
     return { items: rows.map(toCaseReportVersionDto) };
+  }
+
+  /**
+   * Issue #659 (proposal `task-659-synoptic-response-read-path.md`). A
+   * recorded synoptic protocol response had no read path at all before this
+   * -- every recording writes a `table`-dataType "grid" Observation under
+   * the shared synoptic-report-grid analyte (`synoptic-response-recorder.ts`)
+   * whose `valueJson` already holds exactly the `{synopticProtocolVersionId,
+   * results}` shape this route returns; no re-derivation from discrete
+   * Observations needed.
+   *
+   * Same read-only, `JwtAuthGuard`-only, no-`@Audit()` shape as
+   * `listReportVersions`/`getReportVersionPdf` above (RLS is the tenant
+   * boundary; `engineering/api-design` entry #6 -- only mutating actions are
+   * audited).
+   *
+   * Keyed on `(orderedTestId, synopticProtocolVersionId)`, most-recent-wins
+   * per key -- mirrors `wholeSlideImage`'s own already-proven
+   * "most-recent-ready-wins, no version chain" policy (`getById` above).
+   * **Not part-scoped**: responses aren't tied to a specimen/part in the
+   * write path today (found during this issue's own implementation, tracked
+   * separately as issue #674) -- a case with two eligible parts recorded
+   * against the *same* protocol will only surface the more recent of the
+   * two here. Real response versioning/edit is issue #662's separate,
+   * larger concern; this route does not attempt it.
+   */
+  @Get('v1/cases/:id/synoptic-responses')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(TenantContextInterceptor)
+  @ZodResponse({ type: CaseSynopticResponseListDto, status: 200 })
+  async listSynopticResponses(
+    @Param(new ZodValidationPipe(idParamSchema)) { id }: IdParamDto,
+    @DbTx() tx: RequestWithTx['tx'],
+  ): Promise<CaseSynopticResponseList> {
+    const [caseRow] = await tx
+      .select()
+      .from(caseTable)
+      .where(eq(caseTable.id, id))
+      .limit(1);
+    if (!caseRow) {
+      throw new NotFoundException('Case not found');
+    }
+
+    const gridAnalyte = await findSynopticGridAnalyte(tx);
+    if (!gridAnalyte) {
+      return { responses: [] };
+    }
+
+    const orderedTestRows = await tx
+      .select({ id: orderedTest.id })
+      .from(orderedTest)
+      .where(eq(orderedTest.orderId, caseRow.orderId));
+    const orderedTestIds = orderedTestRows.map((row) => row.id);
+    if (orderedTestIds.length === 0) {
+      return { responses: [] };
+    }
+
+    const gridObservationRows = await tx
+      .select()
+      .from(observation)
+      .where(
+        and(
+          inArray(observation.orderedTestId, orderedTestIds),
+          eq(observation.analyteId, gridAnalyte.id),
+          eq(observation.dataType, 'table'),
+        ),
+      )
+      .orderBy(desc(observation.createdAt));
+
+    // Most-recent-wins per (orderedTestId, synopticProtocolVersionId) --
+    // rows are already newest-first, so the first one seen per key is kept.
+    const seenKeys = new Set<string>();
+    const latestByKey: (typeof gridObservationRows)[number][] = [];
+    for (const row of gridObservationRows) {
+      const payload = row.valueJson as {
+        synopticProtocolVersionId: string;
+        results: unknown[];
+      } | null;
+      if (!payload?.synopticProtocolVersionId || !row.orderedTestId) continue;
+      const key = `${row.orderedTestId}:${payload.synopticProtocolVersionId}`;
+      if (seenKeys.has(key)) continue;
+      seenKeys.add(key);
+      latestByKey.push(row);
+    }
+    if (latestByKey.length === 0) {
+      return { responses: [] };
+    }
+
+    const versionIds = [
+      ...new Set(
+        latestByKey.map(
+          (row) =>
+            (row.valueJson as { synopticProtocolVersionId: string })
+              .synopticProtocolVersionId,
+        ),
+      ),
+    ];
+    const versionRows = await tx
+      .select({
+        id: synopticProtocolVersion.id,
+        synopticProtocolId: synopticProtocolVersion.synopticProtocolId,
+      })
+      .from(synopticProtocolVersion)
+      .where(inArray(synopticProtocolVersion.id, versionIds));
+    const protocolIdByVersionId = new Map(
+      versionRows.map((row) => [row.id, row.synopticProtocolId]),
+    );
+
+    const protocolIds = [...new Set(protocolIdByVersionId.values())];
+    const protocolRows =
+      protocolIds.length > 0
+        ? await tx
+            .select({ id: synopticProtocol.id, name: synopticProtocol.name })
+            .from(synopticProtocol)
+            .where(inArray(synopticProtocol.id, protocolIds))
+        : [];
+    const protocolNameById = new Map(
+      protocolRows.map((row) => [row.id, row.name]),
+    );
+
+    return {
+      responses: latestByKey.map((row) => {
+        const payload = row.valueJson as {
+          synopticProtocolVersionId: string;
+          results: CaseSynopticResponseList['responses'][number]['results'];
+        };
+        const synopticProtocolId =
+          protocolIdByVersionId.get(payload.synopticProtocolVersionId) ?? '';
+        return {
+          orderedTestId: row.orderedTestId as string,
+          synopticProtocolId,
+          synopticProtocolVersionId: payload.synopticProtocolVersionId,
+          protocolName:
+            protocolNameById.get(synopticProtocolId) ?? 'Unknown protocol',
+          tableObservationId: row.id,
+          recordedAt: row.createdAt.toISOString(),
+          results: payload.results,
+        };
+      }),
+    };
   }
 
   /**

@@ -1,7 +1,7 @@
 # Status — 2026-08-19 (session 40, continued)
 
-Last commit on main: `d391980` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
-this leg). Since the AP testing passes below (pure QA, no code touched), ten issues broken out
+Last commit on main: `8611cad` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
+this leg). Since the AP testing passes below (pure QA, no code touched), eleven issues broken out
 of #610 were each filed, planned, implemented, and merged this session: issue #613 as PR #617
 (Cases list status-filter tabs, breadcrumb PR #618); issue #615 as PR #619 (case amendment browser
 UI, breadcrumb PR #620); issue #621 as PR #622 (case sign-out/finalize browser UI, breadcrumb PR
@@ -9,9 +9,10 @@ UI, breadcrumb PR #620); issue #621 as PR #622 (case sign-out/finalize browser U
 #627 as PR #628 (block/slide creation browser UI, breadcrumb PR #629); issue #630 as PR #631
 (block-level reflex/add-on test ordering browser UI, breadcrumb PR #632); issue #633 as PR #634
 (case/specimen accessioning browser UI, breadcrumb PR #635); issue #636 as PR #637
-(gross/microscopic/diagnosis narrative entry — the first of these ten requiring new schema, not
-just a thin UI layer); issue #639 as PR #640 (cytology reviewer return-to-screening action); and
-**issue #642 as PR #643** (synoptic protocol recording UI — see updated bullet below). A histology
+(gross/microscopic/diagnosis narrative entry — the first of these eleven requiring new schema, not
+just a thin UI layer); issue #639 as PR #640 (cytology reviewer return-to-screening action); issue
+#642 as PR #643 (synoptic protocol recording UI); and **issue #645 as PR #646** (Prostate/Lung
+synoptic protocol pilot + `coded_multi` elements — see updated bullet below). A histology
 case can go accessioned →
 signed_out → amended entirely through the browser; a cytology case can go accessioned →
 pending_review → signed_out → amended entirely through the browser, and a verifier can now send a
@@ -21,9 +22,10 @@ hierarchy can be built out in the browser; a reflex/add-on test can be ordered o
 the browser, immediately result-enterable via the existing generic results screen; a case can be
 created from scratch in the browser (`/cases/new?orderId=`); a pathologist can enter and
 persist gross/microscopic/diagnosis narrative on a case, correctly captured into the signed report
-at finalize/amend time; and a pathologist can now record a full CAP/ICCR synoptic protocol
-(Breast, Colorectal, or Cervical Cytology/Pap) against an eligible part, through a single generic
-protocol renderer with live conditional-field visibility. Check `git log origin/main -5` for the
+at finalize/amend time; and a pathologist can now record a full synoptic protocol (Breast,
+Colorectal, Cervical Cytology/Pap, Prostate, or Lung — five real, cited protocols now seeded) against
+an eligible part, through a single generic protocol renderer with live conditional-field visibility
+and multi-select ("select all that apply") support. Check `git log origin/main -5` for the
 real current tip if this has drifted.
 
 ## Session 40 (continued) — AP full acceptance pass #4: Amendments, Reflex/IHC, Reporting
@@ -769,20 +771,75 @@ for this second cycle is still owed once that's resolved.
   full recorded synoptic response sets (one seeded via direct API call during investigation, one via
   a real browser submission during verification — both left in place since the recording route has
   no update/dedup mechanism, matching §10 Q1's own accepted risk).
-- **Real, large, not-yet-actioned finding, surfaced by the human just after #642 merged:**
-  `D:\LIS\research\cap documents` (a directory new this session, appearing between the #642 and
-  #643 CI-wait cycles) holds 106 real, official CAP Cancer Protocol (CAPCP) `.docx` templates —
-  the full CAP synoptic library, not a handful of samples, covering nearly every organ site
-  (Adrenal through Vulva, plus several biomarker-specific protocols). Spot-checked directly (Vulva,
-  Prostate): confirmed the same official CAP Core/Conditional/Optional format already used to seed
-  the three protocols #642's own UI now renders, so this is a real, large expansion opportunity —
-  potentially 100+ protocols where 3 exist today. One structural detail worth remembering: several
-  of these real templates (e.g. Vulva's SPECIMEN → TUMOR → REGIONAL LYMPH NODE) use genuine section
-  groupings, which would be the first real exercise of the `parentElementId` grouping mechanism
-  #642's own generic renderer already supports but that no currently-seeded protocol data uses.
-  Not yet actioned in any way (no issue filed, no protocols seeded, no plan drafted) — the human's
-  own words were "when #642 closes, we should use [this] to improve the synoptic protocol," posed
-  as an open question about what to recommend next, not yet a decided next task.
+- **Real, large finding, surfaced by the human just after #642 merged; a first pilot on it now
+  shipped as issue #645 (see the dedicated bullet immediately below) — the *rest* of it remains
+  not-yet-actioned:** `D:\LIS\research\cap documents` (a directory new this session, appearing
+  between the #642 and #643 CI-wait cycles) holds 106 real, official CAP Cancer Protocol (CAPCP)
+  `.docx` templates — the full CAP synoptic library, not a handful of samples, covering nearly
+  every organ site (Adrenal through Vulva, plus several biomarker-specific protocols). Spot-checked
+  directly (Vulva, Prostate): confirmed the same official CAP Core/Conditional/Optional format
+  already used to seed the three protocols #642's own UI rendered at the time. One structural
+  detail worth remembering: several of these real templates (e.g. Vulva's SPECIMEN → TUMOR →
+  REGIONAL LYMPH NODE) use genuine section groupings, which would be the first real exercise of the
+  `parentElementId` grouping mechanism #642's own generic renderer already supports but that no
+  currently-seeded protocol data uses (still true after #645 — see below). Scaling to the remaining
+  ~104 documents beyond the #645 pilot's own two is still not yet actioned (no issue filed, no plan
+  drafted) — a real, separate future decision, not blocked on anything technical.
+- **New this session: issue #645 filed, planned, implemented, and merged as PR #646
+  (`Closes #645`).** Prostate/Lung synoptic protocol pilot — the eleventh AP slice this session,
+  and the human's own explicit choice of pilot scope after seeing the CAP documents finding above:
+  seed two more real, cited CAP protocols (Prostate radical prostatectomy, Lung resection) as a
+  deliberately small proof of the docx-to-seed-data pipeline, rather than committing straight to
+  all 106 documents. **Real schema gap found and fixed during scoping, not scope creep (explicitly
+  decided by the human via a targeted walkthrough before any transcription work started):** both
+  source documents use "select all that apply" (multi-select) fields as a recurring pattern, which
+  the existing schema (built for Breast/Colorectal/Pap, none of which needed it) couldn't
+  represent — every element accepted exactly one value. Added a new `coded_multi` data type:
+  `synoptic_element`'s own CHECK constraint widened (migration `0053_synoptic_multi_select.sql`),
+  the response schema accepts `string[]` alongside `string | number`, the recorder validates every
+  selected value against `responseOptions` (all-or-nothing, matching `coded`'s own discipline) and
+  persists via the *existing* `observation.dataType='structured'`/`valueJson` variant — no new
+  `observation` column. The generic renderer (#642) gained a checkbox-group branch; still one
+  generic component, no protocol-specific code. **Before committing to this schema shape, a broader
+  7-document survey (Bladder, Kidney, Skin/Melanoma, Stomach, Testis, Thyroid, Uterus, plus a
+  biomarker template) confirmed `coded_multi` is very likely the *only* extension a much larger
+  slice of the 106-document CAP library would need** — no other novel input-format primitive (a
+  date field, a file attachment, a second condition operator) turned up anywhere in that sample.
+  Deeply-nested conditional sub-branches in both source documents (e.g. Prostate's
+  per-Gleason-grade-group tertiary-pattern sub-questions) are flattened to top-level elements with
+  an `in`/`eq` `visibilityCondition` on the relevant parent selection(s), per the proposal's own
+  approved §5.5/Q1 decision — every real data element stays recordable, only the presentation
+  grouping is flattened. **Real CI gap found and fixed in a follow-up commit, worth remembering for
+  any future seed-file addition:** `.github/workflows/pr.yml` maintains its own hand-written,
+  separate list of `psql -f db/seed/*.sql` steps — its own header comment already warns this list
+  is "wired here separately from `scripts/db-reset.sh`, not assumed to share one seed sequence" —
+  missed in the initial PR (only `db-reset.sh` was updated), causing a real CI failure (`Prostate`/
+  `Lung` genuinely absent from CI's own seeded DB, both new coded_multi e2e tests failing to find
+  them) rather than a flaky one; fixed by adding the same two `psql` steps to `pr.yml`, confirmed
+  via grep that no third seed-invocation site exists anywhere else in the repo. **Live-verified**
+  via the established minted-session-cookie + direct-API fallback (the Claude-in-Chrome extension
+  was unresponsive for this entire pass — confirmed via repeated navigate/get_page_text failures
+  across a fresh tab group; a future session should retry it fresh rather than assume it's
+  permanently broken): both new protocol pages' SSR HTML showed exactly the expected element/
+  checkbox counts by literal HTML-attribute matching (Prostate: 30 checkboxes across 4 multi-select
+  elements + 14 selects + 1 text input, correctly excluding a 14-option conditional multi-select
+  that stays hidden by default; Lung: 19 checkboxes + 14 selects + 3 number inputs + 1 text input);
+  a real submission on Lung mixing a `coded_multi` field with ordinary single-select/text fields in
+  the same request succeeded and persisted correctly; both new seed files applied cleanly against a
+  real local Postgres (Prostate 28 elements/122 options, Lung 25 elements/155 options). **A second
+  real library was surfaced by the human in the same conversation, looked at but not yet actioned,
+  folded into the same future protocol-library-expansion backlog item as the CAP documents rather
+  than treated separately:** `D:\LIS\research\ICCR\ICCR_Datasets_2026-08-20` — a fresh crawl of the
+  official ICCR datasets site, 234 files resolving to 64 distinct real ICCR datasets across 11
+  anatomical categories. Real, confirmed overlap worth remembering: ICCR is the same standard
+  already used for the original Breast/Colorectal seeds (predating #642), and this library includes
+  ICCR's own distinct "Prostate Cancers – Radical Prostatectomy Specimen" and "Lung Cancers"
+  datasets — different documents from the CAP versions #645 just seeded, likely with some real
+  divergence (the same class already documented between ICCR and CAP for colorectal pT staging).
+  **Net effect worth remembering:** five real, cited synoptic protocols now exist (Breast,
+  Colorectal, Cervical Cytology/Pap, Prostate, Lung), all rendering through one generic component;
+  `coded_multi` is proven end-to-end, not just designed. Any further protocol seeding — from either
+  library — is a separate, not-yet-decided future task, not committed to by this pilot.
 - **New this session:** TASK-440 (specimen expiry + reflex recollection) merged as PR #605
   (`e58f243`), issue #440 closed — see session 40 section above. Nothing owed from this item.
   Volume/exhaustion tracking was deliberately cut from scope (§10 Q1) — a real, separate follow-up

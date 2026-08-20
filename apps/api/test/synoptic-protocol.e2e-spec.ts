@@ -13,6 +13,7 @@ import {
 } from '@lis/db';
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
+import { makeInstanceResponseKey } from '@lis/domain';
 import { AppModule } from './../src/app.module';
 import { getKeycloakToken } from './get-keycloak-token';
 
@@ -1065,6 +1066,261 @@ describe('Synoptic Protocol API (e2e)', () => {
           responses: baseColorectalResponses,
         })
         .expect(201);
+    });
+  });
+
+  describe('Repeating element groups (issue #666)', () => {
+    // Not seed content, same #664 precedent -- a test-only repeatable group
+    // inserted directly, modeled on CAP Breast's real multifocal Tumor
+    // Characteristics section (identity field "Tumor Identifier", subordinate
+    // field "Tumor Size"), not a synthetic example.
+    async function insertTestElement(
+      key: string,
+      label: string,
+      dataType: 'text' | 'quantity',
+      opts: {
+        parentElementId?: string;
+        repeatable?: boolean;
+        identityElementKey?: string;
+        requirement?: 'required' | 'recommended' | 'conditional';
+        visibilityCondition?: Record<string, unknown>;
+      } = {},
+    ) {
+      const [csv] = await db
+        .insert(codeSystemValue)
+        .values({
+          system: 'ICCR-SYNOPTIC-TEST',
+          code: key,
+          version: '2022',
+          display: label,
+        })
+        .returning();
+      const [a] = await db
+        .insert(analyte)
+        .values({ codeSystemValueId: csv.id, display: label, dataType })
+        .returning();
+      const [el] = await db
+        .insert(synopticElement)
+        .values({
+          synopticProtocolVersionId: colorectalVersionId,
+          parentElementId: opts.parentElementId ?? null,
+          key,
+          label,
+          dataType,
+          requirement: opts.requirement ?? 'required',
+          analyteId: a.id,
+          displayOrder: 999,
+          repeatable: opts.repeatable ?? false,
+          identityElementKey: opts.identityElementKey ?? null,
+          visibilityCondition: opts.visibilityCondition ?? null,
+        })
+        .returning();
+      return el;
+    }
+
+    async function createRepeatableTumorGroup(
+      rootRequirement: 'required' | 'recommended' = 'recommended',
+    ): Promise<{ rootKey: string; identityKey: string; sizeKey: string }> {
+      const suffix = randomUUID().slice(0, 8);
+      const rootKey = `test_tumor_characteristics_${suffix}`;
+      const identityKey = `test_tumor_identifier_${suffix}`;
+      const sizeKey = `test_tumor_size_mm_${suffix}`;
+
+      const root = await insertTestElement(
+        rootKey,
+        'Tumor Characteristics (test)',
+        'text',
+        {
+          repeatable: true,
+          identityElementKey: identityKey,
+          requirement: rootRequirement,
+          // Issue #666's own recorder fix: a repeatable root's requiredness
+          // respects its own visibilityCondition, same as any other element
+          // (previously an unconditional bug -- see recorder). Gated behind
+          // neoadjuvant_therapy = 'given' (baseColorectalResponses always
+          // sets 'not_given') so a 'required' root stays harmlessly hidden
+          // for every other test/spec file sharing this same seeded
+          // colorectalVersionId, exactly like the #664 conditional test
+          // element's own precedent.
+          visibilityCondition:
+            rootRequirement === 'required'
+              ? { field: 'neoadjuvant_therapy', op: 'eq', value: 'given' }
+              : undefined,
+        },
+      );
+      await insertTestElement(identityKey, 'Tumor Identifier (test)', 'text', {
+        parentElementId: root.id,
+        requirement: 'required',
+      });
+      await insertTestElement(sizeKey, 'Tumor Size (test, mm)', 'quantity', {
+        parentElementId: root.id,
+        requirement: 'required',
+      });
+
+      return { rootKey, identityKey, sizeKey };
+    }
+
+    it('records two distinct instances, each independently retrievable via the read path (#659)', async () => {
+      const { identityKey, sizeKey } = await createRepeatableTumorGroup();
+      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+
+      const recorded = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: colorectalVersionId,
+          responses: baseColorectalResponses.concat([
+            {
+              elementKey: makeInstanceResponseKey(identityKey, 'i1'),
+              value: '1',
+            },
+            { elementKey: makeInstanceResponseKey(sizeKey, 'i1'), value: 12 },
+            {
+              elementKey: makeInstanceResponseKey(identityKey, 'i2'),
+              value: '2',
+            },
+            { elementKey: makeInstanceResponseKey(sizeKey, 'i2'), value: 8 },
+          ]),
+        })
+        .expect(201);
+      const recordedResults = (
+        recorded.body as {
+          results: {
+            elementKey: string;
+            value: unknown;
+            observationId: string;
+          }[];
+        }
+      ).results;
+      const sizeI1 = recordedResults.find(
+        (r) => r.elementKey === makeInstanceResponseKey(sizeKey, 'i1'),
+      );
+      const sizeI2 = recordedResults.find(
+        (r) => r.elementKey === makeInstanceResponseKey(sizeKey, 'i2'),
+      );
+      if (
+        sizeI1?.value !== 12 ||
+        sizeI2?.value !== 8 ||
+        sizeI1.observationId === sizeI2.observationId
+      ) {
+        throw new Error(
+          `expected two independent instance Observations, got ${JSON.stringify({ sizeI1, sizeI2 })}`,
+        );
+      }
+
+      const listRes = await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const responses = (
+        listRes.body as {
+          responses: {
+            synopticProtocolVersionId: string;
+            results: { elementKey: string; value: unknown }[];
+          }[];
+        }
+      ).responses;
+      const match = responses.find(
+        (r) => r.synopticProtocolVersionId === colorectalVersionId,
+      );
+      const readIdentityI1 = match?.results.find(
+        (r) => r.elementKey === makeInstanceResponseKey(identityKey, 'i1'),
+      );
+      const readIdentityI2 = match?.results.find(
+        (r) => r.elementKey === makeInstanceResponseKey(identityKey, 'i2'),
+      );
+      if (readIdentityI1?.value !== '1' || readIdentityI2?.value !== '2') {
+        throw new Error(
+          `expected both instances' identity values to round-trip through the read path, got ${JSON.stringify({ readIdentityI1, readIdentityI2 })}`,
+        );
+      }
+    });
+
+    it('does not require the group at all when zero instances are submitted and the root is only "recommended" (optional by default)', async () => {
+      await createRepeatableTumorGroup('recommended');
+      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: colorectalVersionId,
+          responses: baseColorectalResponses,
+        })
+        .expect(201);
+    });
+
+    it('rejects a submitted instance missing one of its own required fields', async () => {
+      const { identityKey, sizeKey } = await createRepeatableTumorGroup();
+      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+
+      const rejected = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: colorectalVersionId,
+          // Instance 'i1' answers its identity field but omits the
+          // required size field.
+          responses: baseColorectalResponses.concat([
+            {
+              elementKey: makeInstanceResponseKey(identityKey, 'i1'),
+              value: '1',
+            },
+          ]),
+        })
+        .expect(400);
+      if (
+        !JSON.stringify(rejected.body).includes(
+          makeInstanceResponseKey(sizeKey, 'i1'),
+        )
+      ) {
+        throw new Error(
+          `expected the missing per-instance field to be named, got ${JSON.stringify(rejected.body)}`,
+        );
+      }
+    });
+
+    // Runs last in this describe block deliberately: a 'required' repeatable
+    // root, once inserted, stays required for every subsequent recording
+    // against this shared colorectalVersionId for the rest of the test run
+    // (test elements accumulate, matching #664's own precedent of never
+    // deleting them) -- ordered last so it can't leak into the
+    // zero-instance/optional or per-instance-field tests above.
+    it('rejects when the group itself is required, visible, and zero instances are submitted', async () => {
+      const { rootKey } = await createRepeatableTumorGroup('required');
+      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+
+      // The root's own visibilityCondition (neoadjuvant_therapy = 'given')
+      // must be satisfied for it to be required at all -- also brings the
+      // seeded response_to_neoadjuvant_therapy element into requiredness,
+      // same override #664's own conditional-element test already needed.
+      const responsesWithNeoadjuvant = baseColorectalResponses
+        .filter((r) => r.elementKey !== 'neoadjuvant_therapy')
+        .concat([
+          { elementKey: 'neoadjuvant_therapy', value: 'given' },
+          {
+            elementKey: 'response_to_neoadjuvant_therapy',
+            value: 'score_0_complete',
+          },
+        ]);
+
+      const rejected = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: colorectalVersionId,
+          responses: responsesWithNeoadjuvant,
+        })
+        .expect(400);
+      if (!JSON.stringify(rejected.body).includes(rootKey)) {
+        throw new Error(
+          `expected the required-but-absent group to be named as missing, got ${JSON.stringify(rejected.body)}`,
+        );
+      }
     });
   });
 

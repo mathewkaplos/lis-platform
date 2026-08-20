@@ -8615,6 +8615,13 @@
                   "minimum": -9007199254740991,
                   "maximum": 9007199254740991
                 },
+                "repeatable": {
+                  "type": "boolean"
+                },
+                "identityElementKey": {
+                  "type": "string",
+                  "nullable": true
+                },
                 "responseOptions": {
                   "type": "array",
                   "items": {
@@ -8660,6 +8667,8 @@
                 "unitDisplay",
                 "visibilityCondition",
                 "displayOrder",
+                "repeatable",
+                "identityElementKey",
                 "responseOptions"
               ],
               "additionalProperties": false

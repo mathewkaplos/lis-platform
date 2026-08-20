@@ -2786,6 +2786,8 @@ export interface components {
                 unitDisplay: string | null;
                 visibilityCondition: components["schemas"]["SynopticProtocolVersionDto_Output__schema0_Output"] | null;
                 displayOrder: number;
+                repeatable: boolean;
+                identityElementKey: string | null;
                 responseOptions: {
                     /** Format: uuid */
                     id: string;

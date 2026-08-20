@@ -20,9 +20,8 @@ async function drain(
 ): Promise<Error | undefined> {
   try {
     await pipeline(source, transform, async function consume(readable) {
-      for await (const _chunk of readable) {
-        // drain only -- proving rejection/acceptance, not consuming bytes
-      }
+      // drain only -- proving rejection/acceptance, not consuming bytes
+      for await (const chunk of readable) void chunk;
     });
     return undefined;
   } catch (err) {

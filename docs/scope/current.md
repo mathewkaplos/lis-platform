@@ -67,9 +67,24 @@ change — none of those files are in this PR's diff. CI (`check-invariants`, `b
 autonomous-merge classifier (same recurring pattern this breadcrumb has noted before), so the
 human merged directly. Issue #489 correctly stayed **open** post-merge (confirmed via
 `gh issue view`, not assumed) — only §17.1 is done. Branch `feat/489-invoice-list` deleted
-locally and on origin. **Manual browser verification of the new list page (status tabs,
-row-to-detail navigation, empty state) is not yet done** — flagged in the PR body's own test
-plan, not silently skipped.
+locally and on origin.
+
+**Manual browser verification, done in a real follow-up pass (Claude-in-Chrome, real Keycloak
+login, not the session-cookie shortcut):** logged in as `test-user` (technologist, tenant A) —
+list rendered 12 real invoices with correct status/payer/total/paid/balance columns; each status
+tab (Unpaid 6 / Partial 1 / Paid 5, summing to the unfiltered 12) filtered correctly with the URL
+updating to `?status=<value>`, matching issue #613's own established pattern; a row click
+navigated to the existing `/billing/invoices/[invoiceId]` detail page (FEAT-046) with matching
+data. Logged in as `test-user-5` (`qa` role, no `manage_billing`) and confirmed the real
+enforcement point: `GET /v1/invoices` 403s, the `error.tsx` boundary renders "You do not have
+permission to view invoices." with a working "Try again" retry (no crash, consistent 403 on
+retry) — while the sidebar's own "Invoices" nav entry still renders unconditionally for this
+role, confirming the API's `CapabilityGuard` is the real gate, not the nav, exactly as designed.
+One hydration-mismatch console warning surfaced during this pass, diagnosed and ruled out as a
+tooling artifact, not a product bug: the mismatched attribute was `data-scribe-recorder-ready`,
+injected by a Chrome extension in the automation profile, not by any app code — matches the
+warning's own last documented cause ("client has a browser extension installed which messes with
+the HTML"). Nothing else owed from this item.
 
 ## Earlier sessions
 

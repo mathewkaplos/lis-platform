@@ -31,6 +31,12 @@ const TWO_DZI_ZIP = readFileSync(join(FIXTURES_DIR, 'two-dzi.zip'));
 const BACKSLASH_PATHS_ZIP = readFileSync(
   join(FIXTURES_DIR, 'backslash-paths.zip'),
 );
+// Issue #660: a hand-crafted single-entry zip whose entry path is
+// '../escaped.txt' -- proves the real HTTP upload route rejects a
+// zip-slip attempt end-to-end, not just the isolated isSafeEntryPath unit.
+const PATH_TRAVERSAL_ZIP = readFileSync(
+  join(FIXTURES_DIR, 'path-traversal.zip'),
+);
 
 /**
  * FEAT-067 (ADR-0054, ADR-0055, docs/plans/feat-067-wsi-viewer.md). Proves
@@ -236,6 +242,33 @@ describe('Whole-slide images (e2e)', () => {
     const body = res.body as { status: string; errorMessage: string | null };
     expect(body.status).toBe('failed');
     expect(body.errorMessage).toMatch(/expected exactly one \.dzi/i);
+  });
+
+  it('AC (issue #660): a zip entry attempting path traversal reaches status failed, and no object is written outside the upload prefix', async () => {
+    const slideId = await createSlide();
+
+    const res = await request(app.getHttpServer())
+      .post(`/v1/whole-slide-images/slides/${slideId}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .attach('file', PATH_TRAVERSAL_ZIP, {
+        filename: 'path-traversal.zip',
+        contentType: 'application/zip',
+      })
+      .expect(201);
+    const body = res.body as {
+      status: string;
+      errorMessage: string | null;
+      tileObjectPrefix: string;
+    };
+    expect(body.status).toBe('failed');
+    expect(body.errorMessage).toMatch(/unsafe path/i);
+    // The escaped object must never have been written -- checked at both
+    // the literal path the entry named and the resolved-outside-prefix
+    // location, not just inferred from the failed status.
+    expect(await objectExists('escaped.txt')).toBe(false);
+    expect(await objectExists(`${body.tileObjectPrefix}../escaped.txt`)).toBe(
+      false,
+    );
   });
 
   it('rejects an upload for an unknown slide id (400)', async () => {

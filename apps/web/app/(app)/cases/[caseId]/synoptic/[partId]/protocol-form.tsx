@@ -46,10 +46,22 @@ function ElementGroup({
           : true;
         if (!visible) return null;
 
-        if (hasChildren) {
-          return (
-            <div key={element.id} className="flex flex-col gap-3 border-l-2 border-border pl-4">
-              <h4 className="text-sm font-semibold text-foreground">{element.label}</h4>
+        // Issue #663: an element with children (e.g. margin_distance_mm,
+        // parent of margin_distance_mm_precision) is still itself a real,
+        // answerable field -- render its own control *and* recurse into its
+        // children below it, rather than treating "has children" as "this
+        // is a pure grouping header with nothing of its own to answer"
+        // (the only shape any of the first five seeded protocols needed
+        // until this issue's own precision-qualifier sibling).
+        return (
+          <div key={element.id} className={hasChildren ? 'flex flex-col gap-3 border-l-2 border-border pl-4' : undefined}>
+            <FieldControl
+              element={element}
+              value={values[element.key]}
+              onChange={onChange}
+              onToggleMulti={onToggleMulti}
+            />
+            {hasChildren ? (
               <ElementGroup
                 elements={elements}
                 parentId={element.id}
@@ -58,86 +70,100 @@ function ElementGroup({
                 onChange={onChange}
                 onToggleMulti={onToggleMulti}
               />
-            </div>
-          );
-        }
-
-        const value = values[element.key];
-        // issue #645: a coded_multi element renders as a checkbox group,
-        // not a <select> -- FormField's own single-child-element contract
-        // (`children: React.ReactElement`) doesn't fit a group of
-        // checkboxes, so this branch renders its own label instead of
-        // going through FormField.
-        if (element.dataType === 'coded_multi') {
-          const selected = Array.isArray(value) ? value : [];
-          return (
-            <div key={element.id} className="flex flex-col gap-1.5" id={`element-${element.key}`}>
-              <span className="text-sm font-medium text-foreground">
-                {element.label}
-                {element.requirement === 'required' ? (
-                  <span className="text-danger" aria-hidden="true">
-                    {' '}
-                    *
-                  </span>
-                ) : null}
-              </span>
-              <div className="flex flex-col gap-1">
-                {element.responseOptions.map((option) => (
-                  <label key={option.id} className="flex items-center gap-2 text-sm text-foreground">
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(option.value)}
-                      onChange={(e) => onToggleMulti(element.key, option.value, e.target.checked)}
-                    />
-                    {option.display}
-                  </label>
-                ))}
-              </div>
-            </div>
-          );
-        }
-
-        return (
-          <FormField
-            key={element.id}
-            id={`element-${element.key}`}
-            label={element.label}
-            required={element.requirement === 'required'}
-          >
-            {element.dataType === 'coded' ? (
-              <select
-                value={typeof value === 'string' ? value : ''}
-                onChange={(e) => onChange(element.key, e.target.value)}
-                className="rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-              >
-                <option value="">— Select —</option>
-                {element.responseOptions.map((option) => (
-                  <option key={option.id} value={option.value}>
-                    {option.display}
-                  </option>
-                ))}
-              </select>
-            ) : element.dataType === 'quantity' ? (
-              <input
-                type="number"
-                value={typeof value === 'number' ? value : ''}
-                onChange={(e) =>
-                  onChange(element.key, e.target.value === '' ? '' : Number(e.target.value))
-                }
-                className="rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-              />
-            ) : (
-              <input
-                type="text"
-                value={typeof value === 'string' ? value : ''}
-                onChange={(e) => onChange(element.key, e.target.value)}
-                className="rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-              />
-            )}
-          </FormField>
+            ) : null}
+          </div>
         );
       })}
     </div>
+  );
+}
+
+function FieldControl({
+  element,
+  value,
+  onChange,
+  onToggleMulti,
+}: {
+  element: SynopticElement;
+  value: ResponseValue | undefined;
+  onChange: (key: string, value: ResponseValue) => void;
+  onToggleMulti: (key: string, optionValue: string, checked: boolean) => void;
+}) {
+  // issue #645: a coded_multi element renders as a checkbox group, not a
+  // <select> -- FormField's own single-child-element contract
+  // (`children: React.ReactElement`) doesn't fit a group of checkboxes, so
+  // this branch renders its own label instead of going through FormField.
+  if (element.dataType === 'coded_multi') {
+    const selected = Array.isArray(value) ? value : [];
+    return (
+      <div className="flex flex-col gap-1.5" id={`element-${element.key}`}>
+        <span className="text-sm font-medium text-foreground">
+          {element.label}
+          {element.requirement === 'required' ? (
+            <span className="text-danger" aria-hidden="true">
+              {' '}
+              *
+            </span>
+          ) : null}
+        </span>
+        <div className="flex flex-col gap-1">
+          {element.responseOptions.map((option) => (
+            <label key={option.id} className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={selected.includes(option.value)}
+                onChange={(e) => onToggleMulti(element.key, option.value, e.target.checked)}
+              />
+              {option.display}
+            </label>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <FormField
+      id={`element-${element.key}`}
+      label={element.label}
+      required={element.requirement === 'required'}
+    >
+      {element.dataType === 'coded' ? (
+        <select
+          value={typeof value === 'string' ? value : ''}
+          onChange={(e) => onChange(element.key, e.target.value)}
+          className="rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        >
+          <option value="">— Select —</option>
+          {element.responseOptions.map((option) => (
+            <option key={option.id} value={option.value}>
+              {option.display}
+            </option>
+          ))}
+        </select>
+      ) : element.dataType === 'quantity' ? (
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            value={typeof value === 'number' ? value : ''}
+            onChange={(e) =>
+              onChange(element.key, e.target.value === '' ? '' : Number(e.target.value))
+            }
+            className="rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          />
+          {element.unitDisplay ? (
+            <span className="text-sm text-text-secondary">{element.unitDisplay}</span>
+          ) : null}
+        </div>
+      ) : (
+        <input
+          type="text"
+          value={typeof value === 'string' ? value : ''}
+          onChange={(e) => onChange(element.key, e.target.value)}
+          className="rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        />
+      )}
+    </FormField>
   );
 }
 

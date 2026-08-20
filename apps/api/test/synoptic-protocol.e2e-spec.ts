@@ -189,9 +189,11 @@ describe('Synoptic Protocol API (e2e)', () => {
         `expected a published version, got ${JSON.stringify(body.status)}`,
       );
     }
-    if (body.elements.length !== 28) {
+    // 28 real ICCR elements + 1 (issue #663: margin_distance_mm_precision,
+    // the real CAP precision-qualifier sibling element).
+    if (body.elements.length !== 29) {
       throw new Error(
-        `expected 28 colorectal elements (db/seed's own real ICCR count), got ${body.elements.length}`,
+        `expected 29 colorectal elements (28 real ICCR + 1 issue #663 precision-qualifier sibling), got ${body.elements.length}`,
       );
     }
     const grade = body.elements.find(
@@ -849,6 +851,107 @@ describe('Synoptic Protocol API (e2e)', () => {
       if (auditAfter?.amendmentOf !== firstBody.tableObservationId) {
         throw new Error(
           `expected the audit event's own after.amendmentOf to name the amended predecessor, got ${JSON.stringify(auditAfter)}`,
+        );
+      }
+    });
+  });
+
+  describe('Quantity units and precision qualifier (issue #663)', () => {
+    it("GET .../versions/:versionId resolves unitDisplay for the real, already-seeded '_mm' elements, and null for elements with no unit", async () => {
+      const res = await request(app.getHttpServer())
+        .get(
+          `/v1/synoptic-protocols/${colorectalProtocolId}/versions/${colorectalVersionId}`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const body = res.body as {
+        elements: {
+          key: string;
+          unitId: string | null;
+          unitDisplay: string | null;
+          parentElementId: string | null;
+        }[];
+      };
+      for (const key of [
+        'tumor_max_dimension_mm',
+        'margin_distance_mm',
+        'invasion_beyond_muscularis_propria_mm',
+      ]) {
+        const element = body.elements.find((e) => e.key === key);
+        if (element?.unitDisplay !== 'mm' || !element.unitId) {
+          throw new Error(
+            `expected ${key} to have unitDisplay 'mm', got ${JSON.stringify(element)}`,
+          );
+        }
+      }
+      const noUnit = body.elements.find((e) => e.key === 'lymph_node_status');
+      if (noUnit?.unitId !== null || noUnit?.unitDisplay !== null) {
+        throw new Error(
+          `expected an element with no declared unit to have unitId/unitDisplay both null, got ${JSON.stringify(noUnit)}`,
+        );
+      }
+    });
+
+    it('the real CAP precision-qualifier pattern is seeded as a sibling coded element nested under margin_distance_mm', async () => {
+      const res = await request(app.getHttpServer())
+        .get(
+          `/v1/synoptic-protocols/${colorectalProtocolId}/versions/${colorectalVersionId}`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const body = res.body as {
+        elements: {
+          id: string;
+          key: string;
+          dataType: string;
+          parentElementId: string | null;
+          responseOptions: { value: string }[];
+        }[];
+      };
+      const marginDistance = body.elements.find(
+        (e) => e.key === 'margin_distance_mm',
+      );
+      const precision = body.elements.find(
+        (e) => e.key === 'margin_distance_mm_precision',
+      );
+      if (
+        !precision ||
+        precision.dataType !== 'coded' ||
+        precision.parentElementId !== marginDistance?.id ||
+        precision.responseOptions
+          .map((o) => o.value)
+          .sort()
+          .join(',') !== 'at_least,cannot_be_determined,exact'
+      ) {
+        throw new Error(
+          `expected margin_distance_mm_precision nested under margin_distance_mm with the three real CAP options, got ${JSON.stringify({ marginDistance, precision })}`,
+        );
+      }
+    });
+
+    it('a full recording including both the unit-bearing quantity value and its precision-qualifier answer succeeds through the unmodified recorder', async () => {
+      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const responsesWithPrecision = baseColorectalResponses.concat([
+        { elementKey: 'margin_distance_mm_precision', value: 'at_least' },
+      ]);
+      const res = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: colorectalVersionId,
+          responses: responsesWithPrecision,
+        })
+        .expect(201);
+      const body = res.body as {
+        results: { elementKey: string; value: unknown }[];
+      };
+      const precisionResult = body.results.find(
+        (r) => r.elementKey === 'margin_distance_mm_precision',
+      );
+      if (precisionResult?.value !== 'at_least') {
+        throw new Error(
+          `expected the precision-qualifier answer to record like any other coded element, got ${JSON.stringify(precisionResult)}`,
         );
       }
     });

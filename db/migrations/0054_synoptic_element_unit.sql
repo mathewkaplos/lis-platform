@@ -1,0 +1,2 @@
+ALTER TABLE "synoptic_element" ADD COLUMN "unit_id" uuid;--> statement-breakpoint
+ALTER TABLE "synoptic_element" ADD CONSTRAINT "synoptic_element_unit_id_unit_id_fk" FOREIGN KEY ("unit_id") REFERENCES "public"."unit"("id") ON DELETE no action ON UPDATE no action;

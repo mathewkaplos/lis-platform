@@ -156,3 +156,105 @@ export const synopticElementResponseOption = pgTable(
     uniqueIndex("ux_synoptic_element_response_option_element_value").on(table.synopticElementId, table.value),
   ],
 );
+
+// Issue #667: reusable concept-block library. Staging/margins/lymph-node
+// structures are not organ-specific -- nearly every CAP/ICCR protocol
+// re-declares them independently (real evidence: colorectal's own
+// lymph_node_status vs. prostate's own regional_lymph_node_status/
+// number_of_lymph_nodes_*/pathological_stage_pn are two independently
+// hand-transcribed, structurally divergent representations of the same
+// concept). Mirrors synopticProtocol/synopticProtocolVersion/
+// synopticElement/synopticElementResponseOption exactly, one level up --
+// a block is authored/versioned like a protocol, then *composed by copy*
+// into a target protocol version at authoring time (concept-block-
+// composer.ts), never referenced live -- preserves the existing
+// published-protocol-version-is-frozen invariant with zero change to
+// synopticElement itself.
+export const conceptBlock = pgTable("concept_block", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  key: text("key").notNull().unique(), // e.g. 'regional_lymph_nodes'
+  name: text("name").notNull(), // e.g. "Regional Lymph Nodes"
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const conceptBlockVersion = pgTable(
+  "concept_block_version",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conceptBlockId: uuid("concept_block_id")
+      .notNull()
+      .references(() => conceptBlock.id),
+    // Lives on the version, not the block identity -- the same concept
+    // has a genuinely different CAP vs. ICCR shape (issue's own explicit
+    // requirement, not a forced-universal structure).
+    sourceStandard: text("source_standard").notNull(),
+    version: integer("version").notNull().default(1),
+    status: text("status").notNull().default("draft"),
+    effectiveFrom: timestamp("effective_from", { withTimezone: true }).notNull().defaultNow(),
+    effectiveTo: timestamp("effective_to", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("ux_concept_block_version_block_standard_published")
+      .on(table.conceptBlockId, table.sourceStandard)
+      .where(sql`${table.status} = 'published'`),
+    check(
+      "ck_concept_block_version_status",
+      sql`${table.status} IN ('draft','in_review','published','archived')`,
+    ),
+  ],
+);
+
+export const conceptBlockElement = pgTable(
+  "concept_block_element",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conceptBlockVersionId: uuid("concept_block_version_id")
+      .notNull()
+      .references(() => conceptBlockVersion.id),
+    parentElementId: uuid("parent_element_id").references((): AnyPgColumn => conceptBlockElement.id),
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    dataType: text("data_type").notNull(),
+    requirement: text("requirement").notNull(),
+    analyteId: uuid("analyte_id")
+      .notNull()
+      .references(() => analyte.id),
+    unitId: uuid("unit_id").references(() => unit.id),
+    visibilityCondition: jsonb("visibility_condition"),
+    displayOrder: integer("display_order").notNull().default(0),
+    repeatable: boolean("repeatable").notNull().default(false),
+    identityElementKey: text("identity_element_key"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("ux_concept_block_element_version_key").on(table.conceptBlockVersionId, table.key),
+    index("ix_concept_block_element_parent").on(table.parentElementId),
+    check("ck_concept_block_element_data_type", sql`${table.dataType} IN ('coded','quantity','text','coded_multi')`),
+    check("ck_concept_block_element_requirement", sql`${table.requirement} IN ('required','recommended','conditional')`),
+    check(
+      "ck_concept_block_element_identity_requires_repeatable",
+      sql`${table.identityElementKey} IS NULL OR ${table.repeatable} = true`,
+    ),
+  ],
+);
+
+export const conceptBlockElementResponseOption = pgTable(
+  "concept_block_element_response_option",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conceptBlockElementId: uuid("concept_block_element_id")
+      .notNull()
+      .references(() => conceptBlockElement.id),
+    value: text("code").notNull(),
+    display: text("display").notNull(),
+    displayOrder: integer("display_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("ux_concept_block_element_response_option_element_value").on(
+      table.conceptBlockElementId,
+      table.value,
+    ),
+  ],
+);

@@ -378,7 +378,9 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
       };
 
       if (body.items.length !== 3) {
-        throw new Error(`expected 3 versions, got ${JSON.stringify(body.items)}`);
+        throw new Error(
+          `expected 3 versions, got ${JSON.stringify(body.items)}`,
+        );
       }
       const [v3, v2, v1] = body.items;
       if (
@@ -391,13 +393,23 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
         );
       }
       if (v3.status !== 'final' || v3.reason !== 'second amendment') {
-        throw new Error(`expected v3 to be the current final version, got ${JSON.stringify(v3)}`);
+        throw new Error(
+          `expected v3 to be the current final version, got ${JSON.stringify(v3)}`,
+        );
       }
       if (v2.status !== 'superseded' || v2.supersededBy === null) {
-        throw new Error(`expected v2 superseded by v3, got ${JSON.stringify(v2)}`);
+        throw new Error(
+          `expected v2 superseded by v3, got ${JSON.stringify(v2)}`,
+        );
       }
-      if (v1.status !== 'superseded' || v1.supersededBy === null || v1.amendmentOf !== null) {
-        throw new Error(`expected v1 superseded, no amendmentOf, got ${JSON.stringify(v1)}`);
+      if (
+        v1.status !== 'superseded' ||
+        v1.supersededBy === null ||
+        v1.amendmentOf !== null
+      ) {
+        throw new Error(
+          `expected v1 superseded, no amendmentOf, got ${JSON.stringify(v1)}`,
+        );
       }
     });
 
@@ -440,7 +452,9 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({ grossDescription: 'gross v1' })
         .expect(200);
-      const createdBody = created.body as { after: { grossDescription: string | null } };
+      const createdBody = created.body as {
+        after: { grossDescription: string | null };
+      };
       if (createdBody.after.grossDescription !== 'gross v1') {
         throw new Error(
           `expected first save to create grossDescription 'gross v1', got ${JSON.stringify(createdBody)}`,
@@ -469,7 +483,10 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .expect(200);
       const lineage = getRes.body as {
-        narrative: { grossDescription: string | null; diagnosis: string | null } | null;
+        narrative: {
+          grossDescription: string | null;
+          diagnosis: string | null;
+        } | null;
       };
       if (
         lineage.narrative?.grossDescription !== 'gross v2' ||
@@ -562,10 +579,15 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
       const rows = await reportVersionRows(caseId);
       const v1 = rows.find((r) => r.versionNumber === 1);
       if (!v1) {
-        throw new Error(`expected a v1 report version, got ${JSON.stringify(rows)}`);
+        throw new Error(
+          `expected a v1 report version, got ${JSON.stringify(rows)}`,
+        );
       }
       const v1Content = v1.includedContent as {
-        narrative: { grossDescription: string | null; diagnosis: string | null };
+        narrative: {
+          grossDescription: string | null;
+          diagnosis: string | null;
+        };
       };
       if (
         v1Content.narrative.grossDescription !== 'ORIGINAL gross' ||
@@ -587,10 +609,15 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
       const rowsAfterAmend = await reportVersionRows(caseId);
       const v2 = rowsAfterAmend.find((r) => r.versionNumber === 2);
       if (!v2) {
-        throw new Error(`expected a v2 report version, got ${JSON.stringify(rowsAfterAmend)}`);
+        throw new Error(
+          `expected a v2 report version, got ${JSON.stringify(rowsAfterAmend)}`,
+        );
       }
       const v2Content = v2.includedContent as {
-        narrative: { grossDescription: string | null; diagnosis: string | null };
+        narrative: {
+          grossDescription: string | null;
+          diagnosis: string | null;
+        };
       };
       if (
         v2Content.narrative.grossDescription !== 'EDITED gross' ||
@@ -600,6 +627,175 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
           `expected v2's own includedContent to capture the current EDITED values, got ${JSON.stringify(v2Content.narrative)}`,
         );
       }
+    });
+  });
+
+  describe('GET /v1/cases/:id/report-versions/:versionId/pdf (issue #648)', () => {
+    async function reportRowCount(): Promise<number> {
+      const res = await db.execute(sql`SELECT count(*)::int AS count FROM report`);
+      return (res.rows[0] as { count: number }).count;
+    }
+
+    /** A finalizable case whose one part's specimenType matches the
+     * published Breast protocol (issue #642/#645), with a narrative and one
+     * real recorded synoptic response -- so the PDF route's own rejoin logic
+     * (specimen/block, observation/synoptic_element, narrative) all have
+     * real content to render, not just an empty case. */
+    async function createFinalizableCaseWithFullReportContent(): Promise<string> {
+      const orderId = await createOrder();
+      const caseRes = await request(app.getHttpServer())
+        .post('/v1/cases')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ orderId, parts: [{ specimenType: 'breast' }] })
+        .expect(201);
+      const caseId = (caseRes.body as { resourceId: string }).resourceId;
+
+      const lineage = await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const [part] = (lineage.body as { parts: { id: string }[] }).parts;
+      const blockRes = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/blocks`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ specimenId: part.id })
+        .expect(201);
+      const blockId = (blockRes.body as { resourceId: string }).resourceId;
+      await request(app.getHttpServer())
+        .post(`/v1/blocks/${blockId}/slides`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .put(`/v1/cases/${caseId}/narrative`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          grossDescription: 'PDF-TEST gross description',
+          diagnosis: 'PDF-TEST diagnosis',
+        })
+        .expect(200);
+
+      const protocolsRes = await request(app.getHttpServer())
+        .get('/v1/synoptic-protocols')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const breast = (
+        protocolsRes.body as {
+          protocols: { id: string; specimenType: string; publishedVersionId: string | null }[];
+        }
+      ).protocols.find((p) => p.specimenType === 'breast');
+      if (!breast?.publishedVersionId) {
+        throw new Error('expected the seeded, published Breast protocol');
+      }
+
+      const orderRes = await request(app.getHttpServer())
+        .get(`/v1/orders/${orderId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const orderedTestId = (orderRes.body as { orderedTests: { id: string }[] })
+        .orderedTests[0].id;
+
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: breast.publishedVersionId,
+          responses: [
+            { elementKey: 'neoadjuvant_therapy', value: 'not_given' },
+            { elementKey: 'operative_procedure', value: 'excision_wle' },
+            { elementKey: 'specimen_laterality', value: 'left' },
+            { elementKey: 'tumor_site', value: 'upper_outer' },
+            { elementKey: 'tumor_max_dimension_mm', value: 22 },
+            { elementKey: 'tumor_focality', value: 'single_focus' },
+            { elementKey: 'histological_tumor_type', value: 'nst' },
+            { elementKey: 'histological_tumor_grade', value: 'grade_2' },
+            { elementKey: 'carcinoma_in_situ', value: 'not_identified' },
+            { elementKey: 'tumor_extension', value: 'not_involved' },
+            { elementKey: 'margin_status', value: 'not_involved' },
+            { elementKey: 'lymphovascular_invasion', value: 'not_identified' },
+            { elementKey: 'estrogen_receptor_status', value: 'positive' },
+            { elementKey: 'progesterone_receptor_status', value: 'positive' },
+            { elementKey: 'her2_status', value: 'negative_0' },
+            { elementKey: 'pathological_stage_pt', value: 'pT2' },
+          ],
+        })
+        .expect(201);
+
+      return caseId;
+    }
+
+    it('returns a real PDF for a signed version, rejoining narrative/lineage/synoptic content, writing no new report or audit_event row', async () => {
+      const caseId = await createFinalizableCaseWithFullReportContent();
+      const finalizeRes = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/finalize`)
+        .set('Authorization', `Bearer ${tokenVerifier}`)
+        .expect(200);
+      const versionId = (finalizeRes.body as { reportVersion: { id: string } })
+        .reportVersion.id;
+
+      const reportCountBefore = await reportRowCount();
+      const auditCountBefore = await auditCount();
+
+      const pdfRes = await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/report-versions/${versionId}/pdf`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+
+      if (pdfRes.headers['content-type'] !== 'application/pdf') {
+        throw new Error(
+          `expected application/pdf, got ${pdfRes.headers['content-type']}`,
+        );
+      }
+      const pdfBytes = pdfRes.body as Buffer;
+      if (!Buffer.isBuffer(pdfBytes) || !pdfBytes.subarray(0, 5).toString('utf8').startsWith('%PDF-')) {
+        throw new Error('expected real PDF bytes starting with %PDF-');
+      }
+
+      const reportCountAfter = await reportRowCount();
+      const auditCountAfter = await auditCount();
+      if (reportCountAfter !== reportCountBefore || auditCountAfter !== auditCountBefore) {
+        throw new Error(
+          `expected no new report/audit_event row -- report ${reportCountBefore}->${reportCountAfter}, audit ${auditCountBefore}->${auditCountAfter}`,
+        );
+      }
+
+      // Determinism: re-downloading the same already-signed version must
+      // produce byte-identical output (pdf-generation Skill entry #3 --
+      // hash the canonical input, proven here by comparing the actual
+      // rendered bytes directly since CreationDate/ModDate are pinned to
+      // the epoch the same way report-render.ts's own renderer already
+      // does).
+      const secondPdfRes = await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/report-versions/${versionId}/pdf`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      if (!(secondPdfRes.body as Buffer).equals(pdfBytes)) {
+        throw new Error('expected byte-identical PDF output on re-download');
+      }
+    });
+
+    it('returns 404 for a nonexistent version id', async () => {
+      const caseId = await createFinalizableCaseWithFullReportContent();
+      await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/report-versions/00000000-0000-0000-0000-000000000000/pdf`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(404);
+    });
+
+    it("returns 404 for another tenant's case (RLS)", async () => {
+      const caseId = await createFinalizableCaseWithFullReportContent();
+      const finalizeRes = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/finalize`)
+        .set('Authorization', `Bearer ${tokenVerifier}`)
+        .expect(200);
+      const versionId = (finalizeRes.body as { reportVersion: { id: string } })
+        .reportVersion.id;
+
+      await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/report-versions/${versionId}/pdf`)
+        .set('Authorization', `Bearer ${tokenB}`)
+        .expect(404);
     });
   });
 });

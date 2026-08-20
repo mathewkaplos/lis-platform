@@ -269,6 +269,17 @@ export default async function CaseDetailPage({
                     {version.reason ? (
                       <p className="text-text-secondary">Reason: {version.reason}</p>
                     ) : null}
+                    {/* Plain <a>, not next/link -- forces a full navigation so the
+                        Route Handler's own Content-Disposition response actually
+                        triggers a browser "Save As" (frontend-design entry #5,
+                        same precedent orders/[id]/report/[orderedTestId]/page.tsx
+                        already established). */}
+                    <a
+                      href={`/cases/${id}/report-versions/${version.id}/download`}
+                      className="w-fit text-sm text-primary hover:underline"
+                    >
+                      Download PDF
+                    </a>
                   </li>
                 ))}
               </ul>

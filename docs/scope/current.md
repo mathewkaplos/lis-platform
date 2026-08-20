@@ -1,13 +1,67 @@
 # Status — 2026-08-20 (session 41)
 
-Last commit on main: `3f77ec9` (`lis-platform`, PR #653 — this line's own pointer refresh, per
-session 41's own Pre-Close Report finding #6 that it had drifted two commits stale) —
-`lis-engineering`'s tip is `2cc3e87` (this session's own Pre-Close Report commit). Session 40
+Last commit on main: `70314e4` (`lis-platform`, PR #655 — status-tab keyboard-activation fix) —
+`lis-engineering`'s tip is `6666a8b` (this session's own Final Close Report commit). Session 40
 closed cleanly (Final Close Report,
 `~/work/lis-engineering/session-close-reports/2026-08-20-1441-final.md`, 0 outstanding items).
 This session (41) picked issue #489 (§17.1 Invoice List only) off the backlog via `/orient`'s own
-milestone scan — see this session's own section immediately below for detail — before returning
-to session 40's own accumulated history further down this file.
+milestone scan, then ran a full close-out cycle (Pre-Close Report
+`2026-08-20-1625-pre.md` → Final Close Report `2026-08-20-1647-final.md`) that surfaced and then
+fixed a real keyboard-accessibility gap — see this session's own sections immediately below for
+detail — before returning to session 40's own accumulated history further down this file.
+
+## Session 41 (continued) — close-out cycle: merge-classifier note, breadcrumb refresh, status-tab
+## keyboard-activation fix
+
+`/close`'s Pre-Close Report (`2026-08-20-1625-pre.md`) found the breadcrumb's own pointer stale by
+two commits (PR #652/#653 had each edited this file's body without touching its own "Last commit
+on main" line) and one real Engineering Flow Retrospective finding: the autonomous-merge
+classifier denied `gh pr merge`/its REST equivalent for PR #651 (forcing a direct human merge),
+then allowed the *identical* command for PR #653 minutes later in the same session with no
+observable trigger for the difference. Human approved both the breadcrumb refresh and a
+drafted `AGENTS.md` note (merge denial isn't fully deterministic within a session — always attempt
+the merge yourself rather than assuming a repeat denial) — both landed together as PR #654,
+merged autonomously with no classifier denial this time, itself confirming the note's own point.
+
+The Pre-Close Report's own Manual Verification Checklist (§9, for issue #489's list page) drove a
+real follow-up browser pass: dark mode confirmed correct (all 12 rows/badges/borders legible);
+keyboard navigation testing found a genuine, reproducible gap — the status-tab links (real,
+focusable `<a>` elements) did not respond to a real `Return`/`Space` keypress, while a table row
+on the same page did, via a different pattern. Root-caused to invalid HTML: a `<button>` nested
+inside an `<a>` (the `<Link><Button>...</Button></Link>` shape `cases/page.tsx`'s own `STATUS_TABS`
+had already established as this codebase's precedent for exactly this kind of tab), which silently
+breaks the anchor's native "navigate on Enter" default action in Chromium. Fixed across all three
+copies of the pattern found in `apps/web` (confirmed via grep that no others remained):
+`cases/page.tsx`, `billing/invoices/page.tsx`, and the dashboard's own `STAGE_TABS`
+(`app/(app)/page.tsx`) — each now renders as a single real `<a role="tab">` via `Button`'s existing
+`asChild`/Radix `Slot` support, the same pattern already used elsewhere in this codebase
+(`orders/[id]/page.tsx`, `collection-queue-table.tsx`), rather than two nested interactive
+elements. Merged as PR #655 (`70314e4`), CI green including `storybook-a11y`.
+
+**Two genuine tooling-limitation false leads hit and correctly diagnosed during this pass, worth
+remembering for future keyboard/viewport verification work in this environment:** (1)
+`resize_window` (tried at 390×844, a mobile size) reported success but
+`window.innerWidth`/`outerWidth`/`screen.width` all stayed `1366` afterward — the tab's actual
+viewport never changed in this environment, so the narrow-viewport manual-verification item
+could not be tested live at all; resolved instead via structural code review confirming
+`packages/ui/src/components/data-table.tsx`'s own outer wrapper already uses
+`w-full overflow-auto` (the same "wide content scrolls in its own bounded container, never the
+page body" discipline used by every other list screen in this codebase), which is a reasonable
+substitute for an actual pixel check but not equivalent to one. (2) Calling `element.focus()` via
+`javascript_tool` then dispatching a real `Return`/`Enter` keypress via the `computer` tool's `key`
+action did **not** trigger the anchor's native navigation, even after the markup fix — but a real
+mouse click (`computer` `left_click`) followed by a genuine `Tab` keypress and then `Return` **did**
+navigate correctly. This means the very first "gap" reading (JS-focus + synthetic key) was itself
+partly a tooling artifact layered on top of the real markup bug — the true keyboard-navigation
+proof came only from the click→Tab→Enter sequence, not the JS-focus shortcut. Both worth a
+standing note (drafted, not yet written into any Skill) for whichever guidance governs
+Claude-in-Chrome manual verification: prefer real click-then-Tab keyboard sequences over
+`element.focus()` shortcuts when testing keyboard activation specifically, and verify
+`resize_window`'s effect via `window.innerWidth` before trusting it for a viewport-dependent check.
+
+Nothing else owed from this item — both of the prior Final Close Report's outstanding items
+(status-tab keyboard gap; narrow-viewport check) are now resolved, one by a real fix, one by
+structural review with the tooling limitation explicitly noted rather than silently passed.
 
 ## Session 41 — issue #489 (§17.1 Invoice List only)
 

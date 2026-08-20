@@ -11,7 +11,8 @@
     "referenceRanges": "Valeurs de référence",
     "addTest": "Ajouter un test",
     "referringFacilities": "Établissements référents",
-    "cases": "Dossiers"
+    "cases": "Dossiers",
+    "invoices": "Factures"
   },
   "Dashboard": {
     "title": "Liste de travail",

@@ -11,7 +11,8 @@
     "referenceRanges": "Reference ranges",
     "addTest": "Add test",
     "referringFacilities": "Referring facilities",
-    "cases": "Cases"
+    "cases": "Cases",
+    "invoices": "Invoices"
   },
   "Dashboard": {
     "title": "Worklist",

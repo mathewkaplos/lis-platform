@@ -22,6 +22,7 @@ describe('Billing & payments (e2e)', () => {
   let app: INestApplication<App>;
   let tokenA: string;
   let tokenB: string;
+  let qaToken: string;
   let patientId: string;
   let glucoseId: string;
   let bunId: string;
@@ -36,9 +37,10 @@ describe('Billing & payments (e2e)', () => {
     app = moduleFixture.createNestApplication();
     await app.init();
 
-    [tokenA, tokenB] = await Promise.all([
+    [tokenA, tokenB, qaToken] = await Promise.all([
       getKeycloakToken('test-user', 'test-password'),
       getKeycloakToken('test-user-2', 'test-password-2'),
+      getKeycloakToken('test-user-5', 'test-password-5'),
     ]);
 
     const db = createDb();
@@ -246,7 +248,9 @@ describe('Billing & payments (e2e)', () => {
       balanceDueCents: number;
     };
     if (paidBody.status !== 'paid') {
-      throw new Error(`expected paid after full payment, got ${paidBody.status}`);
+      throw new Error(
+        `expected paid after full payment, got ${paidBody.status}`,
+      );
     }
     if (paidBody.amountPaidCents !== totalCents) {
       throw new Error(
@@ -254,7 +258,9 @@ describe('Billing & payments (e2e)', () => {
       );
     }
     if (paidBody.balanceDueCents !== 0) {
-      throw new Error(`expected balanceDueCents 0, got ${paidBody.balanceDueCents}`);
+      throw new Error(
+        `expected balanceDueCents 0, got ${paidBody.balanceDueCents}`,
+      );
     }
 
     await request(app.getHttpServer())
@@ -292,7 +298,9 @@ describe('Billing & payments (e2e)', () => {
       body.amountPaidCents !== GLUCOSE_PRICE_CENTS ||
       body.balanceDueCents !== 0
     ) {
-      throw new Error(`unexpected invoice state after full payment: ${JSON.stringify(body)}`);
+      throw new Error(
+        `unexpected invoice state after full payment: ${JSON.stringify(body)}`,
+      );
     }
   });
 
@@ -491,5 +499,184 @@ describe('Billing & payments (e2e)', () => {
       .get(`/v1/invoices/${invoiceId}`)
       .set('Authorization', `Bearer ${tokenB}`)
       .expect(404);
+  });
+
+  /**
+   * Issue #489 (§17.1 only, docs/plans/task-489-invoice-list.md): `GET
+   * /v1/invoices` -- RBAC, each filter individually and combined, tenant
+   * isolation. A dedicated `describe` block since these tests share a
+   * two-invoice fixture (one left unpaid, one paid in full) built once in
+   * their own `beforeAll`, rather than reusing the outer suite's
+   * side-effecting `it` blocks as fixtures.
+   */
+  describe('GET /v1/invoices (list)', () => {
+    let unpaidInvoiceId: string;
+    let paidInvoiceId: string;
+
+    beforeAll(async () => {
+      const unpaidOrderId = await createOrder([glucoseId]);
+      const unpaidRes = await request(app.getHttpServer())
+        .post(`/v1/orders/${unpaidOrderId}/invoice`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(201);
+      unpaidInvoiceId = (unpaidRes.body as { resourceId: string }).resourceId;
+
+      const paidOrderId = await createOrder([bunId]);
+      const paidRes = await request(app.getHttpServer())
+        .post(`/v1/orders/${paidOrderId}/invoice`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(201);
+      paidInvoiceId = (paidRes.body as { resourceId: string }).resourceId;
+      await request(app.getHttpServer())
+        .post(`/v1/invoices/${paidInvoiceId}/payments`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ method: 'cash', amountCents: BUN_PRICE_CENTS })
+        .expect(201);
+    });
+
+    it('403s for a caller without manage_billing', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/invoices')
+        .set('Authorization', `Bearer ${qaToken}`)
+        .expect(403);
+    });
+
+    it('returns every invoice for the tenant when no filter is given, and never a cross-tenant invoice', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/v1/invoices')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const body = res.body as { items: { id: string }[] };
+      const ids = body.items.map((i) => i.id);
+      if (!ids.includes(unpaidInvoiceId) || !ids.includes(paidInvoiceId)) {
+        throw new Error(
+          `expected both fixture invoices in the unfiltered list, got ${JSON.stringify(ids)}`,
+        );
+      }
+
+      const crossTenant = await request(app.getHttpServer())
+        .get('/v1/invoices')
+        .set('Authorization', `Bearer ${tokenB}`)
+        .expect(200);
+      const crossTenantIds = (
+        crossTenant.body as { items: { id: string }[] }
+      ).items.map((i) => i.id);
+      if (
+        crossTenantIds.includes(unpaidInvoiceId) ||
+        crossTenantIds.includes(paidInvoiceId)
+      ) {
+        throw new Error(
+          'tenant B saw a tenant A invoice in its own list -- RLS isolation violated',
+        );
+      }
+    });
+
+    it('filters by status', async () => {
+      const unpaid = await request(app.getHttpServer())
+        .get('/v1/invoices')
+        .query({ status: 'unpaid' })
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const unpaidIds = (unpaid.body as { items: { id: string }[] }).items.map(
+        (i) => i.id,
+      );
+      if (
+        !unpaidIds.includes(unpaidInvoiceId) ||
+        unpaidIds.includes(paidInvoiceId)
+      ) {
+        throw new Error(
+          `status=unpaid filter returned the wrong set: ${JSON.stringify(unpaidIds)}`,
+        );
+      }
+
+      const paid = await request(app.getHttpServer())
+        .get('/v1/invoices')
+        .query({ status: 'paid' })
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const paidIds = (paid.body as { items: { id: string }[] }).items.map(
+        (i) => i.id,
+      );
+      if (
+        !paidIds.includes(paidInvoiceId) ||
+        paidIds.includes(unpaidInvoiceId)
+      ) {
+        throw new Error(
+          `status=paid filter returned the wrong set: ${JSON.stringify(paidIds)}`,
+        );
+      }
+    });
+
+    it('filters by hasBalance, computed from real payment sums, not a stored column', async () => {
+      const withBalance = await request(app.getHttpServer())
+        .get('/v1/invoices')
+        .query({ hasBalance: 'true' })
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const withBalanceIds = (
+        withBalance.body as { items: { id: string }[] }
+      ).items.map((i) => i.id);
+      if (
+        !withBalanceIds.includes(unpaidInvoiceId) ||
+        withBalanceIds.includes(paidInvoiceId)
+      ) {
+        throw new Error(
+          `hasBalance=true filter returned the wrong set: ${JSON.stringify(withBalanceIds)}`,
+        );
+      }
+
+      const noBalance = await request(app.getHttpServer())
+        .get('/v1/invoices')
+        .query({ hasBalance: 'false' })
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const noBalanceIds = (
+        noBalance.body as { items: { id: string }[] }
+      ).items.map((i) => i.id);
+      if (
+        !noBalanceIds.includes(paidInvoiceId) ||
+        noBalanceIds.includes(unpaidInvoiceId)
+      ) {
+        throw new Error(
+          `hasBalance=false filter returned the wrong set: ${JSON.stringify(noBalanceIds)}`,
+        );
+      }
+    });
+
+    it('filters by patientId and payerType, combined with status', async () => {
+      const combined = await request(app.getHttpServer())
+        .get('/v1/invoices')
+        .query({ patientId, payerType: 'cash', status: 'unpaid' })
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const combinedIds = (
+        combined.body as { items: { id: string }[] }
+      ).items.map((i) => i.id);
+      if (
+        !combinedIds.includes(unpaidInvoiceId) ||
+        combinedIds.includes(paidInvoiceId)
+      ) {
+        throw new Error(
+          `combined patientId+payerType+status filter returned the wrong set: ${JSON.stringify(combinedIds)}`,
+        );
+      }
+
+      const wrongPayer = await request(app.getHttpServer())
+        .get('/v1/invoices')
+        .query({ payerType: 'corporate' })
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const wrongPayerIds = (
+        wrongPayer.body as { items: { id: string }[] }
+      ).items.map((i) => i.id);
+      if (
+        wrongPayerIds.includes(unpaidInvoiceId) ||
+        wrongPayerIds.includes(paidInvoiceId)
+      ) {
+        throw new Error(
+          'payerType=corporate incorrectly matched a cash-payer fixture invoice',
+        );
+      }
+    });
   });
 });

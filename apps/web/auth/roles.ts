@@ -80,3 +80,23 @@ export function hasSpecimenManagementRole(session: SessionPayload | undefined): 
       (session.roles.includes('technologist') || session.roles.includes('verifier')),
   );
 }
+
+/**
+ * Issue #489 (§17.1 only, docs/plans/task-489-invoice-list.md): gates the
+ * new invoice list page/entry point. `manage_billing`
+ * (`apps/api/src/auth/capabilities.ts`) -- the real capability guarding
+ * `GET /v1/invoices` -- is granted to both `technologist` and `verifier`,
+ * identical to `manage_specimens`'s own grant (confirmed directly). A
+ * separate helper rather than reusing `hasSpecimenManagementRole` under the
+ * wrong name -- matches this file's own one-helper-per-capability
+ * convention, even when two capabilities happen to share a role set. Same
+ * fail-closed shape and same "UI-visibility convenience only" caveat as
+ * every other helper above.
+ */
+export function hasBillingRole(session: SessionPayload | undefined): boolean {
+  return Boolean(
+    session &&
+      Array.isArray(session.roles) &&
+      (session.roles.includes('technologist') || session.roles.includes('verifier')),
+  );
+}

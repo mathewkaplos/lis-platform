@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   ListChecks,
   Microscope,
+  Receipt,
   Ruler,
   TestTube,
   Users,
@@ -48,6 +49,13 @@ import {
 // M13 Anatomic Pathology hierarchy (Case/Specimen/Block/Slide), which had
 // no apps/web UI at all before this feature. Same standing as "Orders"/
 // "Patients" (a real global, cross-patient list to link to).
+// Issue #489 (§17.1 only, docs/plans/task-489-invoice-list.md): "Invoices"
+// added -- a real, filterable, cross-patient list (unlike the pre-existing
+// `/billing/invoices/[invoiceId]` detail route, which was link-only, no
+// list to reach it from), same standing as "Cases"/"QC violations". Not
+// role-filtered here either, matching this file's own established
+// convention -- `GET /v1/invoices`'s own `CapabilityGuard` is the real
+// enforcement point.
 const NAV_ITEMS = [
   { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
   { href: '/patients', labelKey: 'patients', icon: Users },
@@ -57,6 +65,7 @@ const NAV_ITEMS = [
   { href: '/collection-queue', labelKey: 'collectionQueue', icon: ListChecks },
   { href: '/qc-violations', labelKey: 'qcViolations', icon: AlertTriangle },
   { href: '/culture-reads', labelKey: 'cultureReads', icon: Microscope },
+  { href: '/billing/invoices', labelKey: 'invoices', icon: Receipt },
   { href: '/admin/reference-ranges', labelKey: 'referenceRanges', icon: Ruler },
   { href: '/admin/tests', labelKey: 'addTest', icon: TestTube },
   { href: '/admin/referring-facilities', labelKey: 'referringFacilities', icon: Building2 },

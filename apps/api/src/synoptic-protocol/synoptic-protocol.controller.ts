@@ -20,11 +20,13 @@ import {
 } from '@lis/domain';
 import {
   caseTable,
+  codeSystemValue,
   orderedTest,
   synopticElement,
   synopticElementResponseOption,
   synopticProtocol,
   synopticProtocolVersion,
+  unit,
 } from '@lis/db';
 import { eq, inArray } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
@@ -141,6 +143,36 @@ export class SynopticProtocolController {
       optionsByElementId.set(row.synopticElementId, existing);
     }
 
+    // Issue #663: batch-resolve unitId -> display text, matching
+    // observation-write.service.ts's own exact precedent
+    // (displayOverride ?? codeSystemValue.code) for a different consumer of
+    // the same unit/codeSystemValue tables.
+    const unitIds = [
+      ...new Set(
+        elementRows
+          .map((e) => e.unitId)
+          .filter((id): id is string => id !== null),
+      ),
+    ];
+    const unitRows =
+      unitIds.length > 0
+        ? await db
+            .select({
+              id: unit.id,
+              code: codeSystemValue.code,
+              displayOverride: unit.displayOverride,
+            })
+            .from(unit)
+            .innerJoin(
+              codeSystemValue,
+              eq(unit.codeSystemValueId, codeSystemValue.id),
+            )
+            .where(inArray(unit.id, unitIds))
+        : [];
+    const unitDisplayById = new Map(
+      unitRows.map((row) => [row.id, row.displayOverride ?? row.code]),
+    );
+
     return {
       ...versionRow,
       effectiveFrom: versionRow.effectiveFrom.toISOString(),
@@ -159,6 +191,9 @@ export class SynopticProtocolController {
           visibilityCondition:
             (element.visibilityCondition as SynopticProtocolVersion['elements'][number]['visibilityCondition']) ??
             null,
+          unitDisplay: element.unitId
+            ? (unitDisplayById.get(element.unitId) ?? null)
+            : null,
           responseOptions: (optionsByElementId.get(element.id) ?? [])
             .sort((a, b) => a.displayOrder - b.displayOrder)
             .map((o) => ({

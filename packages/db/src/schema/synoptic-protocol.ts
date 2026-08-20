@@ -1,6 +1,6 @@
 import { pgTable, uuid, text, integer, jsonb, timestamp, uniqueIndex, index, check, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { analyte } from "./catalog";
+import { analyte, unit } from "./catalog";
 
 // FEAT-058 (ADR-0050, docs/plans/feat-058-generic-synoptic-protocol-engine.md).
 // Global reference tables -- no tenant_id, no RLS: labs choose which protocol/
@@ -78,6 +78,15 @@ export const synopticElement = pgTable(
     analyteId: uuid("analyte_id")
       .notNull()
       .references(() => analyte.id),
+    // Issue #663: nullable, additive -- a quantity element's unit of
+    // measure (e.g. UCUM 'mm'). Lives on the element definition, matching
+    // analyte.defaultUnitId's own precedent (a unit is inherent to what's
+    // being measured, not chosen per-response) -- no observation/recorder
+    // change needed. Not meaningful for 'coded'/'text'/'coded_multi', but
+    // no CHECK ties it to dataType='quantity' (same "shape validated in
+    // code, not SQL" precedent responseOptions's own header comment
+    // already documents for a different cross-table constraint).
+    unitId: uuid("unit_id").references(() => unit.id),
     visibilityCondition: jsonb("visibility_condition"),
     displayOrder: integer("display_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

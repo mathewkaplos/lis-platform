@@ -32,6 +32,13 @@ export const synopticElementSchema = z.object({
   dataType: z.enum(SYNOPTIC_ELEMENT_DATA_TYPES),
   requirement: z.enum(SYNOPTIC_ELEMENT_REQUIREMENTS),
   analyteId: z.uuid(),
+  // Issue #663: unit of measure for a 'quantity' element (e.g. "mm"),
+  // resolved server-side from unitId -- the frontend never resolves its
+  // own unit display text, matching responseOptions's own precedent.
+  // Both null for every non-quantity element and any quantity element
+  // that doesn't declare one (additive, not required).
+  unitId: z.uuid().nullable(),
+  unitDisplay: z.string().nullable(),
   visibilityCondition: conditionNodeSchema.nullable(),
   displayOrder: z.number().int(),
   responseOptions: z.array(synopticElementResponseOptionSchema),

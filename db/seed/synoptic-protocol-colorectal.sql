@@ -265,6 +265,81 @@ JOIN synoptic_protocol_version spv ON spv.synoptic_protocol_id = sp.id AND spv.v
 JOIN synoptic_element se ON se.synoptic_protocol_version_id = spv.id AND se.key = v.element_key
 ON CONFLICT (synoptic_element_id, code) DO NOTHING;
 
+-- Issue #663: real units for the three already-real, already-seeded
+-- '_mm'-suffixed quantity elements above (tumor_max_dimension_mm,
+-- margin_distance_mm, invasion_beyond_muscularis_propria_mm) -- each
+-- already encodes "(mm)" informally in its own label text, so this
+-- completes something already true about them rather than inventing new
+-- content. Same UCUM code_system_value + unit two-insert shape
+-- chemistry-catalog.sql's own mg/dL/mmol/L/etc. seeding already uses.
+INSERT INTO code_system_value (system, code, version, display)
+SELECT 'UCUM', 'mm', '2.2', 'millimeter'
+WHERE NOT EXISTS (
+  SELECT 1 FROM code_system_value WHERE system = 'UCUM' AND code = 'mm' AND version = '2.2'
+);
+
+INSERT INTO unit (code_system_value_id)
+SELECT csv.id FROM code_system_value csv
+WHERE csv.system = 'UCUM' AND csv.code = 'mm' AND csv.version = '2.2'
+  AND NOT EXISTS (SELECT 1 FROM unit u WHERE u.code_system_value_id = csv.id);
+
+UPDATE synoptic_element se
+SET unit_id = u.id
+FROM unit u
+JOIN code_system_value csv ON csv.id = u.code_system_value_id,
+synoptic_protocol_version spv
+JOIN synoptic_protocol sp ON sp.id = spv.synoptic_protocol_id
+WHERE csv.system = 'UCUM' AND csv.code = 'mm' AND csv.version = '2.2'
+  AND sp.name = 'Colorectal Cancer' AND sp.source_standard = 'ICCR' AND spv.version = 1
+  AND se.synoptic_protocol_version_id = spv.id
+  AND se.key IN ('tumor_max_dimension_mm', 'margin_distance_mm', 'invasion_beyond_muscularis_propria_mm')
+  AND se.unit_id IS NULL;
+
+-- Issue #663: the real, recurring CAP precision-qualifier pattern
+-- ("Exact number / At least / Cannot be determined"), demonstrated on one
+-- real field (margin_distance_mm) per the issue's own AC -- modeled as an
+-- ordinary sibling coded element (parent_element_id = margin_distance_mm's
+-- own id, so it nests under it via the existing ElementGroup recursion),
+-- not a new dataType or response-payload shape. No recorder change needed:
+-- a precision-qualifier answer is just another elementKey in the same
+-- responses array.
+INSERT INTO code_system_value (system, code, version, display)
+SELECT 'ICCR-SYNOPTIC', 'colorectal.margin_distance_mm_precision', '2022', 'Margin distance measurement precision'
+WHERE NOT EXISTS (
+  SELECT 1 FROM code_system_value
+  WHERE system = 'ICCR-SYNOPTIC' AND code = 'colorectal.margin_distance_mm_precision' AND version = '2022'
+);
+
+INSERT INTO analyte (code_system_value_id, display, data_type, default_unit_id)
+SELECT csv.id, csv.display, 'coded', NULL
+FROM code_system_value csv
+WHERE csv.system = 'ICCR-SYNOPTIC' AND csv.code = 'colorectal.margin_distance_mm_precision' AND csv.version = '2022'
+ON CONFLICT (code_system_value_id) DO NOTHING;
+
+INSERT INTO synoptic_element (
+  synoptic_protocol_version_id, parent_element_id, key, label, data_type, requirement, analyte_id, display_order, visibility_condition
+)
+SELECT spv.id, parent.id, 'margin_distance_mm_precision', 'Margin distance measurement precision', 'coded', 'recommended', a.id, 1, NULL
+FROM synoptic_protocol sp
+JOIN synoptic_protocol_version spv ON spv.synoptic_protocol_id = sp.id AND spv.version = 1
+JOIN synoptic_element parent ON parent.synoptic_protocol_version_id = spv.id AND parent.key = 'margin_distance_mm'
+JOIN code_system_value csv ON csv.system = 'ICCR-SYNOPTIC' AND csv.code = 'colorectal.margin_distance_mm_precision' AND csv.version = '2022'
+JOIN analyte a ON a.code_system_value_id = csv.id
+WHERE sp.name = 'Colorectal Cancer' AND sp.source_standard = 'ICCR'
+ON CONFLICT (synoptic_protocol_version_id, key) DO NOTHING;
+
+INSERT INTO synoptic_element_response_option (synoptic_element_id, code, display, display_order)
+SELECT se.id, v.value, v.display, v.display_order
+FROM (VALUES
+  ('exact', 'Exact distance measured', 1),
+  ('at_least', 'At least this distance (margin further than measured extent)', 2),
+  ('cannot_be_determined', 'Cannot be determined from submitted specimen(s)', 3)
+) AS v(value, display, display_order)
+JOIN synoptic_protocol sp ON sp.name = 'Colorectal Cancer' AND sp.source_standard = 'ICCR'
+JOIN synoptic_protocol_version spv ON spv.synoptic_protocol_id = sp.id AND spv.version = 1
+JOIN synoptic_element se ON se.synoptic_protocol_version_id = spv.id AND se.key = 'margin_distance_mm_precision'
+ON CONFLICT (synoptic_element_id, code) DO NOTHING;
+
 -- Publish, last -- matches report_template_version's own draft-then-publish
 -- precedent; the partial unique index (ux_synoptic_protocol_version_protocol_published)
 -- guarantees at most one published version per protocol.

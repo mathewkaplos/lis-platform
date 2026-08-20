@@ -2781,6 +2781,9 @@ export interface components {
                 requirement: "required" | "recommended";
                 /** Format: uuid */
                 analyteId: string;
+                /** Format: uuid */
+                unitId: string | null;
+                unitDisplay: string | null;
                 visibilityCondition: components["schemas"]["SynopticProtocolVersionDto_Output__schema0_Output"] | null;
                 displayOrder: number;
                 responseOptions: {

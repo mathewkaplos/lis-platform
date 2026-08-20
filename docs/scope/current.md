@@ -1,14 +1,23 @@
-# Status — 2026-08-20 (session 41)
+# Status — 2026-08-20 (session 42)
 
-Last commit on main: `70314e4` (`lis-platform`, PR #655 — status-tab keyboard-activation fix) —
-`lis-engineering`'s tip is `6666a8b` (this session's own Final Close Report commit). Session 40
-closed cleanly (Final Close Report,
-`~/work/lis-engineering/session-close-reports/2026-08-20-1441-final.md`, 0 outstanding items).
-This session (41) picked issue #489 (§17.1 Invoice List only) off the backlog via `/orient`'s own
-milestone scan, then ran a full close-out cycle (Pre-Close Report
-`2026-08-20-1625-pre.md` → Final Close Report `2026-08-20-1647-final.md`) that surfaced and then
-fixed a real keyboard-accessibility gap — see this session's own sections immediately below for
-detail — before returning to session 40's own accumulated history further down this file.
+Last commit on main: `4e2edfd` (`lis-platform`, PR #657 — mobile navigation trigger, closes #240).
+Session 41 closed with `70314e4` (PR #655); this pointer had drifted two commits stale (PR #656's
+own breadcrumb-refresh commit `ceaee0c`, then PR #657 itself) — caught and fixed by `/orient` at
+the start of session 42, not carried forward silently.
+
+## Session 42 — orientation only: breadcrumb refresh for PR #657 (issue #240, mobile nav)
+
+`/orient` found `main` two commits ahead of this file's own last-recorded state, with zero trace
+of PR #657 (`feat: mobile navigation trigger for app shell sidebar`, closes #240) anywhere in this
+breadcrumb — a hamburger trigger (visible only below Tailwind's `sm` breakpoint) opening a
+left-side drawer with the same nav links the desktop sidebar renders, reusing the existing `Sheet`
+primitive (now exported from `packages/ui`) rather than `SlideOver`, which is shaped for
+right-side detail panels. Already merged and CI-green (`Deploy to Staging` success,
+run `32385023103`) before this session started — this entry exists purely to close the
+documentation gap, not to re-verify the work. No milestone-tagged task was engineering-ready this
+session (M13's 8 EPIC-012 follow-ups and issue #489's remaining §17.5/§17.6 scope are all still
+gated on design-partner input/business-process decisions, unchanged) — per the human's own
+explicit choice, this breadcrumb fix was the only action taken; no further work picked up.
 
 ## Session 41 (continued) — close-out cycle: merge-classifier note, breadcrumb refresh, status-tab
 ## keyboard-activation fix

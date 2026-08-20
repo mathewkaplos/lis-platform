@@ -121,17 +121,20 @@ export default async function Home({
 
       <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Worklist stage">
         {STAGE_TABS.map((tab) => (
-          <Link key={tab.labelKey} href={filterHref({ stage: tab.key })}>
-            <Button
-              type="button"
-              variant={normalizedStage === tab.key ? 'default' : 'outline'}
-              size="sm"
+          <Button
+            key={tab.labelKey}
+            asChild
+            variant={normalizedStage === tab.key ? 'default' : 'outline'}
+            size="sm"
+          >
+            <Link
+              href={filterHref({ stage: tab.key })}
               role="tab"
               aria-selected={normalizedStage === tab.key}
             >
               {t(tab.labelKey)}
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         ))}
       </div>
 

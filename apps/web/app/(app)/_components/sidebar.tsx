@@ -13,7 +13,9 @@ import {
   Ruler,
   TestTube,
   Users,
+  type LucideIcon,
 } from 'lucide-react';
+import { MobileNavTrigger } from './mobile-nav-trigger';
 
 // Nav grows as later features add routes -- not invented ahead of them.
 // TASK-041: "Register patient" -> "Patients" (search list owns the
@@ -71,16 +73,16 @@ const NAV_ITEMS = [
   { href: '/admin/referring-facilities', labelKey: 'referringFacilities', icon: Building2 },
 ] as const;
 
-export async function Sidebar() {
-  const t = await getTranslations('Sidebar');
-
+function SidebarNavLinks({
+  items,
+  t,
+}: {
+  items: readonly { href: string; labelKey: string; icon: LucideIcon }[];
+  t: (key: string) => string;
+}) {
   return (
-    <nav
-      aria-label="Main"
-      className="hidden w-56 shrink-0 flex-col gap-1 border-r border-border bg-surface p-4 sm:flex print:hidden"
-    >
-      <div className="mb-4 px-2 text-sm font-semibold text-foreground">{t('appName')}</div>
-      {NAV_ITEMS.map(({ href, labelKey, icon: Icon }) => (
+    <>
+      {items.map(({ href, labelKey, icon: Icon }) => (
         <Link
           key={href}
           href={href}
@@ -90,6 +92,41 @@ export async function Sidebar() {
           {t(labelKey)}
         </Link>
       ))}
+    </>
+  );
+}
+
+export async function Sidebar() {
+  const t = await getTranslations('Sidebar');
+  const appName = t('appName');
+
+  return (
+    <nav
+      aria-label="Main"
+      className="hidden w-56 shrink-0 flex-col gap-1 border-r border-border bg-surface p-4 sm:flex print:hidden"
+    >
+      <div className="mb-4 px-2 text-sm font-semibold text-foreground">{appName}</div>
+      <SidebarNavLinks items={NAV_ITEMS} t={t} />
     </nav>
+  );
+}
+
+// Rendered by (app)/layout.tsx inside the main content column, above TopBar
+// -- not a sibling of Sidebar's own <nav> above, which sits in the layout's
+// outer flex row and would otherwise place this bar beside the content
+// column instead of stacked full-width above it. Kept in this file, not
+// top-bar.tsx, so NAV_ITEMS/translations stay owned in one place (proposal
+// §5.3, docs/plans/task-240-mobile-nav.md).
+export async function MobileTopNav() {
+  const t = await getTranslations('Sidebar');
+  const appName = t('appName');
+
+  return (
+    <div className="flex items-center gap-2 border-b border-border bg-surface px-2 py-2 sm:hidden print:hidden">
+      <MobileNavTrigger triggerLabel={t('openNav')} title={appName}>
+        <SidebarNavLinks items={NAV_ITEMS} t={t} />
+      </MobileNavTrigger>
+      <span className="text-sm font-semibold text-foreground">{appName}</span>
+    </div>
   );
 }

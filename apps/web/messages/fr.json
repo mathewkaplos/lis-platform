@@ -12,7 +12,8 @@
     "addTest": "Ajouter un test",
     "referringFacilities": "Établissements référents",
     "cases": "Dossiers",
-    "invoices": "Factures"
+    "invoices": "Factures",
+    "openNav": "Ouvrir la navigation"
   },
   "Dashboard": {
     "title": "Liste de travail",

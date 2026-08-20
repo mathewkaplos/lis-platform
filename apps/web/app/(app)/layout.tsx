@@ -2,7 +2,7 @@ import { cookies } from 'next/headers';
 import { getSession } from '@/auth/get-session';
 import { THEME_COOKIE_NAME, isTheme } from '@/lib/theme';
 import { DEFAULT_LOCALE, LOCALE_COOKIE_NAME, isLocale } from '@/lib/locale';
-import { Sidebar } from './_components/sidebar';
+import { MobileTopNav, Sidebar } from './_components/sidebar';
 import { TopBar } from './_components/top-bar';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -30,6 +30,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="flex min-h-full flex-1">
       <Sidebar />
       <div className="flex flex-1 flex-col">
+        <MobileTopNav />
         <TopBar
           tenantId={session.tenantId}
           userSub={session.sub}

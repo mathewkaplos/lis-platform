@@ -19,5 +19,6 @@ export * from "./components/dropdown-menu";
 export * from "./components/input";
 export * from "./components/label";
 export * from "./components/popover";
+export * from "./components/sheet";
 export * from "./components/table";
 export * from "./lib/cn";

@@ -12,7 +12,8 @@
     "addTest": "Add test",
     "referringFacilities": "Referring facilities",
     "cases": "Cases",
-    "invoices": "Invoices"
+    "invoices": "Invoices",
+    "openNav": "Open navigation"
   },
   "Dashboard": {
     "title": "Worklist",

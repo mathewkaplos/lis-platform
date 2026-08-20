@@ -73,7 +73,7 @@ export const synopticElement = pgTable(
     parentElementId: uuid("parent_element_id").references((): AnyPgColumn => synopticElement.id),
     key: text("key").notNull(), // machine key, unique within a protocol version -- observation binding + visibilityCondition field target
     label: text("label").notNull(),
-    dataType: text("data_type").notNull(), // 'coded' | 'quantity' | 'text' -- v1 subset of observation.data_type (proposal §5)
+    dataType: text("data_type").notNull(), // 'coded' | 'quantity' | 'text' | 'coded_multi' -- subset of observation.data_type plus 'coded_multi' (issue #645 proposal §5.1: a "select all that apply" element, persisted as observation.dataType='structured'/valueJson, not a new observation column)
     requirement: text("requirement").notNull(), // 'required' | 'recommended' -- mirrors ICCR's own Required/Recommended split
     analyteId: uuid("analyte_id")
       .notNull()
@@ -85,7 +85,7 @@ export const synopticElement = pgTable(
   (table) => [
     uniqueIndex("ux_synoptic_element_version_key").on(table.synopticProtocolVersionId, table.key),
     index("ix_synoptic_element_parent").on(table.parentElementId),
-    check("ck_synoptic_element_data_type", sql`${table.dataType} IN ('coded','quantity','text')`),
+    check("ck_synoptic_element_data_type", sql`${table.dataType} IN ('coded','quantity','text','coded_multi')`),
     check("ck_synoptic_element_requirement", sql`${table.requirement} IN ('required','recommended')`),
   ],
 );

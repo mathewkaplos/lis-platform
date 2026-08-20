@@ -70,3 +70,9 @@ echo "Seed applied: synoptic-protocol-{common,breast,colorectal}.sql (real, cite
 # doesn't reference it), grouped here anyway since it's the same mechanism.
 docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/synoptic-protocol-cytology-pap.sql
 echo "Seed applied: synoptic-protocol-cytology-pap.sql (real, cited Bethesda System 2014 cervical cytology protocol)."
+
+# Issue #645: pilot expansion of the synoptic-protocol library -- real, cited
+# CAP protocols (prostate, lung), first real use of the coded_multi data type.
+docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/synoptic-protocol-prostate.sql
+docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/synoptic-protocol-lung.sql
+echo "Seed applied: synoptic-protocol-{prostate,lung}.sql (real, cited CAP prostate + lung synoptic protocols)."

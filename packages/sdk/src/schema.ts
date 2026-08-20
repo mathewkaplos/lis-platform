@@ -2703,7 +2703,7 @@ export interface components {
                 key: string;
                 label: string;
                 /** @enum {string} */
-                dataType: "coded" | "quantity" | "text";
+                dataType: "coded" | "quantity" | "text" | "coded_multi";
                 /** @enum {string} */
                 requirement: "required" | "recommended";
                 /** Format: uuid */
@@ -2726,7 +2726,7 @@ export interface components {
             synopticProtocolVersionId: string;
             responses: {
                 elementKey: string;
-                value: string | number;
+                value: string | number | string[];
             }[];
         };
         ImageAttachmentDto_Output: {

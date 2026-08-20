@@ -6,7 +6,7 @@ import { Button, FormField } from '@lis/ui';
 import { recordSynopticResponse } from './actions';
 import { recordSynopticResponseInitialState } from './types';
 
-type ResponseValue = string | number;
+type ResponseValue = string | number | string[];
 
 /**
  * Issue #642 (proposal §3.2/§3.3). A generic protocol renderer: walks
@@ -24,12 +24,14 @@ function ElementGroup({
   context,
   values,
   onChange,
+  onToggleMulti,
 }: {
   elements: SynopticElement[];
   parentId: string | null;
   context: Record<string, unknown>;
   values: Record<string, ResponseValue>;
   onChange: (key: string, value: ResponseValue) => void;
+  onToggleMulti: (key: string, optionValue: string, checked: boolean) => void;
 }) {
   const children = elements
     .filter((e) => e.parentElementId === parentId)
@@ -54,12 +56,47 @@ function ElementGroup({
                 context={context}
                 values={values}
                 onChange={onChange}
+                onToggleMulti={onToggleMulti}
               />
             </div>
           );
         }
 
         const value = values[element.key];
+        // issue #645: a coded_multi element renders as a checkbox group,
+        // not a <select> -- FormField's own single-child-element contract
+        // (`children: React.ReactElement`) doesn't fit a group of
+        // checkboxes, so this branch renders its own label instead of
+        // going through FormField.
+        if (element.dataType === 'coded_multi') {
+          const selected = Array.isArray(value) ? value : [];
+          return (
+            <div key={element.id} className="flex flex-col gap-1.5" id={`element-${element.key}`}>
+              <span className="text-sm font-medium text-foreground">
+                {element.label}
+                {element.requirement === 'required' ? (
+                  <span className="text-danger" aria-hidden="true">
+                    {' '}
+                    *
+                  </span>
+                ) : null}
+              </span>
+              <div className="flex flex-col gap-1">
+                {element.responseOptions.map((option) => (
+                  <label key={option.id} className="flex items-center gap-2 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(option.value)}
+                      onChange={(e) => onToggleMulti(element.key, option.value, e.target.checked)}
+                    />
+                    {option.display}
+                  </label>
+                ))}
+              </div>
+            </div>
+          );
+        }
+
         return (
           <FormField
             key={element.id}
@@ -135,6 +172,25 @@ export function ProtocolForm({
     });
   }
 
+  // issue #645: toggles one option in a coded_multi element's own selected
+  // array. Deletes the key entirely once the last selection is unchecked,
+  // matching handleChange's own "empty means unanswered" convention.
+  function handleToggleMulti(key: string, optionValue: string, checked: boolean) {
+    setValues((prev) => {
+      const current = Array.isArray(prev[key]) ? (prev[key] as string[]) : [];
+      const nextSelected = checked
+        ? [...current, optionValue]
+        : current.filter((v) => v !== optionValue);
+      const next = { ...prev };
+      if (nextSelected.length === 0) {
+        delete next[key];
+      } else {
+        next[key] = nextSelected;
+      }
+      return next;
+    });
+  }
+
   function isVisible(element: SynopticElement): boolean {
     return element.visibilityCondition
       ? evaluateCondition(element.visibilityCondition as ConditionNode, context)
@@ -160,7 +216,7 @@ export function ProtocolForm({
         <ul className="flex flex-col gap-1 text-sm text-text-secondary">
           {state.result.results.map((entry) => (
             <li key={entry.observationId}>
-              {entry.elementLabel}: {entry.value}
+              {entry.elementLabel}: {Array.isArray(entry.value) ? entry.value.join(', ') : entry.value}
             </li>
           ))}
         </ul>
@@ -181,6 +237,7 @@ export function ProtocolForm({
         context={context}
         values={values}
         onChange={handleChange}
+        onToggleMulti={handleToggleMulti}
       />
       <Button type="submit" disabled={pending} className="w-fit">
         {pending ? 'Recording…' : 'Record synoptic protocol'}

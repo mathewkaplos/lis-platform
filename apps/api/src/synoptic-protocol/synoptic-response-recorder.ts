@@ -30,7 +30,7 @@ type Tx = Parameters<
 
 export interface RecordSynopticResponseEntryInput {
   elementKey: string;
-  value: string | number;
+  value: string | number | string[];
 }
 
 export interface RecordSynopticResponseParams {
@@ -192,6 +192,19 @@ export async function assembleAndPersistSynopticResponse(
       ) {
         invalid.push(`${key}: not a permitted response option`);
       }
+    } else if (element.dataType === 'coded_multi') {
+      // issue #645: all-or-nothing, matching 'coded''s own discipline --
+      // every selected value must be a permitted response option.
+      const options = responseOptionsByElementId.get(element.id) ?? [];
+      if (
+        !Array.isArray(value) ||
+        value.length === 0 ||
+        !value.every(
+          (v) => typeof v === 'string' && options.some((o) => o.value === v),
+        )
+      ) {
+        invalid.push(`${key}: not a permitted set of response options`);
+      }
     } else if (element.dataType === 'quantity') {
       if (typeof value !== 'number') {
         invalid.push(`${key}: expected a numeric value`);
@@ -229,10 +242,17 @@ export async function assembleAndPersistSynopticResponse(
             ? 'quantity'
             : element.dataType === 'text'
               ? 'text'
-              : 'coded',
+              : element.dataType === 'coded_multi'
+                ? 'structured'
+                : 'coded',
         valueNum: element.dataType === 'quantity' ? String(value) : undefined,
         valueCode: element.dataType === 'coded' ? String(value) : undefined,
         valueText: element.dataType === 'text' ? String(value) : undefined,
+        // issue #645 (proposal §5.1): a coded_multi element's selected-value
+        // array is stored via the existing observation.dataType='structured'
+        // variant, not a new column -- ck_observation_structured_value
+        // already requires valueJson for that dataType.
+        valueJson: element.dataType === 'coded_multi' ? value : undefined,
         status: 'preliminary',
         source: 'manual',
         operatorUserId: actorPrincipalId,

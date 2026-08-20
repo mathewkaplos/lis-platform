@@ -1,7 +1,7 @@
 # Status — 2026-08-19 (session 40, continued)
 
-Last commit on main: `8611cad` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
-this leg). Since the AP testing passes below (pure QA, no code touched), eleven issues broken out
+Last commit on main: `06f385c` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
+this leg). Since the AP testing passes below (pure QA, no code touched), twelve issues broken out
 of #610 were each filed, planned, implemented, and merged this session: issue #613 as PR #617
 (Cases list status-filter tabs, breadcrumb PR #618); issue #615 as PR #619 (case amendment browser
 UI, breadcrumb PR #620); issue #621 as PR #622 (case sign-out/finalize browser UI, breadcrumb PR
@@ -9,11 +9,12 @@ UI, breadcrumb PR #620); issue #621 as PR #622 (case sign-out/finalize browser U
 #627 as PR #628 (block/slide creation browser UI, breadcrumb PR #629); issue #630 as PR #631
 (block-level reflex/add-on test ordering browser UI, breadcrumb PR #632); issue #633 as PR #634
 (case/specimen accessioning browser UI, breadcrumb PR #635); issue #636 as PR #637
-(gross/microscopic/diagnosis narrative entry — the first of these eleven requiring new schema, not
+(gross/microscopic/diagnosis narrative entry — the first of these twelve requiring new schema, not
 just a thin UI layer); issue #639 as PR #640 (cytology reviewer return-to-screening action); issue
-#642 as PR #643 (synoptic protocol recording UI); and **issue #645 as PR #646** (Prostate/Lung
-synoptic protocol pilot + `coded_multi` elements — see updated bullet below). A histology
-case can go accessioned →
+#642 as PR #643 (synoptic protocol recording UI); issue #645 as PR #646 (Prostate/Lung
+synoptic protocol pilot + `coded_multi` elements); and **issue #648 as PR #649** (case-level signed
+report PDF download — see updated bullet below, closing #610's own last major unbuilt UI gap). A
+histology case can go accessioned →
 signed_out → amended entirely through the browser; a cytology case can go accessioned →
 pending_review → signed_out → amended entirely through the browser, and a verifier can now send a
 cytology case back to `in_process` from `pending_review` with a required reason instead of only
@@ -22,10 +23,12 @@ hierarchy can be built out in the browser; a reflex/add-on test can be ordered o
 the browser, immediately result-enterable via the existing generic results screen; a case can be
 created from scratch in the browser (`/cases/new?orderId=`); a pathologist can enter and
 persist gross/microscopic/diagnosis narrative on a case, correctly captured into the signed report
-at finalize/amend time; and a pathologist can now record a full synoptic protocol (Breast,
+at finalize/amend time; a pathologist can now record a full synoptic protocol (Breast,
 Colorectal, Cervical Cytology/Pap, Prostate, or Lung — five real, cited protocols now seeded) against
 an eligible part, through a single generic protocol renderer with live conditional-field visibility
-and multi-select ("select all that apply") support. Check `git log origin/main -5` for the
+and multi-select ("select all that apply") support; and any signed report version (current or
+historical) can now be downloaded as a real PDF, with narrative/lineage/synoptic content rejoined
+and rendered at download time. Check `git log origin/main -5` for the
 real current tip if this has drifted.
 
 ## Session 40 (continued) — AP full acceptance pass #4: Amendments, Reflex/IHC, Reporting
@@ -840,6 +843,81 @@ for this second cycle is still owed once that's resolved.
   Colorectal, Cervical Cytology/Pap, Prostate, Lung), all rendering through one generic component;
   `coded_multi` is proven end-to-end, not just designed. Any further protocol seeding — from either
   library — is a separate, not-yet-decided future task, not committed to by this pilot.
+- **New this session: issue #648 filed, researched, planned, implemented, and merged as PR #649
+  (`Closes #648`).** Case-level signed report PDF download — the twelfth AP slice this session, and
+  the closer for #610's own last major unbuilt UI gap: before this, no `GET` route of any kind
+  existed for `case_report_version` content — the only place it was ever visible was the
+  synchronous JSON response of `finalize()`/`amend()` at the instant a version was created. A
+  dedicated research pass (mirroring #636/#642's own methodology) found a strong existing precedent
+  to follow rather than invent from scratch: the per-ordered-test PDF report (`POST
+  /v1/ordered-tests/:id/report`, TASK-058/060/FEAT-016) already established the exact
+  status-page-then-download-route-then-proxy-and-stream shape this feature needed, just at the
+  wrong granularity. New `GET /v1/cases/:id/report-versions/:versionId/pdf` — **per-version, not
+  just latest**, since a specific historical/superseded version's own PDF is a real, plausible
+  audit/legal need. **Two deliberate divergences from the ordered-test precedent, both explicitly
+  reasoned through rather than copied blindly:** (1) `GET`, not `POST` — the ordered-test route is
+  `POST` because it's genuinely side-effecting (writes a new `report` row + audit event on every
+  call, since a preliminary report regeneration can reflect newly-verified results — a real new
+  fact each time); a `case_report_version` is already signed and immutable, so re-rendering its PDF
+  is a pure, deterministic read with no new fact to record — proven, not just argued, by a real e2e
+  assertion that `report`/`audit_event` row counts are unchanged before/after the call, and that two
+  consecutive downloads of the same version produce byte-identical output. (2) `JwtAuthGuard`-only,
+  not `verify`-capability-gated — matches issue #615's own existing `report-versions` metadata list
+  precedent (RLS is the real tenant boundary), not the ordered-test route's own write-and-audit
+  authorization shape, since this route performs no write. **Real structural-mismatch finding,
+  independently re-confirmed before ruling it out (not just trusted from the research pass):**
+  `report_template`/`report_template_version` (FEAT-047's report designer) is keyed strictly to
+  `testDefinitionId` (`ux_report_template_tenant_test_definition`) — a genuine mismatch for
+  case-level content, which has no single `testDefinitionId` to key against. This feature's own
+  renderer therefore draws a fixed, non-configurable layout (own file, own input shape, NOT a reuse
+  of `report-render.ts`'s chemistry-specific renderer), matching that renderer's own
+  fixed-header/fixed-footer boundary — only its *results body* was ever template-driven, and this
+  route has no equivalent body to templatize. **New content-assembler file, kept separate from the
+  renderer** (mirrors `report-assembly.ts`/`report-render.ts`'s own existing separation): rejoins
+  `includedContent`'s snapshotted ids against live data at render time — `synopticResponses` (only
+  `{id, createdAt}` in the snapshot) against `observation` (for the actual value) and
+  `synoptic_element` (for the human-readable label), safe because a verified `observation` row is
+  immutable via a real DB trigger, the same reasoning `buildCaseReportContent()`'s own header
+  comment already established; `parts`/`blockIds` against `specimen`/`block` for human-readable
+  identifiers; `narrative` needs **no** rejoin at all, already a full value snapshot from issue
+  #636. Per the human's own approved §10 Q2, synoptic findings are grouped by protocol name in the
+  rendered PDF (resolved via `synoptic_element.synopticProtocolVersionId` →
+  `synopticProtocolVersion` → `synopticProtocol.name`) — a real, non-obvious wrinkle found during
+  implementation: grouping by `orderedTestId` alone (the proposal's own first-pass framing) would
+  NOT actually separate a case's different parts' own protocols, since issue #642's own design
+  resolves `orderedTestId` once per case (`orderedTests[0].id`), shared across every part —
+  protocol identity, not `orderedTestId`, is what genuinely distinguishes one part's synoptic
+  recording from another's on a multi-part case. Per the human's own approved §10 Q3, any genuinely
+  missing rejoin target renders as the literal string `"[data unavailable]"`, never silently
+  dropped. `apps/web` mirrors the existing ordered-test download Route Handler pattern exactly (a
+  `GET` proxy this time, matching the new backend route's own `GET` shape, not the ordered-test
+  route's `POST`), with a plain `<a>` "Download PDF" link added per row on the case detail page's
+  existing "Report versions" list (issue #615's own UI). **Live-verified in a real browser** — the
+  Claude-in-Chrome extension was retried fresh this pass (per the standing note from #645's own
+  breadcrumb) and worked cleanly this time, no fallback needed: a real Keycloak login as a verifier
+  (required for `finalize()`'s own fresh-step-up gate — confirmed directly that a scripted
+  Direct-Grant token 403s with `step_up_required` here, matching this session's own earlier
+  established finding), a real sign-out of a case carrying both a recorded Breast synoptic response
+  and a narrative, and a real "Download PDF" click. **Content verified via a genuine PDF
+  text-extraction step, not the unreliable `.toString('latin1')`-on-compressed-streams approach
+  `pdf-generation` Skill entry #7 already documents as broken** (valid here specifically because
+  the renderer uses `compress: false`, matching `report-render.ts`'s own precedent, so decoding the
+  content stream's own hex-bracketed glyph runs directly is a reliable, real extraction, not a
+  shortcut): the extracted text contained the real case accession number and status, the real
+  specimen/block identifiers, the narrative's two real non-null fields (correctly omitting the
+  untouched third), the full "Synoptic Findings" section correctly grouped under the real protocol
+  name with all 16 recorded element labels/values, and the version's own real signing metadata.
+  **One real, transient issue hit and correctly diagnosed as tooling, not a product bug:** the
+  very first browser-driven download click returned a `503` — confirmed via an immediate direct
+  re-request (same URL, valid session) returning a clean `200` with fully correct content, isolating
+  this to Next.js dev server's own on-demand-compilation delay for a route's genuinely first real
+  hit, not a logic error — the same class of tooling-vs-product-bug discipline this session has
+  applied consistently throughout (e.g. the RSC-flight-payload textContent false-positive found
+  during #642's own verification). **Net effect worth remembering: #610's own punch list (as of the
+  research pass that first named it) is now down to one item** — synoptic protocol library scaling
+  beyond the #645 pilot (170 combined real documents across the CAP and ICCR libraries, both looked
+  at this session, neither yet actioned) is the only real, identified gap remaining from that list;
+  report/PDF/case-level document viewing, the other named item, is now closed by this issue.
 - **New this session:** TASK-440 (specimen expiry + reflex recollection) merged as PR #605
   (`e58f243`), issue #440 closed — see session 40 section above. Nothing owed from this item.
   Volume/exhaustion tracking was deliberately cut from scope (§10 Q1) — a real, separate follow-up

@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getValidAccessToken } from '@/auth/access-token';
+import { getSession } from '@/auth/get-session';
+import { hasSpecimenManagementRole } from '@/auth/roles';
 import { createLisApiClient } from '@/lib/api-client';
 import { CaseAccessionForm } from './case-accession-form';
 
@@ -33,9 +35,16 @@ export default async function NewCasePage({
     );
   }
 
-  const accessToken = await getValidAccessToken();
+  const [accessToken, session] = await Promise.all([getValidAccessToken(), getSession()]);
   if (!accessToken) {
     throw new Error('Your session has expired — please log in again.');
+  }
+  // Issue #665: matches synoptic/[partId]/page.tsx's own page-level gate --
+  // a user reaching this page directly by URL without manage_specimens
+  // should be blocked here, not just have the order-detail page's own
+  // entry link hidden.
+  if (!hasSpecimenManagementRole(session)) {
+    throw new Error('You do not have permission to accession a new case.');
   }
   const client = createLisApiClient(accessToken);
 

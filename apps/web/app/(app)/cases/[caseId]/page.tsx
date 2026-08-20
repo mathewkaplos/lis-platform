@@ -192,7 +192,15 @@ export default async function CaseDetailPage({
                                         Previous upload failed — try again below.
                                       </p>
                                     ) : null}
-                                    <UploadWsiForm slideId={slide.id} />
+                                    {/* Issue #665: matches every sibling
+                                        manage_specimens control on this page
+                                        (Add block/slide/test, Narrative) --
+                                        the backend already enforces this
+                                        correctly, this closes the one
+                                        control that didn't hide itself. */}
+                                    {hasSpecimenManagementRole(session) ? (
+                                      <UploadWsiForm slideId={slide.id} />
+                                    ) : null}
                                   </div>
                                 )}
                               </li>

@@ -74,7 +74,16 @@ export const synopticElement = pgTable(
     key: text("key").notNull(), // machine key, unique within a protocol version -- observation binding + visibilityCondition field target
     label: text("label").notNull(),
     dataType: text("data_type").notNull(), // 'coded' | 'quantity' | 'text' | 'coded_multi' -- subset of observation.data_type plus 'coded_multi' (issue #645 proposal §5.1: a "select all that apply" element, persisted as observation.dataType='structured'/valueJson, not a new observation column)
-    requirement: text("requirement").notNull(), // 'required' | 'recommended' -- mirrors ICCR's own Required/Recommended split
+    // Issue #664: 'required' | 'recommended' | 'conditional'. Stored values
+    // deliberately not renamed to CAP's own Core/Optional vocabulary --
+    // that mapping lives in packages/domain's requirementLabel(), keeping
+    // this an internal key distinct from its own source-standard-aware
+    // display text (same separation synoptic_element_response_option's own
+    // value/display columns already establish). 'conditional' shares
+    // 'required''s own enforcement semantics (required when not hidden by
+    // visibilityCondition) -- it is a label distinction, not a new
+    // validation branch.
+    requirement: text("requirement").notNull(),
     analyteId: uuid("analyte_id")
       .notNull()
       .references(() => analyte.id),
@@ -95,7 +104,7 @@ export const synopticElement = pgTable(
     uniqueIndex("ux_synoptic_element_version_key").on(table.synopticProtocolVersionId, table.key),
     index("ix_synoptic_element_parent").on(table.parentElementId),
     check("ck_synoptic_element_data_type", sql`${table.dataType} IN ('coded','quantity','text','coded_multi')`),
-    check("ck_synoptic_element_requirement", sql`${table.requirement} IN ('required','recommended')`),
+    check("ck_synoptic_element_requirement", sql`${table.requirement} IN ('required','recommended','conditional')`),
   ],
 );
 

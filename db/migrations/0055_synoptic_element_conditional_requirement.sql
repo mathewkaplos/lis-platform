@@ -1,0 +1,2 @@
+ALTER TABLE "synoptic_element" DROP CONSTRAINT "ck_synoptic_element_requirement";--> statement-breakpoint
+ALTER TABLE "synoptic_element" ADD CONSTRAINT "ck_synoptic_element_requirement" CHECK ("synoptic_element"."requirement" IN ('required','recommended','conditional'));

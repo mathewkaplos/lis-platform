@@ -163,7 +163,10 @@ export async function assembleAndPersistSynopticResponse(
 
   const missingRequired: string[] = [];
   for (const element of elements) {
-    if (element.requirement !== 'required') continue;
+    // Issue #664: 'conditional' shares 'required''s own enforcement --
+    // only 'recommended' is genuinely optional. A label distinction, not a
+    // new validation branch.
+    if (element.requirement === 'recommended') continue;
     const hidden = element.visibilityCondition
       ? !evaluateCondition(
           element.visibilityCondition as ConditionNode,

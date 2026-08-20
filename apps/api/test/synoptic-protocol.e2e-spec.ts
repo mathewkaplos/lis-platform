@@ -3,11 +3,15 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import {
+  analyte,
   auditEvent,
+  codeSystemValue,
   createDb,
   observation,
+  synopticElement,
   synopticProtocolVersion,
 } from '@lis/db';
+import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { AppModule } from './../src/app.module';
 import { getKeycloakToken } from './get-keycloak-token';
@@ -954,6 +958,113 @@ describe('Synoptic Protocol API (e2e)', () => {
           `expected the precision-qualifier answer to record like any other coded element, got ${JSON.stringify(precisionResult)}`,
         );
       }
+    });
+  });
+
+  describe('Conditional requirement tier (issue #664)', () => {
+    // Not seed content (proposal §2/§5: no existing seeded element is
+    // reclassified, and no new demonstration content is added to the real,
+    // citation-heavy seed files for this) -- a test-only element inserted
+    // directly, matching observation.e2e-spec.ts's own precedent for
+    // proving a real mechanism without touching seed data. Hidden unless
+    // 'neoadjuvant_therapy' (already in baseColorectalResponses) equals
+    // 'given', reusing the exact visibilityCondition shape the seeded
+    // response_to_neoadjuvant_therapy element already uses for real.
+    async function createConditionalTestElement(): Promise<{ key: string }> {
+      const key = `test_conditional_${randomUUID().slice(0, 8)}`;
+      const [csv] = await db
+        .insert(codeSystemValue)
+        .values({
+          system: 'ICCR-SYNOPTIC-TEST',
+          code: key,
+          version: '2022',
+          display: 'Test conditional element (issue #664)',
+        })
+        .returning();
+      const [a] = await db
+        .insert(analyte)
+        .values({
+          codeSystemValueId: csv.id,
+          display: csv.display,
+          dataType: 'text',
+        })
+        .returning();
+      await db.insert(synopticElement).values({
+        synopticProtocolVersionId: colorectalVersionId,
+        key,
+        label: 'Test conditional element (issue #664)',
+        dataType: 'text',
+        requirement: 'conditional',
+        analyteId: a.id,
+        displayOrder: 999,
+        visibilityCondition: {
+          field: 'neoadjuvant_therapy',
+          op: 'eq',
+          value: 'given',
+        },
+      });
+      return { key };
+    }
+
+    it('is enforced like a required element when visible, and rejects if omitted', async () => {
+      const { key } = await createConditionalTestElement();
+      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const responsesWithNeoadjuvant = baseColorectalResponses
+        .filter((r) => r.elementKey !== 'neoadjuvant_therapy')
+        .concat([
+          { elementKey: 'neoadjuvant_therapy', value: 'given' },
+          // The seeded response_to_neoadjuvant_therapy element becomes
+          // required too once neoadjuvant_therapy = 'given' -- must be
+          // answered here so the *test-only* conditional element (`key`)
+          // is the only thing left missing in the first assertion below.
+          {
+            elementKey: 'response_to_neoadjuvant_therapy',
+            value: 'score_0_complete',
+          },
+        ]);
+
+      const rejected = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: colorectalVersionId,
+          responses: responsesWithNeoadjuvant,
+        })
+        .expect(400);
+      if (!JSON.stringify(rejected.body).includes(key)) {
+        throw new Error(
+          `expected the conditional element to be named as missing when visible and omitted, got ${JSON.stringify(rejected.body)}`,
+        );
+      }
+
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: colorectalVersionId,
+          responses: responsesWithNeoadjuvant.concat([
+            { elementKey: key, value: 'answered' },
+          ]),
+        })
+        .expect(201);
+    });
+
+    it('is skipped (not enforced) when hidden by its own visibilityCondition', async () => {
+      await createConditionalTestElement();
+      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      // baseColorectalResponses already sets neoadjuvant_therapy = 'not_given'
+      // -- the conditional element stays hidden, so omitting it must succeed.
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: colorectalVersionId,
+          responses: baseColorectalResponses,
+        })
+        .expect(201);
     });
   });
 

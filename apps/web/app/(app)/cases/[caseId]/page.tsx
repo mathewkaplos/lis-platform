@@ -62,11 +62,15 @@ export default async function CaseDetailPage({
   }
   const client = createLisApiClient(accessToken);
 
-  const [{ data: caseData, response }, { data: catalog, response: catalogResponse }] =
-    await Promise.all([
-      client.GET('/v1/cases/{id}', { params: { path: { id } } }),
-      client.GET('/v1/catalog'),
-    ]);
+  const [
+    { data: caseData, response },
+    { data: catalog, response: catalogResponse },
+    { data: synopticProtocols },
+  ] = await Promise.all([
+    client.GET('/v1/cases/{id}', { params: { path: { id } } }),
+    client.GET('/v1/catalog'),
+    client.GET('/v1/synoptic-protocols'),
+  ]);
   if (response.status === 404) {
     notFound();
   }
@@ -79,6 +83,15 @@ export default async function CaseDetailPage({
   if (!catalogResponse.ok || !catalog) {
     throw new Error('Something went wrong loading the test catalog. Please try again.');
   }
+
+  // issue #642 (proposal §10 Q3): eligibility is an exact specimenType match
+  // against a protocol's own specimenType -- not schema-enforced unique, so
+  // more than one match is theoretically possible; take the first (list
+  // order), not worth a picker UI for a case no real seeded protocol data
+  // can produce today.
+  const synopticProtocolBySpecimenType = new Map(
+    (synopticProtocols?.protocols ?? []).map((protocol) => [protocol.specimenType, protocol]),
+  );
 
   const isAmendable = AMENDABLE_STATUSES.has(caseData.status);
   const reportVersions = isAmendable
@@ -100,12 +113,22 @@ export default async function CaseDetailPage({
           {caseData.parts.length === 0 ? (
             <p className="text-sm text-text-secondary">No parts on this case yet.</p>
           ) : (
-            caseData.parts.map((part) => (
+            caseData.parts.map((part) => {
+              const eligibleProtocol = synopticProtocolBySpecimenType.get(part.specimenType);
+              return (
               <div key={part.id} className="flex flex-col gap-3">
                 <h3 className="text-sm font-medium text-foreground">
                   Part <span className="font-mono">{part.accessionNumber}</span> —{' '}
                   {part.specimenType}
                 </h3>
+                {eligibleProtocol?.publishedVersionId && hasSpecimenManagementRole(session) ? (
+                  <Link
+                    href={`/cases/${id}/synoptic/${part.id}`}
+                    className="w-fit text-sm text-primary hover:underline"
+                  >
+                    Record synoptic protocol ({eligibleProtocol.name})
+                  </Link>
+                ) : null}
                 {part.blocks.length === 0 ? (
                   <p className="pl-4 text-sm text-text-secondary">No blocks yet.</p>
                 ) : (
@@ -166,7 +189,8 @@ export default async function CaseDetailPage({
                   <AddBlockForm caseId={id} specimenId={part.id} />
                 ) : null}
               </div>
-            ))
+              );
+            })
           )}
         </CardContent>
       </Card>

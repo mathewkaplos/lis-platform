@@ -2665,6 +2665,8 @@ export interface components {
                 specimenType: string;
                 /** Format: date-time */
                 createdAt: string;
+                /** Format: uuid */
+                publishedVersionId: string | null;
             }[];
         };
         SynopticProtocolVersionDto_Output__schema0_Output: {

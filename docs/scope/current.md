@@ -1,7 +1,7 @@
 # Status — 2026-08-19 (session 40, continued)
 
-Last commit on main: `8ff419c` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
-this leg). Since the AP testing passes below (pure QA, no code touched), nine issues broken out
+Last commit on main: `d391980` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
+this leg). Since the AP testing passes below (pure QA, no code touched), ten issues broken out
 of #610 were each filed, planned, implemented, and merged this session: issue #613 as PR #617
 (Cases list status-filter tabs, breadcrumb PR #618); issue #615 as PR #619 (case amendment browser
 UI, breadcrumb PR #620); issue #621 as PR #622 (case sign-out/finalize browser UI, breadcrumb PR
@@ -9,19 +9,22 @@ UI, breadcrumb PR #620); issue #621 as PR #622 (case sign-out/finalize browser U
 #627 as PR #628 (block/slide creation browser UI, breadcrumb PR #629); issue #630 as PR #631
 (block-level reflex/add-on test ordering browser UI, breadcrumb PR #632); issue #633 as PR #634
 (case/specimen accessioning browser UI, breadcrumb PR #635); issue #636 as PR #637
-(gross/microscopic/diagnosis narrative entry — the first of these nine requiring new schema, not
-just a thin UI layer); and **issue #639 as PR #640** (cytology reviewer return-to-screening action
-— see updated bullet below). A histology case can go accessioned →
+(gross/microscopic/diagnosis narrative entry — the first of these ten requiring new schema, not
+just a thin UI layer); issue #639 as PR #640 (cytology reviewer return-to-screening action); and
+**issue #642 as PR #643** (synoptic protocol recording UI — see updated bullet below). A histology
+case can go accessioned →
 signed_out → amended entirely through the browser; a cytology case can go accessioned →
 pending_review → signed_out → amended entirely through the browser, and a verifier can now send a
 cytology case back to `in_process` from `pending_review` with a required reason instead of only
 ever moving forward; a case's own block/slide
 hierarchy can be built out in the browser; a reflex/add-on test can be ordered onto a block from
 the browser, immediately result-enterable via the existing generic results screen; a case can be
-created from scratch in the browser (`/cases/new?orderId=`); and a pathologist can enter and
+created from scratch in the browser (`/cases/new?orderId=`); a pathologist can enter and
 persist gross/microscopic/diagnosis narrative on a case, correctly captured into the signed report
-at finalize/amend time. Check `git log origin/main -5` for the real current tip if this has
-drifted.
+at finalize/amend time; and a pathologist can now record a full CAP/ICCR synoptic protocol
+(Breast, Colorectal, or Cervical Cytology/Pap) against an eligible part, through a single generic
+protocol renderer with live conditional-field visibility. Check `git log origin/main -5` for the
+real current tip if this has drifted.
 
 ## Session 40 (continued) — AP full acceptance pass #4: Amendments, Reflex/IHC, Reporting
 
@@ -699,6 +702,87 @@ for this second cycle is still owed once that's resolved.
   #639 work, left in place, not cleaned up:** one fresh tenant-A cytology case under patient
   "RETURNQA WebVerify" (accession number `260819-000812`), cycled screen → return-to-screening →
   screen again during verification and left in `pending_review`.
+- **New this session: issue #642 filed, researched, planned, implemented, and merged as PR #643
+  (`Closes #642`).** Synoptic protocol recording UI — the tenth AP slice this session, and unlike
+  every other item this session, purely a frontend consumer of an already-complete backend:
+  FEAT-058 (ADR-0050) had already shipped the entire synoptic-protocol engine (schema, validation,
+  the recording route, lifecycle snapshotting into the signed report via `buildCaseReportContent()`,
+  audit, reflex-rule integration) with zero browser UI. A dedicated research pass (mirroring #636's
+  own methodology) confirmed this directly, including a genuinely interesting finding: none of the
+  three real seeded protocols (Invasive Carcinoma of the Breast/ICCR, Colorectal Cancer/ICCR,
+  Cervical Cytology (Pap)/Bethesda) actually use the schema's own `parentElementId` grouping
+  mechanism — every one is a flat element list, confirmed directly from the seed SQL, not assumed.
+  New page `/cases/[caseId]/synoptic/[partId]`, entered via an inline "Record synoptic protocol"
+  link per eligible part on the case detail page (`specimenType` exact-match against a published
+  protocol, same fragility class #633's own breadcrumb already named for
+  `requiresTwoTierReview()` — not fixed here, out of scope per the issue). **A genuinely generic
+  protocol renderer, not three separate Breast/Colorectal/Pap-specific forms** — a recursive
+  component walks whatever `parentElementId` tree the backend returns; today that's one flat group
+  per protocol, but a future grouped protocol version would render correctly with no code change.
+  **Real backend gap found and fixed during implementation, not scope creep (the proposal's own §1
+  explicitly allowed this):** `GET /v1/synoptic-protocols` had no way for a caller to discover a
+  protocol's *published version id* — the pre-existing `synoptic-protocol.e2e-spec.ts` itself had
+  to resolve it via a direct DB query, which a browser client can't do. Fixed with the smallest
+  possible addition: a nullable `publishedVersionId` field on each list entry (a plain `SELECT`
+  join against the table's own `ux_synoptic_protocol_version_protocol_published` partial unique
+  index, no new route, no migration). **Second real architectural improvement:** `evaluateCondition`
+  (the pure condition-tree evaluator FEAT-029's workflow engine already used) moved from
+  `apps/api/src/workflow/workflow-condition-evaluator.ts` into `@lis/domain`, re-exported unchanged
+  for every existing `apps/api` caller — finishing a migration FEAT-047 had only done halfway (it
+  moved the `ConditionNode` *type* to `@lis/domain` for the report designer's own client-side
+  validation, but left the evaluator itself server-only). This means the new synoptic form's live
+  conditional-visibility logic is the literal same function `apps/api`'s own recorder uses
+  authoritatively, not a hand-copied duplicate that could drift — confirmed behavior-preserving by
+  re-running `workflow-condition-evaluator.spec.ts` unmodified (12/12 still pass) against the
+  re-exported function. All three §10 proposal questions (no double-submission guard; inline
+  per-part entry-link placement; take-the-first-match on a theoretical multi-protocol collision)
+  resolved by explicit human walkthrough, recommended defaults taken in every case. Regression
+  suites re-run unmodified and clean: `synoptic-protocol.e2e-spec.ts` (8/8), `case-sign-out.e2e-spec.ts`
+  (13/13, confirming `buildCaseReportContent()`'s own synoptic-response snapshot logic is genuinely
+  untouched), `synoptic-response-recorder.spec.ts` (3/3). **Live-verified in a real browser against
+  all three real seeded protocols through the same generic component** — Breast (25 elements),
+  Colorectal (19+), Pap (smaller) all rendered correctly; both of Breast's own conditionally-hidden
+  elements (`tumor_focus_count`, `her2_percent_membrane_staining`) were correctly absent by default;
+  the exact §3.3 worked visibility trace was live-driven on Colorectal (selecting `neoadjuvant_therapy
+  = given` correctly revealed `response_to_neoadjuvant_therapy`); a real 16-response Breast
+  submission succeeded, rendered a confirmation view, and — verified directly against the database,
+  not inferred from the UI — persisted exactly those 16 discrete `observation` rows with neither
+  conditionally-hidden element present; an empty submission surfaced the backend's own validation
+  message verbatim; a `qa`-role session's SSR HTML correctly omitted the entry link and a direct
+  navigation attempt threw rather than rendering the form. **One real automation-methodology pitfall
+  caught and corrected mid-pass, worth remembering for future `get_page_text`/`textContent`-based
+  verification on this codebase:** `document.body.textContent` includes the content of Next.js's
+  own inline RSC flight-data `<script>` tag (the same underlying mechanism `frontend-design` Skill
+  entry #5 already documents for a different reason — PHI leaking across client-side navigations),
+  so a naive `textContent.includes(someElementLabel)` check produces a false positive for an element
+  that is genuinely absent from the rendered DOM; switched to `document.getElementById` checks
+  against the real DOM, which is what actually caught this rather than trusting the first
+  (incorrect) result. **Net effect worth remembering:** the entire cytology two-tier lifecycle
+  (screen → return-to-screening → finalize → amend) plus synoptic protocol recording are all now
+  browser-reachable — the last two items remaining on #610's own list are synoptic-protocol UI's own
+  once-largest sibling gap, report/PDF/case-level document viewing (confirmed again this session:
+  still no `GET` route of any kind exists for `case_report_version` content), and any EPIC-012
+  follow-ups still gated on design-partner input. **New test data from this session's #642 work,
+  left in place, not cleaned up:** one fresh tenant-A case under patient "SYNOPTICQA WebVerify"
+  (accession number visible via its three parts, ids ending `...7511`/`...c370b`/`...2dfc1`) with
+  three parts (breast/colorectal/cervical_cytology, no blocks/slides), the breast part carrying two
+  full recorded synoptic response sets (one seeded via direct API call during investigation, one via
+  a real browser submission during verification — both left in place since the recording route has
+  no update/dedup mechanism, matching §10 Q1's own accepted risk).
+- **Real, large, not-yet-actioned finding, surfaced by the human just after #642 merged:**
+  `D:\LIS\research\cap documents` (a directory new this session, appearing between the #642 and
+  #643 CI-wait cycles) holds 106 real, official CAP Cancer Protocol (CAPCP) `.docx` templates —
+  the full CAP synoptic library, not a handful of samples, covering nearly every organ site
+  (Adrenal through Vulva, plus several biomarker-specific protocols). Spot-checked directly (Vulva,
+  Prostate): confirmed the same official CAP Core/Conditional/Optional format already used to seed
+  the three protocols #642's own UI now renders, so this is a real, large expansion opportunity —
+  potentially 100+ protocols where 3 exist today. One structural detail worth remembering: several
+  of these real templates (e.g. Vulva's SPECIMEN → TUMOR → REGIONAL LYMPH NODE) use genuine section
+  groupings, which would be the first real exercise of the `parentElementId` grouping mechanism
+  #642's own generic renderer already supports but that no currently-seeded protocol data uses.
+  Not yet actioned in any way (no issue filed, no protocols seeded, no plan drafted) — the human's
+  own words were "when #642 closes, we should use [this] to improve the synoptic protocol," posed
+  as an open question about what to recommend next, not yet a decided next task.
 - **New this session:** TASK-440 (specimen expiry + reflex recollection) merged as PR #605
   (`e58f243`), issue #440 closed — see session 40 section above. Nothing owed from this item.
   Volume/exhaustion tracking was deliberately cut from scope (§10 Q1) — a real, separate follow-up

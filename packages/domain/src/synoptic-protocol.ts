@@ -9,7 +9,7 @@ import { conditionNodeSchema, type ConditionNode } from "./conditions";
  * constraints exactly.
  */
 
-export const SYNOPTIC_ELEMENT_DATA_TYPES = ["coded", "quantity", "text"] as const;
+export const SYNOPTIC_ELEMENT_DATA_TYPES = ["coded", "quantity", "text", "coded_multi"] as const;
 export type SynopticElementDataType = (typeof SYNOPTIC_ELEMENT_DATA_TYPES)[number];
 
 export const SYNOPTIC_ELEMENT_REQUIREMENTS = ["required", "recommended"] as const;
@@ -81,6 +81,16 @@ export type SynopticProtocolList = z.infer<typeof synopticProtocolListSchema>;
  * for -- omitted `required` elements (that aren't hidden by an unmet
  * `visibilityCondition`) are rejected at record time (proposal §8).
  */
+// Issue #645 (proposal §2/§5.1): a coded_multi element's value is a non-empty
+// array of selected option values -- widened alongside the existing scalar
+// string/number value, not a separate field, so every existing single-value
+// caller stays unchanged.
+const synopticResponseValueSchema = z.union([
+  z.string(),
+  z.number(),
+  z.array(z.string()).min(1),
+]);
+
 export const synopticResponseCreateSchema = z.object({
   orderedTestId: z.uuid(),
   synopticProtocolVersionId: z.uuid(),
@@ -88,7 +98,7 @@ export const synopticResponseCreateSchema = z.object({
     .array(
       z.object({
         elementKey: z.string().min(1),
-        value: z.union([z.string(), z.number()]),
+        value: synopticResponseValueSchema,
       }),
     )
     .min(1),
@@ -98,7 +108,7 @@ export type SynopticResponseCreateInput = z.infer<typeof synopticResponseCreateS
 export const synopticResponseResultEntrySchema = z.object({
   elementKey: z.string(),
   elementLabel: z.string(),
-  value: z.union([z.string(), z.number()]),
+  value: synopticResponseValueSchema,
   observationId: z.uuid(),
 });
 export type SynopticResponseResultEntry = z.infer<typeof synopticResponseResultEntrySchema>;
@@ -121,7 +131,7 @@ export type SynopticResponseResult = z.infer<typeof synopticResponseResultSchema
  */
 export const synopticResponseRecordedEventPayloadSchema = z
   .object({ orderedTestId: z.uuid() })
-  .catchall(z.union([z.string(), z.number()]));
+  .catchall(synopticResponseValueSchema);
 export type SynopticResponseRecordedEventPayload = z.infer<
   typeof synopticResponseRecordedEventPayloadSchema
 >;

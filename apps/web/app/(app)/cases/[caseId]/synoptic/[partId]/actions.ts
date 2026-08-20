@@ -7,7 +7,7 @@ export interface RecordSynopticResponsePayload {
   caseId: string;
   orderedTestId: string;
   synopticProtocolVersionId: string;
-  responses: { elementKey: string; value: string | number }[];
+  responses: { elementKey: string; value: string | number | string[] }[];
 }
 
 /**

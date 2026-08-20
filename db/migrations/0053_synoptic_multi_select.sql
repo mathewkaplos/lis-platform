@@ -1,0 +1,2 @@
+ALTER TABLE "synoptic_element" DROP CONSTRAINT "ck_synoptic_element_data_type";--> statement-breakpoint
+ALTER TABLE "synoptic_element" ADD CONSTRAINT "ck_synoptic_element_data_type" CHECK ("synoptic_element"."data_type" IN ('coded','quantity','text','coded_multi'));

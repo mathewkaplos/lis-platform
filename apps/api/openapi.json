@@ -8243,7 +8243,8 @@
                   "enum": [
                     "coded",
                     "quantity",
-                    "text"
+                    "text",
+                    "coded_multi"
                   ]
                 },
                 "requirement": {
@@ -8361,6 +8362,13 @@
                     },
                     {
                       "type": "number"
+                    },
+                    {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   ]
                 }

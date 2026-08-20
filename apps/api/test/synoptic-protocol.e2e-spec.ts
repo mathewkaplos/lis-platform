@@ -2,8 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { createDb, synopticProtocolVersion } from '@lis/db';
-import { and, eq } from 'drizzle-orm';
+import { createDb, observation, synopticProtocolVersion } from '@lis/db';
+import { and, eq, sql } from 'drizzle-orm';
 import { AppModule } from './../src/app.module';
 import { getKeycloakToken } from './get-keycloak-token';
 
@@ -350,6 +350,223 @@ describe('Synoptic Protocol API (e2e)', () => {
         responses: baseColorectalResponses,
       })
       .expect(404);
+  });
+
+  describe('coded_multi elements (issue #645)', () => {
+    it('records a valid multi-select response as one structured Observation with the selected array persisted verbatim', async () => {
+      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+
+      const protocolsRes = await request(app.getHttpServer())
+        .get('/v1/synoptic-protocols')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const protocols = (
+        protocolsRes.body as {
+          protocols: {
+            id: string;
+            name: string;
+            publishedVersionId: string | null;
+          }[];
+        }
+      ).protocols;
+      // Resolved via the list response's own publishedVersionId field
+      // (issue #642's own gap-fix), not a direct DB query -- the real API
+      // surface this feature's own frontend actually uses.
+      const prostate = protocols.find(
+        (p) =>
+          p.name === 'Carcinoma of the Prostate Gland (Radical Prostatectomy)',
+      );
+      if (!prostate || !prostate.publishedVersionId) {
+        throw new Error(
+          `expected db/seed/synoptic-protocol-prostate.sql's published protocol, got ${JSON.stringify(protocols)}`,
+        );
+      }
+
+      const versionRes = await request(app.getHttpServer())
+        .get(
+          `/v1/synoptic-protocols/${prostate.id}/versions/${prostate.publishedVersionId}`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const version = versionRes.body as {
+        elements: {
+          key: string;
+          dataType: string;
+          responseOptions: { value: string }[];
+        }[];
+      };
+      const histologicType = version.elements.find(
+        (e) => e.key === 'histologic_type',
+      );
+      if (!histologicType || histologicType.dataType !== 'coded_multi') {
+        throw new Error(
+          `expected histologic_type to be a coded_multi element, got ${JSON.stringify(histologicType)}`,
+        );
+      }
+      const selected = histologicType.responseOptions
+        .slice(0, 2)
+        .map((o) => o.value);
+
+      const res = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: prostate.publishedVersionId,
+          responses: [
+            { elementKey: 'procedure', value: 'not_specified' },
+            { elementKey: 'histologic_type', value: selected },
+            { elementKey: 'histologic_grade', value: 'not_applicable' },
+            { elementKey: 'intraductal_carcinoma', value: 'not_identified' },
+            { elementKey: 'cribriform_glands', value: 'not_applicable' },
+            {
+              elementKey: 'treatment_effect',
+              value: ['no_known_presurgical_therapy'],
+            },
+            {
+              elementKey: 'tumor_quantitation_method',
+              value: ['cannot_be_determined'],
+            },
+            { elementKey: 'extraprostatic_extension', value: 'not_identified' },
+            {
+              elementKey: 'urinary_bladder_neck_invasion',
+              value: 'not_identified',
+            },
+            { elementKey: 'seminal_vesicle_invasion', value: 'not_identified' },
+            { elementKey: 'lymphovascular_invasion', value: 'not_identified' },
+            { elementKey: 'margin_status', value: 'all_negative' },
+            {
+              elementKey: 'regional_lymph_node_status',
+              value: 'not_applicable',
+            },
+            { elementKey: 'pathological_stage_pt', value: 'pT2' },
+            {
+              elementKey: 'pathological_stage_pn',
+              value: 'pn_not_assigned_no_nodes',
+            },
+          ],
+        })
+        .expect(201);
+      const body = res.body as {
+        results: {
+          elementKey: string;
+          observationId: string;
+          value: unknown;
+        }[];
+      };
+      const histologicTypeResult = body.results.find(
+        (r) => r.elementKey === 'histologic_type',
+      );
+      if (
+        !histologicTypeResult ||
+        !Array.isArray(histologicTypeResult.value) ||
+        histologicTypeResult.value.join(',') !== selected.join(',')
+      ) {
+        throw new Error(
+          `expected histologic_type's own result to echo the selected array, got ${JSON.stringify(histologicTypeResult)}`,
+        );
+      }
+
+      // observation has RLS -- app.tenant_id must be set on this raw
+      // connection first, matching case-sign-out.e2e-spec.ts's own
+      // established pattern for a direct post-request DB verification.
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', '00000000-0000-0000-0000-000000000001', false)`,
+      );
+      const [persisted] = await db
+        .select({
+          dataType: observation.dataType,
+          valueJson: observation.valueJson,
+        })
+        .from(observation)
+        .where(eq(observation.id, histologicTypeResult.observationId));
+      if (
+        persisted?.dataType !== 'structured' ||
+        JSON.stringify(persisted.valueJson) !== JSON.stringify(selected)
+      ) {
+        throw new Error(
+          `expected a structured Observation with valueJson matching the submitted array exactly, got ${JSON.stringify(persisted)}`,
+        );
+      }
+    });
+
+    it("rejects a coded_multi response containing any value not in the element's own responseOptions", async () => {
+      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+
+      const protocolsRes = await request(app.getHttpServer())
+        .get('/v1/synoptic-protocols')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const prostate = (
+        protocolsRes.body as {
+          protocols: {
+            id: string;
+            name: string;
+            publishedVersionId: string | null;
+          }[];
+        }
+      ).protocols.find(
+        (p) =>
+          p.name === 'Carcinoma of the Prostate Gland (Radical Prostatectomy)',
+      );
+      if (!prostate?.publishedVersionId) {
+        throw new Error('expected the seeded, published Prostate protocol');
+      }
+
+      // Every other required element is supplied validly so the missingRequired
+      // check passes and the invalid-value check for histologic_type is what
+      // actually rejects the request -- otherwise a "Missing required
+      // element(s)" 400 (for the other unsupplied required elements) would
+      // mask the coded_multi validation this test is meant to prove.
+      const res = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: prostate.publishedVersionId,
+          responses: [
+            { elementKey: 'procedure', value: 'not_specified' },
+            {
+              elementKey: 'histologic_type',
+              value: ['acinar_conventional', 'not_a_real_option'],
+            },
+            { elementKey: 'histologic_grade', value: 'not_applicable' },
+            { elementKey: 'intraductal_carcinoma', value: 'not_identified' },
+            { elementKey: 'cribriform_glands', value: 'not_applicable' },
+            {
+              elementKey: 'treatment_effect',
+              value: ['no_known_presurgical_therapy'],
+            },
+            {
+              elementKey: 'tumor_quantitation_method',
+              value: ['cannot_be_determined'],
+            },
+            { elementKey: 'extraprostatic_extension', value: 'not_identified' },
+            {
+              elementKey: 'urinary_bladder_neck_invasion',
+              value: 'not_identified',
+            },
+            { elementKey: 'seminal_vesicle_invasion', value: 'not_identified' },
+            { elementKey: 'lymphovascular_invasion', value: 'not_identified' },
+            { elementKey: 'margin_status', value: 'all_negative' },
+            {
+              elementKey: 'regional_lymph_node_status',
+              value: 'not_applicable',
+            },
+            { elementKey: 'pathological_stage_pt', value: 'pT2' },
+            {
+              elementKey: 'pathological_stage_pn',
+              value: 'pn_not_assigned_no_nodes',
+            },
+          ],
+        })
+        .expect(400);
+      if (!JSON.stringify(res.body).includes('histologic_type')) {
+        throw new Error(
+          `expected histologic_type named as invalid, got ${JSON.stringify(res.body)}`,
+        );
+      }
+    });
   });
 
   // No public "list versions" endpoint exists (issue #539 scope), so this

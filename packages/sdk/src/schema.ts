@@ -1076,6 +1076,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["BillingController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/invoices/{id}": {
         parameters: {
             query?: never;
@@ -2409,6 +2425,23 @@ export interface components {
             payerType?: "cash" | "corporate";
             /** Format: uuid */
             referringFacilityId?: string;
+        };
+        InvoiceListResponseDto_Output: {
+            items: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                patientId: string;
+                /** @enum {string} */
+                status: "unpaid" | "partial" | "paid";
+                /** @enum {string} */
+                payerType: "cash" | "corporate";
+                totalCents: number;
+                amountPaidCents: number;
+                balanceDueCents: number;
+                /** Format: date-time */
+                createdAt: string;
+            }[];
         };
         InvoiceDto_Output: {
             /** Format: uuid */
@@ -4390,6 +4423,32 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    BillingController_list: {
+        parameters: {
+            query?: {
+                status?: "unpaid" | "partial" | "paid";
+                payerType?: "cash" | "corporate";
+                patientId?: string;
+                hasBalance?: "true" | "false";
+                createdFrom?: string;
+                createdTo?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceListResponseDto_Output"];
+                };
             };
         };
     };

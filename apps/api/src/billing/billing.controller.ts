@@ -6,18 +6,22 @@ import {
   NotFoundException,
   Param,
   Post,
+  Query,
   Body,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import {
   generateInvoiceRequestSchema,
+  invoiceListQuerySchema,
+  invoiceListResponseSchema,
   invoiceSchema,
   paymentRequestSchema,
   type Invoice,
+  type InvoiceListResponse,
 } from '@lis/domain';
 import { invoice, invoiceLineItem, payment, order } from '@lis/db';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { Audit } from '../auth/audit.decorator';
@@ -33,6 +37,12 @@ import { getPaidCents, PaymentService } from './payment.service';
 
 const orderIdParamSchema = z.object({ id: z.uuid() });
 const invoiceIdParamSchema = z.object({ id: z.uuid() });
+// Proper DTO class for the new list route's query, not a bare inline type --
+// `billing` Skill entry #2's own finding: a bare inline `@Query()` type
+// carries no class metadata for NestJS's OpenAPI generator, silently
+// producing `query?: never` in the generated schema.
+class InvoiceListQueryDto extends createZodDto(invoiceListQuerySchema) {}
+class InvoiceListResponseDto extends createZodDto(invoiceListResponseSchema) {}
 // Proper DTO classes, not a bare inline `{ id: string }` type annotation --
 // `order.controller.ts`'s own `OrderIdParamDto` precedent. Confirmed live:
 // an inline type annotation carries no class metadata for NestJS's OpenAPI
@@ -137,13 +147,102 @@ export class BillingController {
     };
   }
 
+  /**
+   * Issue #489 (§17.1 only, docs/plans/task-489-invoice-list.md): filtered
+   * invoice list. Stays `manage_billing`-gated, deliberately not following
+   * `case.controller.ts list()`'s own ungated precedent -- financial data
+   * warrants the same gate every other route on this controller already
+   * carries; `case`'s ungated list is itself a flagged, accepted gap, not a
+   * pattern to copy into a second controller.
+   */
+  @Get('v1/invoices')
+  @UseGuards(JwtAuthGuard, CapabilityGuard)
+  @RequireCapability('manage_billing')
+  @UseInterceptors(TenantContextInterceptor)
+  @ZodResponse({ type: InvoiceListResponseDto, status: 200 })
+  async list(
+    @Query(new ZodValidationPipe(invoiceListQuerySchema))
+    query: InvoiceListQueryDto,
+    @DbTx() tx: RequestWithTx['tx'],
+  ): Promise<InvoiceListResponse> {
+    const conditions = [
+      query.status ? eq(invoice.status, query.status) : undefined,
+      query.payerType ? eq(invoice.payerType, query.payerType) : undefined,
+      query.patientId ? eq(invoice.patientId, query.patientId) : undefined,
+      query.createdFrom
+        ? gte(invoice.createdAt, new Date(query.createdFrom))
+        : undefined,
+      query.createdTo
+        ? lte(invoice.createdAt, new Date(query.createdTo))
+        : undefined,
+    ].filter((c) => c !== undefined);
+
+    const rows = await tx
+      .select()
+      .from(invoice)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(invoice.createdAt));
+
+    // One grouped query for every matched invoice's paid total -- never N
+    // separate `getPaidCents` round trips, and never a second,
+    // independently-maintained computation of the same number
+    // (`billing` Skill entry #3).
+    const paidByInvoiceId = new Map<string, number>();
+    if (rows.length > 0) {
+      const sums = await tx
+        .select({
+          invoiceId: payment.invoiceId,
+          total: sql<string>`COALESCE(SUM(${payment.amountCents}), 0)`,
+        })
+        .from(payment)
+        .where(
+          and(
+            inArray(
+              payment.invoiceId,
+              rows.map((r) => r.id),
+            ),
+            eq(payment.status, 'succeeded'),
+          ),
+        )
+        .groupBy(payment.invoiceId);
+      for (const s of sums) {
+        paidByInvoiceId.set(s.invoiceId, Number(s.total));
+      }
+    }
+
+    const items = rows
+      .map((row) => {
+        const amountPaidCents = paidByInvoiceId.get(row.id) ?? 0;
+        return {
+          id: row.id,
+          patientId: row.patientId,
+          status: row.status as Invoice['status'],
+          payerType: row.payerType as Invoice['payerType'],
+          totalCents: row.totalCents,
+          amountPaidCents,
+          balanceDueCents: row.totalCents - amountPaidCents,
+          createdAt: row.createdAt.toISOString(),
+        };
+      })
+      .filter((item) =>
+        query.hasBalance === undefined
+          ? true
+          : query.hasBalance === 'true'
+            ? item.balanceDueCents > 0
+            : item.balanceDueCents <= 0,
+      );
+
+    return { items };
+  }
+
   @Get('v1/invoices/:id')
   @UseGuards(JwtAuthGuard, CapabilityGuard)
   @RequireCapability('manage_billing')
   @UseInterceptors(TenantContextInterceptor)
   @ZodResponse({ type: InvoiceDto, status: 200 })
   async getInvoice(
-    @Param(new ZodValidationPipe(invoiceIdParamSchema)) { id }: InvoiceIdParamDto,
+    @Param(new ZodValidationPipe(invoiceIdParamSchema))
+    { id }: InvoiceIdParamDto,
     @DbTx() tx: RequestWithTx['tx'],
   ) {
     const [invoiceRow] = await tx
@@ -168,7 +267,8 @@ export class BillingController {
   @UseInterceptors(TenantContextInterceptor, AuditInterceptor)
   @Audit({ action: 'payment.record', resourceType: 'payment' })
   async recordPayment(
-    @Param(new ZodValidationPipe(invoiceIdParamSchema)) { id }: InvoiceIdParamDto,
+    @Param(new ZodValidationPipe(invoiceIdParamSchema))
+    { id }: InvoiceIdParamDto,
     @Body(new ZodValidationPipe(paymentRequestSchema)) body: PaymentRequestDto,
     @DbTx() tx: RequestWithTx['tx'],
   ) {

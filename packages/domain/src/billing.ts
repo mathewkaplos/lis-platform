@@ -89,3 +89,53 @@ export const invoiceSchema = z.object({
   lineItems: z.array(invoiceLineItemSchema),
 });
 export type Invoice = z.infer<typeof invoiceSchema>;
+
+// Issue #489 (§17.1 only, docs/plans/task-489-invoice-list.md): `GET
+// /v1/invoices` query filters. `branch` (named in the issue's own body) is
+// deliberately absent -- no `branch` concept exists anywhere in this schema
+// (confirmed by a repo-wide grep), not buildable without inventing a new
+// concept this task isn't scoped to add. `hasBalance` maps to
+// `balanceDueCents > 0`, computed the same way the detail route already
+// does (`PaymentService.getPaidCents`), never a second source of truth.
+//
+// `hasBalance` is `z.enum(['true', 'false'])`, never `z.coerce.boolean()` --
+// `qc-rule-violation.controller.ts`'s own `resolved` field documents the
+// exact footgun this avoids: query params always arrive as strings, and
+// `z.coerce.boolean()` coerces the literal string `'false'` to `true`
+// (`Boolean('false') === true`), silently making `?hasBalance=false` behave
+// like `?hasBalance=true`. Confirmed live, not hypothetical -- this exact
+// bug broke this route's own e2e regression test
+// (`billing.e2e-spec.ts`'s "filters by hasBalance" case) before this fix. No
+// `.transform()` to a real boolean either, same reasoning that controller's
+// own comment already gives (ADR-0013 §1's global `ZodValidationPipe` runs
+// this schema twice); the controller compares the raw string instead.
+export const invoiceListQuerySchema = z.object({
+  status: invoiceStatusSchema.optional(),
+  payerType: invoicePayerTypeSchema.optional(),
+  patientId: z.uuid().optional(),
+  hasBalance: z.enum(['true', 'false']).optional(),
+  createdFrom: z.iso.datetime().optional(),
+  createdTo: z.iso.datetime().optional(),
+});
+export type InvoiceListQuery = z.infer<typeof invoiceListQuerySchema>;
+
+// Thinner than `invoiceSchema` -- no `lineItems`, matching
+// `CaseListResponseDto`'s own "list rows are thinner than detail rows"
+// precedent (`apps/web`'s existing detail page already renders the full
+// line-item breakdown; a list row just needs enough to summarize + link).
+export const invoiceListItemSchema = z.object({
+  id: z.uuid(),
+  patientId: z.uuid(),
+  status: invoiceStatusSchema,
+  payerType: invoicePayerTypeSchema,
+  totalCents: z.number().int(),
+  amountPaidCents: z.number().int(),
+  balanceDueCents: z.number().int(),
+  createdAt: z.iso.datetime(),
+});
+export type InvoiceListItem = z.infer<typeof invoiceListItemSchema>;
+
+export const invoiceListResponseSchema = z.object({
+  items: z.array(invoiceListItemSchema),
+});
+export type InvoiceListResponse = z.infer<typeof invoiceListResponseSchema>;

@@ -63,17 +63,20 @@ export default async function CasesPage({
       </div>
       <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Case status">
         {STATUS_TABS.map((tab) => (
-          <Link key={tab.label} href={filterHref(tab.key)}>
-            <Button
-              type="button"
-              variant={normalizedStatus === tab.key ? 'default' : 'outline'}
-              size="sm"
+          <Button
+            key={tab.label}
+            asChild
+            variant={normalizedStatus === tab.key ? 'default' : 'outline'}
+            size="sm"
+          >
+            <Link
+              href={filterHref(tab.key)}
               role="tab"
               aria-selected={normalizedStatus === tab.key}
             >
               {tab.label}
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         ))}
       </div>
       <CasesTable rows={data.items} />

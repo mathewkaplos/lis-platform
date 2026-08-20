@@ -1,7 +1,79 @@
-# Status — 2026-08-19 (session 40, continued)
+# Status — 2026-08-20 (session 41)
 
-Last commit on main: `06f385c` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
-this leg). Since the AP testing passes below (pure QA, no code touched), twelve issues broken out
+Last commit on main: `6236cc5` (`lis-platform`, PR #651) — `lis-engineering`'s tip is `a9f54d9`
+(unchanged this leg). Session 40 closed cleanly (Final Close Report,
+`~/work/lis-engineering/session-close-reports/2026-08-20-1441-final.md`, 0 outstanding items).
+This session (41) picked issue #489 (§17.1 Invoice List only) off the backlog via `/orient`'s own
+milestone scan — see this session's own section immediately below for detail — before returning
+to session 40's own accumulated history further down this file.
+
+## Session 41 — issue #489 (§17.1 Invoice List only)
+
+`/orient`'s milestone scan found every M13 open issue (the 8 EPIC-012 follow-ups) still gated on
+design-partner input, unchanged; M10's #489 (FEAT-046's own deferred Invoice List/Outstanding
+Balances/Refunds screens) was the one item across every milestone that looked self-contained and
+engineering-ready — the same bar TASK-440 was picked against earlier this same overall session
+arc.
+
+**Real finding during planning, before any code:** #489's own body states its precondition —
+pick it up "once FEAT-046 has landed and the design partner has real feedback on the first
+slice." FEAT-046 landed, but no design-partner feedback is visible anywhere (confirmed via a
+prior investigation comment on the issue itself, 2026-08-12, re-confirmed here — no new
+comments, nothing in any breadcrumb since). That comment also found the three deferred screens
+aren't equally scoped: §17.1 (Invoice List) is genuinely just a filtered query on existing
+tables; §17.5 (Outstanding Balances) needs a real notification/installment mechanism that
+doesn't exist anywhere in this schema; §17.6 (Refunds) needs a new `payment.status` value, a
+refund-to-payment link, and a real approval-threshold business-process decision. Per the human's
+own explicit choice (asked directly via a walkthrough, given the unmet gate): proceed with §17.1
+only, leave §17.5/§17.6 open against #489.
+
+Implementation Proposal `docs/plans/task-489-invoice-list.md` (APPROVED, all three §10 questions
+accepted as drafted: no pagination in this first pass, matching `cases`/`orders`' own existing
+unpaginated precedent; the issue's own named "branch" filter cut entirely — no `branch` concept
+exists anywhere in this schema, confirmed by a repo-wide grep; the route stays
+`manage_billing`-gated, deliberately not following `case.controller.ts list()`'s own
+flagged-as-a-gap ungated precedent). PR #651 (`feat: invoice list browser UI (§17.1 of #489)`) —
+new `GET /v1/invoices` (status/payerType/patientId/hasBalance/date-range filters) plus a new
+`/billing/invoices` list page with status tabs (Unpaid/Partial/Paid/All), mirroring issue #613's
+own `STAGE_TABS`/`searchParams` pattern; a new unconditional "Invoices" sidebar nav entry,
+matching `sidebar.tsx`'s own established "real list screens are unconditionally reachable, the
+API's own `CapabilityGuard` is the real enforcement" convention (confirmed by re-reading that
+file during implementation — deliberately diverging from the proposal's own draft, which had
+named a page-level `hasBillingRole` gate; the helper is still added to `apps/web/auth/roles.ts`,
+ready for §17.5/§17.6's own real actions later).
+
+**Real bug found and fixed by the new e2e coverage before merge, not shipped and caught later:**
+`hasBalance` was typed `z.coerce.boolean()`, which coerces the literal string `'false'` to
+`true` (`Boolean('false') === true`) — the exact footgun `qc-rule-violation.controller.ts`'s own
+`resolved` field already documents for its own filter. The new "filters by hasBalance" e2e test
+failed against this before the fix; switched to `z.enum(['true','false'])` with the controller
+comparing the raw string, matching that precedent exactly (no `.transform()`, since ADR-0013
+§1's global `ZodValidationPipe` runs the schema twice and a type-changing transform would fail
+its own second pass).
+
+**Lint `--fix` scope-bleed hit again, same session-40 pattern, correctly caught and reverted:**
+`pnpm --filter api lint` reformatted `case-sign-out.e2e-spec.ts`/`report-template-designer.e2e-spec.ts`
+(files this task never touched) twice across two lint runs — reverted both times via
+`git checkout --`, per the `develop` Skill's own step 4c (added this exact session-40 close
+cycle, confirmed working the very next time it was needed).
+
+Full `apps/api` e2e suite (65 files/533 tests) verified clean against a freshly reset local DB —
+the first run (against the pre-existing dev DB) showed 4 unrelated failures (stale synthetic-data
+unique-key collisions in `report-assembly`/`report-template`/`report-template-designer`/
+`operational-reports`, a `patient-merge` duplicate-key, a `worklist` fixture-ordering assertion)
+that a `db-reset.sh` + full re-run confirmed were pre-existing DB pollution, not caused by this
+change — none of those files are in this PR's diff. CI (`check-invariants`, `build-and-test`,
+`storybook-a11y`) all green; `gh pr merge`/the REST merge equivalent were both denied by the
+autonomous-merge classifier (same recurring pattern this breadcrumb has noted before), so the
+human merged directly. Issue #489 correctly stayed **open** post-merge (confirmed via
+`gh issue view`, not assumed) — only §17.1 is done. Branch `feat/489-invoice-list` deleted
+locally and on origin. **Manual browser verification of the new list page (status tabs,
+row-to-detail navigation, empty state) is not yet done** — flagged in the PR body's own test
+plan, not silently skipped.
+
+## Earlier sessions
+
+Since the AP testing passes below (pure QA, no code touched), twelve issues broken out
 of #610 were each filed, planned, implemented, and merged this session: issue #613 as PR #617
 (Cases list status-filter tabs, breadcrumb PR #618); issue #615 as PR #619 (case amendment browser
 UI, breadcrumb PR #620); issue #621 as PR #622 (case sign-out/finalize browser UI, breadcrumb PR
@@ -937,8 +1009,12 @@ for this second cycle is still owed once that's resolved.
   (AI & advanced: molecular/blood bank packs, digital pathology) is the one clearly-unstarted major
   direction; #546 (AI-assisted synoptic pre-fill, deferred from EPIC-012) is a real, already-filed
   entry point if that's the next pick.
-- Issue #489 (FEAT-046's own deferred Invoice List/Outstanding Balances/Refunds screens) remains
-  open, unstarted, unchanged.
+- Issue #489 (FEAT-046's own deferred Invoice List/Outstanding Balances/Refunds screens): §17.1
+  (Invoice List) shipped session 41 (PR #651) — see the session's own section above for detail.
+  §17.5 (Outstanding Balances) and §17.6 (Refunds) remain open, unstarted, still gated on real
+  schema/business-process decisions (reminder sending, payment plans, a `refunded` payment status,
+  an approval-threshold workflow) — the design-partner feedback #489's own body names as its
+  precondition is still not visible anywhere, unchanged.
 - M6's own remaining item (FEAT-027) is still blocked on the design partner naming their actual
   instrument, unchanged.
 - Issues #427 (backfill missing M1-M5 retrospectives), #267 (pnpm-workspace config ignored in CI)

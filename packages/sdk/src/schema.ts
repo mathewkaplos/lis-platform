@@ -2712,6 +2712,8 @@ export interface components {
                 tableObservationId: string;
                 /** Format: date-time */
                 recordedAt: string;
+                /** Format: uuid */
+                amendmentOf: string | null;
                 results: {
                     elementKey: string;
                     elementLabel: string;

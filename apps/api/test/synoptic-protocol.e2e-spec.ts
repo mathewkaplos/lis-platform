@@ -2,7 +2,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { createDb, observation, synopticProtocolVersion } from '@lis/db';
+import {
+  auditEvent,
+  createDb,
+  observation,
+  synopticProtocolVersion,
+} from '@lis/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { AppModule } from './../src/app.module';
 import { getKeycloakToken } from './get-keycloak-token';
@@ -687,6 +692,165 @@ describe('Synoptic Protocol API (e2e)', () => {
         .get(`/v1/cases/${caseId}/synoptic-responses`)
         .set('Authorization', `Bearer ${tokenB}`)
         .expect(404);
+    });
+  });
+
+  describe('Response versioning (issue #662)', () => {
+    it('a first-ever recording has amendmentOf: null everywhere it appears', async () => {
+      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const postRes = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: colorectalVersionId,
+          responses: baseColorectalResponses,
+        })
+        .expect(201);
+      const postBody = postRes.body as { amendmentOf: string | null };
+      if (postBody.amendmentOf !== null) {
+        throw new Error(
+          `expected a first recording's own amendmentOf to be null, got ${JSON.stringify(postBody.amendmentOf)}`,
+        );
+      }
+
+      const getRes = await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const getBody = getRes.body as {
+        responses: { amendmentOf: string | null }[];
+      };
+      if (getBody.responses[0]?.amendmentOf !== null) {
+        throw new Error(
+          `expected the read path's amendmentOf to also be null, got ${JSON.stringify(getBody.responses[0])}`,
+        );
+      }
+    });
+
+    it('recording a second time chains onto the first via amendmentOf/supersededBy, in the API response, the read path, and directly in the database', async () => {
+      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const firstRes = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: colorectalVersionId,
+          responses: baseColorectalResponses,
+        })
+        .expect(201);
+      const firstBody = firstRes.body as {
+        tableObservationId: string;
+        results: { elementKey: string; observationId: string }[];
+      };
+      const firstTumorSiteObservationId = firstBody.results.find(
+        (r) => r.elementKey === 'tumor_site',
+      )?.observationId;
+
+      const secondResponses = baseColorectalResponses
+        .filter((r) => r.elementKey !== 'tumor_max_dimension_mm')
+        .concat([{ elementKey: 'tumor_max_dimension_mm', value: 71 }]);
+      const secondRes = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: colorectalVersionId,
+          responses: secondResponses,
+        })
+        .expect(201);
+      const secondBody = secondRes.body as {
+        tableObservationId: string;
+        amendmentOf: string | null;
+        results: { elementKey: string; observationId: string }[];
+      };
+
+      // API response: the second recording names exactly what it amended.
+      if (secondBody.amendmentOf !== firstBody.tableObservationId) {
+        throw new Error(
+          `expected the second recording's amendmentOf to point at the first grid Observation, got ${JSON.stringify(secondBody.amendmentOf)}`,
+        );
+      }
+
+      // Read path: surfaces only the current version, with the same link.
+      const getRes = await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const getBody = getRes.body as {
+        responses: { tableObservationId: string; amendmentOf: string | null }[];
+      };
+      if (
+        getBody.responses.length !== 1 ||
+        getBody.responses[0].tableObservationId !==
+          secondBody.tableObservationId ||
+        getBody.responses[0].amendmentOf !== firstBody.tableObservationId
+      ) {
+        throw new Error(
+          `expected the read path to surface only the current version with the correct amendmentOf link, got ${JSON.stringify(getBody)}`,
+        );
+      }
+
+      // Direct DB read -- the real proof, not inferred from API responses:
+      // the predecessor grid Observation is genuinely supersededBy the new
+      // one, and the same is true for the one discrete element whose value
+      // actually changed between recordings.
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', '00000000-0000-0000-0000-000000000001', false)`,
+      );
+      const [predecessorGrid] = await db
+        .select({ supersededBy: observation.supersededBy })
+        .from(observation)
+        .where(eq(observation.id, firstBody.tableObservationId));
+      if (predecessorGrid?.supersededBy !== secondBody.tableObservationId) {
+        throw new Error(
+          `expected the predecessor grid Observation's supersededBy to point at the new one, got ${JSON.stringify(predecessorGrid)}`,
+        );
+      }
+
+      const secondTumorSiteObservationId = secondBody.results.find(
+        (r) => r.elementKey === 'tumor_site',
+      )?.observationId;
+      const [predecessorElement] = await db
+        .select({
+          supersededBy: observation.supersededBy,
+        })
+        .from(observation)
+        .where(eq(observation.id, firstTumorSiteObservationId!));
+      if (predecessorElement?.supersededBy !== secondTumorSiteObservationId) {
+        throw new Error(
+          `expected the predecessor tumor_site Observation to be supersededBy the new one, got ${JSON.stringify(predecessorElement)}`,
+        );
+      }
+      const [newElement] = await db
+        .select({ amendmentOf: observation.amendmentOf })
+        .from(observation)
+        .where(eq(observation.id, secondTumorSiteObservationId));
+      if (newElement?.amendmentOf !== firstTumorSiteObservationId) {
+        throw new Error(
+          `expected the new tumor_site Observation's own amendmentOf to point back at the predecessor, got ${JSON.stringify(newElement)}`,
+        );
+      }
+
+      // Audit trail: the re-recording's own audit event names what it
+      // corrected, closing the issue's own "no audit trail of the change"
+      // complaint directly.
+      const [auditRow] = await db
+        .select({ after: auditEvent.after })
+        .from(auditEvent)
+        .where(
+          and(
+            eq(auditEvent.action, 'synoptic.record'),
+            eq(auditEvent.resourceId, secondBody.tableObservationId),
+          ),
+        );
+      const auditAfter = auditRow?.after as
+        { amendmentOf: string | null } | undefined;
+      if (auditAfter?.amendmentOf !== firstBody.tableObservationId) {
+        throw new Error(
+          `expected the audit event's own after.amendmentOf to name the amended predecessor, got ${JSON.stringify(auditAfter)}`,
+        );
+      }
     });
   });
 

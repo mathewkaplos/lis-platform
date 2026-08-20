@@ -66,7 +66,7 @@ import {
 import { assembleCaseReportContent } from './case-report-content-assembler';
 import { renderCaseReportPdf } from './case-report-render';
 import { findSynopticGridAnalyte } from '../synoptic-protocol/synoptic-response-recorder';
-import { and, count, desc, eq, inArray, notInArray } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, notInArray } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { Audit } from '../auth/audit.decorator';
@@ -988,6 +988,16 @@ export class CaseController {
       return { responses: [] };
     }
 
+    // Issue #662: `supersededBy IS NULL` is the real chain-head filter now
+    // that a real amendment_of/superseded_by chain exists (previously this
+    // just took the newest row per key by timestamp, a heuristic that
+    // happened to agree with the chain head in the common case but wasn't
+    // provably correct). The `orderBy(createdAt desc)` + per-key dedup below
+    // stays as defensive belt-and-suspenders against the acknowledged (and
+    // accepted, proposal §6/§10 Q2) race where two concurrent recordings
+    // could both legally chain onto the same predecessor, leaving more than
+    // one non-superseded row for one key -- extremely unlikely, not
+    // eliminated by this filter alone.
     const gridObservationRows = await tx
       .select()
       .from(observation)
@@ -996,12 +1006,14 @@ export class CaseController {
           inArray(observation.orderedTestId, orderedTestIds),
           eq(observation.analyteId, gridAnalyte.id),
           eq(observation.dataType, 'table'),
+          isNull(observation.supersededBy),
         ),
       )
       .orderBy(desc(observation.createdAt));
 
-    // Most-recent-wins per (orderedTestId, synopticProtocolVersionId) --
-    // rows are already newest-first, so the first one seen per key is kept.
+    // Per (orderedTestId, synopticProtocolVersionId) -- rows are already
+    // newest-first, so the first one seen per key is kept (see comment
+    // above on why more than one non-superseded row is possible in theory).
     const seenKeys = new Set<string>();
     const latestByKey: (typeof gridObservationRows)[number][] = [];
     for (const row of gridObservationRows) {
@@ -1067,6 +1079,7 @@ export class CaseController {
             protocolNameById.get(synopticProtocolId) ?? 'Unknown protocol',
           tableObservationId: row.id,
           recordedAt: row.createdAt.toISOString(),
+          amendmentOf: row.amendmentOf,
           results: payload.results,
         };
       }),

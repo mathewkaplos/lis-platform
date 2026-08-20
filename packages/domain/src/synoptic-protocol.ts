@@ -58,6 +58,15 @@ export const synopticProtocolSchema = z.object({
   sourceStandard: z.string(),
   specimenType: z.string(),
   createdAt: z.iso.datetime(),
+  // Issue #642 (proposal §3.1): a genuine gap found during that feature's
+  // own implementation -- there was no way for a caller to discover which
+  // version of a protocol is currently published without a direct DB query
+  // (synoptic-protocol.e2e-spec.ts's own pre-existing test had to do exactly
+  // that). At most one published version can ever exist per protocol
+  // (ux_synoptic_protocol_version_protocol_published, a partial unique
+  // index), so this is unambiguous. Null when a protocol has no published
+  // version yet (draft/in_review/archived only).
+  publishedVersionId: z.uuid().nullable(),
 });
 export type SynopticProtocol = z.infer<typeof synopticProtocolSchema>;
 

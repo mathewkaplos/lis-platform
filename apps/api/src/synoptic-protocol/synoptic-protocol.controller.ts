@@ -78,10 +78,25 @@ export class SynopticProtocolController {
   @ZodResponse({ type: SynopticProtocolListDto, status: 200 })
   async list(): Promise<SynopticProtocolList> {
     const rows = await db.select().from(synopticProtocol);
+    // issue #642 (proposal §3.1): a caller (the new synoptic-recording UI)
+    // needs to know which version of a protocol is currently published
+    // without a direct DB query -- at most one published version can ever
+    // exist per protocol (ux_synoptic_protocol_version_protocol_published).
+    const publishedVersionRows = await db
+      .select({
+        synopticProtocolId: synopticProtocolVersion.synopticProtocolId,
+        id: synopticProtocolVersion.id,
+      })
+      .from(synopticProtocolVersion)
+      .where(eq(synopticProtocolVersion.status, 'published'));
+    const publishedVersionIdByProtocolId = new Map(
+      publishedVersionRows.map((row) => [row.synopticProtocolId, row.id]),
+    );
     return {
       protocols: rows.map((row) => ({
         ...row,
         createdAt: row.createdAt.toISOString(),
+        publishedVersionId: publishedVersionIdByProtocolId.get(row.id) ?? null,
       })),
     };
   }

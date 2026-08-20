@@ -1,3 +1,4 @@
+import { Transform } from 'node:stream';
 import type { Readable } from 'node:stream';
 import * as unzipper from 'unzipper';
 import type { Entry } from 'unzipper';
@@ -9,12 +10,81 @@ export interface DziUnzipResult {
 
 const DZI_EXTENSION = '.dzi';
 
+// Issue #660: real, reasoned limits, not arbitrary. A real DZI tile is
+// typically well under 1MB (standard Deep Zoom JPEG tile sizes) and the
+// .dzi XML descriptor itself is tiny -- 100MB per entry is already 100x+
+// more generous than any legitimate file in this format should ever be. A
+// full high-resolution whole-slide pyramid can genuinely reach into the low
+// gigabytes across thousands of tiles -- 5GB total is generous enough not
+// to false-positive on a real scan while still bounding an otherwise-
+// unbounded upload.
+export const MAX_ENTRY_BYTES = 100 * 1024 * 1024;
+export const MAX_TOTAL_BYTES = 5 * 1024 * 1024 * 1024;
+
 function contentTypeFor(path: string): string {
   const lower = path.toLowerCase();
   if (lower.endsWith(DZI_EXTENSION)) return 'application/xml';
   if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
   if (lower.endsWith('.png')) return 'image/png';
   return 'application/octet-stream';
+}
+
+// Issue #660: rejects a zip-slip entry path -- checked on the
+// already-backslash-normalized (forward-slash) path, by exact path
+// segment, not substring match (a real filename like "..config.jpg" must
+// not be rejected as if it contained a traversal segment).
+export function isSafeEntryPath(normalizedPath: string): boolean {
+  if (normalizedPath.startsWith('/')) return false;
+  return !normalizedPath.split('/').some((segment) => segment === '..');
+}
+
+/**
+ * Issue #660. Enforces both a per-entry and a cumulative-total byte cap
+ * against the REAL streamed byte count, never a zip entry's own declared
+ * header size -- that field is attacker-controlled (the classic zip-bomb
+ * vector: a small compressed entry that expands to an enormous real byte
+ * count), so trusting it would defeat the point of the cap. `totalState` is
+ * shared (by reference) across every entry in one archive so the
+ * cumulative cap is enforced across the whole upload, not reset per entry.
+ * Emits an `Error` on the returned Transform once either limit is
+ * exceeded -- this propagates through `putObjectStream`'s own
+ * `await upload.done()` the same way any other thrown error already does,
+ * reusing the controller's existing `catch` -> `status: 'failed'` path
+ * verbatim.
+ */
+export function createSizeLimitedStream(
+  entryPath: string,
+  totalState: { bytes: number },
+  // Overridable only for unit testing at a small, fast scale -- every real
+  // call site (unzipDziToObjectStorage below) uses the real production
+  // defaults; behavior for real callers is unchanged either way.
+  entryLimit: number = MAX_ENTRY_BYTES,
+  totalLimit: number = MAX_TOTAL_BYTES,
+): Transform {
+  let entryBytes = 0;
+  return new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      entryBytes += chunk.length;
+      totalState.bytes += chunk.length;
+      if (entryBytes > entryLimit) {
+        callback(
+          new Error(
+            `Zip entry '${entryPath}' exceeds the maximum allowed size of ${entryLimit} bytes`,
+          ),
+        );
+        return;
+      }
+      if (totalState.bytes > totalLimit) {
+        callback(
+          new Error(
+            `Zip archive exceeds the maximum allowed total size of ${totalLimit} bytes`,
+          ),
+        );
+        return;
+      }
+      callback(null, chunk);
+    },
+  });
 }
 
 /**
@@ -35,9 +105,10 @@ function contentTypeFor(path: string): string {
  * Throws if zero or more than one `.dzi` file is found among the zip's
  * entries -- the standard `vips dzsave`/OpenSlide `deepzoom` output shape
  * is exactly one `<name>.dzi` file plus a sibling `<name>_files/` folder;
- * any other shape is rejected, not guessed at. No zip path-traversal
- * protection or size cap exists here (proposal §6, real named v1 gap,
- * matching FEAT-061's own "no hardening in v1 scope" precedent).
+ * any other shape is rejected, not guessed at. A path-traversal entry
+ * (`isSafeEntryPath`) or an entry/archive exceeding `MAX_ENTRY_BYTES`/
+ * `MAX_TOTAL_BYTES` (`createSizeLimitedStream`) is rejected during
+ * streaming (issue #660).
  *
  * `unzipper.Parse({ forceStream: true })`'s own entries must be consumed
  * via async iteration (`for await...of` the parse stream itself) -- found
@@ -57,6 +128,7 @@ export async function unzipDziToObjectStorage(
   objectPrefix: string,
 ): Promise<DziUnzipResult> {
   const dziKeys: string[] = [];
+  const totalState = { bytes: 0 };
   const parseStream = zipStream.pipe(unzipper.Parse({ forceStream: true }));
 
   for await (const entry of parseStream as unknown as AsyncIterable<Entry>) {
@@ -72,11 +144,18 @@ export async function unzipDziToObjectStorage(
     // during the AP browser acceptance pass -- an un-normalized key silently
     // produces a `ready` WholeSlideImage whose tiles all 404 at view time).
     const entryPath = entry.path.replace(/\\/g, '/');
+    if (!isSafeEntryPath(entryPath)) {
+      throw new Error(`Zip entry has an unsafe path: '${entry.path}'`);
+    }
     const objectKey = `${objectPrefix}${entryPath}`;
     if (entryPath.toLowerCase().endsWith(DZI_EXTENSION)) {
       dziKeys.push(objectKey);
     }
-    await putObjectStream(objectKey, entry, contentTypeFor(entryPath));
+    await putObjectStream(
+      objectKey,
+      entry.pipe(createSizeLimitedStream(entryPath, totalState)),
+      contentTypeFor(entryPath),
+    );
   }
 
   if (dziKeys.length !== 1) {

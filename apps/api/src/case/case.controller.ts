@@ -10,6 +10,7 @@ import {
   Put,
   Query,
   Req,
+  StreamableFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -58,6 +59,8 @@ import {
   testDefinition,
   writeAuditEvent,
 } from '@lis/db';
+import { assembleCaseReportContent } from './case-report-content-assembler';
+import { renderCaseReportPdf } from './case-report-render';
 import { and, count, desc, eq, inArray, notInArray } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
@@ -77,6 +80,10 @@ import { TenantContextInterceptor } from '../auth/tenant-context.interceptor';
 import { requiresTwoTierReview } from './case-tiering';
 
 const idParamSchema = z.object({ id: z.uuid() });
+const reportVersionPdfParamSchema = z.object({
+  id: z.uuid(),
+  versionId: z.uuid(),
+});
 
 class CaseCreateDto extends createZodDto(caseCreateSchema) {}
 class CaseLineageDto extends createZodDto(caseLineageSchema) {}
@@ -95,6 +102,9 @@ class BlockOrderedTestLinkCreateDto extends createZodDto(
   blockOrderedTestLinkCreateSchema,
 ) {}
 class IdParamDto extends createZodDto(idParamSchema) {}
+class ReportVersionPdfParamDto extends createZodDto(
+  reportVersionPdfParamSchema,
+) {}
 
 function toCaseDto(row: typeof caseTable.$inferSelect): Case {
   return {
@@ -913,6 +923,66 @@ export class CaseController {
       .orderBy(desc(caseReportVersion.versionNumber));
 
     return { items: rows.map(toCaseReportVersionDto) };
+  }
+
+  /**
+   * Issue #648 (proposal §5.1/§5.3). A pure read of already-signed, immutable
+   * content -- no new `report` row, no `@Audit()`, `GET` not `POST` (a
+   * deliberate divergence from `POST /v1/ordered-tests/:id/report`'s own
+   * write-and-audit shape, since re-rendering this PDF records no new fact).
+   * Same `JwtAuthGuard`-only gate as `listReportVersions` above (proposal
+   * §10 Q1) -- RLS via `TenantContextInterceptor` is the real tenant
+   * boundary, matching every other read-only case route this session.
+   */
+  @Get('v1/cases/:id/report-versions/:versionId/pdf')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(TenantContextInterceptor)
+  async getReportVersionPdf(
+    @Param(new ZodValidationPipe(reportVersionPdfParamSchema))
+    { id, versionId }: ReportVersionPdfParamDto,
+    @DbTx() tx: RequestWithTx['tx'],
+  ): Promise<StreamableFile> {
+    const [caseRow] = await tx
+      .select()
+      .from(caseTable)
+      .where(eq(caseTable.id, id))
+      .limit(1);
+    if (!caseRow) {
+      throw new NotFoundException('Case not found');
+    }
+
+    const [versionRow] = await tx
+      .select()
+      .from(caseReportVersion)
+      .where(eq(caseReportVersion.id, versionId))
+      .limit(1);
+    if (!versionRow || versionRow.caseId !== id) {
+      throw new NotFoundException('Report version not found');
+    }
+
+    const content = await assembleCaseReportContent(
+      tx,
+      versionRow.includedContent as Parameters<
+        typeof assembleCaseReportContent
+      >[1],
+    );
+    const pdf = await renderCaseReportPdf({
+      caseAccessionNumber: caseRow.accessionNumber,
+      caseStatus: caseRow.status,
+      content,
+      version: {
+        versionNumber: versionRow.versionNumber,
+        status: versionRow.status,
+        signedByRole: versionRow.signedByRole,
+        signedAt: versionRow.signedAt.toISOString(),
+        reason: versionRow.reason,
+      },
+    });
+
+    return new StreamableFile(pdf, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="case-report-${id}-v${versionRow.versionNumber}.pdf"`,
+    });
   }
 
   /**

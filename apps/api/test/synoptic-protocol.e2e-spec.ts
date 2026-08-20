@@ -6,14 +6,18 @@ import {
   analyte,
   auditEvent,
   codeSystemValue,
+  conceptBlock,
+  conceptBlockVersion,
   createDb,
   observation,
   synopticElement,
+  synopticProtocol,
   synopticProtocolVersion,
 } from '@lis/db';
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { makeInstanceResponseKey } from '@lis/domain';
+import { composeConceptBlockVersion } from '../src/synoptic-protocol/concept-block-composer';
 import { AppModule } from './../src/app.module';
 import { getKeycloakToken } from './get-keycloak-token';
 
@@ -1321,6 +1325,216 @@ describe('Synoptic Protocol API (e2e)', () => {
           `expected the required-but-absent group to be named as missing, got ${JSON.stringify(rejected.body)}`,
         );
       }
+    });
+  });
+
+  describe('Concept-block composition (issue #667)', () => {
+    // Composed into a fresh, isolated, throwaway protocol version -- not
+    // the shared colorectalVersionId. The real ICCR/CAP block content is
+    // correctly modeled with a genuine, ungated `required` field (matching
+    // the real standards, not a test simplification), so composing it onto
+    // the widely-reused seeded colorectalVersionId would permanently
+    // require that composed field for every later test/file recording
+    // against that same shared version for the rest of the run -- caught
+    // for real during this issue's own implementation (broke
+    // image-attachment.e2e-spec.ts's own unrelated synoptic-finding
+    // fixture). A throwaway version sidesteps this entirely and is also
+    // the more honest test -- composition is a generic operation, not
+    // colorectal-specific.
+    async function createThrowawayProtocolVersion(): Promise<string> {
+      const suffix = randomUUID().slice(0, 8);
+      const [protocolRow] = await db
+        .insert(synopticProtocol)
+        .values({
+          name: `Concept-block composition test fixture ${suffix}`,
+          sourceStandard: 'ICCR',
+          specimenType: 'test',
+        })
+        .returning();
+      const [versionRow] = await db
+        .insert(synopticProtocolVersion)
+        .values({
+          synopticProtocolId: protocolRow.id,
+          version: 1,
+          status: 'published',
+        })
+        .returning();
+      return versionRow.id;
+    }
+
+    // Composes the real, seeded ICCR "Regional Lymph Nodes" concept block
+    // (db/seed/concept-block-regional-lymph-nodes.sql -- the exact same
+    // pN0-pN2b field colorectal's own hand-authored lymph_node_status
+    // already uses) into a throwaway protocol version, then proves the
+    // composed element is recordable/readable through the existing,
+    // *unmodified* recorder (#658) and read path (#659) -- the issue's own
+    // core promise that composition needs zero downstream changes.
+    it('a composed element is recordable and readable exactly like a hand-authored one', async () => {
+      const [blockVersion] = await db
+        .select({ id: conceptBlockVersion.id })
+        .from(conceptBlockVersion)
+        .innerJoin(
+          conceptBlock,
+          eq(conceptBlock.id, conceptBlockVersion.conceptBlockId),
+        )
+        .where(
+          and(
+            eq(conceptBlock.key, 'regional_lymph_nodes'),
+            eq(conceptBlockVersion.sourceStandard, 'ICCR'),
+          ),
+        )
+        .limit(1);
+      if (!blockVersion) {
+        throw new Error(
+          "expected db/seed/concept-block-regional-lymph-nodes.sql's ICCR 'regional_lymph_nodes' concept block version",
+        );
+      }
+
+      const targetVersionId = await createThrowawayProtocolVersion();
+      const { rootElementIds } = await db.transaction((tx) =>
+        composeConceptBlockVersion(tx, {
+          conceptBlockVersionId: blockVersion.id,
+          targetProtocolVersionId: targetVersionId,
+          parentElementId: null,
+          keyPrefix: '',
+          displayOrderOffset: 0,
+        }),
+      );
+      if (rootElementIds.length !== 1) {
+        throw new Error(
+          `expected exactly one composed root element (the block's own single top-level lymph_node_status field), got ${rootElementIds.length}`,
+        );
+      }
+
+      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const recorded = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: targetVersionId,
+          responses: [{ elementKey: 'lymph_node_status', value: 'pN1a' }],
+        })
+        .expect(201);
+      const recordedResults = (
+        recorded.body as { results: { elementKey: string; value: unknown }[] }
+      ).results;
+      const composedResult = recordedResults.find(
+        (r) => r.elementKey === 'lymph_node_status',
+      );
+      if (composedResult?.value !== 'pN1a') {
+        throw new Error(
+          `expected the composed element to record like any hand-authored one, got ${JSON.stringify(composedResult)}`,
+        );
+      }
+
+      const listRes = await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const responses = (
+        listRes.body as {
+          responses: {
+            synopticProtocolVersionId: string;
+            results: { elementKey: string; value: unknown }[];
+          }[];
+        }
+      ).responses;
+      const match = responses.find(
+        (r) => r.synopticProtocolVersionId === targetVersionId,
+      );
+      const readComposedResult = match?.results.find(
+        (r) => r.elementKey === 'lymph_node_status',
+      );
+      if (readComposedResult?.value !== 'pN1a') {
+        throw new Error(
+          `expected the composed element to round-trip through the read path unchanged, got ${JSON.stringify(readComposedResult)}`,
+        );
+      }
+    });
+
+    // Real bug caught during this issue's own implementation: a composed
+    // field's visibilityCondition referencing a *sibling within the same
+    // block* (the CAP variant's number_of_lymph_nodes_with_tumor, gated on
+    // regional_lymph_node_status) must have that reference rewritten with
+    // the same keyPrefix, or the composed sibling's real key never matches
+    // the stale, unprefixed field name and the condition silently always
+    // evaluates against an undefined context value.
+    it('rewrites cross-field visibilityCondition references within a composed block', async () => {
+      const [blockVersion] = await db
+        .select({ id: conceptBlockVersion.id })
+        .from(conceptBlockVersion)
+        .innerJoin(
+          conceptBlock,
+          eq(conceptBlock.id, conceptBlockVersion.conceptBlockId),
+        )
+        .where(
+          and(
+            eq(conceptBlock.key, 'regional_lymph_nodes'),
+            eq(conceptBlockVersion.sourceStandard, 'CAP'),
+          ),
+        )
+        .limit(1);
+      if (!blockVersion) {
+        throw new Error(
+          "expected db/seed/concept-block-regional-lymph-nodes.sql's CAP 'regional_lymph_nodes' concept block version",
+        );
+      }
+
+      const keyPrefix = `cbtest_${randomUUID().slice(0, 8)}_`;
+      const targetVersionId = await createThrowawayProtocolVersion();
+      await db.transaction((tx) =>
+        composeConceptBlockVersion(tx, {
+          conceptBlockVersionId: blockVersion.id,
+          targetProtocolVersionId: targetVersionId,
+          parentElementId: null,
+          keyPrefix,
+          displayOrderOffset: 0,
+        }),
+      );
+      const statusKey = `${keyPrefix}regional_lymph_node_status`;
+      const countKey = `${keyPrefix}number_of_lymph_nodes_with_tumor`;
+      const pnKey = `${keyPrefix}pathological_stage_pn`;
+
+      // Direct structural proof the rewrite happened: the real CAP source
+      // field is 'recommended' (never enforced-required regardless of
+      // visibility, issue #664's own rule), so requiredness behavior can't
+      // prove this -- check the composed row's own stored
+      // visibilityCondition.field directly instead.
+      const [composedCountElement] = await db
+        .select({ visibilityCondition: synopticElement.visibilityCondition })
+        .from(synopticElement)
+        .where(
+          and(
+            eq(synopticElement.synopticProtocolVersionId, targetVersionId),
+            eq(synopticElement.key, countKey),
+          ),
+        )
+        .limit(1);
+      const rewrittenField = (
+        composedCountElement?.visibilityCondition as { field?: string } | null
+      )?.field;
+      if (rewrittenField !== statusKey) {
+        throw new Error(
+          `expected the composed element's visibilityCondition.field to be rewritten to '${statusKey}', got ${JSON.stringify(rewrittenField)}`,
+        );
+      }
+
+      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: targetVersionId,
+          responses: [
+            { elementKey: statusKey, value: 'tumor_present' },
+            { elementKey: countKey, value: 2 },
+            { elementKey: pnKey, value: 'pN1' },
+          ],
+        })
+        .expect(201);
     });
   });
 

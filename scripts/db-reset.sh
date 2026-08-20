@@ -76,3 +76,9 @@ echo "Seed applied: synoptic-protocol-cytology-pap.sql (real, cited Bethesda Sys
 docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/synoptic-protocol-prostate.sql
 docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/synoptic-protocol-lung.sql
 echo "Seed applied: synoptic-protocol-{prostate,lung}.sql (real, cited CAP prostate + lung synoptic protocols)."
+
+# Issue #667: the first reusable concept-block library entry (Regional
+# Lymph Nodes, ICCR + CAP variants) -- reuses the colorectal/prostate
+# analytes seeded above, must run after them.
+docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/concept-block-regional-lymph-nodes.sql
+echo "Seed applied: concept-block-regional-lymph-nodes.sql (issue #667 concept-block library, ICCR + CAP variants)."

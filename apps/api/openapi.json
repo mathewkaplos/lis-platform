@@ -8399,6 +8399,9 @@
                 "specimenType": {
                   "type": "string"
                 },
+                "isPanel": {
+                  "type": "boolean"
+                },
                 "createdAt": {
                   "type": "string",
                   "format": "date-time",
@@ -8416,6 +8419,7 @@
                 "name",
                 "sourceStandard",
                 "specimenType",
+                "isPanel",
                 "createdAt",
                 "publishedVersionId"
               ],
@@ -8673,6 +8677,38 @@
               ],
               "additionalProperties": false
             }
+          },
+          "linkedPanels": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "sourceStandard": {
+                  "type": "string"
+                },
+                "publishedVersionId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "sourceStandard",
+                "publishedVersionId"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -8682,7 +8718,8 @@
           "status",
           "effectiveFrom",
           "effectiveTo",
-          "elements"
+          "elements",
+          "linkedPanels"
         ],
         "additionalProperties": false
       },

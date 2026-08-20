@@ -104,6 +104,19 @@ export function parseInstanceResponseKey(responseKey: string): {
 export const SYNOPTIC_PROTOCOL_VERSION_STATUSES = ["draft", "in_review", "published", "archived"] as const;
 export type SynopticProtocolVersionStatus = (typeof SYNOPTIC_PROTOCOL_VERSION_STATUSES)[number];
 
+// Issue #668: CAP's "linked document" shape -- a panel protocol an organ
+// protocol recommends, surfaced alongside the organ protocol's own
+// element tree so the recording page can offer it. `publishedVersionId`
+// null if the panel protocol currently has no published version (nothing
+// to record yet).
+export const synopticLinkedPanelSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  sourceStandard: z.string(),
+  publishedVersionId: z.uuid().nullable(),
+});
+export type SynopticLinkedPanel = z.infer<typeof synopticLinkedPanelSchema>;
+
 export const synopticProtocolVersionSchema = z.object({
   id: z.uuid(),
   synopticProtocolId: z.uuid(),
@@ -112,6 +125,7 @@ export const synopticProtocolVersionSchema = z.object({
   effectiveFrom: z.iso.datetime(),
   effectiveTo: z.iso.datetime().nullable(),
   elements: z.array(synopticElementSchema),
+  linkedPanels: z.array(synopticLinkedPanelSchema),
 });
 export type SynopticProtocolVersion = z.infer<typeof synopticProtocolVersionSchema>;
 
@@ -120,6 +134,9 @@ export const synopticProtocolSchema = z.object({
   name: z.string(),
   sourceStandard: z.string(),
   specimenType: z.string(),
+  // Issue #668: marks this protocol as biomarker/ancillary-panel-shaped
+  // (organ-agnostic) rather than an organ protocol -- metadata only.
+  isPanel: z.boolean(),
   createdAt: z.iso.datetime(),
   // Issue #642 (proposal §3.1): a genuine gap found during that feature's
   // own implementation -- there was no way for a caller to discover which

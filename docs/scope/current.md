@@ -1,23 +1,26 @@
 # Status — 2026-08-19 (session 40, continued)
 
-Last commit on main: `beadef3` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
-this leg). Since the AP testing passes below (pure QA, no code touched), eight issues broken out
+Last commit on main: `8ff419c` (`lis-platform`) — `lis-engineering`'s tip is `9dc9908` (unchanged
+this leg). Since the AP testing passes below (pure QA, no code touched), nine issues broken out
 of #610 were each filed, planned, implemented, and merged this session: issue #613 as PR #617
 (Cases list status-filter tabs, breadcrumb PR #618); issue #615 as PR #619 (case amendment browser
 UI, breadcrumb PR #620); issue #621 as PR #622 (case sign-out/finalize browser UI, breadcrumb PR
 #623); issue #624 as PR #625 (cytology two-tier screening browser UI, breadcrumb PR #626); issue
 #627 as PR #628 (block/slide creation browser UI, breadcrumb PR #629); issue #630 as PR #631
 (block-level reflex/add-on test ordering browser UI, breadcrumb PR #632); issue #633 as PR #634
-(case/specimen accessioning browser UI, breadcrumb PR #635); and **issue #636 as PR #637**
-(gross/microscopic/diagnosis narrative entry — the first of these eight requiring new schema, not
-just a thin UI layer) — see updated bullet below. A histology case can go accessioned →
+(case/specimen accessioning browser UI, breadcrumb PR #635); issue #636 as PR #637
+(gross/microscopic/diagnosis narrative entry — the first of these nine requiring new schema, not
+just a thin UI layer); and **issue #639 as PR #640** (cytology reviewer return-to-screening action
+— see updated bullet below). A histology case can go accessioned →
 signed_out → amended entirely through the browser; a cytology case can go accessioned →
-pending_review → signed_out → amended entirely through the browser; a case's own block/slide
+pending_review → signed_out → amended entirely through the browser, and a verifier can now send a
+cytology case back to `in_process` from `pending_review` with a required reason instead of only
+ever moving forward; a case's own block/slide
 hierarchy can be built out in the browser; a reflex/add-on test can be ordered onto a block from
 the browser, immediately result-enterable via the existing generic results screen; a case can be
-created from scratch in the browser (`/cases/new?orderId=`); and **a pathologist can now enter and
+created from scratch in the browser (`/cases/new?orderId=`); and a pathologist can enter and
 persist gross/microscopic/diagnosis narrative on a case, correctly captured into the signed report
-at finalize/amend time**. Check `git log origin/main -5` for the real current tip if this has
+at finalize/amend time. Check `git log origin/main -5` for the real current tip if this has
 drifted.
 
 ## Session 40 (continued) — AP full acceptance pass #4: Amendments, Reflex/IHC, Reporting
@@ -651,6 +654,51 @@ for this second cycle is still owed once that's resolved.
   place, not cleaned up:** narrative text saved on the existing tenant-A case `260819-000753`
   ("BLOCKQA1 WebVerify", from #627's own test data) — gross/microscopic/diagnosis all set to
   browser-verification text, diagnosis further overwritten once to confirm the partial-update path.
+- **New this session: issue #639 filed, planned, implemented, and merged as PR #640
+  (`Closes #639`).** Cytology reviewer reject/return-to-screening action — the ninth AP slice this
+  session, and the smallest: one new status-transition route reusing an already-designed-for-this
+  status value, no new schema, one new button. Closes the last gap the cytology two-tier deep-dive
+  pass (session 40, earlier section) explicitly flagged: `pending_review` previously had no reverse
+  transition at all — a verifier who found a case inadequately screened had no way to send it back
+  short of a direct API/DB call. New `POST /v1/cases/:id/return-to-screening` (`verify` capability,
+  no step-up — this reopens the case for further work rather than finalizing a diagnostic decision,
+  so it mirrors `screen()`'s own authorization shape, not `finalize()`/`amend()`'s), transitioning
+  `pending_review → in_process` (the same status `screen()` already moves a case *out* of, now used
+  in reverse) with a required `reason`, audited as `case.return_to_screening`. New "Return to
+  screening" card on the case detail page, gated on `caseData.status === 'pending_review' &&
+  hasVerifierRole(session)`, rendering alongside the existing Narrative and Sign out cards — the
+  reachable-together-not-mutually-hidden precedent #624's own Screen/Sign-out pairing already
+  established. New e2e coverage in `cytology-two-tier.e2e-spec.ts` proves the real round trip: a
+  `manage_specimens`-only token 403s, a case not actually in `pending_review` 400s, an empty reason
+  400s, and — the core correctness test — `screen → return-to-screening → screen again → finalize`
+  succeeds end to end with exactly one new audit event per call. Live-verified in a real browser
+  (Claude-in-Chrome, extension connected this pass): as a verifier, the card rendered with its
+  required reason field; submitting it (via a real `<button>` click, not `requestSubmit()` — worth
+  remembering, see below) transitioned the case to `in_process` and the card correctly disappeared
+  on the next render, with "Screen" reappearing in its place since `in_process` is itself
+  screenable; a technologist session's SSR HTML (checked directly via `curl` with a minted session
+  cookie, extension not needed for this half) correctly omits the card while still showing the
+  Narrative card, confirming the `verify`-only gate is real, not just visually hidden. **Real
+  automation-tooling gotcha, worth remembering for future sessions on this same page:** the first
+  submission attempt used `textarea.value` set via the native setter + `form.requestSubmit()`
+  (the pattern this session's own earlier items — e.g. #630's `add-ordered-test-form.tsx` — used
+  successfully), but it silently no-opped here: no network request fired, the textarea read back
+  empty afterward, and status never changed. Switched to setting the value and then dispatching a
+  real `click()` on the actual submit `<button>` element instead, confirmed via
+  `read_network_requests` (a real `POST 200` to the page's own server-action endpoint) before
+  trusting the transition happened — `requestSubmit()` on this particular form did not reliably
+  trigger React's `useActionState` action the way a real click does, at least in this run; not yet
+  root-caused, but real, reproducible, and worth trying a direct button click first if a future
+  session's own `requestSubmit()` call on this page appears to silently do nothing rather than
+  assuming the feature itself is broken. **Net effect worth remembering:** every real state
+  transition in the cytology two-tier lifecycle (`screen`, `return-to-screening`, `finalize`,
+  `amend`) is now browser-reachable — the two-tier review process is no longer strictly
+  one-directional in the UI. Synoptic protocol data entry and report/PDF/case-level document
+  viewing remain the two largest unbuilt items on #610's own list; EPIC-012's own remaining M13
+  follow-ups stay gated on design-partner input, unchanged. **New test data from this session's
+  #639 work, left in place, not cleaned up:** one fresh tenant-A cytology case under patient
+  "RETURNQA WebVerify" (accession number `260819-000812`), cycled screen → return-to-screening →
+  screen again during verification and left in `pending_review`.
 - **New this session:** TASK-440 (specimen expiry + reflex recollection) merged as PR #605
   (`e58f243`), issue #440 closed — see session 40 section above. Nothing owed from this item.
   Volume/exhaustion tracking was deliberately cut from scope (§10 Q1) — a real, separate follow-up

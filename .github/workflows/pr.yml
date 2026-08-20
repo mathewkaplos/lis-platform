@@ -158,6 +158,10 @@ jobs:
       # scripts/db-reset.sh.
       - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/synoptic-protocol-prostate.sql
       - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/synoptic-protocol-lung.sql
+      # Issue #667: first concept-block library entry -- must run after
+      # colorectal/prostate (reuses their own analytes), same ordering as
+      # scripts/db-reset.sh.
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/concept-block-regional-lymph-nodes.sql
       - run: pnpm run-golden-datasets
       - run: pnpm test
       # TASK-029: waits here, not right after launch — gives Keycloak's own

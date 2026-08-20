@@ -8583,7 +8583,8 @@
                   "type": "string",
                   "enum": [
                     "required",
-                    "recommended"
+                    "recommended",
+                    "conditional"
                   ]
                 },
                 "analyteId": {

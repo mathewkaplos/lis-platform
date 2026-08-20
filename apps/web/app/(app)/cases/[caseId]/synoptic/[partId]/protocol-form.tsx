@@ -1,7 +1,12 @@
 'use client';
 
 import { useActionState, useMemo, useState, type FormEvent } from 'react';
-import { evaluateCondition, type ConditionNode, type SynopticElement } from '@lis/domain';
+import {
+  evaluateCondition,
+  requirementLabel,
+  type ConditionNode,
+  type SynopticElement,
+} from '@lis/domain';
 import { Button, FormField } from '@lis/ui';
 import { recordSynopticResponse } from './actions';
 import { recordSynopticResponseInitialState } from './types';
@@ -25,6 +30,7 @@ function ElementGroup({
   values,
   onChange,
   onToggleMulti,
+  sourceStandard,
 }: {
   elements: SynopticElement[];
   parentId: string | null;
@@ -32,6 +38,7 @@ function ElementGroup({
   values: Record<string, ResponseValue>;
   onChange: (key: string, value: ResponseValue) => void;
   onToggleMulti: (key: string, optionValue: string, checked: boolean) => void;
+  sourceStandard: string;
 }) {
   const children = elements
     .filter((e) => e.parentElementId === parentId)
@@ -60,6 +67,7 @@ function ElementGroup({
               value={values[element.key]}
               onChange={onChange}
               onToggleMulti={onToggleMulti}
+              sourceStandard={sourceStandard}
             />
             {hasChildren ? (
               <ElementGroup
@@ -69,6 +77,7 @@ function ElementGroup({
                 values={values}
                 onChange={onChange}
                 onToggleMulti={onToggleMulti}
+                sourceStandard={sourceStandard}
               />
             ) : null}
           </div>
@@ -83,12 +92,25 @@ function FieldControl({
   value,
   onChange,
   onToggleMulti,
+  sourceStandard,
 }: {
   element: SynopticElement;
   value: ResponseValue | undefined;
   onChange: (key: string, value: ResponseValue) => void;
   onToggleMulti: (key: string, optionValue: string, checked: boolean) => void;
+  sourceStandard: string;
 }) {
+  // Issue #664: 'required' and 'conditional' both enforce at submit time
+  // (§5: a label distinction, not a new validation branch) -- only
+  // 'recommended' renders with no asterisk. 'conditional' additionally
+  // shows its own source-standard-aware tier label, since "required only
+  // sometimes" is worth surfacing to whoever is filling the form in.
+  const enforced = element.requirement !== 'recommended';
+  const tierHint =
+    element.requirement === 'conditional'
+      ? ` (${requirementLabel(sourceStandard, element.requirement)})`
+      : '';
+
   // issue #645: a coded_multi element renders as a checkbox group, not a
   // <select> -- FormField's own single-child-element contract
   // (`children: React.ReactElement`) doesn't fit a group of checkboxes, so
@@ -99,12 +121,13 @@ function FieldControl({
       <div className="flex flex-col gap-1.5" id={`element-${element.key}`}>
         <span className="text-sm font-medium text-foreground">
           {element.label}
-          {element.requirement === 'required' ? (
+          {enforced ? (
             <span className="text-danger" aria-hidden="true">
               {' '}
               *
             </span>
           ) : null}
+          {tierHint ? <span className="text-text-secondary">{tierHint}</span> : null}
         </span>
         <div className="flex flex-col gap-1">
           {element.responseOptions.map((option) => (
@@ -125,8 +148,8 @@ function FieldControl({
   return (
     <FormField
       id={`element-${element.key}`}
-      label={element.label}
-      required={element.requirement === 'required'}
+      label={`${element.label}${tierHint}`}
+      required={enforced}
     >
       {element.dataType === 'coded' ? (
         <select
@@ -172,11 +195,13 @@ export function ProtocolForm({
   orderedTestId,
   synopticProtocolVersionId,
   elements,
+  sourceStandard,
 }: {
   caseId: string;
   orderedTestId: string;
   synopticProtocolVersionId: string;
   elements: SynopticElement[];
+  sourceStandard: string;
 }) {
   const [state, formAction, pending] = useActionState(
     recordSynopticResponse,
@@ -264,6 +289,7 @@ export function ProtocolForm({
         values={values}
         onChange={handleChange}
         onToggleMulti={handleToggleMulti}
+        sourceStandard={sourceStandard}
       />
       <Button type="submit" disabled={pending} className="w-fit">
         {pending ? 'Recording…' : 'Record synoptic protocol'}

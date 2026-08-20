@@ -117,6 +117,7 @@ export default async function SynopticProtocolPage({
             orderedTestId={orderedTestId}
             synopticProtocolVersionId={version.id}
             elements={version.elements}
+            sourceStandard={protocol.sourceStandard}
           />
         </CardContent>
       </Card>

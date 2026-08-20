@@ -12,8 +12,30 @@ import { conditionNodeSchema, type ConditionNode } from "./conditions";
 export const SYNOPTIC_ELEMENT_DATA_TYPES = ["coded", "quantity", "text", "coded_multi"] as const;
 export type SynopticElementDataType = (typeof SYNOPTIC_ELEMENT_DATA_TYPES)[number];
 
-export const SYNOPTIC_ELEMENT_REQUIREMENTS = ["required", "recommended"] as const;
+// Issue #664: 'conditional' shares 'required''s own enforcement semantics
+// (required when not hidden by visibilityCondition) -- a label distinction,
+// not a new validation branch. Stored values deliberately not renamed to
+// CAP's own Core/Optional vocabulary; see requirementLabel() below for the
+// source-standard-aware display mapping.
+export const SYNOPTIC_ELEMENT_REQUIREMENTS = ["required", "recommended", "conditional"] as const;
 export type SynopticElementRequirement = (typeof SYNOPTIC_ELEMENT_REQUIREMENTS)[number];
+
+/**
+ * Issue #664: CAP and ICCR use real, different vocabulary for the same
+ * underlying tiers (CAP: Core/Conditional/Optional; ICCR: Core/Non-core,
+ * with no real "Optional" concept distinct from Non-core) -- this maps the
+ * internal `requirement` value to the label a protocol's own source
+ * standard would actually use, rather than storing that vocabulary
+ * directly on the row.
+ */
+export function requirementLabel(
+  sourceStandard: string,
+  requirement: SynopticElementRequirement,
+): string {
+  if (requirement === "required") return "Core";
+  if (requirement === "conditional") return "Conditional";
+  return sourceStandard === "ICCR" ? "Non-core" : "Optional";
+}
 
 export const synopticElementResponseOptionSchema = z.object({
   id: z.uuid(),

@@ -2778,7 +2778,7 @@ export interface components {
                 /** @enum {string} */
                 dataType: "coded" | "quantity" | "text" | "coded_multi";
                 /** @enum {string} */
-                requirement: "required" | "recommended";
+                requirement: "required" | "recommended" | "conditional";
                 /** Format: uuid */
                 analyteId: string;
                 /** Format: uuid */

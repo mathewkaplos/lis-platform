@@ -63,9 +63,43 @@ export const synopticElementSchema = z.object({
   unitDisplay: z.string().nullable(),
   visibilityCondition: conditionNodeSchema.nullable(),
   displayOrder: z.number().int(),
+  // Issue #666: marks this element as the root of a repeating instance
+  // group (e.g. CAP Breast's multifocal Tumor Characteristics) -- a pure
+  // grouping header whose children repeat as a unit, not itself
+  // independently answerable. `identityElementKey` names a direct child's
+  // `key` that identifies each instance (CAP's own "Tumor Identifier"
+  // pattern), null unless `repeatable` is true.
+  repeatable: z.boolean(),
+  identityElementKey: z.string().nullable(),
   responseOptions: z.array(synopticElementResponseOptionSchema),
 });
 export type SynopticElement = z.infer<typeof synopticElementSchema>;
+
+// Issue #666: a response for a descendant of a repeatable group is
+// addressed as "<elementKey>@<instanceKey>" -- reused verbatim as the
+// `elementKey` string everywhere downstream (grid Observation valueJson,
+// discrete Observation lineage, audit event, read path) already treats
+// `elementKey` as opaque. `instanceKey` is a client-generated opaque
+// string (one per rendered instance), never itself validated against
+// content. Element `key`s are plain identifiers (snake_case, no `@`) so
+// `@` is a safe, unambiguous separator.
+export function makeInstanceResponseKey(elementKey: string, instanceKey: string): string {
+  return `${elementKey}@${instanceKey}`;
+}
+
+export function parseInstanceResponseKey(responseKey: string): {
+  elementKey: string;
+  instanceKey: string | null;
+} {
+  const atIndex = responseKey.indexOf("@");
+  if (atIndex === -1) {
+    return { elementKey: responseKey, instanceKey: null };
+  }
+  return {
+    elementKey: responseKey.slice(0, atIndex),
+    instanceKey: responseKey.slice(atIndex + 1),
+  };
+}
 
 export const SYNOPTIC_PROTOCOL_VERSION_STATUSES = ["draft", "in_review", "published", "archived"] as const;
 export type SynopticProtocolVersionStatus = (typeof SYNOPTIC_PROTOCOL_VERSION_STATUSES)[number];

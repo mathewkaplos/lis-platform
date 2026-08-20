@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, jsonb, timestamp, uniqueIndex, index, check, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, jsonb, timestamp, uniqueIndex, index, check, boolean, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { analyte, unit } from "./catalog";
 
@@ -98,6 +98,17 @@ export const synopticElement = pgTable(
     unitId: uuid("unit_id").references(() => unit.id),
     visibilityCondition: jsonb("visibility_condition"),
     displayOrder: integer("display_order").notNull().default(0),
+    // Issue #666: marks this element as the root of a repeating instance
+    // group (e.g. CAP Breast's multifocal Tumor Characteristics) -- a pure
+    // grouping header, not itself independently answerable; its children
+    // repeat as a unit. `identityElementKey` names (by key, not FK -- same
+    // string-targeting convention `visibilityCondition` already uses) a
+    // direct child that identifies each instance (mirrors CAP's own "Tumor
+    // Identifier" pattern). Response addressing for repeated instances uses
+    // a composite `elementKey@instanceKey` string, not a new observation
+    // column -- see synoptic-response-recorder.ts.
+    repeatable: boolean("repeatable").notNull().default(false),
+    identityElementKey: text("identity_element_key"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -105,6 +116,10 @@ export const synopticElement = pgTable(
     index("ix_synoptic_element_parent").on(table.parentElementId),
     check("ck_synoptic_element_data_type", sql`${table.dataType} IN ('coded','quantity','text','coded_multi')`),
     check("ck_synoptic_element_requirement", sql`${table.requirement} IN ('required','recommended','conditional')`),
+    check(
+      "ck_synoptic_element_identity_requires_repeatable",
+      sql`${table.identityElementKey} IS NULL OR ${table.repeatable} = true`,
+    ),
   ],
 );
 

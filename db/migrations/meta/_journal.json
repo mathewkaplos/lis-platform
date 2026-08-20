@@ -393,6 +393,13 @@
       "when": 1787262497336,
       "tag": "0055_synoptic_element_conditional_requirement",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1787265732830,
+      "tag": "0056_synoptic_element_repeatable",
+      "breakpoints": true
     }
   ]
 }

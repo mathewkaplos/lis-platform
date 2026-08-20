@@ -3,6 +3,7 @@
 import { useActionState, useMemo, useState, type FormEvent } from 'react';
 import {
   evaluateCondition,
+  makeInstanceResponseKey,
   requirementLabel,
   type ConditionNode,
   type SynopticElement,
@@ -23,6 +24,27 @@ type ResponseValue = string | number | string[];
  * finding from the seed SQL) -- `ElementGroup` still recurses generically so
  * a future grouped protocol version renders correctly with no code change.
  */
+// Issue #666: this instance's own descendant answers (composite keys ending
+// in `@instanceKey`), stripped back to plain element keys and merged over
+// the top-level context -- lets a descendant's visibilityCondition
+// reference a sibling within the same instance exactly like a non-repeating
+// field references a top-level sibling (mirrors the recorder's own
+// mergedContext, synoptic-response-recorder.ts).
+function buildInstanceContext(
+  topContext: Record<string, unknown>,
+  values: Record<string, ResponseValue>,
+  instanceKey: string,
+): Record<string, unknown> {
+  const suffix = `@${instanceKey}`;
+  const local: Record<string, unknown> = { ...topContext };
+  for (const [key, value] of Object.entries(values)) {
+    if (key.endsWith(suffix)) {
+      local[key.slice(0, -suffix.length)] = value;
+    }
+  }
+  return local;
+}
+
 function ElementGroup({
   elements,
   parentId,
@@ -31,6 +53,10 @@ function ElementGroup({
   onChange,
   onToggleMulti,
   sourceStandard,
+  instances,
+  onAddInstance,
+  onRemoveInstance,
+  instanceKey,
 }: {
   elements: SynopticElement[];
   parentId: string | null;
@@ -39,6 +65,10 @@ function ElementGroup({
   onChange: (key: string, value: ResponseValue) => void;
   onToggleMulti: (key: string, optionValue: string, checked: boolean) => void;
   sourceStandard: string;
+  instances: Record<string, string[]>;
+  onAddInstance: (elementKey: string) => void;
+  onRemoveInstance: (elementKey: string, instanceKey: string) => void;
+  instanceKey?: string;
 }) {
   const children = elements
     .filter((e) => e.parentElementId === parentId)
@@ -53,6 +83,62 @@ function ElementGroup({
           : true;
         if (!visible) return null;
 
+        // Issue #666: a repeatable element is a pure grouping header -- not
+        // itself answerable -- whose children render once per instance,
+        // each instance's answers addressed via a composite
+        // `elementKey@instanceKey` (see makeInstanceResponseKey).
+        if (element.repeatable) {
+          const elementInstances = instances[element.key] ?? [];
+          return (
+            <div key={element.id} className="flex flex-col gap-3 border-l-2 border-border pl-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-foreground">{element.label}</span>
+                <Button type="button" variant="secondary" onClick={() => onAddInstance(element.key)}>
+                  Add {element.label}
+                </Button>
+              </div>
+              {elementInstances.map((instKey, index) => (
+                <div key={instKey} className="flex flex-col gap-3 rounded-md border border-border p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium uppercase text-text-secondary">
+                      {element.label} {index + 1}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => onRemoveInstance(element.key, instKey)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                  <ElementGroup
+                    elements={elements}
+                    parentId={element.id}
+                    context={buildInstanceContext(context, values, instKey)}
+                    values={values}
+                    onChange={onChange}
+                    onToggleMulti={onToggleMulti}
+                    sourceStandard={sourceStandard}
+                    instances={instances}
+                    onAddInstance={onAddInstance}
+                    onRemoveInstance={onRemoveInstance}
+                    instanceKey={instKey}
+                  />
+                </div>
+              ))}
+            </div>
+          );
+        }
+
+        const compositeKey = instanceKey ? makeInstanceResponseKey(element.key, instanceKey) : element.key;
+        const scopedOnChange = instanceKey
+          ? (key: string, value: ResponseValue) => onChange(makeInstanceResponseKey(key, instanceKey), value)
+          : onChange;
+        const scopedOnToggleMulti = instanceKey
+          ? (key: string, optionValue: string, checked: boolean) =>
+              onToggleMulti(makeInstanceResponseKey(key, instanceKey), optionValue, checked)
+          : onToggleMulti;
+
         // Issue #663: an element with children (e.g. margin_distance_mm,
         // parent of margin_distance_mm_precision) is still itself a real,
         // answerable field -- render its own control *and* recurse into its
@@ -64,9 +150,9 @@ function ElementGroup({
           <div key={element.id} className={hasChildren ? 'flex flex-col gap-3 border-l-2 border-border pl-4' : undefined}>
             <FieldControl
               element={element}
-              value={values[element.key]}
-              onChange={onChange}
-              onToggleMulti={onToggleMulti}
+              value={values[compositeKey]}
+              onChange={scopedOnChange}
+              onToggleMulti={scopedOnToggleMulti}
               sourceStandard={sourceStandard}
             />
             {hasChildren ? (
@@ -78,6 +164,10 @@ function ElementGroup({
                 onChange={onChange}
                 onToggleMulti={onToggleMulti}
                 sourceStandard={sourceStandard}
+                instances={instances}
+                onAddInstance={onAddInstance}
+                onRemoveInstance={onRemoveInstance}
+                instanceKey={instanceKey}
               />
             ) : null}
           </div>
@@ -208,8 +298,37 @@ export function ProtocolForm({
     recordSynopticResponseInitialState,
   );
   const [values, setValues] = useState<Record<string, ResponseValue>>({});
+  // Issue #666: repeatable element key -> ordered list of client-generated
+  // instanceKeys (see makeInstanceResponseKey/parseInstanceResponseKey in
+  // packages/domain -- continuity across re-recordings is by this
+  // structural key, not by identity-field value, an explicit MVP limitation
+  // documented in docs/plans/task-666-synoptic-repeating-groups.md).
+  const [instances, setInstances] = useState<Record<string, string[]>>({});
 
   const context = useMemo(() => values as Record<string, unknown>, [values]);
+  const elementByKey = useMemo(() => new Map(elements.map((e) => [e.key, e])), [elements]);
+
+  function handleAddInstance(elementKey: string) {
+    setInstances((prev) => ({
+      ...prev,
+      [elementKey]: [...(prev[elementKey] ?? []), crypto.randomUUID()],
+    }));
+  }
+
+  function handleRemoveInstance(elementKey: string, instanceKey: string) {
+    setInstances((prev) => ({
+      ...prev,
+      [elementKey]: (prev[elementKey] ?? []).filter((key) => key !== instanceKey),
+    }));
+    setValues((prev) => {
+      const suffix = `@${instanceKey}`;
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (key.endsWith(suffix)) delete next[key];
+      }
+      return next;
+    });
+  }
 
   function handleChange(key: string, value: ResponseValue) {
     setValues((prev) => {
@@ -242,10 +361,18 @@ export function ProtocolForm({
     });
   }
 
-  function isVisible(element: SynopticElement): boolean {
-    return element.visibilityCondition
-      ? evaluateCondition(element.visibilityCondition as ConditionNode, context)
-      : true;
+  // Issue #666: `rawKey` may be a plain element key or a composite
+  // `elementKey@instanceKey` -- resolves the underlying element and, for a
+  // composite key, evaluates visibility against that instance's own merged
+  // context (mirrors the recorder's own per-instance validation).
+  function isVisibleForKey(rawKey: string): boolean {
+    const atIndex = rawKey.indexOf('@');
+    const baseKey = atIndex === -1 ? rawKey : rawKey.slice(0, atIndex);
+    const instanceKey = atIndex === -1 ? null : rawKey.slice(atIndex + 1);
+    const element = elementByKey.get(baseKey);
+    if (!element || !element.visibilityCondition) return true;
+    const evalContext = instanceKey ? buildInstanceContext(context, values, instanceKey) : context;
+    return evaluateCondition(element.visibilityCondition as ConditionNode, evalContext);
   }
 
   function handleSubmit(e: FormEvent) {
@@ -253,9 +380,9 @@ export function ProtocolForm({
     // Only currently-visible elements are submitted -- a value entered
     // while an element was visible, then hidden again by a later answer
     // change, must not be sent (proposal §3.3's own worked trace).
-    const responses = elements
-      .filter((element) => element.key in values && isVisible(element))
-      .map((element) => ({ elementKey: element.key, value: values[element.key] }));
+    const responses = Object.entries(values)
+      .filter(([key]) => isVisibleForKey(key))
+      .map(([key, value]) => ({ elementKey: key, value }));
 
     formAction({ caseId, orderedTestId, synopticProtocolVersionId, responses });
   }
@@ -290,6 +417,9 @@ export function ProtocolForm({
         onChange={handleChange}
         onToggleMulti={handleToggleMulti}
         sourceStandard={sourceStandard}
+        instances={instances}
+        onAddInstance={handleAddInstance}
+        onRemoveInstance={handleRemoveInstance}
       />
       <Button type="submit" disabled={pending} className="w-fit">
         {pending ? 'Recording…' : 'Record synoptic protocol'}

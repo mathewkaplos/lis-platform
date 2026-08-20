@@ -18,10 +18,11 @@ import {
   writeOutboxEvent,
 } from '@lis/db';
 import { evaluateCondition } from '../workflow/workflow-condition-evaluator';
-import type {
-  ConditionNode,
-  SynopticResponseResult,
-  SynopticResponseResultEntry,
+import {
+  parseInstanceResponseKey,
+  type ConditionNode,
+  type SynopticResponseResult,
+  type SynopticResponseResultEntry,
 } from '@lis/domain';
 
 type Tx = Parameters<
@@ -137,6 +138,26 @@ export async function assembleAndPersistSynopticResponse(
     );
   }
   const elementByKey = new Map(elements.map((e) => [e.key, e]));
+  const elementById = new Map(elements.map((e) => [e.id, e]));
+
+  // Issue #666: nearest ancestor with repeatable=true, or undefined if this
+  // element isn't inside a repeating group. Repeatable roots are pure
+  // grouping headers -- the search starts at the element's own parent, so a
+  // repeatable root is never its own answer.
+  function findRepeatableRoot(
+    element: (typeof elements)[number],
+  ): (typeof elements)[number] | undefined {
+    let current = element.parentElementId
+      ? elementById.get(element.parentElementId)
+      : undefined;
+    while (current) {
+      if (current.repeatable) return current;
+      current = current.parentElementId
+        ? elementById.get(current.parentElementId)
+        : undefined;
+    }
+    return undefined;
+  }
 
   const responseOptionRows = await tx
     .select()
@@ -159,7 +180,43 @@ export async function assembleAndPersistSynopticResponse(
   }
 
   const responseByKey = new Map(responses.map((r) => [r.elementKey, r.value]));
-  const context: Record<string, unknown> = Object.fromEntries(responseByKey);
+
+  // Issue #666: split into top-level (non-repeatable-descendant) answers,
+  // keyed by their plain element key exactly as before, and per-instance
+  // answers grouped by (repeatableRootId, instanceKey). `context` and the
+  // outbox event payload below stay top-level-only, flat, plain-keyed --
+  // FEAT-064's reflex subscription (and every other flat-context consumer)
+  // is unaffected by repeating groups.
+  const topLevelResponseByKey = new Map<string, unknown>();
+  const instanceValuesByRootId = new Map<
+    string,
+    Map<string, Record<string, unknown>>
+  >();
+  for (const [rawKey, value] of responseByKey) {
+    const { elementKey: baseKey, instanceKey } =
+      parseInstanceResponseKey(rawKey);
+    const element = elementByKey.get(baseKey);
+    if (!element) continue; // unknown key, rejected in the validation loop below
+    const root = findRepeatableRoot(element);
+    if (root && instanceKey) {
+      let instances = instanceValuesByRootId.get(root.id);
+      if (!instances) {
+        instances = new Map();
+        instanceValuesByRootId.set(root.id, instances);
+      }
+      let instanceValues = instances.get(instanceKey);
+      if (!instanceValues) {
+        instanceValues = {};
+        instances.set(instanceKey, instanceValues);
+      }
+      instanceValues[baseKey] = value;
+    } else {
+      topLevelResponseByKey.set(baseKey, value);
+    }
+  }
+  const context: Record<string, unknown> = Object.fromEntries(
+    topLevelResponseByKey,
+  );
 
   const missingRequired: string[] = [];
   for (const element of elements) {
@@ -167,14 +224,60 @@ export async function assembleAndPersistSynopticResponse(
     // only 'recommended' is genuinely optional. A label distinction, not a
     // new validation branch.
     if (element.requirement === 'recommended') continue;
+    if (element.repeatable) {
+      // Issue #666: group presence itself is optional by default (a
+      // multifocal-tumor protocol legitimately has single-focus cases) --
+      // only 'required'/'conditional' on the root demands at least one
+      // instance, and only when the root itself isn't hidden by its own
+      // visibilityCondition (same rule every non-repeating element already
+      // follows).
+      const hidden = element.visibilityCondition
+        ? !evaluateCondition(
+            element.visibilityCondition as ConditionNode,
+            context,
+          )
+        : false;
+      const instances = instanceValuesByRootId.get(element.id);
+      if (!hidden && (!instances || instances.size === 0)) {
+        missingRequired.push(element.key);
+      }
+      continue;
+    }
+    if (findRepeatableRoot(element)) continue; // validated per-instance below
     const hidden = element.visibilityCondition
       ? !evaluateCondition(
           element.visibilityCondition as ConditionNode,
           context,
         )
       : false;
-    if (!hidden && !responseByKey.has(element.key)) {
+    if (!hidden && !topLevelResponseByKey.has(element.key)) {
       missingRequired.push(element.key);
+    }
+  }
+  // Issue #666: per-instance required/visibility validation -- a
+  // descendant's own visibilityCondition can reference a sibling within the
+  // same instance (merged context = top-level answers + this instance's
+  // own answers, both plain-keyed) exactly like a non-repeating field
+  // references a top-level sibling today.
+  for (const rootElement of elements) {
+    if (!rootElement.repeatable) continue;
+    const instances = instanceValuesByRootId.get(rootElement.id);
+    if (!instances) continue;
+    for (const [instanceKey, instanceValues] of instances) {
+      const mergedContext = { ...context, ...instanceValues };
+      for (const element of elements) {
+        if (findRepeatableRoot(element)?.id !== rootElement.id) continue;
+        if (element.requirement === 'recommended') continue;
+        const hidden = element.visibilityCondition
+          ? !evaluateCondition(
+              element.visibilityCondition as ConditionNode,
+              mergedContext,
+            )
+          : false;
+        if (!hidden && !(element.key in instanceValues)) {
+          missingRequired.push(`${element.key}@${instanceKey}`);
+        }
+      }
     }
   }
   if (missingRequired.length > 0) {
@@ -185,9 +288,20 @@ export async function assembleAndPersistSynopticResponse(
 
   const invalid: string[] = [];
   for (const [key, value] of responseByKey) {
-    const element = elementByKey.get(key);
+    const { elementKey: baseKey, instanceKey } = parseInstanceResponseKey(key);
+    const element = elementByKey.get(baseKey);
     if (!element) {
       invalid.push(`${key}: unknown element`);
+      continue;
+    }
+    if (element.repeatable) {
+      invalid.push(
+        `${key}: a repeatable group header is not directly answerable`,
+      );
+      continue;
+    }
+    if (instanceKey && !findRepeatableRoot(element)) {
+      invalid.push(`${key}: instance suffix on a non-repeating element`);
       continue;
     }
     if (element.dataType === 'coded') {
@@ -268,7 +382,8 @@ export async function assembleAndPersistSynopticResponse(
   const now = new Date();
   const discreteResults: SynopticResponseResultEntry[] = [];
   for (const [key, value] of responseByKey) {
-    const element = elementByKey.get(key);
+    const { elementKey: baseKey } = parseInstanceResponseKey(key);
+    const element = elementByKey.get(baseKey);
     if (!element) continue; // already rejected above if truly unknown
     // Issue #662: `fn_observation_supersede` (db/migrations/0007) fires
     // unconditionally on any insert with amendmentOf set -- archives the

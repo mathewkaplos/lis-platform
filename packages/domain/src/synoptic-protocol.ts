@@ -116,6 +116,10 @@ export type SynopticResponseResultEntry = z.infer<typeof synopticResponseResultE
 export const synopticResponseResultSchema = z.object({
   synopticProtocolVersionId: z.uuid(),
   tableObservationId: z.uuid(),
+  // Issue #662: the prior (now-superseded) grid Observation's id this
+  // recording amends, or null for a first-ever recording against this
+  // (orderedTestId, synopticProtocolVersionId) key.
+  amendmentOf: z.uuid().nullable(),
   results: z.array(synopticResponseResultEntrySchema),
 });
 export type SynopticResponseResult = z.infer<typeof synopticResponseResultSchema>;
@@ -157,6 +161,11 @@ export const caseSynopticResponseSchema = z.object({
   protocolName: z.string(),
   tableObservationId: z.uuid(),
   recordedAt: z.iso.datetime(),
+  // Issue #662: the prior (now-superseded) grid Observation's id this
+  // current version amends, or null if it was recorded once and never
+  // re-recorded. Confirms this is the real chain head (supersededBy IS
+  // NULL), not just the most-recent-by-timestamp row.
+  amendmentOf: z.uuid().nullable(),
   results: z.array(synopticResponseResultEntrySchema),
 });
 export type CaseSynopticResponse = z.infer<typeof caseSynopticResponseSchema>;

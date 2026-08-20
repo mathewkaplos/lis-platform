@@ -3,7 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { createDb } from '@lis/db';
 import {
   analyte,
@@ -227,11 +227,50 @@ export async function assembleAndPersistSynopticResponse(
     throw new ConflictException('Ordered test has no associated order');
   }
 
+  const gridAnalyte = await findSynopticGridAnalyte(tx);
+  if (!gridAnalyte) {
+    throw new ConflictException(
+      `Synoptic report grid analyte (${SYNOPTIC_GRID_CODE_SYSTEM}/${SYNOPTIC_GRID_CODE}) is not seeded -- run \`pnpm db:reset\``,
+    );
+  }
+
+  // Issue #662: the current (non-superseded) predecessor grid Observation
+  // for this exact key, if one exists -- its own valueJson.results already
+  // has {elementKey, observationId} per element from the prior recording,
+  // giving an elementKey -> predecessor-observationId map with no extra
+  // query shape needed. Matches the read path's own (#659) selection key.
+  const [predecessorGrid] = await tx
+    .select({ id: observation.id, valueJson: observation.valueJson })
+    .from(observation)
+    .where(
+      and(
+        eq(observation.orderedTestId, orderedTestId),
+        eq(observation.analyteId, gridAnalyte.id),
+        eq(observation.dataType, 'table'),
+        isNull(observation.supersededBy),
+      ),
+    )
+    .orderBy(desc(observation.createdAt))
+    .limit(1);
+  const predecessorObservationIdByKey = new Map<string, string>(
+    (
+      (
+        predecessorGrid?.valueJson as {
+          results?: SynopticResponseResultEntry[];
+        }
+      )?.results ?? []
+    ).map((r) => [r.elementKey, r.observationId]),
+  );
+
   const now = new Date();
   const discreteResults: SynopticResponseResultEntry[] = [];
   for (const [key, value] of responseByKey) {
     const element = elementByKey.get(key);
     if (!element) continue; // already rejected above if truly unknown
+    // Issue #662: `fn_observation_supersede` (db/migrations/0007) fires
+    // unconditionally on any insert with amendmentOf set -- archives the
+    // predecessor into result_history and sets its own supersededBy,
+    // atomically, in the same transaction. No manual UPDATE needed here.
     const [inserted] = await tx
       .insert(observation)
       .values({
@@ -260,6 +299,7 @@ export async function assembleAndPersistSynopticResponse(
         source: 'manual',
         operatorUserId: actorPrincipalId,
         producedAt: now,
+        amendmentOf: predecessorObservationIdByKey.get(key),
       })
       .returning();
     discreteResults.push({
@@ -268,13 +308,6 @@ export async function assembleAndPersistSynopticResponse(
       value,
       observationId: inserted.id,
     });
-  }
-
-  const gridAnalyte = await findSynopticGridAnalyte(tx);
-  if (!gridAnalyte) {
-    throw new ConflictException(
-      `Synoptic report grid analyte (${SYNOPTIC_GRID_CODE_SYSTEM}/${SYNOPTIC_GRID_CODE}) is not seeded -- run \`pnpm db:reset\``,
-    );
   }
 
   const [tableObs] = await tx
@@ -294,12 +327,14 @@ export async function assembleAndPersistSynopticResponse(
       source: 'manual',
       operatorUserId: actorPrincipalId,
       producedAt: now,
+      amendmentOf: predecessorGrid?.id,
     })
     .returning();
 
   // One action, one audit entry -- the discrete Observations are folded into
   // `after`, matching `antibiogram-assembly.ts`'s own precedent for a single
-  // human action producing multiple related rows.
+  // human action producing multiple related rows. `amendmentOf` included so
+  // a re-recording's own audit trail names what it corrected (issue #662).
   await writeAuditEvent(tx, {
     tenantId,
     actorPrincipalId,
@@ -311,6 +346,7 @@ export async function assembleAndPersistSynopticResponse(
     after: {
       synopticProtocolVersionId,
       tableObservationId: tableObs.id,
+      amendmentOf: predecessorGrid?.id ?? null,
       results: discreteResults,
     },
   });
@@ -332,6 +368,7 @@ export async function assembleAndPersistSynopticResponse(
   return {
     synopticProtocolVersionId,
     tableObservationId: tableObs.id,
+    amendmentOf: predecessorGrid?.id ?? null,
     results: discreteResults,
   };
 }

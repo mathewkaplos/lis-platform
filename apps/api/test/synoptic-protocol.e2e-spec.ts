@@ -569,6 +569,127 @@ describe('Synoptic Protocol API (e2e)', () => {
     });
   });
 
+  describe('GET /v1/cases/:id/synoptic-responses (issue #659 read path)', () => {
+    it('returns an empty list for a case with no recorded responses', async () => {
+      const { caseId } = await createCaseWithOrderedTest();
+      const res = await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const body = res.body as { responses: unknown[] };
+      if (body.responses.length !== 0) {
+        throw new Error(
+          `expected an empty list for an unrecorded case, got ${JSON.stringify(body)}`,
+        );
+      }
+    });
+
+    it('returns a recorded response with correct labels/values after POST', async () => {
+      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: colorectalVersionId,
+          responses: baseColorectalResponses,
+        })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const body = res.body as {
+        responses: {
+          orderedTestId: string;
+          synopticProtocolVersionId: string;
+          protocolName: string;
+          results: { elementKey: string; value: unknown }[];
+        }[];
+      };
+      if (body.responses.length !== 1) {
+        throw new Error(
+          `expected exactly one recorded response, got ${JSON.stringify(body)}`,
+        );
+      }
+      const [recorded] = body.responses;
+      if (
+        recorded.orderedTestId !== orderedTestId ||
+        recorded.synopticProtocolVersionId !== colorectalVersionId ||
+        recorded.protocolName !== 'Colorectal Cancer' ||
+        recorded.results.length !== baseColorectalResponses.length
+      ) {
+        throw new Error(
+          `expected the read path to echo the exact recorded response, got ${JSON.stringify(recorded)}`,
+        );
+      }
+      const tumorSite = recorded.results.find(
+        (r) => r.elementKey === 'tumor_site',
+      );
+      if (tumorSite?.value !== 'sigmoid_colon') {
+        throw new Error(
+          `expected tumor_site's recorded value to round-trip, got ${JSON.stringify(tumorSite)}`,
+        );
+      }
+    });
+
+    it('returns only the most recent recording when the same protocol is recorded twice against the same ordered test', async () => {
+      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: colorectalVersionId,
+          responses: baseColorectalResponses,
+        })
+        .expect(201);
+
+      const secondResponses = baseColorectalResponses
+        .filter((r) => r.elementKey !== 'tumor_max_dimension_mm')
+        .concat([{ elementKey: 'tumor_max_dimension_mm', value: 62 }]);
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: colorectalVersionId,
+          responses: secondResponses,
+        })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const body = res.body as {
+        responses: { results: { elementKey: string; value: unknown }[] }[];
+      };
+      if (body.responses.length !== 1) {
+        throw new Error(
+          `expected the two recordings to collapse to one most-recent response, got ${body.responses.length}`,
+        );
+      }
+      const dimension = body.responses[0].results.find(
+        (r) => r.elementKey === 'tumor_max_dimension_mm',
+      );
+      if (dimension?.value !== 62) {
+        throw new Error(
+          `expected the second recording's value to win, got ${JSON.stringify(dimension)}`,
+        );
+      }
+    });
+
+    it("returns 404 for another tenant's case", async () => {
+      const { caseId } = await createCaseWithOrderedTest();
+      await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenB}`)
+        .expect(404);
+    });
+  });
+
   // No public "list versions" endpoint exists (issue #539 scope), so this
   // test resolves the seeded, real published version id via a direct
   // read -- the same real API surface `GET

@@ -136,6 +136,38 @@ export type SynopticResponseRecordedEventPayload = z.infer<
   typeof synopticResponseRecordedEventPayloadSchema
 >;
 
+/**
+ * Issue #659: read path for a case's already-recorded synoptic responses.
+ * Reuses `synopticResponseResultEntrySchema` verbatim for `results` -- the
+ * recorder's own `table`-dataType grid Observation already stores exactly
+ * this shape (`synoptic-response-recorder.ts`), so the read route returns
+ * it back with case/protocol-identifying fields added, not a re-derived
+ * shape.
+ *
+ * Keyed on `(orderedTestId, synopticProtocolVersionId)`, not on a specimen/
+ * part -- responses are not part-scoped in the write path today (found
+ * during this issue's own implementation; tracked separately as issue
+ * #674). A case with two eligible parts recorded against the *same*
+ * protocol will only surface the more recent of the two here.
+ */
+export const caseSynopticResponseSchema = z.object({
+  orderedTestId: z.uuid(),
+  synopticProtocolId: z.uuid(),
+  synopticProtocolVersionId: z.uuid(),
+  protocolName: z.string(),
+  tableObservationId: z.uuid(),
+  recordedAt: z.iso.datetime(),
+  results: z.array(synopticResponseResultEntrySchema),
+});
+export type CaseSynopticResponse = z.infer<typeof caseSynopticResponseSchema>;
+
+export const caseSynopticResponseListSchema = z.object({
+  responses: z.array(caseSynopticResponseSchema),
+});
+export type CaseSynopticResponseList = z.infer<
+  typeof caseSynopticResponseListSchema
+>;
+
 // Re-exported for callers that only need the condition-tree type alongside
 // synoptic-protocol types (mirrors report-template.ts's own precedent).
 export type { ConditionNode };

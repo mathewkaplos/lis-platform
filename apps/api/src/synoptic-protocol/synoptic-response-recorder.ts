@@ -51,7 +51,10 @@ export interface RecordSynopticResponseParams {
 const SYNOPTIC_GRID_CODE_SYSTEM = 'ICCR-SYNOPTIC';
 const SYNOPTIC_GRID_CODE = 'synoptic-report-grid';
 
-async function findSynopticGridAnalyte(
+// Exported for the read path (issue #659, case.controller.ts's
+// listSynopticResponses) -- the same shared grid analyte, read-side, so
+// there is exactly one place that knows this internal identifier.
+export async function findSynopticGridAnalyte(
   tx: Tx,
 ): Promise<{ id: string } | undefined> {
   const [row] = await tx

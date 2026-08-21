@@ -32,14 +32,20 @@ export function CommandPalette() {
       <button
         type="button"
         onClick={() => setOpen(true)}
+        aria-label="Search"
         className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-text-muted transition-colors hover:bg-accent"
       >
         <Search className="size-4" />
-        Search...
+        {/* Issue #713 (EPIC #697): label + shortcut hint collapse to icon-only below `sm`
+            -- this row sits alongside the tenant badge/locale/theme/user controls in
+            top-bar.tsx with no wrap, and the full text overflows a real mobile viewport. */}
+        <span className="hidden sm:inline">Search...</span>
         {/* Handler accepts both Ctrl+K and Cmd+K; Ctrl+K label shown since it's the
             functional key on every platform (Mac's Cmd+K also works via the metaKey
             check above) -- avoids a client-only platform-detection effect for a stub. */}
-        <kbd className="ml-4 rounded border border-border px-1 font-mono text-xs">Ctrl+K</kbd>
+        <kbd className="ml-4 hidden rounded border border-border px-1 font-mono text-xs sm:inline">
+          Ctrl+K
+        </kbd>
       </button>
       <SlideOver open={open} onOpenChange={setOpen}>
         <SlideOverContent side="top" className="mx-auto mt-24 h-fit max-w-xl rounded-lg border">

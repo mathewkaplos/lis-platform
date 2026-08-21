@@ -28,8 +28,11 @@ export function TopBar({
       <CommandPalette />
       <div className="flex items-center gap-2">
         {/* Static per the approved TASK-036 proposal (§10): no org/branch data model exists
-            yet, so this is a label, not a switcher -- see docs/plans/feat-010-design-system-v1.md. */}
-        <span className="rounded-md border border-border px-2 py-1 text-xs text-text-secondary">
+            yet, so this is a label, not a switcher -- see docs/plans/feat-010-design-system-v1.md.
+            Issue #713 (EPIC #697): hidden below `sm` -- a raw 36-char tenant UUID plus the
+            rest of this row's controls overflow a real mobile viewport with no wrap/shrink
+            handling here, and the id itself has no value to a pilot user on a phone. */}
+        <span className="hidden rounded-md border border-border px-2 py-1 text-xs text-text-secondary sm:inline-block">
           {tenantId}
         </span>
         <LocaleSelect current={locale} />

@@ -1,6 +1,6 @@
 {
-  "id": "5586ee8c-17fc-4bc1-a579-ea5782bfd027",
-  "prevId": "c755db4b-dc1e-4ee4-8da2-7de1b62637df",
+  "id": "f3b43054-46ba-453a-9d9f-1b50c833b3c9",
+  "prevId": "616f358b-90a9-4fff-bfcf-e43c5a77900c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4651,6 +4651,36 @@
         },
         "preferred_synoptic_source_standard": {
           "name": "preferred_synoptic_source_standard",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phone": {
+          "name": "phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "logo_url": {
+          "name": "logo_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "currency": {
+          "name": "currency",
           "type": "text",
           "primaryKey": false,
           "notNull": false

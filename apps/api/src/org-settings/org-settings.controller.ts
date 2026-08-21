@@ -52,9 +52,18 @@ type Db = ReturnType<typeof createDb>;
  * is the only real source of truth for "which tenant." A plain UPDATE
  * would therefore silently no-op for exactly the tenants this feature
  * needs to work for. `update()` below upserts instead -- lazily creates a
- * placeholder row (real tenants pre-dating FEAT-045 have no name to
- * preserve there either) on first write, updates in place afterward,
- * never touching `name` once a row exists.
+ * placeholder row on first write, updates in place afterward.
+ *
+ * Issue #706: extended to the full organization profile (name, address,
+ * phone, email, logo, currency) -- `name` was originally never touched on
+ * conflict (this feature had no reason to change it); now genuinely
+ * editable, since org identity being editable is #706's whole point. Every
+ * field falls back to `before`'s existing value when the caller's PUT body
+ * omits that key (an explicit `!== undefined` check, not `??` -- `??` can't
+ * distinguish "key omitted" from "key sent as `null`", which broke #692's
+ * own "clearing the preference back to null" e2e test the first time this
+ * was written; see `update()`'s own comment), so a partial update never
+ * clobbers fields it didn't mention, while an explicit `null` still clears.
  */
 @Controller('v1/org-settings')
 @UseGuards(JwtAuthGuard)
@@ -83,25 +92,87 @@ export class OrgSettingsController {
     // (concretely reproduced under the e2e suite's DB_POOL_MAX=1).
     const before = await getOrgSettings(tx, user.tenantId);
 
-    await tx
+    // Issue #706: `name` is now genuinely editable -- unlike the original
+    // #692 shape (which deliberately never touched `name` on conflict,
+    // since that feature had no reason to change it), org identity being
+    // editable is this feature's whole point.
+    //
+    // Every nullable field uses `!== undefined ? body.x : before.x`, NOT
+    // `??` -- `??` cannot distinguish "the caller omitted this key" (should
+    // fall back to the existing value) from "the caller explicitly sent
+    // `null`" (should clear the field), since `??` treats both the same.
+    // A first version of this used `??` and broke #692's own existing e2e
+    // test ("clearing the preference back to null works") -- caught by CI,
+    // not by typecheck/lint, since both shapes typecheck identically.
+    const resolvedName =
+      body.name !== undefined
+        ? body.name
+        : (before.name ?? `Tenant ${user.tenantId}`);
+    const resolvedAddress =
+      body.address !== undefined ? body.address : before.address;
+    const resolvedPhone = body.phone !== undefined ? body.phone : before.phone;
+    const resolvedEmail = body.email !== undefined ? body.email : before.email;
+    const resolvedLogoUrl =
+      body.logoUrl !== undefined ? body.logoUrl : before.logoUrl;
+    const resolvedCurrency =
+      body.currency !== undefined ? body.currency : before.currency;
+    const resolvedPreferredSynopticSourceStandard =
+      body.preferredSynopticSourceStandard !== undefined
+        ? body.preferredSynopticSourceStandard
+        : before.preferredSynopticSourceStandard;
+
+    const [row] = await tx
       .insert(tenant)
       .values({
         id: user.tenantId,
-        name: `Tenant ${user.tenantId}`,
-        preferredSynopticSourceStandard: body.preferredSynopticSourceStandard,
+        name: resolvedName,
+        address: resolvedAddress,
+        phone: resolvedPhone,
+        email: resolvedEmail,
+        logoUrl: resolvedLogoUrl,
+        currency: resolvedCurrency,
+        preferredSynopticSourceStandard:
+          resolvedPreferredSynopticSourceStandard,
       })
       .onConflictDoUpdate({
         target: tenant.id,
         set: {
-          preferredSynopticSourceStandard: body.preferredSynopticSourceStandard,
+          name: resolvedName,
+          address: resolvedAddress,
+          phone: resolvedPhone,
+          email: resolvedEmail,
+          logoUrl: resolvedLogoUrl,
+          currency: resolvedCurrency,
+          preferredSynopticSourceStandard:
+            resolvedPreferredSynopticSourceStandard,
         },
-      });
+      })
+      .returning();
 
-    const after: OrgSettings = {
-      preferredSynopticSourceStandard: body.preferredSynopticSourceStandard,
-    };
+    const after: OrgSettings = toOrgSettings(row);
     return { resourceId: user.tenantId, before, after };
   }
+}
+
+function toOrgSettings(row: {
+  name: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  logoUrl: string | null;
+  currency: string | null;
+  preferredSynopticSourceStandard: string | null;
+}): OrgSettings {
+  return {
+    name: row.name ?? null,
+    address: row.address ?? null,
+    phone: row.phone ?? null,
+    email: row.email ?? null,
+    logoUrl: row.logoUrl ?? null,
+    currency: row.currency ?? null,
+    preferredSynopticSourceStandard:
+      row.preferredSynopticSourceStandard ?? null,
+  };
 }
 
 async function getOrgSettings(
@@ -110,13 +181,26 @@ async function getOrgSettings(
 ): Promise<OrgSettings> {
   const [row] = await queryable
     .select({
+      name: tenant.name,
+      address: tenant.address,
+      phone: tenant.phone,
+      email: tenant.email,
+      logoUrl: tenant.logoUrl,
+      currency: tenant.currency,
       preferredSynopticSourceStandard: tenant.preferredSynopticSourceStandard,
     })
     .from(tenant)
     .where(eq(tenant.id, tenantId))
     .limit(1);
-  return {
-    preferredSynopticSourceStandard:
-      row?.preferredSynopticSourceStandard ?? null,
-  };
+  return row
+    ? toOrgSettings(row)
+    : {
+        name: null,
+        address: null,
+        phone: null,
+        email: null,
+        logoUrl: null,
+        currency: null,
+        preferredSynopticSourceStandard: null,
+      };
 }

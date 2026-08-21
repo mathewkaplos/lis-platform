@@ -9286,12 +9286,42 @@
       "OrgSettingsDto_Output": {
         "type": "object",
         "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "logoUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "currency": {
+            "type": "string",
+            "nullable": true
+          },
           "preferredSynopticSourceStandard": {
             "type": "string",
             "nullable": true
           }
         },
         "required": [
+          "name",
+          "address",
+          "phone",
+          "email",
+          "logoUrl",
+          "currency",
           "preferredSynopticSourceStandard"
         ],
         "additionalProperties": false
@@ -9299,14 +9329,35 @@
       "OrgSettingsUpdateDto": {
         "type": "object",
         "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "logoUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "currency": {
+            "type": "string",
+            "nullable": true
+          },
           "preferredSynopticSourceStandard": {
             "type": "string",
             "nullable": true
           }
-        },
-        "required": [
-          "preferredSynopticSourceStandard"
-        ]
+        }
       }
     }
   }

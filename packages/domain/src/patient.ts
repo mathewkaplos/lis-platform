@@ -94,18 +94,26 @@ export const patientSearchQuerySchema = z
     lastName: z.string().min(1).optional(),
     birthDate: z.iso.date().optional(),
     q: z.string().min(1).optional(),
+    // Issue #716 (EPIC #697): a fifth lookup mode -- "no search term, just
+    // show the most recently registered patients" -- for the default
+    // `/patients` view. Deliberately a distinct literal flag, not "q absent
+    // means recent," so an absent-and-invalid query still fails loudly
+    // (ADR-0013's own fail-closed precedent) rather than silently falling
+    // back to a mode the caller never asked for.
+    recent: z.literal("true").optional(),
   })
   .refine(
     (query) =>
       query.mrn !== undefined ||
       query.nationalId !== undefined ||
       query.q !== undefined ||
+      query.recent !== undefined ||
       (query.firstName !== undefined &&
         query.lastName !== undefined &&
         query.birthDate !== undefined),
     {
       message:
-        "mrn, nationalId, q, or firstName+lastName+birthDate together is required",
+        "mrn, nationalId, q, recent, or firstName+lastName+birthDate together is required",
     },
   );
 export type PatientSearchQuery = z.infer<typeof patientSearchQuerySchema>;
@@ -113,3 +121,7 @@ export type PatientSearchQuery = z.infer<typeof patientSearchQuerySchema>;
 /** TASK-041 §2/§5: no cursor pagination yet (ADR-0013 §Decision 4) — a fixed
  * cap on the free-text search instead, revisited once real volume needs one. */
 export const PATIENT_SEARCH_RESULT_LIMIT = 50;
+
+/** Issue #716: a much tighter cap than free-text search -- "recent
+ * patients" is a glanceable default view, not a second full listing. */
+export const PATIENT_RECENT_RESULT_LIMIT = 20;

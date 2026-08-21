@@ -216,7 +216,7 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
       body.reportVersion.versionNumber !== 1 ||
       body.reportVersion.caseId !== caseId ||
       body.reportVersion.status !== 'final' ||
-      body.reportVersion.signedByRole !== 'verifier' ||
+      body.reportVersion.signedByRole !== 'pathologist' ||
       !body.reportVersion.contentHash ||
       !body.reportVersion.signature ||
       !body.reportVersion.authTimeUsed

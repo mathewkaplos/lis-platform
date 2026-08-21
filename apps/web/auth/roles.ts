@@ -4,9 +4,9 @@ import type { SessionPayload } from './session';
  * TASK-057 (FEAT-015 revision §2/§10 Q3): this repo's first frontend
  * role-visibility check -- every write path built so far (`enter_result`)
  * was granted to both seeded roles, so no screen has ever needed to branch
- * UI by role before now (`verify` is verifier-only, TASK-055).
+ * UI by role before now (`verify` is pathologist-only, TASK-055).
  *
- * Deliberately narrow: checks `session.roles.includes('verifier')` directly,
+ * Deliberately narrow: checks `session.roles.includes('pathologist')` directly,
  * not a duplicated `apps/api`-style capability map -- this task adds only
  * the one specific check it needs (proposal §5), matching the "don't build
  * ahead of a real need" precedent every prior task in this feature used.
@@ -18,14 +18,14 @@ import type { SessionPayload } from './session';
  * capability grant is the real enforcement point (TASK-055); this helper
  * only decides whether to render the affordance at all.
  */
-export function hasVerifierRole(session: SessionPayload | undefined): boolean {
-  return Boolean(session && Array.isArray(session.roles) && session.roles.includes('verifier'));
+export function hasPathologistRole(session: SessionPayload | undefined): boolean {
+  return Boolean(session && Array.isArray(session.roles) && session.roles.includes('pathologist'));
 }
 
 /**
  * TASK-070 (FEAT-020, ADR-0019 Decision 3): the `qa` realm role added
  * alongside the new `resolve_qc` capability. Same fail-closed shape and same
- * "UI-visibility convenience only" caveat as `hasVerifierRole` above --
+ * "UI-visibility convenience only" caveat as `hasPathologistRole` above --
  * `apps/api`'s own `CapabilityGuard`/`resolve_qc` grant is the real
  * enforcement point (`qc-rule-violation.controller.ts`); this only decides
  * whether the Resolve button renders at all.
@@ -39,8 +39,8 @@ export function hasQaRole(session: SessionPayload | undefined): boolean {
  * bulk-select checkboxes and bulk-action bar entirely. `manage_orders`
  * (`apps/api/src/auth/capabilities.ts`) -- the real capability guarding both
  * `POST /v1/worklist/bulk-assign`/`bulk-cancel` -- is granted only to
- * `technologist`, not `verifier`. Same fail-closed shape and same
- * "UI-visibility convenience only" caveat as `hasVerifierRole`/`hasQaRole`
+ * `technologist`, not `pathologist`. Same fail-closed shape and same
+ * "UI-visibility convenience only" caveat as `hasPathologistRole`/`hasQaRole`
  * above -- `apps/api`'s own `CapabilityGuard` is the real enforcement point;
  * this only decides whether the bulk controls render at all.
  */
@@ -53,21 +53,21 @@ export function hasTechnologistRole(session: SessionPayload | undefined): boolea
  * gates the "add referring facility" form. `manage_patients`
  * (`apps/api/src/auth/capabilities.ts`) -- the real capability guarding
  * `POST /v1/referring-facilities` (reused, not a new capability) -- is
- * granted to both `technologist` and `verifier`. Same fail-closed shape and
+ * granted to both `technologist` and `pathologist`. Same fail-closed shape and
  * same "UI-visibility convenience only" caveat as the checks above.
  */
 export function hasPatientManagementRole(session: SessionPayload | undefined): boolean {
   return Boolean(
     session &&
       Array.isArray(session.roles) &&
-      (session.roles.includes('technologist') || session.roles.includes('verifier')),
+      (session.roles.includes('technologist') || session.roles.includes('pathologist')),
   );
 }
 
 /**
  * Issue #624: gates the "Screen" action on the case detail page. `manage_specimens`
  * (`apps/api/src/auth/capabilities.ts`) -- the real capability guarding `POST /v1/cases/:id/screen`
- * -- is granted to both `technologist` and `verifier`, identical to `manage_patients`'s own grant
+ * -- is granted to both `technologist` and `pathologist`, identical to `manage_patients`'s own grant
  * (confirmed directly). A separate helper rather than reusing `hasPatientManagementRole` under the
  * wrong name -- matches this file's own convention of one narrowly-named helper per real
  * capability, even when two capabilities happen to share a role set. Same fail-closed shape and
@@ -77,7 +77,7 @@ export function hasSpecimenManagementRole(session: SessionPayload | undefined): 
   return Boolean(
     session &&
       Array.isArray(session.roles) &&
-      (session.roles.includes('technologist') || session.roles.includes('verifier')),
+      (session.roles.includes('technologist') || session.roles.includes('pathologist')),
   );
 }
 
@@ -85,7 +85,7 @@ export function hasSpecimenManagementRole(session: SessionPayload | undefined): 
  * Issue #489 (§17.1 only, docs/plans/task-489-invoice-list.md): gates the
  * new invoice list page/entry point. `manage_billing`
  * (`apps/api/src/auth/capabilities.ts`) -- the real capability guarding
- * `GET /v1/invoices` -- is granted to both `technologist` and `verifier`,
+ * `GET /v1/invoices` -- is granted to both `technologist` and `pathologist`,
  * identical to `manage_specimens`'s own grant (confirmed directly). A
  * separate helper rather than reusing `hasSpecimenManagementRole` under the
  * wrong name -- matches this file's own one-helper-per-capability
@@ -97,6 +97,6 @@ export function hasBillingRole(session: SessionPayload | undefined): boolean {
   return Boolean(
     session &&
       Array.isArray(session.roles) &&
-      (session.roles.includes('technologist') || session.roles.includes('verifier')),
+      (session.roles.includes('technologist') || session.roles.includes('pathologist')),
   );
 }

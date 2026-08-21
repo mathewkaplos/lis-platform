@@ -47,6 +47,13 @@ export class OnboardingService {
       lastName: input.adminLastName,
       password: input.adminPassword,
       tenantId,
+      // Issue #702 (EPIC #697, decision on #698): was hard-coded 'qa', a
+      // role with no manage_patients/manage_orders/manage_specimens/
+      // manage_billing/verify -- the self-signup owner could not do any
+      // lab work. 'lab_admin' is the real "runs this org" role (#701):
+      // manage_org_settings + manage_users, so the owner can immediately
+      // add a second staff account with a working role.
+      role: 'lab_admin',
     });
 
     await db.transaction(async (tx) => {
@@ -65,7 +72,7 @@ export class OnboardingService {
       await writeAuditEvent(tx, {
         tenantId,
         actorPrincipalId: keycloakUser.id,
-        actorRole: 'qa',
+        actorRole: 'lab_admin',
         actorType: 'service',
         action: 'tenant.self_onboard',
         resourceType: 'tenant',

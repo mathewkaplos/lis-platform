@@ -116,6 +116,31 @@
  * ever be authorized to request — a new, dedicated capability keeps that
  * authorization legible on its own, not an accidental side effect of some
  * other role's grant list changing.
+ *
+ * Issue #701 (EPIC #697, decision recorded on #698): the role set below was
+ * extended one ticket at a time to satisfy whatever that ticket needed (see
+ * every comment above) — a real design-partner pilot needs a role set that
+ * actually matches a lab org chart instead. Per #698's recorded decision:
+ * `verifier` is renamed `pathologist` (same capability grant, including
+ * `verify` — this is the sign-out role, the rename is cosmetic-but-real,
+ * not a new actor); `reception` is split out of the `manage_patients`/
+ * `manage_orders` grant `technologist`/`pathologist` already carry (front-
+ * desk intake is its own real persona, not a technologist/pathologist
+ * doing double duty); `cashier` is split out of the `manage_billing` grant
+ * the same two roles carry, for the same reason; `lab_admin` is new,
+ * carrying `manage_org_settings` (`qa` keeps this grant too — #692 already
+ * shipped and tested against it, not worth narrowing here) plus the new
+ * `manage_users` capability (#703) that `qa` does not get — user
+ * administration is `lab_admin`'s own real responsibility, not QC/
+ * workflow oversight's.
+ *
+ * `manage_users` (#703): granted only to `lab_admin` — creating/listing/
+ * deactivating a user and assigning their role is the actual "run this lab
+ * org" action the self-signup owner needs and never had (the original
+ * pilot-readiness audit's #1 finding). Deliberately not folded into
+ * `manage_org_settings` — user administration and org-profile editing are
+ * different real actions even though the same `lab_admin` role holds both
+ * today.
  */
 export type Capability =
   | 'enter_result'
@@ -136,6 +161,7 @@ export type Capability =
   | 'acknowledge_critical_own_patient'
   | 'manage_billing'
   | 'manage_org_settings'
+  | 'manage_users'
   | 'platform_analytics';
 
 const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
@@ -146,7 +172,7 @@ const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
     'manage_specimens',
     'manage_billing',
   ],
-  verifier: [
+  pathologist: [
     'enter_result',
     'verify',
     'manage_patients',
@@ -162,6 +188,9 @@ const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
     'view_operational_reports',
     'manage_org_settings',
   ],
+  reception: ['manage_patients', 'manage_orders'],
+  cashier: ['manage_billing'],
+  lab_admin: ['manage_org_settings', 'manage_users'],
   'gateway-ingest': ['gateway_ingest'],
   'interop-ingest': ['interop_ingest'],
   'platform-analytics': ['platform_analytics'],

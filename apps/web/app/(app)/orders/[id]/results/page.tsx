@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getValidAccessToken } from '@/auth/access-token';
 import { getSession } from '@/auth/get-session';
-import { hasVerifierRole } from '@/auth/roles';
+import { hasPathologistRole } from '@/auth/roles';
 import { createLisApiClient } from '@/lib/api-client';
 import { ResultsGrid, type PriorResult, type ResultRow } from './results-grid';
 
@@ -26,10 +26,10 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
   const client = createLisApiClient(accessToken);
   // TASK-057 (FEAT-015 revision §2/§10 Q3): this repo's first frontend
   // role-visibility decision -- read once, server-side, and pass down as a
-  // plain boolean prop rather than the whole session (`hasVerifierRole` is
+  // plain boolean prop rather than the whole session (`hasPathologistRole` is
   // the only thing the grid needs to know about the caller).
   const session = await getSession();
-  const isVerifier = hasVerifierRole(session);
+  const isVerifier = hasPathologistRole(session);
 
   const [{ data: order, response: orderResponse }, { data: catalog, response: catalogResponse }] =
     await Promise.all([

@@ -12,26 +12,28 @@ describe('resolveGrantingRole', () => {
     expect(resolveGrantingRole(['technologist'], 'verify')).toBeUndefined();
   });
 
-  it('grants both enter_result and verify to a verifier', () => {
-    expect(resolveGrantingRole(['verifier'], 'enter_result')).toBe('verifier');
-    expect(resolveGrantingRole(['verifier'], 'verify')).toBe('verifier');
+  it('grants both enter_result and verify to a pathologist', () => {
+    expect(resolveGrantingRole(['pathologist'], 'enter_result')).toBe(
+      'pathologist',
+    );
+    expect(resolveGrantingRole(['pathologist'], 'verify')).toBe('pathologist');
   });
 
-  it('grants manage_patients to both technologist and verifier (TASK-039 AC)', () => {
+  it('grants manage_patients to both technologist and pathologist (TASK-039 AC)', () => {
     expect(resolveGrantingRole(['technologist'], 'manage_patients')).toBe(
       'technologist',
     );
-    expect(resolveGrantingRole(['verifier'], 'manage_patients')).toBe(
-      'verifier',
+    expect(resolveGrantingRole(['pathologist'], 'manage_patients')).toBe(
+      'pathologist',
     );
   });
 
-  it('grants manage_specimens to both technologist and verifier (TASK-047 AC)', () => {
+  it('grants manage_specimens to both technologist and pathologist (TASK-047 AC)', () => {
     expect(resolveGrantingRole(['technologist'], 'manage_specimens')).toBe(
       'technologist',
     );
-    expect(resolveGrantingRole(['verifier'], 'manage_specimens')).toBe(
-      'verifier',
+    expect(resolveGrantingRole(['pathologist'], 'manage_specimens')).toBe(
+      'pathologist',
     );
   });
 
@@ -42,7 +44,7 @@ describe('resolveGrantingRole', () => {
 
   it('denies a capability no known role grants', () => {
     expect(
-      resolveGrantingRole(['technologist', 'verifier'], 'admin' as never),
+      resolveGrantingRole(['technologist', 'pathologist'], 'admin' as never),
     ).toBeUndefined();
   });
 
@@ -52,10 +54,10 @@ describe('resolveGrantingRole', () => {
     ).toBeUndefined();
   });
 
-  it('grants resolve_qc to qa but not to technologist or verifier (ADR-0019 Decision 3)', () => {
+  it('grants resolve_qc to qa but not to technologist or pathologist (ADR-0019 Decision 3)', () => {
     expect(resolveGrantingRole(['qa'], 'resolve_qc')).toBe('qa');
     expect(resolveGrantingRole(['technologist'], 'resolve_qc')).toBeUndefined();
-    expect(resolveGrantingRole(['verifier'], 'resolve_qc')).toBeUndefined();
+    expect(resolveGrantingRole(['pathologist'], 'resolve_qc')).toBeUndefined();
   });
 
   it('denies enter_result and verify to a qa-only principal', () => {
@@ -70,7 +72,9 @@ describe('resolveGrantingRole', () => {
     expect(
       resolveGrantingRole(['technologist'], 'gateway_ingest'),
     ).toBeUndefined();
-    expect(resolveGrantingRole(['verifier'], 'gateway_ingest')).toBeUndefined();
+    expect(
+      resolveGrantingRole(['pathologist'], 'gateway_ingest'),
+    ).toBeUndefined();
     expect(resolveGrantingRole(['qa'], 'gateway_ingest')).toBeUndefined();
   });
 
@@ -84,31 +88,33 @@ describe('resolveGrantingRole', () => {
     ).toBeUndefined();
   });
 
-  it('grants manage_workflow to qa but not to technologist or verifier (FEAT-029)', () => {
+  it('grants manage_workflow to qa but not to technologist or pathologist (FEAT-029)', () => {
     expect(resolveGrantingRole(['qa'], 'manage_workflow')).toBe('qa');
     expect(
       resolveGrantingRole(['technologist'], 'manage_workflow'),
     ).toBeUndefined();
     expect(
-      resolveGrantingRole(['verifier'], 'manage_workflow'),
+      resolveGrantingRole(['pathologist'], 'manage_workflow'),
     ).toBeUndefined();
   });
 
-  it('grants manage_catalog to qa but not to technologist or verifier (FEAT-035)', () => {
+  it('grants manage_catalog to qa but not to technologist or pathologist (FEAT-035)', () => {
     expect(resolveGrantingRole(['qa'], 'manage_catalog')).toBe('qa');
     expect(
       resolveGrantingRole(['technologist'], 'manage_catalog'),
     ).toBeUndefined();
-    expect(resolveGrantingRole(['verifier'], 'manage_catalog')).toBeUndefined();
+    expect(
+      resolveGrantingRole(['pathologist'], 'manage_catalog'),
+    ).toBeUndefined();
   });
 
-  it('grants view_operational_reports to qa but not to technologist or verifier (FEAT-034)', () => {
+  it('grants view_operational_reports to qa but not to technologist or pathologist (FEAT-034)', () => {
     expect(resolveGrantingRole(['qa'], 'view_operational_reports')).toBe('qa');
     expect(
       resolveGrantingRole(['technologist'], 'view_operational_reports'),
     ).toBeUndefined();
     expect(
-      resolveGrantingRole(['verifier'], 'view_operational_reports'),
+      resolveGrantingRole(['pathologist'], 'view_operational_reports'),
     ).toBeUndefined();
   });
 
@@ -126,7 +132,7 @@ describe('resolveGrantingRole', () => {
       resolveGrantingRole(['technologist'], 'place_order_own_patient'),
     ).toBeUndefined();
     expect(
-      resolveGrantingRole(['verifier'], 'acknowledge_critical_own_patient'),
+      resolveGrantingRole(['pathologist'], 'acknowledge_critical_own_patient'),
     ).toBeUndefined();
   });
 
@@ -138,19 +144,65 @@ describe('resolveGrantingRole', () => {
   });
 
   it('resolves deterministically when multiple held roles grant the same capability', () => {
-    // Both technologist and verifier grant enter_result — the result must
+    // Both technologist and pathologist grant enter_result — the result must
     // always be the same role for the same input, not arbitrary, since two
     // audit rows for the same logical action must never disagree on which
     // role authorized it (ADR-0011 §6).
     const first = resolveGrantingRole(
-      ['technologist', 'verifier'],
+      ['technologist', 'pathologist'],
       'enter_result',
     );
     const second = resolveGrantingRole(
-      ['verifier', 'technologist'],
+      ['pathologist', 'technologist'],
       'enter_result',
     );
     expect(first).toBe(second);
     expect(first).toBeDefined();
+  });
+
+  // Issue #701 (EPIC #697, decision on #698): the real lab role model.
+  it('grants manage_patients and manage_orders to reception, but no clinical/billing capability', () => {
+    expect(resolveGrantingRole(['reception'], 'manage_patients')).toBe(
+      'reception',
+    );
+    expect(resolveGrantingRole(['reception'], 'manage_orders')).toBe(
+      'reception',
+    );
+    expect(
+      resolveGrantingRole(['reception'], 'manage_specimens'),
+    ).toBeUndefined();
+    expect(resolveGrantingRole(['reception'], 'enter_result')).toBeUndefined();
+    expect(
+      resolveGrantingRole(['reception'], 'manage_billing'),
+    ).toBeUndefined();
+  });
+
+  it('grants manage_billing to cashier only, no clinical or patient/order capability', () => {
+    expect(resolveGrantingRole(['cashier'], 'manage_billing')).toBe('cashier');
+    expect(resolveGrantingRole(['cashier'], 'manage_patients')).toBeUndefined();
+    expect(resolveGrantingRole(['cashier'], 'enter_result')).toBeUndefined();
+  });
+
+  it('grants manage_org_settings and manage_users to lab_admin, no clinical capability', () => {
+    expect(resolveGrantingRole(['lab_admin'], 'manage_org_settings')).toBe(
+      'lab_admin',
+    );
+    expect(resolveGrantingRole(['lab_admin'], 'manage_users')).toBe(
+      'lab_admin',
+    );
+    expect(resolveGrantingRole(['lab_admin'], 'enter_result')).toBeUndefined();
+    expect(
+      resolveGrantingRole(['lab_admin'], 'manage_patients'),
+    ).toBeUndefined();
+  });
+
+  it('denies manage_users to every role except lab_admin', () => {
+    expect(resolveGrantingRole(['qa'], 'manage_users')).toBeUndefined();
+    expect(
+      resolveGrantingRole(['technologist'], 'manage_users'),
+    ).toBeUndefined();
+    expect(
+      resolveGrantingRole(['pathologist'], 'manage_users'),
+    ).toBeUndefined();
   });
 });

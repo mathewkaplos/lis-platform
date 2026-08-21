@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { Badge, Card, CardContent, CardHeader, CardTitle } from '@lis/ui';
 import { getValidAccessToken } from '@/auth/access-token';
 import { getSession } from '@/auth/get-session';
-import { hasSpecimenManagementRole, hasVerifierRole } from '@/auth/roles';
+import { hasSpecimenManagementRole, hasPathologistRole } from '@/auth/roles';
 import { createLisApiClient } from '@/lib/api-client';
 import { AddBlockForm } from './add-block-form';
 import { AddOrderedTestForm } from './add-ordered-test-form';
@@ -255,7 +255,7 @@ export default async function CaseDetailPage({
         </Card>
       ) : null}
 
-      {caseData.status === 'pending_review' && hasVerifierRole(session) ? (
+      {caseData.status === 'pending_review' && hasPathologistRole(session) ? (
         <Card className="mx-auto w-full max-w-3xl">
           <CardHeader>
             <CardTitle>Return to screening</CardTitle>
@@ -266,7 +266,7 @@ export default async function CaseDetailPage({
         </Card>
       ) : null}
 
-      {NOT_YET_SIGNED_STATUSES.has(caseData.status) && hasVerifierRole(session) ? (
+      {NOT_YET_SIGNED_STATUSES.has(caseData.status) && hasPathologistRole(session) ? (
         <Card className="mx-auto w-full max-w-3xl">
           <CardHeader>
             <CardTitle>Sign out</CardTitle>
@@ -322,7 +322,7 @@ export default async function CaseDetailPage({
                 ))}
               </ul>
             )}
-            {hasVerifierRole(session) ? <AmendCaseForm caseId={id} /> : null}
+            {hasPathologistRole(session) ? <AmendCaseForm caseId={id} /> : null}
           </CardContent>
         </Card>
       ) : null}

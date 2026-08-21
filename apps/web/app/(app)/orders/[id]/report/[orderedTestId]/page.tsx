@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@lis/ui';
 import { getValidAccessToken } from '@/auth/access-token';
 import { getSession } from '@/auth/get-session';
-import { hasVerifierRole } from '@/auth/roles';
+import { hasPathologistRole } from '@/auth/roles';
 import { createLisApiClient } from '@/lib/api-client';
 
 /**
@@ -31,7 +31,7 @@ export default async function ReportViewerPage({
   }
   const client = createLisApiClient(accessToken);
   const session = await getSession();
-  const isVerifier = hasVerifierRole(session);
+  const isVerifier = hasPathologistRole(session);
 
   const [
     { data: order, response: orderResponse },

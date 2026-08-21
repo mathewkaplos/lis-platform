@@ -14,6 +14,7 @@ import {
   Ruler,
   Settings,
   TestTube,
+  UserCog,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -72,6 +73,11 @@ import { MobileNavTrigger } from './mobile-nav-trigger';
 // partner's own stated "one invoice for all patients in this date range"
 // scenario). Same standing as "Invoices" -- `GET /v1/invoices`'s own
 // `manage_billing` `CapabilityGuard` is the real enforcement point.
+// Issue #703 (EPIC #697): "Users" added -- the first real user-management
+// screen (create/list/deactivate/assign role), closing the original
+// pilot-readiness audit's #2 finding. Same standing as the other admin
+// entries -- not role-filtered here either; `GET /v1/users`'s own
+// `manage_users` `CapabilityGuard` is the real enforcement point.
 const NAV_ITEMS = [
   { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
   { href: '/patients', labelKey: 'patients', icon: Users },
@@ -87,6 +93,7 @@ const NAV_ITEMS = [
   { href: '/admin/tests', labelKey: 'addTest', icon: TestTube },
   { href: '/admin/referring-facilities', labelKey: 'referringFacilities', icon: Building2 },
   { href: '/admin/org-settings', labelKey: 'orgSettings', icon: Settings },
+  { href: '/admin/users', labelKey: 'users', icon: UserCog },
 ] as const;
 
 function SidebarNavLinks({

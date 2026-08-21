@@ -2951,10 +2951,22 @@ export interface components {
             createdAt: string;
         };
         OrgSettingsDto_Output: {
+            name: string | null;
+            address: string | null;
+            phone: string | null;
+            email: string | null;
+            logoUrl: string | null;
+            currency: string | null;
             preferredSynopticSourceStandard: string | null;
         };
         OrgSettingsUpdateDto: {
-            preferredSynopticSourceStandard: string | null;
+            name?: string;
+            address?: string | null;
+            phone?: string | null;
+            email?: string | null;
+            logoUrl?: string | null;
+            currency?: string | null;
+            preferredSynopticSourceStandard?: string | null;
         };
     };
     responses: never;

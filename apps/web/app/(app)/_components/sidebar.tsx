@@ -11,6 +11,7 @@ import {
   Microscope,
   Receipt,
   Ruler,
+  Settings,
   TestTube,
   Users,
   type LucideIcon,
@@ -58,6 +59,13 @@ import { MobileNavTrigger } from './mobile-nav-trigger';
 // role-filtered here either, matching this file's own established
 // convention -- `GET /v1/invoices`'s own `CapabilityGuard` is the real
 // enforcement point.
+// Issue #706 (EPIC #697): "Org settings" added -- the first real
+// organization-profile screen (name/address/contact/logo/currency, plus
+// the pre-existing #692 synoptic-standard preference, which had no editing
+// UI at all before this). Same standing as "Reference ranges"/"Add test"/
+// "Referring facilities" -- not role-filtered here either; `GET
+// /v1/org-settings` needs no capability gate, and the save action's own
+// `manage_org_settings` `CapabilityGuard` is the real enforcement point.
 const NAV_ITEMS = [
   { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
   { href: '/patients', labelKey: 'patients', icon: Users },
@@ -71,6 +79,7 @@ const NAV_ITEMS = [
   { href: '/admin/reference-ranges', labelKey: 'referenceRanges', icon: Ruler },
   { href: '/admin/tests', labelKey: 'addTest', icon: TestTube },
   { href: '/admin/referring-facilities', labelKey: 'referringFacilities', icon: Building2 },
+  { href: '/admin/org-settings', labelKey: 'orgSettings', icon: Settings },
 ] as const;
 
 function SidebarNavLinks({

@@ -1284,6 +1284,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/cases/{id}/audit-trail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CaseController_getAuditTrail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/cases/{id}/narrative": {
         parameters: {
             query?: never;
@@ -2685,6 +2701,23 @@ export interface components {
                 microscopicDescription: string | null;
                 diagnosis: string | null;
             } | null;
+        };
+        CaseAuditTrailResponseDto_Output: {
+            items: {
+                /** Format: uuid */
+                id: string;
+                /** Format: date-time */
+                occurredAt: string;
+                action: string;
+                /** Format: uuid */
+                actorPrincipalId: string;
+                actorRole: string;
+                reason: string | null;
+                stepUp: {
+                    authTime: number;
+                    method: string;
+                } | null;
+            }[];
         };
         CaseNarrativeUpdateDto: {
             grossDescription?: string;
@@ -4813,6 +4846,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CaseLineageDto_Output"];
+                };
+            };
+        };
+    };
+    CaseController_getAuditTrail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseAuditTrailResponseDto_Output"];
                 };
             };
         };

@@ -19,6 +19,7 @@ import {
   blockOrderedTestLinkCreateSchema,
   caseAmendRequestSchema,
   caseReturnToScreeningRequestSchema,
+  caseAuditTrailResponseSchema,
   caseCreateSchema,
   caseLineageSchema,
   caseListQuerySchema,
@@ -28,6 +29,8 @@ import {
   caseSynopticResponseListSchema,
   type Block,
   type Case,
+  type CaseAuditEvent,
+  type CaseAuditTrailResponse,
   type CaseLineage,
   type CaseLineageSlide,
   type CaseListResponse,
@@ -39,6 +42,7 @@ import {
   type WholeSlideImageStatus,
 } from '@lis/domain';
 import {
+  auditEvent,
   block,
   blockFulfillment,
   caseNarrative,
@@ -66,7 +70,16 @@ import {
 import { assembleCaseReportContent } from './case-report-content-assembler';
 import { renderCaseReportPdf } from './case-report-render';
 import { findSynopticGridAnalyte } from '../synoptic-protocol/synoptic-response-recorder';
-import { and, count, desc, eq, inArray, isNull, notInArray } from 'drizzle-orm';
+import {
+  and,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  notInArray,
+  or,
+} from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { Audit } from '../auth/audit.decorator';
@@ -99,6 +112,9 @@ class CaseReturnToScreeningRequestDto extends createZodDto(
 class CaseNarrativeUpdateDto extends createZodDto(caseNarrativeUpdateSchema) {}
 class CaseListQueryDto extends createZodDto(caseListQuerySchema) {}
 class CaseListResponseDto extends createZodDto(caseListResponseSchema) {}
+class CaseAuditTrailResponseDto extends createZodDto(
+  caseAuditTrailResponseSchema,
+) {}
 class CaseReportVersionListResponseDto extends createZodDto(
   caseReportVersionListResponseSchema,
 ) {}
@@ -119,6 +135,30 @@ function toCaseDto(row: typeof caseTable.$inferSelect): Case {
     ...row,
     status: row.status as Case['status'], // CHECK-constrained (ck_case_status)
     createdAt: row.createdAt.toISOString(),
+  };
+}
+
+// Issue #714: `context` is a loosely-typed jsonb column at the schema level
+// (`{ request_id, session_ref, source_ip, client, step_up? }`, per
+// audit.ts's own header comment) -- narrowed here to just the one field
+// this screen surfaces, matching every other text-discriminator DTO in this
+// file's "narrow at the response boundary" convention.
+function toCaseAuditEventDto(
+  row: typeof auditEvent.$inferSelect,
+): CaseAuditEvent {
+  const context = row.context as {
+    step_up?: { authTime: number; method: string };
+  } | null;
+  return {
+    id: row.id,
+    occurredAt: row.occurredAt.toISOString(),
+    action: row.action,
+    actorPrincipalId: row.actorPrincipalId,
+    actorRole: row.actorRole,
+    reason: row.reason,
+    stepUp: context?.step_up
+      ? { authTime: context.step_up.authTime, method: context.step_up.method }
+      : null,
   };
 }
 
@@ -825,6 +865,68 @@ export class CaseController {
       })),
       narrative: narrativeRow ? toCaseNarrativeDto(narrativeRow) : null,
     };
+  }
+
+  /**
+   * Issue #714 (EPIC #697): the case's own audit trail -- previously
+   * visible only by reading a raw API response (`finalize()`/`amend()`'s
+   * own `context.step_up`), never from a screen. Read-only, no capability
+   * gate, same as `getById`/`list` above -- viewing a case's own history is
+   * informational, not a write action.
+   *
+   * Two `resourceType`s merged: the case's own directly-audited actions
+   * (`resourceType: 'case'`, resourceId = this case's id -- accession,
+   * add_block, add_slide, record_narrative, screen, return_to_screening)
+   * and its report-version lifecycle events (`resourceType:
+   * 'case_report_version'`, resourceId = one of this case's own report
+   * version ids -- sign_out, amend). Not every child entity's own
+   * individually-audited row (a block's `resourceType: 'block'` carries the
+   * *block's* id, not the case's) -- this is the case-lifecycle trail the
+   * issue itself names, not a full recursive audit of every descendant.
+   */
+  @Get('v1/cases/:id/audit-trail')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(TenantContextInterceptor)
+  @ZodResponse({ type: CaseAuditTrailResponseDto, status: 200 })
+  async getAuditTrail(
+    @Param(new ZodValidationPipe(idParamSchema)) { id }: IdParamDto,
+    @DbTx() tx: RequestWithTx['tx'],
+  ): Promise<CaseAuditTrailResponse> {
+    const [caseRow] = await tx
+      .select({ id: caseTable.id })
+      .from(caseTable)
+      .where(eq(caseTable.id, id))
+      .limit(1);
+    if (!caseRow) {
+      throw new NotFoundException('Case not found');
+    }
+
+    const reportVersionRows = await tx
+      .select({ id: caseReportVersion.id })
+      .from(caseReportVersion)
+      .where(eq(caseReportVersion.caseId, id));
+    const reportVersionIds = reportVersionRows.map((row) => row.id);
+
+    const rows = await tx
+      .select()
+      .from(auditEvent)
+      .where(
+        or(
+          and(
+            eq(auditEvent.resourceType, 'case'),
+            eq(auditEvent.resourceId, id),
+          ),
+          reportVersionIds.length > 0
+            ? and(
+                eq(auditEvent.resourceType, 'case_report_version'),
+                inArray(auditEvent.resourceId, reportVersionIds),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(desc(auditEvent.sequence));
+
+    return { items: rows.map(toCaseAuditEventDto) };
   }
 
   /**

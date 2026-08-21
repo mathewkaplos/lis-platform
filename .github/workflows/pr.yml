@@ -266,10 +266,20 @@ jobs:
       - run: pnpm --filter @lis/db build
       - run: pnpm --filter @lis/db migrate
       - run: psql "$DATABASE_URL" -c "ALTER ROLE lis_app WITH PASSWORD 'lis_app_ci_password';"
-      # Only the chemistry-catalog seed -- the check's own fixture setup
-      # reuses that seed's fixed tenant's test_definition/analyte/unit rows
-      # (its own header comment), nothing from any other discipline seed.
+      # chemistry-catalog -- the check's own fixture setup reuses that
+      # seed's fixed tenant's test_definition/analyte/unit rows (its own
+      # header comment), nothing from any other discipline seed.
       - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/chemistry-catalog.sql
+      # sla-targets / default-report-templates -- found live (this job's own
+      # first run): the check discovers every tenant-scoped table
+      # structurally and checks all of them, but never inserts its own
+      # fixture for report_template/report_template_version/sla_target --
+      # it relies on these already existing from the normal seed sequence
+      # (default-report-templates.sql needs chemistry-catalog's own
+      # test_analyte rows already seeded above, matching its own "every test
+      # with at least one test_analyte" logic).
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/sla-targets.sql
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/default-report-templates.sql
       - run: pnpm --filter @lis/db rls-check
 
   # TASK-037: CI-enforcing a11y check on the 6 design-system primitives (packages/ui).

@@ -3,11 +3,15 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
+import { createDb, caseTable } from '@lis/db';
+import { eq, sql } from 'drizzle-orm';
 import { AppModule } from './../src/app.module';
 import { getKeycloakToken } from './get-keycloak-token';
 import { getKeycloakFreshToken } from './get-keycloak-fresh-token';
 
+const TENANT_A = '00000000-0000-0000-0000-000000000001';
 const TENANT_A_GLUCOSE_CODE = 'GLU';
+const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
 
 /**
  * FEAT-057 (ADR-0049, docs/plans/feat-057-case-specimen-block-slide-hierarchy.md).
@@ -377,5 +381,71 @@ describe('Case API (e2e)', () => {
       .get(`/v1/cases/${randomUUID()}`)
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(404);
+  });
+
+  describe('DB-level status transition guard (issue #671)', () => {
+    it('rejects an illegal case.status transition via a raw SQL UPDATE, bypassing the application layer entirely', async () => {
+      const orderId = await createOrder();
+      const { resourceId: caseId } = await createCase(orderId);
+      // Freshly created -- status 'accessioned'. Jumping straight to
+      // 'amended' skips every legal intermediate transition
+      // (pending_review/signed_out) -- illegal under any real path.
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+      let rejected = false;
+      try {
+        await db.execute(
+          sql`UPDATE "case" SET status = 'amended' WHERE id = ${caseId}`,
+        );
+      } catch (err) {
+        rejected = true;
+        // drizzle wraps the raw pg error as `Failed query: ...` -- the
+        // trigger's own RAISE EXCEPTION message is on the underlying
+        // driver error's own `.cause`.
+        const cause = err instanceof Error ? err.cause : undefined;
+        const message = cause instanceof Error ? cause.message : String(err);
+        if (!message.includes('illegal case status transition')) {
+          throw new Error(
+            `expected the trigger's own exception message, got: ${message}`,
+          );
+        }
+      }
+      if (!rejected) {
+        throw new Error(
+          'expected the raw SQL UPDATE to be rejected by trg_case_status_transition_guard',
+        );
+      }
+
+      // A failed statement can leave the pooled connection replaced (its
+      // own session-scoped set_config lost) -- re-set it before the
+      // follow-up read.
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+      const [row] = await db
+        .select({ status: caseTable.status })
+        .from(caseTable)
+        .where(eq(caseTable.id, caseId))
+        .limit(1);
+      if (row?.status !== 'accessioned') {
+        throw new Error(
+          `expected the rejected UPDATE to leave status unchanged, got ${JSON.stringify(row)}`,
+        );
+      }
+    });
+
+    it('allows a same-status UPDATE (no status change) to pass through unaffected', async () => {
+      const orderId = await createOrder();
+      const { resourceId: caseId } = await createCase(orderId);
+      await db.execute(
+        sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+      );
+      // No exception expected -- the trigger's own WHEN clause only fires
+      // on an actual status change.
+      await db.execute(
+        sql`UPDATE "case" SET status = 'accessioned' WHERE id = ${caseId}`,
+      );
+    });
   });
 });

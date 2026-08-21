@@ -212,11 +212,23 @@ async function insertFixtures(db: Db) {
     patientUserId: "99999999-9999-9999-9999-999999999999",
     patientId: pat.id,
   });
-  await db.insert(resultReleasePolicy).values({
-    tenantId: TENANT_A,
-    mode: "immediate",
-    delayHours: 0,
-  });
+  // Issue found live in CI (not reproducible against a fresh local
+  // `db-reset.sh`, since no e2e spec has run yet there): `result_release_policy`
+  // is unique on `tenant_id` alone (one org-wide policy row per tenant), and
+  // some real e2e spec (portal/FEAT-039-related) already creates TENANT_A's
+  // row before this check runs in CI's own sequence (placed after every e2e
+  // suite, §4 of this task's own proposal doc). `onConflictDoNothing` here,
+  // not a plain insert -- the leak check below only needs *a* TENANT_A row to
+  // exist to prove isolation against, not specifically one this script itself
+  // created.
+  await db
+    .insert(resultReleasePolicy)
+    .values({
+      tenantId: TENANT_A,
+      mode: "immediate",
+      delayHours: 0,
+    })
+    .onConflictDoNothing({ target: resultReleasePolicy.tenantId });
 
   const [ord] = await db.insert(order).values({ tenantId: TENANT_A, patientId: pat.id }).returning();
   const [ot] = await db

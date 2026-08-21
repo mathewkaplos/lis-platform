@@ -6,7 +6,8 @@ import type { Pool } from "pg";
  * FEAT-049: seeds a brand-new tenant's starter test catalog by re-running
  * the exact same seed SQL `db-reset.sh` already runs for the fixed
  * placeholder tenant (`db/seed/chemistry-catalog.sql`,
- * `db/seed/haematology-catalog.sql`), with that fixed tenant literal
+ * `db/seed/haematology-catalog.sql`, and -- issue #705 -- `db/seed/
+ * anatomic-pathology-catalog.sql`), with that fixed tenant literal
  * text-substituted for the new tenant's real id.
  *
  * Deliberately NOT a hand-ported, parameterized re-implementation of those
@@ -28,7 +29,15 @@ import type { Pool } from "pg";
  * bootstrap script with no tenant context to bind yet.
  */
 const FIXED_SEED_TENANT = "00000000-0000-0000-0000-000000000001";
-const SEED_FILES = ["chemistry-catalog.sql", "haematology-catalog.sql"];
+// Issue #705 (EPIC #697): anatomic-pathology-catalog.sql added -- a real,
+// orderable/billable AP procedure menu, same starter-catalog standing as
+// the other two files (a fresh self-signup tenant gets it too, not just
+// the fixed dev/CI tenant).
+const SEED_FILES = [
+  "chemistry-catalog.sql",
+  "haematology-catalog.sql",
+  "anatomic-pathology-catalog.sql",
+];
 
 export async function seedStarterCatalog(pool: Pool, tenantId: string): Promise<void> {
   const client = await pool.connect();

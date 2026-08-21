@@ -46,6 +46,16 @@ echo "Seed applied: sla-targets.sql (placeholder routine/STAT turnaround targets
 docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/microbiology-catalog.sql
 echo "Seed applied: microbiology-catalog.sql (culture/organism-ID reflex pair + real EUCAST v16.0 breakpoint catalog)."
 
+# Issue #705 (EPIC #697): fourth discipline seed (anatomic pathology) --
+# a real, orderable/billable AP procedure menu (no code_system_value/
+# analyte chain needed -- an AP result is a case narrative, not a numeric
+# analyte value, see the file's own header comment). Order doesn't matter
+# relative to the other discipline seeds (no shared dependency); placed
+# here to keep every discipline catalog grouped together before
+# default-report-templates.sql runs.
+docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/anatomic-pathology-catalog.sql
+echo "Seed applied: anatomic-pathology-catalog.sql (placeholder AP procedure/billing catalog — see its header comment)."
+
 # FEAT-032: default, published report_template_version for every seeded
 # test_definition (chemistry + haematology, both already applied above) --
 # must run after both discipline seeds.

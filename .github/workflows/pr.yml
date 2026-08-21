@@ -137,6 +137,11 @@ jobs:
       # FEAT-052: third discipline seed (microbiology) -- must run before
       # default-report-templates.sql below, same ordering as the other two.
       - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/microbiology-catalog.sql
+      # Issue #705 (EPIC #697): fourth discipline seed (anatomic pathology)
+      # -- same ordering as scripts/db-reset.sh (no shared dependency with
+      # the other discipline seeds; placed here to keep every discipline
+      # catalog grouped before default-report-templates.sql).
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/anatomic-pathology-catalog.sql
       # FEAT-032: default, published report_template_version for every
       # seeded test_definition -- must run after both discipline seeds
       # above (database-design Skill entry #12: wired here separately from

@@ -120,9 +120,20 @@ export function OrderBuilderForm({
           <p className="text-sm text-text-secondary">
             {state.createdTestCount} {state.createdTestCount === 1 ? 'test' : 'tests'} ordered.
           </p>
-          <Button asChild className="w-fit">
-            <Link href={backHref}>{backLabel}</Link>
-          </Button>
+          {/* Issue #709: previously only "back to patient" -- no path
+              forward from here, even though the very next real-world step
+              (accessioning, if this is an AP specimen) starts from the
+              order's own detail page. */}
+          <div className="flex w-fit gap-2">
+            {state.createdOrderId ? (
+              <Button asChild>
+                <Link href={`/orders/${state.createdOrderId}`}>View order</Link>
+              </Button>
+            ) : null}
+            <Button asChild variant="outline">
+              <Link href={backHref}>{backLabel}</Link>
+            </Button>
+          </div>
         </CardContent>
       </Card>
     );

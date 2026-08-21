@@ -128,6 +128,10 @@ export async function registerPatient(
   // (JSON either way) — re-reading via `response.json()` would throw
   // "body already used", so this reads the same already-parsed `data`,
   // explicitly cast to the shape the controller actually returns.
-  const created = data as unknown as { after: { mrn: string } };
-  return { status: 'created', createdMrn: created.after.mrn };
+  const created = data as unknown as { resourceId: string; after: { mrn: string } };
+  return {
+    status: 'created',
+    createdMrn: created.after.mrn,
+    createdPatientId: created.resourceId,
+  };
 }

@@ -35,6 +35,10 @@ export interface RegisterPatientState {
   formError?: string;
   duplicateMatch?: DuplicateMatch;
   createdMrn?: string;
+  // Issue #709: needed so the success screen can link straight to "Place an
+  // order for this patient" / "View patient" instead of dead-ending on a
+  // bare confirmation card.
+  createdPatientId?: string;
   // Echoed back so the client can re-render the form with what the user
   // typed — both for the duplicate-confirm resubmission (hidden inputs
   // carrying the exact values forward, not read back out of the DOM, which

@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState } from 'react';
+import Link from 'next/link';
 import {
   Button,
   Card,
@@ -36,11 +37,28 @@ export default function NewPatientPage() {
         <CardHeader>
           <CardTitle>Patient registered</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-text-secondary">
             MRN <span className="font-mono text-foreground">{state.createdMrn}</span> was
             assigned.
           </p>
+          {/* Issue #709: the success screen previously dead-ended here with
+              no next-step affordance, in a product whose whole point is a
+              multi-step pipeline (register -> order -> accession -> ...). */}
+          <div className="flex gap-2">
+            {state.createdPatientId ? (
+              <Button asChild>
+                <Link href={`/orders/new?patientId=${state.createdPatientId}`}>
+                  Place an order
+                </Link>
+              </Button>
+            ) : null}
+            <Button asChild variant="outline">
+              <Link href={state.createdPatientId ? `/patients/${state.createdPatientId}` : '/patients'}>
+                View patient
+              </Link>
+            </Button>
+          </div>
         </CardContent>
       </Card>
     );

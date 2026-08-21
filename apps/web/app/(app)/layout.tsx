@@ -28,6 +28,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-full flex-1">
+      {/* Issue #717 (EPIC #697): a keyboard-only user otherwise tabs through the
+          entire sidebar nav (14 links) plus the mobile-nav trigger and every
+          TopBar control before ever reaching page content -- on every single
+          page load, since the sidebar/topbar are shared shell chrome, not
+          per-page. Standard WCAG 2.4.1 "Bypass Blocks" pattern: visually
+          hidden until focused, first in tab order. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring"
+      >
+        Skip to main content
+      </a>
       <Sidebar />
       <div className="flex flex-1 flex-col">
         <MobileTopNav />
@@ -37,7 +49,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           theme={isTheme(themeCookie) ? themeCookie : undefined}
           locale={isLocale(localeCookie) ? localeCookie : DEFAULT_LOCALE}
         />
-        <main className="flex-1 overflow-y-auto p-6 print:p-0">{children}</main>
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 overflow-y-auto p-6 outline-none print:p-0"
+        >
+          {children}
+        </main>
       </div>
     </div>
   );

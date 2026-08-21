@@ -48,7 +48,7 @@ export function CasesTable({ rows }: { rows: CaseRow[] }) {
       data={rows}
       getRowId={(row) => row.id}
       onRowClick={(row) => router.push(`/cases/${row.id}`)}
-      emptyMessage="No cases yet."
+      emptyMessage="No cases yet. Start one from an order's own detail page (Orders → open an order → New AP case)."
     />
   );
 }

@@ -217,6 +217,71 @@ jobs:
           fi
       - run: pnpm build
 
+  # Coverage-improvement pass (2026-08-22): TASK-024's real, live
+  # cross-table RLS isolation check (45 tenant-scoped tables) existed but
+  # was manual-only. Its own header comment previously said this was
+  # "deliberately NOT wired into CI" because CI had no DATABASE_URL/
+  # migration step at all yet -- that caveat went stale as of TASK-026, but
+  # wiring it into build-and-test directly (tried first) turned out to be
+  # wrong: `liveLeakCheck`'s own design assumes "TENANT_B is deliberately
+  # never written to by anything," which is true against a freshly
+  # seeded-only database but false the moment any of the dozens of real
+  # e2e specs that legitimately exercise cross-tenant isolation (test-user-2
+  # = TENANT_B) have run first -- their own real writes to patient/order/
+  # observation/control_lot/etc. under TENANT_B then look indistinguishable
+  # from an RLS leak to this check's blind `count(*) != 0`. Confirmed live,
+  # not guessed: build-and-test's own shared, accumulating Postgres failed
+  # this check on exactly the tables e2e specs are known to write real
+  # TENANT_B data to, with counts matching what those specs create -- not a
+  # connection-pooling artifact (ruled out first, kept the `{ max: 1 }` fix
+  # as good hygiene regardless, but it wasn't the actual cause). A
+  # dedicated job with its own fresh, single-purpose Postgres (same
+  # `services:` pattern as build-and-test's own) sidesteps this cleanly:
+  # neither tenant has ever been touched by anything except this seed +
+  # this check, so the check's own "TENANT_B stays empty" assumption is
+  # actually true here -- same isolation principle storybook-a11y already
+  # gets its own job for, applied to a check that's fundamentally testing
+  # something orthogonal to functional e2e correctness too.
+  rls-isolation-check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lis
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lis
+      APP_DATABASE_URL: postgresql://lis_app:lis_app_ci_password@localhost:5432/lis
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lis/db build
+      - run: pnpm --filter @lis/db migrate
+      - run: psql "$DATABASE_URL" -c "ALTER ROLE lis_app WITH PASSWORD 'lis_app_ci_password';"
+      # chemistry-catalog -- the check's own fixture setup reuses that
+      # seed's fixed tenant's test_definition/analyte/unit rows (its own
+      # header comment), nothing from any other discipline seed.
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/chemistry-catalog.sql
+      # sla-targets / default-report-templates -- found live (this job's own
+      # first run): the check discovers every tenant-scoped table
+      # structurally and checks all of them, but never inserts its own
+      # fixture for report_template/report_template_version/sla_target --
+      # it relies on these already existing from the normal seed sequence
+      # (default-report-templates.sql needs chemistry-catalog's own
+      # test_analyte rows already seeded above, matching its own "every test
+      # with at least one test_analyte" logic).
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/sla-targets.sql
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/default-report-templates.sql
+      - run: pnpm --filter @lis/db rls-check
+
   # TASK-037: CI-enforcing a11y check on the 6 design-system primitives (packages/ui).
   # Independent of build-and-test above -- no Postgres/Keycloak needed, this is
   # packages/ui-only. Runs inside the official Playwright image specifically to avoid

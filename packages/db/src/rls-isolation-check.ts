@@ -10,13 +10,24 @@
  * that forgets one can't slip through unnoticed, and (b) exercises real
  * cross-tenant data access and confirms the wrong tenant sees nothing.
  *
- * Deliberately NOT wired into CI here. CI (`pr.yml`) provisions a real
- * Postgres service but has no DATABASE_URL/migration step at all yet —
- * building that out is FEAT-007/TASK-026's explicit job ("golden-dataset
- * test runner in CI"), not TASK-024's. This runs against a real Postgres
- * instance manually (`pnpm --filter @lis/db rls-check`, after `pnpm
- * db:reset`) until that CI harness exists, at which point it's a natural
- * fit to wire in as-is.
+ * Wired into CI as of the coverage pass that added the missing
+ * `case_narrative` fixture below -- the original "not wired in yet, CI has
+ * no DATABASE_URL/migration step" caveat here is stale as of TASK-026,
+ * which built that out. Runs in its own dedicated `rls-isolation-check` job
+ * in `pr.yml`, deliberately NOT inside `build-and-test`'s own shared
+ * Postgres: this check's `liveLeakCheck()` assumes TENANT_B is untouched by
+ * anything else, which is only true against a database nothing but this
+ * seed + this check has ever written to -- `build-and-test`'s own Postgres
+ * accumulates real cross-tenant data from the dozens of e2e specs that
+ * legitimately exercise TENANT_B (test-user-2) for their own isolation
+ * tests, which this check's naive `count(*) != 0` can't distinguish from
+ * an actual leak (found live: a first attempt at wiring this into
+ * `build-and-test`, placed after every e2e suite, failed on exactly the
+ * tables those specs are known to write real TENANT_B rows to). Can still
+ * be run manually against a local Postgres too (`pnpm --filter @lis/db
+ * rls-check`, after `bash scripts/db-reset.sh` -- this script's own
+ * fixtures are insert-only, so it must run against a freshly reset DB,
+ * never a second time in a row against the same one).
  *
  * Connects as `lis_app` (APP_DATABASE_URL), never `postgres` — the
  * BYPASSRLS/superuser lesson from TASK-017 applies here more than anywhere:
@@ -46,7 +57,7 @@ import { observationIdempotencyKey } from "./schema/observation-idempotency";
 import { outboxEvent } from "./schema/outbox-event";
 import { slaBreach } from "./schema/sla-breach";
 import { workflowDefinition, workflowRuleFiring } from "./schema/workflow-definition";
-import { caseTable, block, slide, blockFulfillment, caseReportVersion } from "./schema/anatomic-pathology";
+import { caseTable, block, slide, blockFulfillment, caseNarrative, caseReportVersion } from "./schema/anatomic-pathology";
 import { wholeSlideImage } from "./schema/whole-slide-image";
 import { writeAuditEvent } from "./audit";
 
@@ -210,11 +221,23 @@ async function insertFixtures(db: Db) {
     patientUserId: "99999999-9999-9999-9999-999999999999",
     patientId: pat.id,
   });
-  await db.insert(resultReleasePolicy).values({
-    tenantId: TENANT_A,
-    mode: "immediate",
-    delayHours: 0,
-  });
+  // Issue found live in CI (not reproducible against a fresh local
+  // `db-reset.sh`, since no e2e spec has run yet there): `result_release_policy`
+  // is unique on `tenant_id` alone (one org-wide policy row per tenant), and
+  // some real e2e spec (portal/FEAT-039-related) already creates TENANT_A's
+  // row before this check runs in CI's own sequence (placed after every e2e
+  // suite, §4 of this task's own proposal doc). `onConflictDoNothing` here,
+  // not a plain insert -- the leak check below only needs *a* TENANT_A row to
+  // exist to prove isolation against, not specifically one this script itself
+  // created.
+  await db
+    .insert(resultReleasePolicy)
+    .values({
+      tenantId: TENANT_A,
+      mode: "immediate",
+      delayHours: 0,
+    })
+    .onConflictDoNothing({ target: resultReleasePolicy.tenantId });
 
   const [ord] = await db.insert(order).values({ tenantId: TENANT_A, patientId: pat.id }).returning();
   const [ot] = await db
@@ -425,6 +448,21 @@ async function insertFixtures(db: Db) {
     .returning();
   await db.insert(blockFulfillment).values({ tenantId: TENANT_A, blockId: blockRow.id, orderedTestId: apOrderedTest.id });
 
+  // FEAT-057 (ADR-0049): case_narrative fixture — a genuinely new tenant
+  // table this feature introduces, missed in this check's original fixture
+  // chain above (found live: the structural sweep and every other table's
+  // leak check passed, but this one table had zero TENANT_A rows to prove
+  // isolation against at all -- a gap in this script's own coverage, not a
+  // real RLS/security issue).
+  await db.insert(caseNarrative).values({
+    tenantId: TENANT_A,
+    caseId: caseRow.id,
+    grossDescription: "RLS check fixture -- gross description",
+    microscopicDescription: "RLS check fixture -- microscopic description",
+    diagnosis: "RLS check fixture -- diagnosis",
+    updatedByUserId: "99999999-9999-9999-9999-999999999999",
+  });
+
   // FEAT-059 (ADR-0051): case_report_version fixture — a genuinely new
   // tenant table this feature introduces. Direct insert (not the real
   // sign-out route/signing module) is sufficient here: this check only
@@ -507,7 +545,19 @@ async function liveLeakCheck(db: Db, tables: string[]): Promise<string[]> {
 }
 
 async function main() {
-  const db = createDb(APP_DATABASE_URL);
+  // `{ max: 1 }`: `setTenant()` uses session-level `set_config`
+  // (`is_local: false`, deliberately -- see its own comment), which sticks
+  // to whichever physical connection ran it. A multi-connection pool risks
+  // the TENANT_A fixture-insert phase and TENANT_B leak-check phase landing
+  // on different physical connections, which would produce a spurious leak
+  // report. Ruled out as the cause of a real CI-only failure this script
+  // hit (a naive count-based leak check reading real TENANT_B data written
+  // by e2e specs that legitimately exercise cross-tenant isolation, not a
+  // connection artifact -- see this check's own dedicated CI job in
+  // pr.yml for the real root cause and fix), but kept as correct, cheap
+  // hygiene matching `tenant-catalog-seed-check.ts`'s own identical
+  // single-shot-but-multi-tenant precedent.
+  const db = createDb(APP_DATABASE_URL, { max: 1 });
 
   console.log("TASK-024: cross-table RLS isolation check (connected as lis_app)\n");
 
@@ -523,7 +573,7 @@ async function main() {
     "Fixtures inserted for patient/patient_alert/referring_facility/order/ordered_test/specimen/specimen_fulfillment/observation/" +
       "result_history/report/culture_read/instrument_analyte_mapping/invoice/invoice_line_item/payment/" +
       "observation_idempotency_key/outbox_event/sla_breach/workflow_definition/workflow_rule_firing/" +
-      "case/block/slide/block_fulfillment/case_report_version/image_attachment/image_annotation/whole_slide_image.\n",
+      "case/block/slide/block_fulfillment/case_narrative/case_report_version/image_attachment/image_annotation/whole_slide_image.\n",
   );
 
   console.log("--- Live cross-tenant leak check: TENANT_B must see 0 rows of TENANT_A's data ---");

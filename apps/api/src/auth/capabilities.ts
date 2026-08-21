@@ -99,6 +99,12 @@
  * dedicated `cashier` role in Keycloak yet (a real, separate infra
  * decision the proposal explicitly deferred, not this task's own scope).
  *
+ * `manage_org_settings` (issue #692): granted to `qa`, identical reasoning
+ * to `manage_workflow`/`manage_report_templates`/`manage_catalog` -- setting
+ * the org's default synoptic reporting standard changes what every future
+ * recorder sees on the #690 disambiguation picker, the same lab-oversight
+ * class of action as those three, not day-to-day result entry/verification.
+ *
  * `platform_analytics` (FEAT-056 proposal §10 Q2, ADR-0048): granted only
  * to `platform-analytics`, a machine role held exclusively by
  * `lis-platform-analytics`'s own Keycloak service-account client — never
@@ -129,6 +135,7 @@ export type Capability =
   | 'view_related_patient_results'
   | 'acknowledge_critical_own_patient'
   | 'manage_billing'
+  | 'manage_org_settings'
   | 'platform_analytics';
 
 const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
@@ -153,6 +160,7 @@ const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
     'manage_report_templates',
     'manage_catalog',
     'view_operational_reports',
+    'manage_org_settings',
   ],
   'gateway-ingest': ['gateway_ingest'],
   'interop-ingest': ['interop_ingest'],

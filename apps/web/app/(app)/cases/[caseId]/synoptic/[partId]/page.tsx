@@ -99,7 +99,24 @@ export default async function SynopticProtocolPage({
   // protocol") so the two selection axes never collide.
   let protocol = eligibleOrganProtocols[0];
   if (eligibleOrganProtocols.length > 1) {
-    const chosen = eligibleOrganProtocols.find((p) => p.id === requestedOrganProtocolId);
+    let chosen = eligibleOrganProtocols.find((p) => p.id === requestedOrganProtocolId);
+    if (!chosen) {
+      // Issue #692: an org-wide default reporting standard, checked only
+      // once no explicit organProtocolId resolved the choice already --
+      // if set and exactly one eligible protocol matches it, that's the
+      // same as if the caller had picked it themselves. Falls through to
+      // the picker below when no preference is set, or the preferred
+      // standard has no eligible protocol for this specimenType.
+      const { data: orgSettings } = await client.GET('/v1/org-settings');
+      if (orgSettings?.preferredSynopticSourceStandard) {
+        const preferredMatches = eligibleOrganProtocols.filter(
+          (p) => p.sourceStandard === orgSettings.preferredSynopticSourceStandard,
+        );
+        if (preferredMatches.length === 1) {
+          chosen = preferredMatches[0];
+        }
+      }
+    }
     if (!chosen) {
       return (
         <div className="flex flex-1 flex-col gap-4 p-6">

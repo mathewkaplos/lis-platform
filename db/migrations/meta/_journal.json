@@ -428,6 +428,13 @@
       "when": 1787273000000,
       "tag": "0060_case_status_transition_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1787290993130,
+      "tag": "0061_tenant_preferred_synoptic_standard",
+      "breakpoints": true
     }
   ]
 }

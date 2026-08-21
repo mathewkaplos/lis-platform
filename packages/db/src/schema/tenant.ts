@@ -34,5 +34,14 @@ export const tenant = pgTable("tenant", {
   // existing global registry row, not a new table (the smallest schema
   // addition that satisfies the requirement).
   amrSurveillanceOptIn: boolean("amr_surveillance_opt_in").notNull().default(false),
+  // Issue #692: an org-wide default reporting standard (e.g. 'CAP', 'ICCR')
+  // for the synoptic-protocol recording page's own #690 disambiguation
+  // picker -- when set, and exactly one eligible protocol for a given
+  // specimenType matches it, the picker is skipped entirely. Free text, not
+  // an enum, matching synoptic_protocol.source_standard's own existing
+  // unconstrained-text convention (never enum-constrained in this schema).
+  // Null (the default) means "no preference" -- every specimenType with 2+
+  // eligible protocols keeps showing the picker, unchanged.
+  preferredSynopticSourceStandard: text("preferred_synoptic_source_standard"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

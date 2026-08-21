@@ -38,6 +38,7 @@ import { SynopticProtocolModule } from './synoptic-protocol/synoptic-protocol.mo
 import { ImageAttachmentModule } from './image-attachment/image-attachment.module';
 import { ReferringFacilityModule } from './referring-facility/referring-facility.module';
 import { WholeSlideImageModule } from './whole-slide-image/whole-slide-image.module';
+import { OrgSettingsModule } from './org-settings/org-settings.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
 @Module({
@@ -83,6 +84,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     ImageAttachmentModule,
     ReferringFacilityModule,
     WholeSlideImageModule,
+    OrgSettingsModule,
   ],
   controllers: [AppController],
   providers: [

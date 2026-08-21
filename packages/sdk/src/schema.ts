@@ -1901,6 +1901,7 @@ export interface components {
             notesAiOriginated: boolean;
             /** @enum {string|null} */
             notesAiDisposition: "accepted" | "edited" | null;
+            valueDisplay: string | null;
         };
         PriorObservationDto_Output: {
             /** Format: uuid */

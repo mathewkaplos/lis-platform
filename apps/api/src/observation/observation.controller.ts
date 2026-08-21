@@ -51,6 +51,10 @@ import type { RequestWithTx } from '../auth/tenant-context.interceptor';
 import { TenantContextInterceptor } from '../auth/tenant-context.interceptor';
 import { FinalizationRollupInterceptor } from './finalization-rollup.interceptor';
 import { ObservationWriteService } from './observation-write.service';
+import {
+  formatObservationValue,
+  resolveOrganismDisplayOverrides,
+} from '../report/report-assembly';
 
 const orderedTestIdParamSchema = z.object({ id: z.uuid() });
 const resultParamSchema = z.object({ id: z.uuid(), analyteId: z.uuid() });
@@ -113,6 +117,11 @@ export function toObservationDto(row: ObservationRow): ObservationResult {
     notesAiOriginated: row.notesAiOriginated,
     notesAiDisposition:
       row.notesAiDisposition as ObservationResult['notesAiDisposition'],
+    // Issue #694: only `list()` below ever populates this (it needs extra
+    // catalog lookups this mapper deliberately stays free of, for every
+    // other caller -- draft/finalize/verify never need a resolved display
+    // value on their own response).
+    valueDisplay: null,
   };
 }
 
@@ -873,6 +882,26 @@ export class ObservationController {
       .select()
       .from(observation)
       .where(eq(observation.orderedTestId, id));
-    return rows.map(toObservationDto);
+
+    // Issue #694: resolves the two dataTypes whose raw column(s) alone
+    // aren't legible on their own -- see `observationSchema.valueDisplay`'s
+    // own comment (`@lis/domain`) for the exact scope (Organism Identified
+    // only among coded analytes; every `table` row's own compact summary).
+    const observationByAnalyteId = new Map(
+      rows.map((row) => [row.analyteId, row]),
+    );
+    const organismDisplayOverrides = await resolveOrganismDisplayOverrides(
+      tx,
+      rows.map((row) => row.analyteId),
+      observationByAnalyteId,
+    );
+    return rows.map((row) => {
+      const dto = toObservationDto(row);
+      if (row.dataType === 'table') {
+        return { ...dto, valueDisplay: formatObservationValue(row) };
+      }
+      const override = organismDisplayOverrides.get(row.analyteId);
+      return override ? { ...dto, valueDisplay: override } : dto;
+    });
   }
 }

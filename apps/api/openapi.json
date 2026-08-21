@@ -4751,6 +4751,10 @@
               null
             ],
             "nullable": true
+          },
+          "valueDisplay": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
@@ -4775,7 +4779,8 @@
           "verifiedAt",
           "notes",
           "notesAiOriginated",
-          "notesAiDisposition"
+          "notesAiDisposition",
+          "valueDisplay"
         ],
         "additionalProperties": false
       },

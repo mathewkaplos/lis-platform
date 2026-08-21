@@ -1,6 +1,6 @@
 import { pgTable, uuid, text, integer, jsonb, timestamp, uniqueIndex, index, check, boolean, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { analyte, unit } from "./catalog";
+import { analyte, codeSystemValue, unit } from "./catalog";
 
 // FEAT-058 (ADR-0050, docs/plans/feat-058-generic-synoptic-protocol-engine.md).
 // Global reference tables -- no tenant_id, no RLS: labs choose which protocol/
@@ -185,6 +185,12 @@ export const synopticElementResponseOption = pgTable(
     value: text("code").notNull(),
     display: text("display").notNull(), // human label, e.g. "Grade 1 (scores of 3, 4, or 5)"
     displayOrder: integer("display_order").notNull().default(0),
+    // Issue #670: optional binding to a real terminology code (e.g.
+    // ICD-O-3 8140/3 for "Adenocarcinoma, NOS") -- genuinely optional,
+    // matching CAP-sourced content's own real near-total absence of coded
+    // references (architecture review corpus finding: 2 of 106 sampled
+    // CAP datasets vs. 43 of 49 ICCR datasets cite a code at all).
+    codeSystemValueId: uuid("code_system_value_id").references(() => codeSystemValue.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

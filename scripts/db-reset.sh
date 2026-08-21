@@ -82,3 +82,8 @@ echo "Seed applied: synoptic-protocol-{prostate,lung}.sql (real, cited CAP prost
 # analytes seeded above, must run after them.
 docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/concept-block-regional-lymph-nodes.sql
 echo "Seed applied: concept-block-regional-lymph-nodes.sql (issue #667 concept-block library, ICCR + CAP variants)."
+
+# Issue #670: binds colorectal's already-seeded histological_tumor_type
+# response options to their real ICD-O-3 codes -- must run after colorectal.
+docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/synoptic-response-option-terminology.sql
+echo "Seed applied: synoptic-response-option-terminology.sql (issue #670 ICD-O-3 binding)."

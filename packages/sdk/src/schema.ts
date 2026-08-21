@@ -2795,6 +2795,10 @@ export interface components {
                     value: string;
                     display: string;
                     displayOrder: number;
+                    /** Format: uuid */
+                    codeSystemValueId: string | null;
+                    codeSystemCode: string | null;
+                    codeSystemDisplay: string | null;
                 }[];
             }[];
             linkedPanels: {

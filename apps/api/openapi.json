@@ -3465,6 +3465,49 @@
           "WholeSlideImage"
         ]
       }
+    },
+    "/v1/org-settings": {
+      "get": {
+        "operationId": "OrgSettingsController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgSettingsDto_Output"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "OrgSettings"
+        ]
+      },
+      "put": {
+        "operationId": "OrgSettingsController_update",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgSettingsUpdateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "OrgSettings"
+        ]
+      }
     }
   },
   "info": {
@@ -9224,6 +9267,31 @@
           "createdAt"
         ],
         "additionalProperties": false
+      },
+      "OrgSettingsDto_Output": {
+        "type": "object",
+        "properties": {
+          "preferredSynopticSourceStandard": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "preferredSynopticSourceStandard"
+        ],
+        "additionalProperties": false
+      },
+      "OrgSettingsUpdateDto": {
+        "type": "object",
+        "properties": {
+          "preferredSynopticSourceStandard": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "preferredSynopticSourceStandard"
+        ]
       }
     }
   }

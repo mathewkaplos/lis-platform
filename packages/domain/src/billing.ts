@@ -71,6 +71,11 @@ export const invoiceSchema = z.object({
   tenantId: z.uuid(),
   orderId: z.uuid(),
   patientId: z.uuid(),
+  // Issue #715: human-readable invoice number (`INV-YYMMDD-NNNNNN`).
+  // Nullable only for invoices created before this field existed -- every
+  // invoice generated after this migration always has one
+  // (billing.service.ts's own generateInvoice()).
+  invoiceNumber: z.string().nullable(),
   status: invoiceStatusSchema,
   totalCents: z.number().int(),
   // Derived from the sum of `succeeded` payment rows (never stored) --
@@ -126,6 +131,7 @@ export type InvoiceListQuery = z.infer<typeof invoiceListQuerySchema>;
 export const invoiceListItemSchema = z.object({
   id: z.uuid(),
   patientId: z.uuid(),
+  invoiceNumber: z.string().nullable(),
   status: invoiceStatusSchema,
   payerType: invoicePayerTypeSchema,
   totalCents: z.number().int(),

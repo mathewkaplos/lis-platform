@@ -5,6 +5,7 @@ import { Badge, DataTable } from '@lis/ui';
 
 export interface InvoiceRow {
   id: string;
+  invoiceNumber: string | null;
   patientId: string;
   status: string;
   payerType: string;
@@ -36,6 +37,13 @@ export function InvoicesTable({ rows }: { rows: InvoiceRow[] }) {
   return (
     <DataTable
       columns={[
+        {
+          id: 'invoiceNumber',
+          header: 'Invoice #',
+          cell: (row) => (
+            <span className="font-mono text-xs">{row.invoiceNumber ?? row.id}</span>
+          ),
+        },
         {
           id: 'patientId',
           header: 'Patient',

@@ -216,6 +216,7 @@ export class BillingController {
         return {
           id: row.id,
           patientId: row.patientId,
+          invoiceNumber: row.invoiceNumber,
           status: row.status as Invoice['status'],
           payerType: row.payerType as Invoice['payerType'],
           totalCents: row.totalCents,

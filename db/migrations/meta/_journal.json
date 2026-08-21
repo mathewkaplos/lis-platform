@@ -442,6 +442,20 @@
       "when": 1787313988374,
       "tag": "0062_tenant_profile_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1787319083555,
+      "tag": "0063_invoice_number",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1787319129851,
+      "tag": "0064_invoice_number_sequence",
+      "breakpoints": true
     }
   ]
 }

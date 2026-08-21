@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import {
+  generateInvoiceNumber,
   invoice,
   invoiceLineItem,
   orderedTest,
@@ -91,6 +92,9 @@ export class BillingService {
     // A test with no priceCents set cannot be invoiced -- rejected rather
     // than silently billed at $0 (approved proposal §5).
     const totalCents = validateAndTotal(lines);
+    // Issue #715: same global-sequence-plus-date-prefix shape as
+    // generateAccessionNumber() -- see that function's own header comment.
+    const invoiceNumber = await generateInvoiceNumber(tx);
 
     const [invoiceRow] = await tx
       .insert(invoice)
@@ -98,6 +102,7 @@ export class BillingService {
         tenantId: input.tenantId,
         orderId: input.orderId,
         patientId: input.patientId,
+        invoiceNumber,
         totalCents,
         payerType,
         referringFacilityId: input.referringFacilityId,

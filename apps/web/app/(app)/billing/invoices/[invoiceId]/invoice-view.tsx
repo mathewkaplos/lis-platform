@@ -69,7 +69,12 @@ export function InvoiceView({ invoice }: { invoice: Invoice }) {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Invoice</CardTitle>
+          <div>
+            <CardTitle>Invoice</CardTitle>
+            {invoice.invoiceNumber ? (
+              <p className="mt-1 font-mono text-sm text-text-secondary">{invoice.invoiceNumber}</p>
+            ) : null}
+          </div>
           <Badge variant={STATUS_VARIANT[invoice.status]}>{invoice.status}</Badge>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -181,7 +186,10 @@ export function InvoiceView({ invoice }: { invoice: Invoice }) {
         </CardHeader>
         <CardContent className="flex flex-col gap-2 text-sm">
           <p className="text-text-secondary">
-            Invoice <span className="font-mono text-foreground">{invoice.id}</span>
+            Invoice{' '}
+            <span className="font-mono text-foreground">
+              {invoice.invoiceNumber ?? invoice.id}
+            </span>
           </p>
           <p className="text-text-secondary">
             Total: <span className="text-foreground">{formatCents(invoice.totalCents)}</span>

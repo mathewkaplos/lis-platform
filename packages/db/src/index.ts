@@ -14,6 +14,7 @@ export {
   deriveCaseSpecimenAccessionNumber,
   deriveBlockCode,
   deriveSlideCode,
+  generateInvoiceNumber,
 } from "./accession";
 export {
   resolveReferenceRange,

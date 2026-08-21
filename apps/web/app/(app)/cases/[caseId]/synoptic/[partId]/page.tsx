@@ -23,10 +23,10 @@ export default async function SynopticProtocolPage({
   searchParams,
 }: {
   params: Promise<{ caseId: string; partId: string }>;
-  searchParams: Promise<{ protocolId?: string }>;
+  searchParams: Promise<{ protocolId?: string; organProtocolId?: string }>;
 }) {
   const { caseId, partId } = await params;
-  const { protocolId: requestedProtocolId } = await searchParams;
+  const { protocolId: requestedProtocolId, organProtocolId: requestedOrganProtocolId } = await searchParams;
   const [accessToken, session] = await Promise.all([getValidAccessToken(), getSession()]);
   if (!accessToken) {
     throw new Error('Your session has expired — please log in again.');
@@ -62,8 +62,77 @@ export default async function SynopticProtocolPage({
     throw new Error('Something went wrong loading this case’s order. Please try again.');
   }
 
-  const protocol = protocolList?.protocols.find((p) => p.specimenType === part.specimenType);
-  if (!protocol || !protocol.publishedVersionId) {
+  // Issue #690: a panel (isPanel: true) is never the primary thing shown
+  // here -- only reachable via an organ protocol's own "Linked panels"
+  // list below (#668) -- so it's excluded from organ-slot eligibility
+  // entirely. This also fixes a real, already-live bug: the breast
+  // biomarker panel shares specimenType 'breast' with the organ protocol,
+  // and a plain .find() (this page's own prior implementation) would
+  // silently pick whichever one a query happened to return first.
+  const eligibleOrganProtocols = (protocolList?.protocols ?? []).filter(
+    (p) => p.specimenType === part.specimenType && !p.isPanel,
+  );
+
+  if (eligibleOrganProtocols.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col gap-4 p-6">
+        <Card className="mx-auto w-full max-w-3xl">
+          <CardHeader>
+            <CardTitle>Record synoptic protocol</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-text-secondary">
+              No published synoptic protocol is available for specimen type &quot;
+              {part.specimenType}&quot;.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Issue #690: more than one non-panel protocol shares this specimenType
+  // (e.g. ICCR vs. CAP colon/rectum, both intentionally coexisting per
+  // explicit product decision) -- a real chooser, not a silent pick.
+  // `organProtocolId` is distinct from `protocolId` below (which keeps its
+  // own existing #668 meaning: "which linked panel of the resolved organ
+  // protocol") so the two selection axes never collide.
+  let protocol = eligibleOrganProtocols[0];
+  if (eligibleOrganProtocols.length > 1) {
+    const chosen = eligibleOrganProtocols.find((p) => p.id === requestedOrganProtocolId);
+    if (!chosen) {
+      return (
+        <div className="flex flex-1 flex-col gap-4 p-6">
+          <Card className="mx-auto w-full max-w-3xl">
+            <CardHeader>
+              <CardTitle>Choose reporting standard</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-3 text-sm text-text-secondary">
+                More than one synoptic protocol is available for specimen type &quot;
+                {part.specimenType}&quot; -- choose which standard to record against.
+              </p>
+              <ul className="flex flex-col gap-2">
+                {eligibleOrganProtocols.map((candidate) => (
+                  <li key={candidate.id}>
+                    <Link
+                      href={`/cases/${caseId}/synoptic/${partId}?organProtocolId=${candidate.id}`}
+                      className="text-sm underline"
+                    >
+                      {candidate.name} ({candidate.sourceStandard})
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+    protocol = chosen;
+  }
+
+  if (!protocol.publishedVersionId) {
     return (
       <div className="flex flex-1 flex-col gap-4 p-6">
         <Card className="mx-auto w-full max-w-3xl">
@@ -107,6 +176,15 @@ export default async function SynopticProtocolPage({
     throw new Error('Something went wrong loading this synoptic protocol. Please try again.');
   }
 
+  // Issue #690: carries the chosen organ standard through every link on
+  // this page (back link, panel links) only when disambiguation actually
+  // happened -- every existing single-protocol specimenType keeps its
+  // exact prior URL shape (no ?organProtocolId= at all).
+  const organQuery = eligibleOrganProtocols.length > 1 ? `organProtocolId=${protocol.id}` : '';
+  function withOrganQuery(query: string): string {
+    return [organQuery, query].filter(Boolean).join('&');
+  }
+
   // Issue #668: CAP's "linked document" shape -- ?protocolId= reaches a
   // linked biomarker/ancillary panel from the organ protocol's own
   // recording page, recorded as its own independent response. Validated
@@ -144,7 +222,10 @@ export default async function SynopticProtocolPage({
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {viewingLinkedPanel ? (
-            <Link href={`/cases/${caseId}/synoptic/${partId}`} className="text-sm text-text-secondary underline">
+            <Link
+              href={`/cases/${caseId}/synoptic/${partId}${organQuery ? `?${organQuery}` : ''}`}
+              className="text-sm text-text-secondary underline"
+            >
               ← Back to {protocol.name}
             </Link>
           ) : null}
@@ -164,7 +245,7 @@ export default async function SynopticProtocolPage({
                   <li key={panel.id}>
                     {panel.publishedVersionId ? (
                       <Link
-                        href={`/cases/${caseId}/synoptic/${partId}?protocolId=${panel.id}`}
+                        href={`/cases/${caseId}/synoptic/${partId}?${withOrganQuery(`protocolId=${panel.id}`)}`}
                         className="text-sm underline"
                       >
                         Record {panel.name} ({panel.sourceStandard})

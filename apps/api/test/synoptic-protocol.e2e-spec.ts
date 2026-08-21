@@ -1970,6 +1970,163 @@ describe('Synoptic Protocol API (e2e)', () => {
     });
   });
 
+  describe('Multi-protocol disambiguation + CAP colon/rectum protocol (issue #690/#551)', () => {
+    // Real, seeded content (db/seed/synoptic-protocol-colon-rectum-cap.sql):
+    // a real, cited CAP colon/rectum resection protocol, deliberately
+    // sharing specimen_type = 'colorectal' with the already-seeded ICCR
+    // "Colorectal Cancer" protocol -- the exact scenario issue #690's
+    // disambiguation mechanism (apps/web's own recording page) exists to
+    // handle safely. At the API level, both simply coexist as ordinary,
+    // independently-published, non-panel protocols.
+    async function resolveCapColonRectum(): Promise<{
+      protocolId: string;
+      versionId: string;
+    }> {
+      const res = await request(app.getHttpServer())
+        .get('/v1/synoptic-protocols')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const protocol = (
+        res.body as {
+          protocols: {
+            id: string;
+            name: string;
+            sourceStandard: string;
+            specimenType: string;
+            isPanel: boolean;
+            publishedVersionId: string | null;
+          }[];
+        }
+      ).protocols.find(
+        (p) =>
+          p.name === 'Colon and Rectum (Resection)' &&
+          p.sourceStandard === 'CAP',
+      );
+      if (!protocol?.publishedVersionId) {
+        throw new Error(
+          "expected db/seed/synoptic-protocol-colon-rectum-cap.sql's 'Colon and Rectum (Resection)' protocol",
+        );
+      }
+      return {
+        protocolId: protocol.id,
+        versionId: protocol.publishedVersionId,
+      };
+    }
+
+    it('coexists with the seeded ICCR colorectal protocol under the same specimenType, both non-panel (the real, already-live #690 scenario)', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/v1/synoptic-protocols')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const colorectalProtocols = (
+        res.body as {
+          protocols: {
+            name: string;
+            sourceStandard: string;
+            specimenType: string;
+            isPanel: boolean;
+            publishedVersionId: string | null;
+          }[];
+        }
+      ).protocols.filter((p) => p.specimenType === 'colorectal' && !p.isPanel);
+      const names = colorectalProtocols.map(
+        (p) => `${p.name} (${p.sourceStandard})`,
+      );
+      if (
+        !names.includes('Colorectal Cancer (ICCR)') ||
+        !names.includes('Colon and Rectum (Resection) (CAP)')
+      ) {
+        throw new Error(
+          `expected both the ICCR and CAP colorectal protocols eligible for the same specimenType, got ${JSON.stringify(names)}`,
+        );
+      }
+    });
+
+    it('records and independently reads a real pT1 colon resection result, with the conditional submucosal-invasion-depth field enforced only when pT1', async () => {
+      const { versionId } = await resolveCapColonRectum();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
+
+      const baseResponses = [
+        { elementKey: 'operative_procedure', value: 'right_hemicolectomy' },
+        { elementKey: 'tumor_site', value: ['ascending_colon'] },
+        { elementKey: 'histologic_type', value: 'adenocarcinoma_nos' },
+        { elementKey: 'histologic_grade', value: 'g2' },
+        { elementKey: 'tumor_size_mm', value: 35 },
+        { elementKey: 'pt_category', value: 'pT1' },
+        {
+          elementKey: 'macroscopic_tumor_perforation',
+          value: 'not_identified',
+        },
+        { elementKey: 'lymphovascular_invasion', value: 'not_identified' },
+        { elementKey: 'perineural_invasion', value: 'not_identified' },
+        { elementKey: 'margin_status_invasive', value: 'all_margins_negative' },
+        // closest_margin_site is 'conditional' on margin_status_invasive !=
+        // 'not_applicable' -- visible (and required) here.
+        { elementKey: 'closest_margin_site', value: 'proximal' },
+        { elementKey: 'pn_category', value: 'pN0' },
+        { elementKey: 'pm_category', value: 'not_applicable' },
+      ];
+
+      const rejected = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          specimenId,
+          synopticProtocolVersionId: versionId,
+          responses: baseResponses,
+          // submucosal_invasion_depth omitted -- required once pT1.
+        })
+        .expect(400);
+      if (
+        !JSON.stringify(rejected.body).includes('submucosal_invasion_depth')
+      ) {
+        throw new Error(
+          `expected submucosal_invasion_depth to be named as missing when pT1, got ${JSON.stringify(rejected.body)}`,
+        );
+      }
+
+      const recorded = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          specimenId,
+          synopticProtocolVersionId: versionId,
+          responses: baseResponses.concat([
+            { elementKey: 'submucosal_invasion_depth', value: 'less_than_1mm' },
+          ]),
+        })
+        .expect(201);
+      const results = (
+        recorded.body as { results: { elementKey: string; value: unknown }[] }
+      ).results;
+      const pt = results.find((r) => r.elementKey === 'pt_category');
+      const tumorSite = results.find((r) => r.elementKey === 'tumor_site');
+      if (pt?.value !== 'pT1' || !Array.isArray(tumorSite?.value)) {
+        throw new Error(
+          `expected the real pT1 result to record correctly, got ${JSON.stringify(results)}`,
+        );
+      }
+
+      const listRes = await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const responses = (
+        listRes.body as {
+          responses: { synopticProtocolVersionId: string }[];
+        }
+      ).responses;
+      if (!responses.some((r) => r.synopticProtocolVersionId === versionId)) {
+        throw new Error(
+          `expected the CAP colon/rectum response independently readable, got ${JSON.stringify(responses)}`,
+        );
+      }
+    });
+  });
+
   describe('Response option terminology binding (issue #670)', () => {
     // Real, seeded content (db/seed/synoptic-response-option-terminology.sql):
     // colorectal's own histological_tumor_type option 'adenocarcinoma_nos'

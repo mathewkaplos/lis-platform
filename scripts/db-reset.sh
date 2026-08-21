@@ -92,3 +92,10 @@ echo "Seed applied: synoptic-response-option-terminology.sql (issue #670 ICD-O-3
 # linked to the existing seeded breast organ protocol -- must run after it.
 docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/synoptic-protocol-breast-biomarker.sql
 echo "Seed applied: synoptic-protocol-breast-biomarker.sql (real, cited CAP breast biomarker panel, linked via issue #668)."
+
+# Issue #551/#690: real, cited CAP colon/rectum resection protocol, coexisting
+# with the already-seeded ICCR colorectal protocol (both specimen_type =
+# 'colorectal') -- must run after synoptic-protocol-colorectal.sql (reuses its
+# UCUM 'mm' unit). Safe only because of #690's disambiguation mechanism.
+docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/synoptic-protocol-colon-rectum-cap.sql
+echo "Seed applied: synoptic-protocol-colon-rectum-cap.sql (real, cited CAP colon/rectum resection protocol, issue #690)."

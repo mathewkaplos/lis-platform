@@ -60,7 +60,10 @@ export function hasPatientManagementRole(session: SessionPayload | undefined): b
   return Boolean(
     session &&
       Array.isArray(session.roles) &&
-      (session.roles.includes('technologist') || session.roles.includes('pathologist')),
+      (session.roles.includes('technologist') ||
+        session.roles.includes('pathologist') ||
+        // Issue #701: 'reception' also carries manage_patients.
+        session.roles.includes('reception')),
   );
 }
 
@@ -97,6 +100,20 @@ export function hasBillingRole(session: SessionPayload | undefined): boolean {
   return Boolean(
     session &&
       Array.isArray(session.roles) &&
-      (session.roles.includes('technologist') || session.roles.includes('pathologist')),
+      (session.roles.includes('technologist') ||
+        session.roles.includes('pathologist') ||
+        // Issue #701: 'cashier' also carries manage_billing.
+        session.roles.includes('cashier')),
   );
+}
+
+/**
+ * Issue #703 (EPIC #697): gates the "Users" nav entry / admin screen.
+ * `manage_users` (`apps/api/src/auth/capabilities.ts`) -- the real
+ * capability guarding every `/v1/users` route -- is granted only to
+ * `lab_admin` (#701). Same fail-closed shape and same "UI-visibility
+ * convenience only" caveat as every other helper above.
+ */
+export function hasLabAdminRole(session: SessionPayload | undefined): boolean {
+  return Boolean(session && Array.isArray(session.roles) && session.roles.includes('lab_admin'));
 }

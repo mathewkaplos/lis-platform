@@ -39,6 +39,7 @@ import { ImageAttachmentModule } from './image-attachment/image-attachment.modul
 import { ReferringFacilityModule } from './referring-facility/referring-facility.module';
 import { WholeSlideImageModule } from './whole-slide-image/whole-slide-image.module';
 import { OrgSettingsModule } from './org-settings/org-settings.module';
+import { UserManagementModule } from './user-management/user-management.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
 @Module({
@@ -85,6 +86,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     ReferringFacilityModule,
     WholeSlideImageModule,
     OrgSettingsModule,
+    UserManagementModule,
   ],
   controllers: [AppController],
   providers: [

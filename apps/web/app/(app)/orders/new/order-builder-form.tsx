@@ -153,6 +153,16 @@ export function OrderBuilderForm({
           <CardTitle>Test catalog</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          {/* Issue #707 (EPIC #697): a biopsy/surgical specimen has no
+              catalog entry to search for here -- AP case creation is a
+              separate accessioning step reachable from this order's own
+              detail page after it's placed, regardless of which test (if
+              any) is selected below. Confirmed as a real "where do I even
+              start" gap during the pilot-readiness audit. */}
+          <p className="text-xs text-text-secondary">
+            Ordering a biopsy or surgical specimen? Select any test below to place the order, then
+            use &quot;New AP case&quot; on the order&apos;s own page to accession it.
+          </p>
           <Input
             type="search"
             placeholder="Filter by name or code"

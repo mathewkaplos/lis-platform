@@ -84,9 +84,9 @@ describe('Self-service onboarding (e2e)', () => {
         `expected tenant_id claim ${body.tenantId}, got ${claims.tenant_id}`,
       );
     }
-    if (!claims.realm_access?.roles?.includes('qa')) {
+    if (!claims.realm_access?.roles?.includes('lab_admin')) {
       throw new Error(
-        `expected 'qa' role on issued token, got ${JSON.stringify(claims.realm_access)}`,
+        `expected 'lab_admin' role on issued token, got ${JSON.stringify(claims.realm_access)}`,
       );
     }
 

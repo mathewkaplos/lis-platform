@@ -147,7 +147,7 @@ describe('Report assembly (e2e)', () => {
         tenantId: TENANT_A,
         orderedTestId,
         actorPrincipalId: verifierUserId,
-        actorRole: 'verifier',
+        actorRole: 'pathologist',
       });
     });
   }
@@ -162,7 +162,7 @@ describe('Report assembly (e2e)', () => {
         tenantId: TENANT_A,
         orderedTestId,
         actorPrincipalId: verifierUserId,
-        actorRole: 'verifier',
+        actorRole: 'pathologist',
       });
     });
   }

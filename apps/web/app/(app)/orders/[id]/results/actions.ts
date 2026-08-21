@@ -393,7 +393,7 @@ export async function finalizeMorphologyResult(
  * called imperatively from `results-grid.tsx`'s own verify affordance via
  * `useTransition`, same precedent as `draftResult()`/`finalizeResult()`.
  * The API's own `verify` capability guard (verifier-only, TASK-055) is the
- * real enforcement point; `apps/web/auth/roles.ts`'s `hasVerifierRole()` only
+ * real enforcement point; `apps/web/auth/roles.ts`'s `hasPathologistRole()` only
  * decides whether this screen even shows the control that would call this.
  */
 export async function verifyResult(

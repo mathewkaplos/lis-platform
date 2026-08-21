@@ -68,7 +68,7 @@ describe('QC release gate + resolve action (e2e)', () => {
   let verifierToken: string; // test-user-4, TENANT_A -- technologist + verifier, no resolve_qc
   let qaToken: string; // test-user-5, TENANT_A -- qa, resolve_qc only (ADR-0019 Decision 3)
   // Deliberately test-user-6, not test-user-2: test-user-2 (TENANT_B) carries
-  // only 'verifier', which CapabilityGuard would reject with 403 before ever
+  // only 'pathologist', which CapabilityGuard would reject with 403 before ever
   // reaching the tenant-scoped lookup -- proving the cross-tenant 404 needs a
   // second tenant's principal that actually holds resolve_qc (infra/keycloak/
   // README.md's own note on this).

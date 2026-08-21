@@ -7,6 +7,7 @@ interface CreateUserInput {
   lastName: string;
   password: string;
   tenantId: string;
+  role: string;
 }
 
 export interface CreatedUser {
@@ -92,12 +93,19 @@ export class KeycloakUserService {
       );
     }
 
-    await this.assignRealmRole(userId, 'qa', token);
+    await this.assignRealmRole(userId, input.role, token);
 
     return { id: userId };
   }
 
-  private async assignRealmRole(
+  /**
+   * Issue #703 (EPIC #697): also used by the user-management screen to
+   * assign/change a role on an existing user, not just at creation time --
+   * kept `async`/exported-via-class-method rather than folded into
+   * `createUser`, since it's the one piece of role-assignment logic both
+   * paths need identically.
+   */
+  async assignRealmRole(
     userId: string,
     roleName: string,
     token: string,

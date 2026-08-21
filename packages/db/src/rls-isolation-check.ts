@@ -438,7 +438,7 @@ async function insertFixtures(db: Db) {
     includedContent: {},
     signature: Buffer.from("rls-check-fixture-signature"),
     signedByUserId: "99999999-9999-9999-9999-999999999999",
-    signedByRole: "verifier",
+    signedByRole: "pathologist",
     authTimeUsed: new Date(),
   });
 

@@ -15,7 +15,17 @@ type Tx = RequestWithTx['tx'];
  * capability grant -- `search()`/`getById()` have never had a
  * `RequireCapability` gate (proposal §10 Q2, deliberately unchanged).
  */
-const TENANT_WIDE_ROLES = ['technologist', 'verifier', 'qa'] as const;
+// Issue #701: 'verifier' renamed 'pathologist'; 'reception'/'cashier'/
+// 'lab_admin' added -- all four are internal-staff tenant-wide roles, same
+// standing as 'technologist'/'pathologist'/'qa' above.
+const TENANT_WIDE_ROLES = [
+  'technologist',
+  'pathologist',
+  'qa',
+  'reception',
+  'cashier',
+  'lab_admin',
+] as const;
 
 export function isClinicianOnly(roles: readonly string[]): boolean {
   return (

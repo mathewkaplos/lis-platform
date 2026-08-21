@@ -53,7 +53,7 @@ const SODIUM_BUN_SYNTH_PANEL_CODE = 'TASK-056-SYNTH-PANEL';
 describe('Result entry API (e2e)', () => {
   let app: INestApplication<App>;
   let tokenA: string;
-  // TASK-055: test-user-4 carries both 'technologist' and 'verifier' realm
+  // TASK-055: test-user-4 carries both 'technologist' and 'pathologist' realm
   // roles under the SAME tenant (TENANT_A) as tokenA/test-user (infra/
   // keycloak/lis-realm.json) -- test-user-2, the other seeded verifier, is
   // deliberately in TENANT_B (rls-isolation-check.ts's own convention), so

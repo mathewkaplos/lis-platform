@@ -100,7 +100,7 @@ describe('Report templates (e2e)', () => {
         tenantId: TENANT_A,
         orderedTestId,
         actorPrincipalId: verifierUserId,
-        actorRole: 'verifier',
+        actorRole: 'pathologist',
       });
     });
   }

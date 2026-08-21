@@ -14,12 +14,24 @@
         "description": "Bench role: may enter results, may not verify them (TASK-032)"
       },
       {
-        "name": "verifier",
-        "description": "May verify results entered by a technologist (TASK-032)"
+        "name": "pathologist",
+        "description": "May verify (sign out) results/cases entered by a technologist. Renamed from 'verifier' (issue #701, decision on #698) -- same capability grant, real lab-facing name"
       },
       {
         "name": "qa",
         "description": "Quality/lab-manager role: may resolve QC rule violations, may not enter or verify patient results (TASK-070)"
+      },
+      {
+        "name": "reception",
+        "description": "Front-desk/intake role: may register patients and place orders, may not handle specimens, enter/verify results, or take payment (issue #701, decision on #698)"
+      },
+      {
+        "name": "cashier",
+        "description": "Billing role: may generate invoices and record payments, no clinical or patient/order capability (issue #701, decision on #698)"
+      },
+      {
+        "name": "lab_admin",
+        "description": "Lab administrator: may edit org settings and manage users (create/list/deactivate/assign role), no clinical capability. The self-signup owner's default role (issue #701/#702, decision on #698)"
       },
       {
         "name": "gateway-ingest",
@@ -274,7 +286,7 @@
       "attributes": {
         "tenant_id": ["00000000-0000-0000-0000-000000000002"]
       },
-      "realmRoles": ["verifier"],
+      "realmRoles": ["pathologist"],
       "credentials": [
         {
           "type": "password",
@@ -311,7 +323,7 @@
       "attributes": {
         "tenant_id": ["00000000-0000-0000-0000-000000000001"]
       },
-      "realmRoles": ["technologist", "verifier"],
+      "realmRoles": ["technologist", "pathologist"],
       "credentials": [
         {
           "type": "password",
@@ -393,6 +405,63 @@
           "type": "password",
           "secretData": "{\"value\": \"vICto9Oe2lgHmtsFILGaSSePzNmsSpWh4LgjrfLJoy8Hv34exe+pFywryjop4TXVoAfY0LKgGzP8BfJEAY0D4g==\", \"salt\": \"DtoM0aObFql+OHODsa2eUQ==\", \"additionalParameters\": {}}",
           "credentialData": "{\"hashIterations\": 210000, \"algorithm\": \"pbkdf2-sha512\", \"additionalParameters\": {}}"
+        }
+      ]
+    },
+    {
+      "username": "test-user-9",
+      "email": "test-user-9@example.invalid",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Test",
+      "lastName": "User Nine",
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+      },
+      "realmRoles": ["reception"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "test-password-9",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "test-user-10",
+      "email": "test-user-10@example.invalid",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Test",
+      "lastName": "User Ten",
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+      },
+      "realmRoles": ["cashier"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "test-password-10",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "test-user-11",
+      "email": "test-user-11@example.invalid",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Test",
+      "lastName": "User Eleven",
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+      },
+      "realmRoles": ["lab_admin"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "test-password-11",
+          "temporary": false
         }
       ]
     },

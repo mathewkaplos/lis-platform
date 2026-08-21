@@ -111,9 +111,9 @@ describe('Capability checks + audit emission (e2e)', () => {
       .set('Authorization', `Bearer ${verifierToken}`)
       .expect(201);
     const body = res.body as { actorRole: string };
-    if (body.actorRole !== 'verifier') {
+    if (body.actorRole !== 'pathologist') {
       throw new Error(
-        `expected actorRole 'verifier', got ${JSON.stringify(res.body)}`,
+        `expected actorRole 'pathologist', got ${JSON.stringify(res.body)}`,
       );
     }
     const after = await auditCount(verifierToken);

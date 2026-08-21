@@ -170,6 +170,10 @@ jobs:
       # the existing seeded breast organ protocol, same ordering as
       # scripts/db-reset.sh.
       - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/synoptic-protocol-breast-biomarker.sql
+      # Issue #551/#690: real, cited CAP colon/rectum resection protocol,
+      # coexisting with the ICCR colorectal protocol above via #690's
+      # disambiguation mechanism, same ordering as scripts/db-reset.sh.
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/synoptic-protocol-colon-rectum-cap.sql
       - run: pnpm run-golden-datasets
       - run: pnpm test
       # TASK-029: waits here, not right after launch — gives Keycloak's own

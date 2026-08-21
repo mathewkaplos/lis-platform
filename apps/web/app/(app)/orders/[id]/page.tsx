@@ -99,7 +99,10 @@ export default async function OrderDetailPage({
               </Button>
             ) : null}
             {order.status !== 'cancelled' ? (
-              <GenerateInvoiceButton orderId={order.id} />
+              <GenerateInvoiceButton
+                orderId={order.id}
+                referringFacilityId={order.referringFacilityId}
+              />
             ) : null}
           </div>
         </CardHeader>

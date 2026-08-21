@@ -121,6 +121,11 @@ export const invoiceListQuerySchema = z.object({
   hasBalance: z.enum(['true', 'false']).optional(),
   createdFrom: z.iso.datetime().optional(),
   createdTo: z.iso.datetime().optional(),
+  // Issue #704 (EPIC #697): the facility-statement screen's own filter --
+  // "every invoice billed to this facility in this date range." Combine
+  // with createdFrom/createdTo (already existed) rather than a new
+  // date-range-specific route.
+  referringFacilityId: z.uuid().optional(),
 });
 export type InvoiceListQuery = z.infer<typeof invoiceListQuerySchema>;
 
@@ -131,6 +136,10 @@ export type InvoiceListQuery = z.infer<typeof invoiceListQuerySchema>;
 export const invoiceListItemSchema = z.object({
   id: z.uuid(),
   patientId: z.uuid(),
+  // Issue #704: patient-level detail on a facility statement needs a real
+  // name, not just an id -- a plain join onto `patient`, never a second
+  // source of truth for the name itself.
+  patientName: z.string(),
   invoiceNumber: z.string().nullable(),
   status: invoiceStatusSchema,
   payerType: invoicePayerTypeSchema,

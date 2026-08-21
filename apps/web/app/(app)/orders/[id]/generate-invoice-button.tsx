@@ -10,7 +10,13 @@ import { generateInvoice } from './actions';
  * button shape as `cancel-order-button.tsx`'s own precedent -- no form
  * data involved.
  */
-export function GenerateInvoiceButton({ orderId }: { orderId: string }) {
+export function GenerateInvoiceButton({
+  orderId,
+  referringFacilityId,
+}: {
+  orderId: string;
+  referringFacilityId?: string | null;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +24,7 @@ export function GenerateInvoiceButton({ orderId }: { orderId: string }) {
   function handleClick() {
     setError(null);
     startTransition(async () => {
-      const result = await generateInvoice(orderId);
+      const result = await generateInvoice(orderId, referringFacilityId);
       if (result.status === 'error' || !result.invoiceId) {
         setError(result.formError ?? 'Something went wrong generating this invoice.');
         return;

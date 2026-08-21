@@ -54,9 +54,19 @@ export interface GenerateInvoiceResult {
  * current ordered tests -- this feature's approved scope doesn't include
  * duplicate-invoice prevention (a real, tracked simplification, not an
  * oversight -- see the billing Skill).
+ *
+ * Issue #704 (EPIC #697): if the order itself was booked against a
+ * referring facility (chosen at order-entry time, `order-builder-form.tsx`'s
+ * own "Referring facility" field), the invoice now bills that facility
+ * (`payerType: 'corporate'`) automatically instead of always defaulting to
+ * cash -- `generateInvoice()` (billing.service.ts) already supported this at
+ * the API layer since FEAT-066; nothing in the UI ever passed it through
+ * until now, confirmed via a repo-wide grep before writing this. A
+ * cash-payer order (no referring facility set) is unaffected.
  */
 export async function generateInvoice(
   orderId: string,
+  referringFacilityId?: string | null,
 ): Promise<GenerateInvoiceResult> {
   const accessToken = await getValidAccessToken();
   if (!accessToken) {
@@ -69,10 +79,9 @@ export async function generateInvoice(
 
   const { data, response } = await client.POST('/v1/orders/{id}/invoice', {
     params: { path: { id: orderId } },
-    // FEAT-066 (ADR-0053): payerType/referringFacilityId are both optional
-    // on the wire (defaults to cash) -- an explicit empty body since the
-    // generated SDK type still requires the `body` key to be present.
-    body: {},
+    body: referringFacilityId
+      ? { payerType: 'corporate', referringFacilityId }
+      : {},
   });
   if (!response.ok) {
     if (response.status === 400) {

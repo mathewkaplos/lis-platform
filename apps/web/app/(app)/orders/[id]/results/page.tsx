@@ -65,6 +65,10 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
       // FEAT-024 (ADR-0025): present on the real list() response for any
       // dataType, simply always null for a quantity row.
       valueCode: string | null;
+      // Issue #694: present on the real list() response for any dataType,
+      // null unless this row is `coded`/`table` and its own value actually
+      // resolved (`@lis/domain`'s `observationSchema.valueDisplay`).
+      valueDisplay: string | null;
       notes: string | null;
       flags: string[];
       refLow: number | null;
@@ -84,10 +88,18 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
     const test = testById.get(orderedTest.testDefinitionId);
     if (!test) continue;
     for (const analyte of test.analytes) {
-      // Quantity + ordinal UI (FEAT-024/ADR-0025 widens this from
-      // quantity-only, proposal §5) -- coded/text still have no real catalog
-      // data to render either shape against, so they stay filtered out.
-      if (analyte.dataType !== 'quantity' && analyte.dataType !== 'ordinal') continue;
+      // Quantity + ordinal UI (FEAT-024/ADR-0025), widened to coded/table by
+      // issue #694 -- `text` still has no real catalog/rendering behind it
+      // and stays filtered out. coded/table render read-only in the grid
+      // (`results-grid.tsx`'s own `isEnterable`/result-cell branch), never
+      // an editable control.
+      if (
+        analyte.dataType !== 'quantity' &&
+        analyte.dataType !== 'ordinal' &&
+        analyte.dataType !== 'coded' &&
+        analyte.dataType !== 'table'
+      )
+        continue;
       const existing = resultsByOrderedTestId.get(orderedTest.id)?.find((o) => o.analyteId === analyte.id);
       rowsWithoutPrior.push({
         orderedTestId: orderedTest.id,
@@ -100,6 +112,7 @@ export default async function ResultsPage({ params }: { params: Promise<{ id: st
         unit: analyte.unit,
         initialValueNum: existing?.valueNum ?? null,
         initialValueCode: existing?.valueCode ?? null,
+        initialValueDisplay: existing?.valueDisplay ?? null,
         initialNotes: existing?.notes ?? null,
         initialFlags: existing?.flags ?? [],
         initialRefLow: existing?.refLow ?? null,

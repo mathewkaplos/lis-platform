@@ -144,6 +144,15 @@ export const observationSchema = z.object({
   // notes itself, immediately above.
   notesAiOriginated: z.boolean(),
   notesAiDisposition: notesAiDispositionSchema.nullable(),
+  // Issue #694: a resolved, human-readable rendering of this observation's
+  // value, for the two dataTypes where the raw column(s) alone aren't
+  // legible on their own -- 'table' (always: the antibiogram's own compact
+  // summary string, e.g. "Escherichia coli — Ampicillin: R (MIC 16)"), and
+  // 'coded' (only for the one, specifically-resolved Organism Identified
+  // analyte -- see report-assembly.ts's own resolveOrganismDisplayOverrides
+  // for why this isn't generalized to every coded analyte). Null for every
+  // other row, including every other coded analyte today.
+  valueDisplay: z.string().nullable(),
 });
 export type ObservationResult = z.infer<typeof observationSchema>;
 

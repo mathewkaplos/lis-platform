@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition, type KeyboardEvent } from 'react';
 import Link from 'next/link';
-import { Badge, Button, DataTable, Input, StatusPill, type ResultFlag } from '@lis/ui';
+import { Badge, Button, DataTable, Input, StatusPill, SusceptibilityBadge, type ResultFlag } from '@lis/ui';
 import { getCalculatedAnalyteDefinition, isCalculatedAnalyteCode, type MorphologyGrade } from '@lis/domain';
 import {
   draftMorphologyResult,
@@ -44,14 +44,22 @@ export interface ResultRow {
    * `isCalculatedAnalyteCode`), without a new schema flag. */
   analyteCode: string;
   analyteDisplay: string;
-  /** FEAT-024 (ADR-0025): the only two dataTypes the parent Server Component
-   * ever lets through (`page.tsx`'s own filter) -- selects which control
-   * this grid's "Result" column renders. */
-  dataType: 'quantity' | 'ordinal';
+  /** FEAT-024 (ADR-0025) widened to 'coded'/'table' by issue #694 -- the
+   * parent Server Component (`page.tsx`) now lets every dataType through.
+   * `coded`/`table` render read-only (no input control, never enterable
+   * through this grid -- see `isEnterable` below) since neither has a real
+   * catalog-backed entry control here; only `quantity`/`ordinal` remain
+   * editable. */
+  dataType: 'quantity' | 'ordinal' | 'coded' | 'table';
   unit: string | null;
   initialValueNum: number | null;
   /** FEAT-024 (ADR-0025): only ever non-null for an `ordinal` row. */
   initialValueCode: string | null;
+  // Issue #694: `@lis/domain`'s `observationSchema.valueDisplay` --
+  // resolved, human-readable rendering for a `coded`/`table` row (null for
+  // every `quantity`/`ordinal` row, and for most `coded` rows too -- see
+  // that schema field's own comment for the exact narrow scope).
+  initialValueDisplay: string | null;
   initialNotes: string | null;
   initialFlags: string[];
   initialRefLow: number | null;
@@ -194,6 +202,12 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
 
   function isEnterable(row: ResultRow): boolean {
     if (isCalculatedAnalyteCode(row.analyteCode)) return false; // never manually entered
+    // Issue #694: coded/table rows (organism ID, antibiogram) are display-
+    // only here -- both already have their own real entry mechanism
+    // elsewhere (the generic result-entry API for coded; a dedicated
+    // endpoint for the antibiogram), and this grid has no catalog-backed
+    // control for either (proposal §5 Q3, resolved display-only).
+    if (row.dataType === 'coded' || row.dataType === 'table') return false;
     const state = rowStates[rowKey(row)];
     return (
       (row.orderedTestStatus === 'received' || row.orderedTestStatus === 'in_process') &&
@@ -529,6 +543,37 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
                     state.text
                   )}
                 </span>
+              );
+            }
+
+            // Issue #694: display-only rendering for organism ID (`coded`)
+            // and the antibiogram (`table`) -- no input control, matching
+            // the calculated-analyte branch above (read-only, not part of
+            // the Tab order). `initialValueDisplay` is the resolved,
+            // human-readable value (`@lis/domain`'s `observationSchema`);
+            // falls back to the raw code, then "Pending" if nothing has
+            // been recorded yet.
+            if (row.dataType === 'coded' || row.dataType === 'table') {
+              const display = row.initialValueDisplay ?? row.initialValueCode;
+              // A summary badge, not a per-antimicrobial grid (proposal §5
+              // Q2, resolved: keep the compact string) -- one badge for the
+              // worst interpretation actually present in the string, so a
+              // Resistant result never renders as plain, undifferentiated
+              // text (frontend-design Skill entry #1: never color alone).
+              const interpretation = display
+                ? (['R', 'I', 'S'] as const).find((code) => display.includes(`: ${code} (MIC`))
+                : undefined;
+              return (
+                <div className="flex flex-col gap-1.5">
+                  {display ? (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {interpretation ? <SusceptibilityBadge interpretation={interpretation} /> : null}
+                      <span className="max-w-64 text-sm text-foreground">{display}</span>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-text-secondary">Pending</span>
+                  )}
+                </div>
               );
             }
 

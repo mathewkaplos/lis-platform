@@ -389,4 +389,57 @@ describe('Antibiogram (e2e)', () => {
       .where(eq(observation.id, body.results[0].observationId));
     expect(after.valueCode).toBe('S');
   });
+
+  describe('Coded/table result rendering (issue #694)', () => {
+    it("GET .../results resolves Organism Identified's own coded value to its real display name, and the antibiogram's table row to its compact summary string", async () => {
+      const orderedTestId = await createOrgidWithIdentifiedOrganism();
+      await request(app.getHttpServer())
+        .post(`/v1/ordered-tests/${orderedTestId}/antibiogram`)
+        .set('Authorization', `Bearer ${technologistToken}`)
+        .send({
+          results: [
+            { antimicrobialId: ampicillinId, micValue: 16 }, // R
+            { antimicrobialId: meropenemId, micValue: 1 }, // S
+          ],
+        })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .get(`/v1/ordered-tests/${orderedTestId}/results`)
+        .set('Authorization', `Bearer ${technologistToken}`)
+        .expect(200);
+      const rows = res.body as {
+        analyteId: string;
+        dataType: string;
+        valueCode: string | null;
+        valueDisplay: string | null;
+      }[];
+
+      const organismRow = rows.find(
+        (r) => r.dataType === 'coded' && r.analyteId === organismIdentifiedAnalyteId,
+      );
+      if (organismRow?.valueDisplay !== 'Escherichia coli') {
+        throw new Error(
+          `expected Organism Identified's valueDisplay to resolve to 'Escherichia coli', got ${JSON.stringify(organismRow)}`,
+        );
+      }
+      // The raw coded value stays available too -- valueDisplay is additive.
+      if (organismRow.valueCode !== ecoliSnomedCode) {
+        throw new Error(
+          `expected the raw SNOMED code untouched, got ${JSON.stringify(organismRow)}`,
+        );
+      }
+
+      const antibiogramRow = rows.find((r) => r.dataType === 'table');
+      if (
+        !antibiogramRow?.valueDisplay?.includes('Escherichia coli') ||
+        !antibiogramRow.valueDisplay.includes('Ampicillin: R (MIC 16)') ||
+        !antibiogramRow.valueDisplay.includes('Meropenem: S (MIC 1)')
+      ) {
+        throw new Error(
+          `expected the antibiogram row's own compact summary string, got ${JSON.stringify(antibiogramRow)}`,
+        );
+      }
+    });
+  });
 });

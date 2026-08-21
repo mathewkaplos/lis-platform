@@ -3,9 +3,11 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { createDb } from '@lis/db';
 import {
   analyte,
+  codeSystemValue,
   observation,
   order,
   orderedTest,
+  organism,
   patient,
   report,
   reportTemplate,
@@ -90,6 +92,70 @@ export function formatDateTime(date: Date): string {
     timeStyle: 'medium',
     timeZone: 'UTC',
   }).format(date);
+}
+
+// Issue #694 (task-694 proposal §5 Q1, resolved narrow -- see that
+// section for why this isn't a generic "resolve every coded value" pass).
+// Same LOINC code antibiogram-assembly.ts already keys off of to find
+// "the organism-identified analyte" -- reused verbatim, not re-derived.
+const ORGANISM_IDENTIFIED_LOINC = '634-6';
+
+/**
+ * Issue #694: resolves Organism Identified's own coded value (a raw SNOMED
+ * code, e.g. "112283007") to its real display name ("Escherichia coli"),
+ * reusing the exact `organism` <-> `code_system_value` join
+ * `antibiogram-assembly.ts` already proves correct for this same lookup.
+ * Deliberately scoped to only the one, LOINC-634-6-bound analyte -- a bare
+ * `code_system_value` lookup by raw code alone, with no `system` scoping,
+ * risks a cross-system collision for any other coded analyte (proposal
+ * §5 Q1's own reasoning for why this isn't generalized further here).
+ * Returns an empty map when this ordered test's panel doesn't include the
+ * organism-identified analyte, or it has no resolvable value yet -- every
+ * other analyte's `formatObservationValue()` output is untouched.
+ */
+export async function resolveOrganismDisplayOverrides(
+  tx: Tx,
+  requiredAnalyteIds: string[],
+  observationByAnalyteId: Map<string, typeof observation.$inferSelect>,
+): Promise<Map<string, string>> {
+  const overrides = new Map<string, string>();
+  const [organismIdentifiedAnalyte] = await tx
+    .select({ id: analyte.id })
+    .from(analyte)
+    .innerJoin(
+      codeSystemValue,
+      eq(analyte.codeSystemValueId, codeSystemValue.id),
+    )
+    .where(
+      and(
+        eq(codeSystemValue.system, 'LOINC'),
+        eq(codeSystemValue.code, ORGANISM_IDENTIFIED_LOINC),
+      ),
+    )
+    .limit(1);
+  if (
+    !organismIdentifiedAnalyte ||
+    !requiredAnalyteIds.includes(organismIdentifiedAnalyte.id)
+  ) {
+    return overrides;
+  }
+  const row = observationByAnalyteId.get(organismIdentifiedAnalyte.id);
+  if (!row?.valueCode) {
+    return overrides;
+  }
+  const [organismRow] = await tx
+    .select({ display: organism.display })
+    .from(organism)
+    .innerJoin(
+      codeSystemValue,
+      eq(organism.codeSystemValueId, codeSystemValue.id),
+    )
+    .where(eq(codeSystemValue.code, row.valueCode))
+    .limit(1);
+  if (organismRow) {
+    overrides.set(organismIdentifiedAnalyte.id, organismRow.display);
+  }
+  return overrides;
 }
 
 /**
@@ -325,13 +391,21 @@ export async function assembleAndPersistReport(
     return { id: row.id, createdAt: row.createdAt.toISOString() };
   });
 
+  const organismDisplayOverrides = await resolveOrganismDisplayOverrides(
+    tx,
+    requiredAnalyteIds,
+    observationByAnalyteId,
+  );
+
   const results: ChemistryReportAnalyteResult[] = requiredAnalyteIds.map(
     (analyteId) => {
       const row = observationByAnalyteId.get(analyteId)!;
       return {
         analyteId,
         analyteName: analyteDisplayById.get(analyteId) ?? 'Unknown analyte',
-        value: formatObservationValue(row),
+        value:
+          organismDisplayOverrides.get(analyteId) ??
+          formatObservationValue(row),
         unit: row.unit ?? '',
         flags: row.flags,
         referenceRangeText: formatReferenceRangeText(
@@ -518,6 +592,12 @@ export async function assembleAndPersistPreliminaryReport(
     return { id: row.id, createdAt: row.createdAt.toISOString() };
   });
 
+  const organismDisplayOverrides = await resolveOrganismDisplayOverrides(
+    tx,
+    requiredAnalyteIds,
+    observationByAnalyteId,
+  );
+
   const results: ChemistryReportAnalyteResult[] = requiredAnalyteIds.map(
     (analyteId) => {
       const analyteName =
@@ -537,7 +617,9 @@ export async function assembleAndPersistPreliminaryReport(
       return {
         analyteId,
         analyteName,
-        value: formatObservationValue(row),
+        value:
+          organismDisplayOverrides.get(analyteId) ??
+          formatObservationValue(row),
         unit: row.unit ?? '',
         flags: row.flags,
         referenceRangeText: formatReferenceRangeText(

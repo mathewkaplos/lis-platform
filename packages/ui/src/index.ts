@@ -4,6 +4,7 @@ export * from "./tokens";
 // The 6 primitives (TASK-035).
 export * from "./components/data-table";
 export * from "./components/status-pill";
+export * from "./components/susceptibility-badge";
 export * from "./components/filter-bar";
 export * from "./components/slide-over";
 export * from "./components/stat-card";

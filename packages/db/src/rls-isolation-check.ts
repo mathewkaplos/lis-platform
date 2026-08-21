@@ -10,15 +10,24 @@
  * that forgets one can't slip through unnoticed, and (b) exercises real
  * cross-tenant data access and confirms the wrong tenant sees nothing.
  *
- * Wired into CI (`pr.yml`'s `build-and-test` job, `pnpm --filter @lis/db
- * rls-check`, placed after every e2e suite) as of the coverage pass that
- * added the missing `case_narrative` fixture below -- the original "not
- * wired in yet, CI has no DATABASE_URL/migration step" caveat here is
- * stale as of TASK-026, which built that out. Can still be run manually
- * against a local Postgres too (`pnpm --filter @lis/db rls-check`, after
- * `bash scripts/db-reset.sh` -- this script's own fixtures are insert-only,
- * so it must run against a freshly reset DB, never a second time in a row
- * against the same one).
+ * Wired into CI as of the coverage pass that added the missing
+ * `case_narrative` fixture below -- the original "not wired in yet, CI has
+ * no DATABASE_URL/migration step" caveat here is stale as of TASK-026,
+ * which built that out. Runs in its own dedicated `rls-isolation-check` job
+ * in `pr.yml`, deliberately NOT inside `build-and-test`'s own shared
+ * Postgres: this check's `liveLeakCheck()` assumes TENANT_B is untouched by
+ * anything else, which is only true against a database nothing but this
+ * seed + this check has ever written to -- `build-and-test`'s own Postgres
+ * accumulates real cross-tenant data from the dozens of e2e specs that
+ * legitimately exercise TENANT_B (test-user-2) for their own isolation
+ * tests, which this check's naive `count(*) != 0` can't distinguish from
+ * an actual leak (found live: a first attempt at wiring this into
+ * `build-and-test`, placed after every e2e suite, failed on exactly the
+ * tables those specs are known to write real TENANT_B rows to). Can still
+ * be run manually against a local Postgres too (`pnpm --filter @lis/db
+ * rls-check`, after `bash scripts/db-reset.sh` -- this script's own
+ * fixtures are insert-only, so it must run against a freshly reset DB,
+ * never a second time in a row against the same one).
  *
  * Connects as `lis_app` (APP_DATABASE_URL), never `postgres` — the
  * BYPASSRLS/superuser lesson from TASK-017 applies here more than anywhere:
@@ -536,21 +545,18 @@ async function liveLeakCheck(db: Db, tables: string[]): Promise<string[]> {
 }
 
 async function main() {
-  // Real bug found live in CI, not locally (a low-load single-user local
-  // run happens to keep reusing the same idle pooled connection; CI's own
-  // load pattern doesn't): `setTenant()` uses session-level `set_config`
+  // `{ max: 1 }`: `setTenant()` uses session-level `set_config`
   // (`is_local: false`, deliberately -- see its own comment), which sticks
-  // to whichever physical connection ran it. Without `{ max: 1 }`, `pg.Pool`
-  // defaults to up to 10 connections, so the TENANT_A fixture-insert phase
-  // and the TENANT_B leak-check phase can land on different physical
-  // connections -- a query that never had `set_config` called on ITS OWN
-  // connection at all falls back to Postgres's session default, and
-  // whatever tenant context happened to be set on that specific connection
-  // by an earlier, unrelated query on the same pool leaks through, looking
-  // exactly like a real RLS leak. `tenant-catalog-seed-check.ts` (a sibling
-  // script with the identical single-shot-but-multi-tenant shape) already
-  // pins `{ max: 1 }` for exactly this reason -- this script just never
-  // matched that precedent until now.
+  // to whichever physical connection ran it. A multi-connection pool risks
+  // the TENANT_A fixture-insert phase and TENANT_B leak-check phase landing
+  // on different physical connections, which would produce a spurious leak
+  // report. Ruled out as the cause of a real CI-only failure this script
+  // hit (a naive count-based leak check reading real TENANT_B data written
+  // by e2e specs that legitimately exercise cross-tenant isolation, not a
+  // connection artifact -- see this check's own dedicated CI job in
+  // pr.yml for the real root cause and fix), but kept as correct, cheap
+  // hygiene matching `tenant-catalog-seed-check.ts`'s own identical
+  // single-shot-but-multi-tenant precedent.
   const db = createDb(APP_DATABASE_URL, { max: 1 });
 
   console.log("TASK-024: cross-table RLS isolation check (connected as lis_app)\n");

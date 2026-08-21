@@ -33,6 +33,7 @@ describe('Cytology Pap reporting (e2e)', () => {
   async function createCytologyCase(): Promise<{
     caseId: string;
     orderedTestId: string;
+    specimenId: string;
   }> {
     const patientRes = await request(app.getHttpServer())
       .post('/v1/patients')
@@ -93,7 +94,7 @@ describe('Cytology Pap reporting (e2e)', () => {
       orderDetail.body as { orderedTests: { id: string }[] }
     ).orderedTests[0].id;
 
-    return { caseId, orderedTestId };
+    return { caseId, orderedTestId, specimenId: part.id };
   }
 
   beforeAll(async () => {
@@ -161,13 +162,14 @@ describe('Cytology Pap reporting (e2e)', () => {
   });
 
   it('AC #1: adequacy is captured as a coded Observation, distinct from every other element', async () => {
-    const { caseId, orderedTestId } = await createCytologyCase();
+    const { caseId, orderedTestId, specimenId } = await createCytologyCase();
 
     const res = await request(app.getHttpServer())
       .post(`/v1/cases/${caseId}/synoptic-responses`)
       .set('Authorization', `Bearer ${tokenA}`)
       .send({
         orderedTestId,
+        specimenId,
         synopticProtocolVersionId: papVersionId,
         responses: [
           { elementKey: 'specimen_adequacy', value: 'satisfactory' },
@@ -194,7 +196,7 @@ describe('Cytology Pap reporting (e2e)', () => {
   });
 
   it('an unsatisfactory adequacy response requires a reason (the real conditional visibilityCondition)', async () => {
-    const { caseId, orderedTestId } = await createCytologyCase();
+    const { caseId, orderedTestId, specimenId } = await createCytologyCase();
 
     // Omitting adequacy_reason when specimen_adequacy is unsatisfactory --
     // the recorder's own real required-when-visible enforcement (reused
@@ -204,6 +206,7 @@ describe('Cytology Pap reporting (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .send({
         orderedTestId,
+        specimenId,
         synopticProtocolVersionId: papVersionId,
         responses: [
           {
@@ -217,13 +220,14 @@ describe('Cytology Pap reporting (e2e)', () => {
   });
 
   it('AC #2: interpretation category is validated against the real controlled Bethesda value set', async () => {
-    const { caseId, orderedTestId } = await createCytologyCase();
+    const { caseId, orderedTestId, specimenId } = await createCytologyCase();
 
     await request(app.getHttpServer())
       .post(`/v1/cases/${caseId}/synoptic-responses`)
       .set('Authorization', `Bearer ${tokenA}`)
       .send({
         orderedTestId,
+        specimenId,
         synopticProtocolVersionId: papVersionId,
         responses: [
           { elementKey: 'specimen_adequacy', value: 'satisfactory' },
@@ -240,6 +244,7 @@ describe('Cytology Pap reporting (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .send({
         orderedTestId,
+        specimenId,
         synopticProtocolVersionId: papVersionId,
         responses: [
           { elementKey: 'specimen_adequacy', value: 'satisfactory' },
@@ -256,13 +261,14 @@ describe('Cytology Pap reporting (e2e)', () => {
   });
 
   it('AC #3: a Pap case can be signed out end to end via the FEAT-059 mechanism', async () => {
-    const { caseId, orderedTestId } = await createCytologyCase();
+    const { caseId, orderedTestId, specimenId } = await createCytologyCase();
 
     await request(app.getHttpServer())
       .post(`/v1/cases/${caseId}/synoptic-responses`)
       .set('Authorization', `Bearer ${tokenA}`)
       .send({
         orderedTestId,
+        specimenId,
         synopticProtocolVersionId: papVersionId,
         responses: [
           { elementKey: 'specimen_adequacy', value: 'satisfactory' },

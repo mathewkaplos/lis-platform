@@ -98,7 +98,12 @@ describe('Image attachments + annotations (e2e)', () => {
       .get(`/v1/cases/${caseId}`)
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(200);
-    const orderId = (lineageRes.body as { orderId: string }).orderId;
+    const lineageBody = lineageRes.body as {
+      orderId: string;
+      parts: { id: string }[];
+    };
+    const orderId = lineageBody.orderId;
+    const specimenId = lineageBody.parts[0].id;
     const ordRes = await request(app.getHttpServer())
       .get(`/v1/orders/${orderId}`)
       .set('Authorization', `Bearer ${tokenA}`)
@@ -139,6 +144,7 @@ describe('Image attachments + annotations (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .send({
         orderedTestId,
+        specimenId,
         synopticProtocolVersionId: versionId,
         responses: [
           { elementKey: 'neoadjuvant_therapy', value: 'not_given' },

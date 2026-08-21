@@ -1025,9 +1025,16 @@ export class CaseController {
       )
       .orderBy(desc(observation.createdAt));
 
-    // Per (orderedTestId, synopticProtocolVersionId) -- rows are already
-    // newest-first, so the first one seen per key is kept (see comment
-    // above on why more than one non-superseded row is possible in theory).
+    // Issue #674: per (specimenId, synopticProtocolVersionId), not
+    // (orderedTestId, synopticProtocolVersionId) -- orderedTestId alone
+    // can't distinguish two eligible parts recorded against the same
+    // protocol (there is no per-part ordered test in this schema).
+    // specimenId is nullable (NULL for any response recorded before this
+    // issue landed); every NULL-specimenId row still groups together
+    // under one key, matching the pre-#674 behavior exactly for that
+    // transitional data. Rows are already newest-first, so the first one
+    // seen per key is kept (see comment above on why more than one
+    // non-superseded row is possible in theory).
     const seenKeys = new Set<string>();
     const latestByKey: (typeof gridObservationRows)[number][] = [];
     for (const row of gridObservationRows) {
@@ -1036,7 +1043,7 @@ export class CaseController {
         results: unknown[];
       } | null;
       if (!payload?.synopticProtocolVersionId || !row.orderedTestId) continue;
-      const key = `${row.orderedTestId}:${payload.synopticProtocolVersionId}`;
+      const key = `${row.specimenId ?? 'null'}:${payload.synopticProtocolVersionId}`;
       if (seenKeys.has(key)) continue;
       seenKeys.add(key);
       latestByKey.push(row);
@@ -1087,6 +1094,7 @@ export class CaseController {
           protocolIdByVersionId.get(payload.synopticProtocolVersionId) ?? '';
         return {
           orderedTestId: row.orderedTestId as string,
+          specimenId: row.specimenId,
           synopticProtocolId,
           synopticProtocolVersionId: payload.synopticProtocolVersionId,
           protocolName:

@@ -74,6 +74,7 @@ describe('Synoptic Protocol API (e2e)', () => {
   async function createCaseWithOrderedTest(): Promise<{
     caseId: string;
     orderedTestId: string;
+    specimenId: string;
   }> {
     const orderId = await createOrder();
     const caseRes = await request(app.getHttpServer())
@@ -81,7 +82,12 @@ describe('Synoptic Protocol API (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .send({ orderId, parts: [{ specimenType: 'tissue' }] })
       .expect(201);
-    const caseId = (caseRes.body as { resourceId: string }).resourceId;
+    const caseBody = caseRes.body as {
+      resourceId: string;
+      after: { partIds: string[] };
+    };
+    const caseId = caseBody.resourceId;
+    const specimenId = caseBody.after.partIds[0];
 
     const orderRes = await request(app.getHttpServer())
       .get(`/v1/orders/${orderId}`)
@@ -89,7 +95,7 @@ describe('Synoptic Protocol API (e2e)', () => {
       .expect(200);
     const orderedTestId = (orderRes.body as { orderedTests: { id: string }[] })
       .orderedTests[0].id;
-    return { caseId, orderedTestId };
+    return { caseId, orderedTestId, specimenId };
   }
 
   // Colorectal required elements that are always visible regardless of
@@ -225,13 +231,15 @@ describe('Synoptic Protocol API (e2e)', () => {
   });
 
   it('AC #2: recording a full response set produces both a readable grid Observation and discrete coded atoms per element', async () => {
-    const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+    const { caseId, orderedTestId, specimenId } =
+      await createCaseWithOrderedTest();
 
     const res = await request(app.getHttpServer())
       .post(`/v1/cases/${caseId}/synoptic-responses`)
       .set('Authorization', `Bearer ${tokenA}`)
       .send({
         orderedTestId,
+        specimenId,
         synopticProtocolVersionId: colorectalVersionId,
         responses: baseColorectalResponses,
       })
@@ -259,7 +267,8 @@ describe('Synoptic Protocol API (e2e)', () => {
   });
 
   it('AC #4: a conditionally-required element (visible) must be supplied, and correctly rejects when omitted for a rectal case', async () => {
-    const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+    const { caseId, orderedTestId, specimenId } =
+      await createCaseWithOrderedTest();
 
     const rectalResponses = baseColorectalResponses
       .filter((r) => r.elementKey !== 'tumor_site')
@@ -272,6 +281,7 @@ describe('Synoptic Protocol API (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .send({
         orderedTestId,
+        specimenId,
         synopticProtocolVersionId: colorectalVersionId,
         responses: rectalResponses,
       })
@@ -292,6 +302,7 @@ describe('Synoptic Protocol API (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .send({
         orderedTestId,
+        specimenId,
         synopticProtocolVersionId: colorectalVersionId,
         responses: rectalResponses.concat([
           {
@@ -305,12 +316,14 @@ describe('Synoptic Protocol API (e2e)', () => {
   });
 
   it('rejects an invalid coded response value with 400, writing nothing', async () => {
-    const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+    const { caseId, orderedTestId, specimenId } =
+      await createCaseWithOrderedTest();
     await request(app.getHttpServer())
       .post(`/v1/cases/${caseId}/synoptic-responses`)
       .set('Authorization', `Bearer ${tokenA}`)
       .send({
         orderedTestId,
+        specimenId,
         synopticProtocolVersionId: colorectalVersionId,
         responses: baseColorectalResponses
           .filter((r) => r.elementKey !== 'histological_tumor_grade')
@@ -347,12 +360,14 @@ describe('Synoptic Protocol API (e2e)', () => {
   });
 
   it('denies a caller with no manage_specimens-granting role (403)', async () => {
-    const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+    const { caseId, orderedTestId, specimenId } =
+      await createCaseWithOrderedTest();
     await request(app.getHttpServer())
       .post(`/v1/cases/${caseId}/synoptic-responses`)
       .set('Authorization', `Bearer ${noRoleToken}`)
       .send({
         orderedTestId,
+        specimenId,
         synopticProtocolVersionId: colorectalVersionId,
         responses: baseColorectalResponses,
       })
@@ -366,6 +381,7 @@ describe('Synoptic Protocol API (e2e)', () => {
       .set('Authorization', `Bearer ${tokenB}`)
       .send({
         orderedTestId: '00000000-0000-0000-0000-000000000000',
+        specimenId: '00000000-0000-0000-0000-000000000000',
         synopticProtocolVersionId: colorectalVersionId,
         responses: baseColorectalResponses,
       })
@@ -374,7 +390,8 @@ describe('Synoptic Protocol API (e2e)', () => {
 
   describe('coded_multi elements (issue #645)', () => {
     it('records a valid multi-select response as one structured Observation with the selected array persisted verbatim', async () => {
-      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
 
       const protocolsRes = await request(app.getHttpServer())
         .get('/v1/synoptic-protocols')
@@ -432,6 +449,7 @@ describe('Synoptic Protocol API (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: prostate.publishedVersionId,
           responses: [
             { elementKey: 'procedure', value: 'not_specified' },
@@ -511,7 +529,8 @@ describe('Synoptic Protocol API (e2e)', () => {
     });
 
     it("rejects a coded_multi response containing any value not in the element's own responseOptions", async () => {
-      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
 
       const protocolsRes = await request(app.getHttpServer())
         .get('/v1/synoptic-protocols')
@@ -543,6 +562,7 @@ describe('Synoptic Protocol API (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: prostate.publishedVersionId,
           responses: [
             { elementKey: 'procedure', value: 'not_specified' },
@@ -605,12 +625,14 @@ describe('Synoptic Protocol API (e2e)', () => {
     });
 
     it('returns a recorded response with correct labels/values after POST', async () => {
-      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
       await request(app.getHttpServer())
         .post(`/v1/cases/${caseId}/synoptic-responses`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: colorectalVersionId,
           responses: baseColorectalResponses,
         })
@@ -655,12 +677,14 @@ describe('Synoptic Protocol API (e2e)', () => {
     });
 
     it('returns only the most recent recording when the same protocol is recorded twice against the same ordered test', async () => {
-      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
       await request(app.getHttpServer())
         .post(`/v1/cases/${caseId}/synoptic-responses`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: colorectalVersionId,
           responses: baseColorectalResponses,
         })
@@ -674,6 +698,7 @@ describe('Synoptic Protocol API (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: colorectalVersionId,
           responses: secondResponses,
         })
@@ -712,12 +737,14 @@ describe('Synoptic Protocol API (e2e)', () => {
 
   describe('Response versioning (issue #662)', () => {
     it('a first-ever recording has amendmentOf: null everywhere it appears', async () => {
-      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
       const postRes = await request(app.getHttpServer())
         .post(`/v1/cases/${caseId}/synoptic-responses`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: colorectalVersionId,
           responses: baseColorectalResponses,
         })
@@ -744,12 +771,14 @@ describe('Synoptic Protocol API (e2e)', () => {
     });
 
     it('recording a second time chains onto the first via amendmentOf/supersededBy, in the API response, the read path, and directly in the database', async () => {
-      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
       const firstRes = await request(app.getHttpServer())
         .post(`/v1/cases/${caseId}/synoptic-responses`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: colorectalVersionId,
           responses: baseColorectalResponses,
         })
@@ -770,6 +799,7 @@ describe('Synoptic Protocol API (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: colorectalVersionId,
           responses: secondResponses,
         })
@@ -943,7 +973,8 @@ describe('Synoptic Protocol API (e2e)', () => {
     });
 
     it('a full recording including both the unit-bearing quantity value and its precision-qualifier answer succeeds through the unmodified recorder', async () => {
-      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
       const responsesWithPrecision = baseColorectalResponses.concat([
         { elementKey: 'margin_distance_mm_precision', value: 'at_least' },
       ]);
@@ -952,6 +983,7 @@ describe('Synoptic Protocol API (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: colorectalVersionId,
           responses: responsesWithPrecision,
         })
@@ -1017,7 +1049,8 @@ describe('Synoptic Protocol API (e2e)', () => {
 
     it('is enforced like a required element when visible, and rejects if omitted', async () => {
       const { key } = await createConditionalTestElement();
-      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
       const responsesWithNeoadjuvant = baseColorectalResponses
         .filter((r) => r.elementKey !== 'neoadjuvant_therapy')
         .concat([
@@ -1037,6 +1070,7 @@ describe('Synoptic Protocol API (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: colorectalVersionId,
           responses: responsesWithNeoadjuvant,
         })
@@ -1052,6 +1086,7 @@ describe('Synoptic Protocol API (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: colorectalVersionId,
           responses: responsesWithNeoadjuvant.concat([
             { elementKey: key, value: 'answered' },
@@ -1062,7 +1097,8 @@ describe('Synoptic Protocol API (e2e)', () => {
 
     it('is skipped (not enforced) when hidden by its own visibilityCondition', async () => {
       await createConditionalTestElement();
-      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
       // baseColorectalResponses already sets neoadjuvant_therapy = 'not_given'
       // -- the conditional element stays hidden, so omitting it must succeed.
       await request(app.getHttpServer())
@@ -1070,6 +1106,7 @@ describe('Synoptic Protocol API (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: colorectalVersionId,
           responses: baseColorectalResponses,
         })
@@ -1170,13 +1207,15 @@ describe('Synoptic Protocol API (e2e)', () => {
 
     it('records two distinct instances, each independently retrievable via the read path (#659)', async () => {
       const { identityKey, sizeKey } = await createRepeatableTumorGroup();
-      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
 
       const recorded = await request(app.getHttpServer())
         .post(`/v1/cases/${caseId}/synoptic-responses`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: colorectalVersionId,
           responses: baseColorectalResponses.concat([
             {
@@ -1247,13 +1286,15 @@ describe('Synoptic Protocol API (e2e)', () => {
 
     it('does not require the group at all when zero instances are submitted and the root is only "recommended" (optional by default)', async () => {
       await createRepeatableTumorGroup('recommended');
-      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
 
       await request(app.getHttpServer())
         .post(`/v1/cases/${caseId}/synoptic-responses`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: colorectalVersionId,
           responses: baseColorectalResponses,
         })
@@ -1262,13 +1303,15 @@ describe('Synoptic Protocol API (e2e)', () => {
 
     it('rejects a submitted instance missing one of its own required fields', async () => {
       const { identityKey, sizeKey } = await createRepeatableTumorGroup();
-      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
 
       const rejected = await request(app.getHttpServer())
         .post(`/v1/cases/${caseId}/synoptic-responses`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: colorectalVersionId,
           // Instance 'i1' answers its identity field but omits the
           // required size field.
@@ -1299,7 +1342,8 @@ describe('Synoptic Protocol API (e2e)', () => {
     // zero-instance/optional or per-instance-field tests above.
     it('rejects when the group itself is required, visible, and zero instances are submitted', async () => {
       const { rootKey } = await createRepeatableTumorGroup('required');
-      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
 
       // The root's own visibilityCondition (neoadjuvant_therapy = 'given')
       // must be satisfied for it to be required at all -- also brings the
@@ -1320,6 +1364,7 @@ describe('Synoptic Protocol API (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: colorectalVersionId,
           responses: responsesWithNeoadjuvant,
         })
@@ -1410,12 +1455,14 @@ describe('Synoptic Protocol API (e2e)', () => {
         );
       }
 
-      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
       const recorded = await request(app.getHttpServer())
         .post(`/v1/cases/${caseId}/synoptic-responses`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: targetVersionId,
           responses: [{ elementKey: 'lymph_node_status', value: 'pN1a' }],
         })
@@ -1524,13 +1571,15 @@ describe('Synoptic Protocol API (e2e)', () => {
         );
       }
 
-      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
 
       await request(app.getHttpServer())
         .post(`/v1/cases/${caseId}/synoptic-responses`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: targetVersionId,
           responses: [
             { elementKey: statusKey, value: 'tumor_present' },
@@ -1635,12 +1684,14 @@ describe('Synoptic Protocol API (e2e)', () => {
       const panel = await createThrowawayProtocol(true);
       await insertTestElement(panel.versionId, 'er_status');
 
-      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
       const recorded = await request(app.getHttpServer())
         .post(`/v1/cases/${caseId}/synoptic-responses`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: panel.versionId,
           responses: [{ elementKey: 'er_status', value: 'positive' }],
         })
@@ -1732,12 +1783,14 @@ describe('Synoptic Protocol API (e2e)', () => {
         );
       }
 
-      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
       await request(app.getHttpServer())
         .post(`/v1/cases/${caseId}/synoptic-responses`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: organ.versionId,
           responses: [
             { elementKey: `${keyPrefix}her2_status`, value: 'positive' },
@@ -1797,12 +1850,14 @@ describe('Synoptic Protocol API (e2e)', () => {
     });
 
     it('a response bound to a terminology code records and reads exactly like any other coded response, end to end', async () => {
-      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
       const recorded = await request(app.getHttpServer())
         .post(`/v1/cases/${caseId}/synoptic-responses`)
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: colorectalVersionId,
           responses: baseColorectalResponses
             .filter((r) => r.elementKey !== 'histological_tumor_type')
@@ -1823,6 +1878,121 @@ describe('Synoptic Protocol API (e2e)', () => {
       ) {
         throw new Error(
           `expected the code-bound response option to record like any other, got ${JSON.stringify(results)}`,
+        );
+      }
+    });
+  });
+
+  describe('Part-scoped responses (issue #674)', () => {
+    // A case with two eligible parts recorded against the SAME protocol --
+    // both share the same orderedTestId (order.orderedTests[0], there is
+    // no per-part ordered test in this schema), so specimenId is the only
+    // thing that can distinguish their recordings.
+    async function createCaseWithTwoParts(): Promise<{
+      caseId: string;
+      orderedTestId: string;
+      specimenIdA: string;
+      specimenIdB: string;
+    }> {
+      const orderId = await createOrder();
+      const caseRes = await request(app.getHttpServer())
+        .post('/v1/cases')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderId,
+          parts: [{ specimenType: 'tissue' }, { specimenType: 'tissue' }],
+        })
+        .expect(201);
+      const caseBody = caseRes.body as {
+        resourceId: string;
+        after: { partIds: string[] };
+      };
+      const orderRes = await request(app.getHttpServer())
+        .get(`/v1/orders/${orderId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const orderedTestId = (
+        orderRes.body as { orderedTests: { id: string }[] }
+      ).orderedTests[0].id;
+      return {
+        caseId: caseBody.resourceId,
+        orderedTestId,
+        specimenIdA: caseBody.after.partIds[0],
+        specimenIdB: caseBody.after.partIds[1],
+      };
+    }
+
+    it('two parts recorded against the same protocol are each independently retrievable, and recording the second never supersedes the first', async () => {
+      const { caseId, orderedTestId, specimenIdA, specimenIdB } =
+        await createCaseWithTwoParts();
+
+      const recordedA = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          specimenId: specimenIdA,
+          synopticProtocolVersionId: colorectalVersionId,
+          responses: baseColorectalResponses,
+        })
+        .expect(201);
+      const tableObservationIdA = (
+        recordedA.body as { tableObservationId: string }
+      ).tableObservationId;
+
+      const recordedB = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          specimenId: specimenIdB,
+          synopticProtocolVersionId: colorectalVersionId,
+          responses: baseColorectalResponses,
+        })
+        .expect(201);
+      const recordedBBody = recordedB.body as {
+        tableObservationId: string;
+        amendmentOf: string | null;
+      };
+      if (recordedBBody.amendmentOf !== null) {
+        throw new Error(
+          `expected part B's recording to be a first-ever recording (amendmentOf: null), not an amendment of part A's own grid, got ${JSON.stringify(recordedBBody)}`,
+        );
+      }
+
+      // Part A's own grid must still be the current chain head -- recording
+      // part B must never have superseded it.
+      const [gridA] = await db
+        .select({ supersededBy: observation.supersededBy })
+        .from(observation)
+        .where(eq(observation.id, tableObservationIdA))
+        .limit(1);
+      if (gridA?.supersededBy !== null) {
+        throw new Error(
+          `expected part A's grid Observation to remain un-superseded after recording part B, got ${JSON.stringify(gridA)}`,
+        );
+      }
+
+      const listRes = await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const responses = (
+        listRes.body as {
+          responses: {
+            specimenId: string | null;
+            tableObservationId: string;
+          }[];
+        }
+      ).responses;
+      const forA = responses.find((r) => r.specimenId === specimenIdA);
+      const forB = responses.find((r) => r.specimenId === specimenIdB);
+      if (
+        forA?.tableObservationId !== tableObservationIdA ||
+        forB?.tableObservationId !== recordedBBody.tableObservationId
+      ) {
+        throw new Error(
+          `expected both parts' own responses independently retrievable and distinguishable, got ${JSON.stringify(responses)}`,
         );
       }
     });

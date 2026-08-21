@@ -180,6 +180,11 @@ const synopticResponseValueSchema = z.union([
 
 export const synopticResponseCreateSchema = z.object({
   orderedTestId: z.uuid(),
+  // Issue #674: the specimen (part) this recording belongs to --
+  // orderedTestId alone can't distinguish two eligible parts recorded
+  // against the same protocol (there is no per-part ordered test in this
+  // schema).
+  specimenId: z.uuid(),
   synopticProtocolVersionId: z.uuid(),
   responses: z
     .array(
@@ -235,14 +240,15 @@ export type SynopticResponseRecordedEventPayload = z.infer<
  * it back with case/protocol-identifying fields added, not a re-derived
  * shape.
  *
- * Keyed on `(orderedTestId, synopticProtocolVersionId)`, not on a specimen/
- * part -- responses are not part-scoped in the write path today (found
- * during this issue's own implementation; tracked separately as issue
- * #674). A case with two eligible parts recorded against the *same*
- * protocol will only surface the more recent of the two here.
+ * Issue #674: keyed on `(specimenId, synopticProtocolVersionId)` --
+ * `specimenId` (nullable, `NULL` for any response recorded before this
+ * issue landed) replaces `orderedTestId` as the distinguishing half of
+ * the key, so two eligible parts recorded against the same protocol are
+ * each independently surfaced here.
  */
 export const caseSynopticResponseSchema = z.object({
   orderedTestId: z.uuid(),
+  specimenId: z.uuid().nullable(),
   synopticProtocolId: z.uuid(),
   synopticProtocolVersionId: z.uuid(),
   protocolName: z.string(),

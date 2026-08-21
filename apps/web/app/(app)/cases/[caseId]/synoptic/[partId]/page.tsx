@@ -151,6 +151,7 @@ export default async function SynopticProtocolPage({
           <ProtocolForm
             caseId={caseId}
             orderedTestId={orderedTestId}
+            specimenId={partId}
             synopticProtocolVersionId={activeVersion.id}
             elements={activeVersion.elements}
             sourceStandard={activeSourceStandard}

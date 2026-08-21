@@ -21,6 +21,7 @@ import {
   patientSchema,
   patientSearchQuerySchema,
   PATIENT_SEARCH_RESULT_LIMIT,
+  PATIENT_RECENT_RESULT_LIMIT,
   type CareRelationship,
   type Patient,
   type PatientDetail,
@@ -34,7 +35,7 @@ import {
   patientAlert,
   patientPortalAccount,
 } from '@lis/db';
-import { and, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { Audit } from '../auth/audit.decorator';
@@ -205,11 +206,13 @@ export class PatientController {
   }
 
   /**
-   * Four mutually exclusive lookup shapes (`patientSearchQuerySchema`
+   * Five mutually exclusive lookup shapes (`patientSearchQuerySchema`
    * requires exactly one): `mrn` (exact), `nationalId` (exact),
    * `firstName`+`lastName`+`birthDate` together (TASK-040's own duplicate-
    * detection check, not general search — case-insensitive on names, per
-   * that task's proposal §10 Q1), or `q` (TASK-041's free-text search:
+   * that task's proposal §10 Q1), `recent` (issue #716: the default
+   * `/patients` view with no search term yet — most-recently-registered
+   * first, capped at `PATIENT_RECENT_RESULT_LIMIT`), or `q` (TASK-041's free-text search:
    * case-insensitive partial match on name, prefix match on mrn/nationalId
    * — an MRN/national ID is typically typed in full or scanned, not
    * partially searched the way a name is). `q` results are capped at
@@ -245,6 +248,27 @@ export class PatientController {
       }
     }
 
+    // Issue #716: "recent patients" default view -- most recently
+    // registered first, capped much tighter than free-text search
+    // (PATIENT_RECENT_RESULT_LIMIT, not PATIENT_SEARCH_RESULT_LIMIT). Same
+    // merged-patient exclusion and clinician-scoping as the `q` branch
+    // below.
+    if (query.recent !== undefined) {
+      const rows = await tx
+        .select()
+        .from(patient)
+        .where(
+          and(
+            isNull(patient.mergedInto),
+            scopeToPatientIds
+              ? inArray(patient.id, scopeToPatientIds)
+              : undefined,
+          ),
+        )
+        .orderBy(desc(patient.createdAt))
+        .limit(PATIENT_RECENT_RESULT_LIMIT);
+      return rows.map(toPatientDto);
+    }
     if (query.q !== undefined) {
       const term = query.q;
       const rows = await tx

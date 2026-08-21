@@ -14,6 +14,14 @@ import { PATIENT_SEARCH_RESULT_LIMIT } from '@lis/domain';
  * sizing. Results capped at `PATIENT_SEARCH_RESULT_LIMIT`, no pager, per
  * ADR-0013's cursor-pagination deferral (§10 Q2, resolved).
  *
+ * Issue #716 (EPIC #697): landing here with no search term used to show only
+ * a bare prompt ("search to find a patient") -- confirmed as a real gap in
+ * the pilot-readiness audit: a front-desk user who just registered several
+ * patients had no way to see "who did I just register" without remembering
+ * a search term. Now defaults to the API's own `recent=true` mode (most
+ * recently registered first) instead, alongside the still-present search
+ * box -- a default view, not a replacement for search.
+ *
  * A plain GET form (no client JS) drives the search -- `q` lives in the URL
  * `searchParams`, so this stays a Server Component; `loading.tsx` covers the
  * loading state during navigation, `error.tsx` covers a failed API call.
@@ -25,22 +33,21 @@ export default async function PatientsPage({
 }) {
   const { q } = await searchParams;
   const trimmedQ = q?.trim();
+  const isSearch = Boolean(trimmedQ);
 
-  let results: PatientRow[] | null = null;
-  if (trimmedQ) {
-    const accessToken = await getValidAccessToken();
-    if (!accessToken) {
-      throw new Error('Your session has expired — please log in again.');
-    }
-    const client = createLisApiClient(accessToken);
-    const { data, response } = await client.GET('/v1/patients', {
-      params: { query: { q: trimmedQ } },
-    });
-    if (!response.ok) {
-      throw new Error('Something went wrong searching for patients. Please try again.');
-    }
-    results = (data ?? []) as PatientRow[];
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    throw new Error('Your session has expired — please log in again.');
   }
+  const client = createLisApiClient(accessToken);
+
+  const { data, response } = await client.GET('/v1/patients', {
+    params: { query: isSearch ? { q: trimmedQ } : { recent: 'true' } },
+  });
+  if (!response.ok) {
+    throw new Error('Something went wrong loading patients. Please try again.');
+  }
+  const results = (data ?? []) as PatientRow[];
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
@@ -73,11 +80,7 @@ export default async function PatientsPage({
         </CardContent>
       </Card>
 
-      {results === null ? (
-        <p className="text-sm text-text-secondary">
-          Search by name, MRN, or national ID to find a patient.
-        </p>
-      ) : (
+      {isSearch ? (
         <>
           <PatientsTable rows={results} />
           {results.length === PATIENT_SEARCH_RESULT_LIMIT ? (
@@ -86,6 +89,11 @@ export default async function PatientsPage({
               more specific results.
             </p>
           ) : null}
+        </>
+      ) : (
+        <>
+          <h2 className="text-sm font-medium text-text-secondary">Recently registered</h2>
+          <PatientsTable rows={results} />
         </>
       )}
     </div>

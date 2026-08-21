@@ -3158,6 +3158,7 @@ export interface operations {
                 lastName?: string;
                 birthDate?: string;
                 q?: string;
+                recent?: "true";
             };
             header?: never;
             path?: never;

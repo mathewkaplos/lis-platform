@@ -1800,6 +1800,176 @@ describe('Synoptic Protocol API (e2e)', () => {
     });
   });
 
+  describe('Breast Biomarker Panel (issue #551)', () => {
+    // Real, seeded content (db/seed/synoptic-protocol-breast-biomarker.sql):
+    // a real, cited CAP biomarker panel, linked to the existing seeded
+    // ICCR breast organ protocol via #668's mechanism.
+    async function resolveBreastBiomarkerPanel(): Promise<{
+      panelId: string;
+      panelVersionId: string;
+    }> {
+      const res = await request(app.getHttpServer())
+        .get('/v1/synoptic-protocols')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const panel = (
+        res.body as {
+          protocols: {
+            id: string;
+            name: string;
+            sourceStandard: string;
+            publishedVersionId: string | null;
+          }[];
+        }
+      ).protocols.find(
+        (p) =>
+          p.name === 'Breast Biomarker Panel (ER/PR/HER2)' &&
+          p.sourceStandard === 'CAP',
+      );
+      if (!panel?.publishedVersionId) {
+        throw new Error(
+          "expected db/seed/synoptic-protocol-breast-biomarker.sql's 'Breast Biomarker Panel (ER/PR/HER2)' protocol",
+        );
+      }
+      return { panelId: panel.id, panelVersionId: panel.publishedVersionId };
+    }
+
+    it("is linked from the existing breast organ protocol's own version response", async () => {
+      const protocolsRes = await request(app.getHttpServer())
+        .get('/v1/synoptic-protocols')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const breast = (
+        protocolsRes.body as {
+          protocols: {
+            id: string;
+            name: string;
+            sourceStandard: string;
+            publishedVersionId: string | null;
+          }[];
+        }
+      ).protocols.find(
+        (p) =>
+          p.name === 'Invasive Carcinoma of the Breast' &&
+          p.sourceStandard === 'ICCR',
+      );
+      if (!breast?.publishedVersionId) {
+        throw new Error(
+          "expected the seeded, published 'Invasive Carcinoma of the Breast' protocol",
+        );
+      }
+
+      const versionRes = await request(app.getHttpServer())
+        .get(
+          `/v1/synoptic-protocols/${breast.id}/versions/${breast.publishedVersionId}`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const linkedPanels = (
+        versionRes.body as {
+          linkedPanels: {
+            name: string;
+            sourceStandard: string;
+            publishedVersionId: string | null;
+          }[];
+        }
+      ).linkedPanels;
+      const panel = linkedPanels.find(
+        (p) => p.name === 'Breast Biomarker Panel (ER/PR/HER2)',
+      );
+      if (!panel?.publishedVersionId) {
+        throw new Error(
+          `expected the breast biomarker panel among linkedPanels, got ${JSON.stringify(linkedPanels)}`,
+        );
+      }
+    });
+
+    it('records a real ER-positive/PgR-positive/HER2-negative result, independently of the organ protocol, with HER2 ISH left unanswered (recommended, not required)', async () => {
+      const { panelVersionId } = await resolveBreastBiomarkerPanel();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
+
+      const recorded = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          specimenId,
+          synopticProtocolVersionId: panelVersionId,
+          responses: [
+            { elementKey: 'er_status', value: 'positive' },
+            { elementKey: 'er_percentage_positive', value: 95 },
+            { elementKey: 'er_intensity', value: 'strong_3plus' },
+            { elementKey: 'pgr_status', value: 'positive' },
+            { elementKey: 'pgr_percentage_positive', value: 80 },
+            { elementKey: 'pgr_intensity', value: 'moderate_2plus' },
+            { elementKey: 'her2_ihc_score', value: 'score_0' },
+            // her2_ish_performed deliberately omitted -- 'recommended', not
+            // 'required' (the design partner's own real usage: no in-house
+            // ISH/FISH testing).
+          ],
+        })
+        .expect(201);
+      const results = (
+        recorded.body as { results: { elementKey: string; value: unknown }[] }
+      ).results;
+      const er = results.find((r) => r.elementKey === 'er_status');
+      const her2 = results.find((r) => r.elementKey === 'her2_ihc_score');
+      if (er?.value !== 'positive' || her2?.value !== 'score_0') {
+        throw new Error(
+          `expected the real biomarker responses to record correctly, got ${JSON.stringify(results)}`,
+        );
+      }
+
+      const listRes = await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const responses = (
+        listRes.body as {
+          responses: {
+            synopticProtocolVersionId: string;
+            results: { elementKey: string; value: unknown }[];
+          }[];
+        }
+      ).responses;
+      const match = responses.find(
+        (r) => r.synopticProtocolVersionId === panelVersionId,
+      );
+      if (!match) {
+        throw new Error(
+          `expected the panel's own response independently readable, got ${JSON.stringify(responses)}`,
+        );
+      }
+    });
+
+    it('rejects an omitted required core field (her2_ihc_score) even though HER2 ISH itself stays optional', async () => {
+      const { panelVersionId } = await resolveBreastBiomarkerPanel();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
+
+      const rejected = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          specimenId,
+          synopticProtocolVersionId: panelVersionId,
+          responses: [
+            { elementKey: 'er_status', value: 'negative' },
+            { elementKey: 'pgr_status', value: 'negative' },
+            // her2_ihc_score omitted -- 'required', must be rejected.
+          ],
+        })
+        .expect(400);
+      if (!JSON.stringify(rejected.body).includes('her2_ihc_score')) {
+        throw new Error(
+          `expected her2_ihc_score to be named as missing, got ${JSON.stringify(rejected.body)}`,
+        );
+      }
+    });
+  });
+
   describe('Response option terminology binding (issue #670)', () => {
     // Real, seeded content (db/seed/synoptic-response-option-terminology.sql):
     // colorectal's own histological_tumor_type option 'adenocarcinoma_nos'

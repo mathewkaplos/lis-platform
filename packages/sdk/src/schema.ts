@@ -2465,6 +2465,7 @@ export interface components {
                 id: string;
                 /** Format: uuid */
                 patientId: string;
+                patientName: string;
                 invoiceNumber: string | null;
                 /** @enum {string} */
                 status: "unpaid" | "partial" | "paid";
@@ -4552,6 +4553,7 @@ export interface operations {
                 hasBalance?: "true" | "false";
                 createdFrom?: string;
                 createdTo?: string;
+                referringFacilityId?: string;
             };
             header?: never;
             path?: never;

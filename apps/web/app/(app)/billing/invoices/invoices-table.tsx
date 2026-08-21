@@ -7,6 +7,7 @@ export interface InvoiceRow {
   id: string;
   invoiceNumber: string | null;
   patientId: string;
+  patientName: string;
   status: string;
   payerType: string;
   totalCents: number;
@@ -47,7 +48,7 @@ export function InvoicesTable({ rows }: { rows: InvoiceRow[] }) {
         {
           id: 'patientId',
           header: 'Patient',
-          cell: (row) => <span className="font-mono text-xs">{row.patientId}</span>,
+          cell: (row) => row.patientName,
         },
         {
           id: 'status',

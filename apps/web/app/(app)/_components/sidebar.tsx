@@ -10,6 +10,7 @@ import {
   ListChecks,
   Microscope,
   Receipt,
+  FileStack,
   Ruler,
   Settings,
   TestTube,
@@ -66,6 +67,11 @@ import { MobileNavTrigger } from './mobile-nav-trigger';
 // "Referring facilities" -- not role-filtered here either; `GET
 // /v1/org-settings` needs no capability gate, and the save action's own
 // `manage_org_settings` `CapabilityGuard` is the real enforcement point.
+// Issue #704 (EPIC #697): "Facility statement" added -- the consolidated,
+// date-ranged view across a referring facility's own invoices (the design
+// partner's own stated "one invoice for all patients in this date range"
+// scenario). Same standing as "Invoices" -- `GET /v1/invoices`'s own
+// `manage_billing` `CapabilityGuard` is the real enforcement point.
 const NAV_ITEMS = [
   { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
   { href: '/patients', labelKey: 'patients', icon: Users },
@@ -76,6 +82,7 @@ const NAV_ITEMS = [
   { href: '/qc-violations', labelKey: 'qcViolations', icon: AlertTriangle },
   { href: '/culture-reads', labelKey: 'cultureReads', icon: Microscope },
   { href: '/billing/invoices', labelKey: 'invoices', icon: Receipt },
+  { href: '/billing/facility-statement', labelKey: 'facilityStatement', icon: FileStack },
   { href: '/admin/reference-ranges', labelKey: 'referenceRanges', icon: Ruler },
   { href: '/admin/tests', labelKey: 'addTest', icon: TestTube },
   { href: '/admin/referring-facilities', labelKey: 'referringFacilities', icon: Building2 },

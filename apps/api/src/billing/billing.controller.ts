@@ -20,7 +20,7 @@ import {
   type Invoice,
   type InvoiceListResponse,
 } from '@lis/domain';
-import { invoice, invoiceLineItem, payment, order } from '@lis/db';
+import { invoice, invoiceLineItem, payment, order, patient } from '@lis/db';
 import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
@@ -175,11 +175,23 @@ export class BillingController {
       query.createdTo
         ? lte(invoice.createdAt, new Date(query.createdTo))
         : undefined,
+      // Issue #704: the facility-statement screen's own filter.
+      query.referringFacilityId
+        ? eq(invoice.referringFacilityId, query.referringFacilityId)
+        : undefined,
     ].filter((c) => c !== undefined);
 
+    // Issue #704: joined for `patientName` on the list response -- a
+    // facility statement's patient-level detail needs a real name, not
+    // just an id.
     const rows = await tx
-      .select()
+      .select({
+        invoice,
+        patientFirstName: patient.firstName,
+        patientLastName: patient.lastName,
+      })
       .from(invoice)
+      .innerJoin(patient, eq(invoice.patientId, patient.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(invoice.createdAt));
 
@@ -199,7 +211,7 @@ export class BillingController {
           and(
             inArray(
               payment.invoiceId,
-              rows.map((r) => r.id),
+              rows.map((r) => r.invoice.id),
             ),
             eq(payment.status, 'succeeded'),
           ),
@@ -211,11 +223,12 @@ export class BillingController {
     }
 
     const items = rows
-      .map((row) => {
+      .map(({ invoice: row, patientFirstName, patientLastName }) => {
         const amountPaidCents = paidByInvoiceId.get(row.id) ?? 0;
         return {
           id: row.id,
           patientId: row.patientId,
+          patientName: `${patientFirstName} ${patientLastName}`,
           invoiceNumber: row.invoiceNumber,
           status: row.status as Invoice['status'],
           payerType: row.payerType as Invoice['payerType'],

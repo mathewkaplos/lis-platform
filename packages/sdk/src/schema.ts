@@ -2704,6 +2704,8 @@ export interface components {
                 /** Format: uuid */
                 orderedTestId: string;
                 /** Format: uuid */
+                specimenId: string | null;
+                /** Format: uuid */
                 synopticProtocolId: string;
                 /** Format: uuid */
                 synopticProtocolVersionId: string;
@@ -2813,6 +2815,8 @@ export interface components {
         SynopticResponseCreateDto: {
             /** Format: uuid */
             orderedTestId: string;
+            /** Format: uuid */
+            specimenId: string;
             /** Format: uuid */
             synopticProtocolVersionId: string;
             responses: {

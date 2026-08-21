@@ -227,7 +227,12 @@ describe('Operational reports (e2e)', () => {
     const responseRes = await request(app.getHttpServer())
       .post(`/v1/cases/${caseId}/synoptic-responses`)
       .set('Authorization', `Bearer ${verifierToken}`)
-      .send({ orderedTestId, synopticProtocolVersionId: versionId, responses })
+      .send({
+        orderedTestId,
+        specimenId: part.id,
+        synopticProtocolVersionId: versionId,
+        responses,
+      })
       .expect(201);
     const body = responseRes.body as {
       results: { elementKey: string; observationId: string }[];

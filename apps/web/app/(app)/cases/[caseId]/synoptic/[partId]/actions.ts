@@ -6,6 +6,8 @@ import type { RecordSynopticResponseState } from './types';
 export interface RecordSynopticResponsePayload {
   caseId: string;
   orderedTestId: string;
+  // Issue #674: the specimen (part) this recording belongs to.
+  specimenId: string;
   synopticProtocolVersionId: string;
   responses: { elementKey: string; value: string | number | string[] }[];
 }
@@ -43,6 +45,7 @@ export async function recordSynopticResponse(
     },
     body: JSON.stringify({
       orderedTestId: payload.orderedTestId,
+      specimenId: payload.specimenId,
       synopticProtocolVersionId: payload.synopticProtocolVersionId,
       responses: payload.responses,
     }),

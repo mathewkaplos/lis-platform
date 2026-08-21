@@ -22,6 +22,7 @@ import {
   caseTable,
   codeSystemValue,
   orderedTest,
+  specimen,
   synopticElement,
   synopticElementResponseOption,
   synopticProtocol,
@@ -330,9 +331,23 @@ export class SynopticProtocolController {
       );
     }
 
+    // Issue #674: specimenId must belong to this same case -- same
+    // ownership-validation shape as the orderedTestId check above.
+    const [specimenRow] = await tx
+      .select({ caseId: specimen.caseId })
+      .from(specimen)
+      .where(eq(specimen.id, body.specimenId))
+      .limit(1);
+    if (!specimenRow || specimenRow.caseId !== id) {
+      throw new BadRequestException(
+        `Specimen ${body.specimenId} does not belong to case ${id}`,
+      );
+    }
+
     return assembleAndPersistSynopticResponse(tx, {
       tenantId: request.authContext.tenantId,
       orderedTestId: body.orderedTestId,
+      specimenId: body.specimenId,
       synopticProtocolVersionId: body.synopticProtocolVersionId,
       responses: body.responses,
       actorPrincipalId: request.authContext.sub,

@@ -715,6 +715,7 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId: part.id,
           synopticProtocolVersionId: breast.publishedVersionId,
           responses: [
             { elementKey: 'neoadjuvant_therapy', value: 'not_given' },
@@ -909,7 +910,12 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
         .get(`/v1/cases/${caseId}`)
         .set('Authorization', `Bearer ${tokenA}`)
         .expect(200);
-      const orderId = (lineage.body as { orderId: string }).orderId;
+      const lineageBody = lineage.body as {
+        orderId: string;
+        parts: { id: string }[];
+      };
+      const orderId = lineageBody.orderId;
+      const specimenId = lineageBody.parts[0].id;
       const orderRes = await request(app.getHttpServer())
         .get(`/v1/orders/${orderId}`)
         .set('Authorization', `Bearer ${tokenA}`)
@@ -923,6 +929,7 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: versionId,
           responses: [
             { elementKey: 'diagnosis_note', value: 'initial note' },
@@ -959,6 +966,7 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
         .set('Authorization', `Bearer ${tokenA}`)
         .send({
           orderedTestId,
+          specimenId,
           synopticProtocolVersionId: versionId,
           responses: [
             { elementKey: 'diagnosis_note', value: 'corrected note' },

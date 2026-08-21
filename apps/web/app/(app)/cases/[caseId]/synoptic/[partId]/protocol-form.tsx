@@ -283,12 +283,15 @@ function FieldControl({
 export function ProtocolForm({
   caseId,
   orderedTestId,
+  specimenId,
   synopticProtocolVersionId,
   elements,
   sourceStandard,
 }: {
   caseId: string;
   orderedTestId: string;
+  // Issue #674: the specimen (part) this recording belongs to.
+  specimenId: string;
   synopticProtocolVersionId: string;
   elements: SynopticElement[];
   sourceStandard: string;
@@ -384,7 +387,7 @@ export function ProtocolForm({
       .filter(([key]) => isVisibleForKey(key))
       .map(([key, value]) => ({ elementKey: key, value }));
 
-    formAction({ caseId, orderedTestId, synopticProtocolVersionId, responses });
+    formAction({ caseId, orderedTestId, specimenId, synopticProtocolVersionId, responses });
   }
 
   if (state.status === 'done' && state.result) {

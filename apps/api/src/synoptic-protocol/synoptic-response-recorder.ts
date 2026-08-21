@@ -37,6 +37,13 @@ export interface RecordSynopticResponseEntryInput {
 export interface RecordSynopticResponseParams {
   tenantId: string;
   orderedTestId: string;
+  // Issue #674: a case with two synoptic-eligible parts recorded against
+  // the same protocol otherwise produces two structurally-indistinguishable
+  // grid Observations (both share the same orderedTestId -- there is no
+  // per-part ordered test in this schema). `observation.specimenId`
+  // (ADR-0015) already exists for exactly this; the recorder simply never
+  // wrote it until now.
+  specimenId: string;
   synopticProtocolVersionId: string;
   responses: RecordSynopticResponseEntryInput[];
   actorPrincipalId: string;
@@ -95,6 +102,7 @@ export async function assembleAndPersistSynopticResponse(
   const {
     tenantId,
     orderedTestId,
+    specimenId,
     synopticProtocolVersionId,
     responses,
     actorPrincipalId,
@@ -356,12 +364,18 @@ export async function assembleAndPersistSynopticResponse(
   // has {elementKey, observationId} per element from the prior recording,
   // giving an elementKey -> predecessor-observationId map with no extra
   // query shape needed. Matches the read path's own (#659) selection key.
+  // Issue #674: scoped by specimenId too -- without this, two parts
+  // sharing the same orderedTestId (there is no per-part ordered test)
+  // would each treat the other's grid as their own predecessor,
+  // incorrectly marking one part's data superseded when the other part is
+  // recorded.
   const [predecessorGrid] = await tx
     .select({ id: observation.id, valueJson: observation.valueJson })
     .from(observation)
     .where(
       and(
         eq(observation.orderedTestId, orderedTestId),
+        eq(observation.specimenId, specimenId),
         eq(observation.analyteId, gridAnalyte.id),
         eq(observation.dataType, 'table'),
         isNull(observation.supersededBy),
@@ -394,6 +408,7 @@ export async function assembleAndPersistSynopticResponse(
       .values({
         tenantId,
         orderedTestId,
+        specimenId,
         analyteId: element.analyteId,
         patientId: orderRow.patientId,
         isControl: false,
@@ -433,6 +448,7 @@ export async function assembleAndPersistSynopticResponse(
     .values({
       tenantId,
       orderedTestId,
+      specimenId,
       analyteId: gridAnalyte.id,
       patientId: orderRow.patientId,
       isControl: false,

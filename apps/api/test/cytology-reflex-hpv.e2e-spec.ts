@@ -211,6 +211,7 @@ describe('Cytology reflex: ASC-US -> HPV (e2e)', () => {
   async function recordSynopticResponse(
     orderedTestId: string,
     interpretationCategory: string,
+    specimenId: string,
   ) {
     return request(app.getHttpServer())
       .post(
@@ -219,6 +220,7 @@ describe('Cytology reflex: ASC-US -> HPV (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .send({
         orderedTestId,
+        specimenId,
         synopticProtocolVersionId: papVersionId,
         responses: [
           { elementKey: 'specimen_adequacy', value: 'satisfactory' },
@@ -246,7 +248,7 @@ describe('Cytology reflex: ASC-US -> HPV (e2e)', () => {
     await publishAscUsHpvRule();
     const { orderedTestId, specimenId } = await createCytologyCase();
 
-    await recordSynopticResponse(orderedTestId, 'asc_us');
+    await recordSynopticResponse(orderedTestId, 'asc_us', specimenId);
     await app.get(OutboxRelayService).tick();
 
     const reflexRows = await db
@@ -285,9 +287,9 @@ describe('Cytology reflex: ASC-US -> HPV (e2e)', () => {
 
   it('a NILM interpretation records successfully but creates no reflex', async () => {
     await publishAscUsHpvRule();
-    const { orderedTestId } = await createCytologyCase();
+    const { orderedTestId, specimenId } = await createCytologyCase();
 
-    await recordSynopticResponse(orderedTestId, 'nilm');
+    await recordSynopticResponse(orderedTestId, 'nilm', specimenId);
     await app.get(OutboxRelayService).tick();
 
     const reflexRows = await db

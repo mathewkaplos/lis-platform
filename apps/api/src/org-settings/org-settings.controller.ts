@@ -58,9 +58,12 @@ type Db = ReturnType<typeof createDb>;
  * phone, email, logo, currency) -- `name` was originally never touched on
  * conflict (this feature had no reason to change it); now genuinely
  * editable, since org identity being editable is #706's whole point. Every
- * field falls back to `before`'s existing value via `??` when the caller's
- * PUT body omits that key, so a partial update never clobbers fields it
- * didn't mention -- matches `orgSettingsUpdateSchema`'s all-optional shape.
+ * field falls back to `before`'s existing value when the caller's PUT body
+ * omits that key (an explicit `!== undefined` check, not `??` -- `??` can't
+ * distinguish "key omitted" from "key sent as `null`", which broke #692's
+ * own "clearing the preference back to null" e2e test the first time this
+ * was written; see `update()`'s own comment), so a partial update never
+ * clobbers fields it didn't mention, while an explicit `null` still clears.
  */
 @Controller('v1/org-settings')
 @UseGuards(JwtAuthGuard)
@@ -92,36 +95,56 @@ export class OrgSettingsController {
     // Issue #706: `name` is now genuinely editable -- unlike the original
     // #692 shape (which deliberately never touched `name` on conflict,
     // since that feature had no reason to change it), org identity being
-    // editable is this feature's whole point. `undefined` fields (the
-    // caller didn't send that key) fall back to the existing row's value
-    // via `coalesce`, so a partial PUT never clobbers fields it didn't
-    // mention -- matches `orgSettingsUpdateSchema`'s own all-optional shape.
+    // editable is this feature's whole point.
+    //
+    // Every nullable field uses `!== undefined ? body.x : before.x`, NOT
+    // `??` -- `??` cannot distinguish "the caller omitted this key" (should
+    // fall back to the existing value) from "the caller explicitly sent
+    // `null`" (should clear the field), since `??` treats both the same.
+    // A first version of this used `??` and broke #692's own existing e2e
+    // test ("clearing the preference back to null works") -- caught by CI,
+    // not by typecheck/lint, since both shapes typecheck identically.
+    const resolvedName =
+      body.name !== undefined
+        ? body.name
+        : (before.name ?? `Tenant ${user.tenantId}`);
+    const resolvedAddress =
+      body.address !== undefined ? body.address : before.address;
+    const resolvedPhone = body.phone !== undefined ? body.phone : before.phone;
+    const resolvedEmail = body.email !== undefined ? body.email : before.email;
+    const resolvedLogoUrl =
+      body.logoUrl !== undefined ? body.logoUrl : before.logoUrl;
+    const resolvedCurrency =
+      body.currency !== undefined ? body.currency : before.currency;
+    const resolvedPreferredSynopticSourceStandard =
+      body.preferredSynopticSourceStandard !== undefined
+        ? body.preferredSynopticSourceStandard
+        : before.preferredSynopticSourceStandard;
+
     const [row] = await tx
       .insert(tenant)
       .values({
         id: user.tenantId,
-        name: body.name ?? before.name ?? `Tenant ${user.tenantId}`,
-        address: body.address ?? before.address,
-        phone: body.phone ?? before.phone,
-        email: body.email ?? before.email,
-        logoUrl: body.logoUrl ?? before.logoUrl,
-        currency: body.currency ?? before.currency,
+        name: resolvedName,
+        address: resolvedAddress,
+        phone: resolvedPhone,
+        email: resolvedEmail,
+        logoUrl: resolvedLogoUrl,
+        currency: resolvedCurrency,
         preferredSynopticSourceStandard:
-          body.preferredSynopticSourceStandard ??
-          before.preferredSynopticSourceStandard,
+          resolvedPreferredSynopticSourceStandard,
       })
       .onConflictDoUpdate({
         target: tenant.id,
         set: {
-          name: body.name ?? before.name ?? `Tenant ${user.tenantId}`,
-          address: body.address ?? before.address,
-          phone: body.phone ?? before.phone,
-          email: body.email ?? before.email,
-          logoUrl: body.logoUrl ?? before.logoUrl,
-          currency: body.currency ?? before.currency,
+          name: resolvedName,
+          address: resolvedAddress,
+          phone: resolvedPhone,
+          email: resolvedEmail,
+          logoUrl: resolvedLogoUrl,
+          currency: resolvedCurrency,
           preferredSynopticSourceStandard:
-            body.preferredSynopticSourceStandard ??
-            before.preferredSynopticSourceStandard,
+            resolvedPreferredSynopticSourceStandard,
         },
       })
       .returning();

@@ -81,6 +81,23 @@ function drawCaseReport(
       for (const response of group.responses) {
         doc.text(`${response.elementLabel}: ${response.value}`);
       }
+      // Issue #669: each repeating-group instance (multifocal tumors,
+      // repeated nodal basins) under its own distinguishing sub-heading --
+      // otherwise two instances of the same element (e.g. two "Tumor
+      // Size" answers) would render as indistinguishable duplicate lines.
+      for (const repeatingGroup of group.repeatingGroups) {
+        for (const instance of repeatingGroup.instances) {
+          doc.moveDown(0.15);
+          doc
+            .font('Helvetica-Bold')
+            .fontSize(9)
+            .text(`${repeatingGroup.rootLabel} — ${instance.instanceLabel}`);
+          doc.font('Helvetica').fontSize(10);
+          for (const response of instance.responses) {
+            doc.text(`${response.elementLabel}: ${response.value}`);
+          }
+        }
+      }
     }
     doc.moveDown(1);
   }

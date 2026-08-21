@@ -3,11 +3,19 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import {
+  analyte,
+  codeSystemValue,
   createDb,
   caseReportVersion,
+  synopticElement,
+  synopticProtocol,
+  synopticProtocolVersion,
   verifyCaseReportSignature,
 } from '@lis/db';
+import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
+import { makeInstanceResponseKey } from '@lis/domain';
+import { assembleCaseReportContent } from '../src/case/case-report-content-assembler';
 import { AppModule } from './../src/app.module';
 import { getKeycloakToken } from './get-keycloak-token';
 import { getKeycloakFreshToken } from './get-keycloak-fresh-token';
@@ -632,7 +640,9 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
 
   describe('GET /v1/cases/:id/report-versions/:versionId/pdf (issue #648)', () => {
     async function reportRowCount(): Promise<number> {
-      const res = await db.execute(sql`SELECT count(*)::int AS count FROM report`);
+      const res = await db.execute(
+        sql`SELECT count(*)::int AS count FROM report`,
+      );
       return (res.rows[0] as { count: number }).count;
     }
 
@@ -681,7 +691,11 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
         .expect(200);
       const breast = (
         protocolsRes.body as {
-          protocols: { id: string; specimenType: string; publishedVersionId: string | null }[];
+          protocols: {
+            id: string;
+            specimenType: string;
+            publishedVersionId: string | null;
+          }[];
         }
       ).protocols.find((p) => p.specimenType === 'breast');
       if (!breast?.publishedVersionId) {
@@ -692,8 +706,9 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
         .get(`/v1/orders/${orderId}`)
         .set('Authorization', `Bearer ${tokenA}`)
         .expect(200);
-      const orderedTestId = (orderRes.body as { orderedTests: { id: string }[] })
-        .orderedTests[0].id;
+      const orderedTestId = (
+        orderRes.body as { orderedTests: { id: string }[] }
+      ).orderedTests[0].id;
 
       await request(app.getHttpServer())
         .post(`/v1/cases/${caseId}/synoptic-responses`)
@@ -748,13 +763,19 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
         );
       }
       const pdfBytes = pdfRes.body as Buffer;
-      if (!Buffer.isBuffer(pdfBytes) || !pdfBytes.subarray(0, 5).toString('utf8').startsWith('%PDF-')) {
+      if (
+        !Buffer.isBuffer(pdfBytes) ||
+        !pdfBytes.subarray(0, 5).toString('utf8').startsWith('%PDF-')
+      ) {
         throw new Error('expected real PDF bytes starting with %PDF-');
       }
 
       const reportCountAfter = await reportRowCount();
       const auditCountAfter = await auditCount();
-      if (reportCountAfter !== reportCountBefore || auditCountAfter !== auditCountBefore) {
+      if (
+        reportCountAfter !== reportCountBefore ||
+        auditCountAfter !== auditCountBefore
+      ) {
         throw new Error(
           `expected no new report/audit_event row -- report ${reportCountBefore}->${reportCountAfter}, audit ${auditCountBefore}->${auditCountAfter}`,
         );
@@ -778,7 +799,9 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
     it('returns 404 for a nonexistent version id', async () => {
       const caseId = await createFinalizableCaseWithFullReportContent();
       await request(app.getHttpServer())
-        .get(`/v1/cases/${caseId}/report-versions/00000000-0000-0000-0000-000000000000/pdf`)
+        .get(
+          `/v1/cases/${caseId}/report-versions/00000000-0000-0000-0000-000000000000/pdf`,
+        )
         .set('Authorization', `Bearer ${tokenA}`)
         .expect(404);
     });
@@ -796,6 +819,235 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
         .get(`/v1/cases/${caseId}/report-versions/${versionId}/pdf`)
         .set('Authorization', `Bearer ${tokenB}`)
         .expect(404);
+    });
+  });
+
+  describe('Case report content assembly, repeating-structure awareness (issue #669)', () => {
+    // Throwaway protocol, same isolation reasoning as #666/#667/#668's own
+    // tests -- avoids polluting the shared seeded breast/colorectal
+    // protocols for the rest of this file's own tests.
+    async function createThrowawayProtocolVersion(): Promise<string> {
+      const suffix = randomUUID().slice(0, 8);
+      const [protocolRow] = await db
+        .insert(synopticProtocol)
+        .values({
+          name: `Report content test fixture ${suffix}`,
+          sourceStandard: 'ICCR',
+          specimenType: 'test',
+        })
+        .returning();
+      const [versionRow] = await db
+        .insert(synopticProtocolVersion)
+        .values({
+          synopticProtocolId: protocolRow.id,
+          version: 1,
+          status: 'published',
+        })
+        .returning();
+      return versionRow.id;
+    }
+
+    async function insertElement(
+      versionId: string,
+      key: string,
+      dataType: 'text' | 'quantity',
+      opts: {
+        parentElementId?: string;
+        repeatable?: boolean;
+        identityElementKey?: string;
+      } = {},
+    ): Promise<string> {
+      const [csv] = await db
+        .insert(codeSystemValue)
+        .values({
+          system: 'ICCR-SYNOPTIC-TEST',
+          code: `${versionId}.${key}`,
+          version: '2022',
+          display: key,
+        })
+        .returning();
+      const [a] = await db
+        .insert(analyte)
+        .values({ codeSystemValueId: csv.id, display: key, dataType })
+        .returning();
+      const [el] = await db
+        .insert(synopticElement)
+        .values({
+          synopticProtocolVersionId: versionId,
+          parentElementId: opts.parentElementId ?? null,
+          key,
+          label: key,
+          dataType,
+          requirement: 'recommended',
+          analyteId: a.id,
+          displayOrder: 0,
+          repeatable: opts.repeatable ?? false,
+          identityElementKey: opts.identityElementKey ?? null,
+        })
+        .returning();
+      return el.id;
+    }
+
+    it("renders a re-recorded element with only its current value, and groups a repeating group's instances distinctly", async () => {
+      const versionId = await createThrowawayProtocolVersion();
+      await insertElement(versionId, 'diagnosis_note', 'text');
+      const rootId = await insertElement(
+        versionId,
+        'tumor_characteristics',
+        'text',
+        { repeatable: true },
+      );
+      await insertElement(versionId, 'tumor_identifier', 'text', {
+        parentElementId: rootId,
+      });
+      await insertElement(versionId, 'tumor_size_mm', 'quantity', {
+        parentElementId: rootId,
+      });
+
+      const caseId = await createFinalizableCase();
+      const lineage = await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const orderId = (lineage.body as { orderId: string }).orderId;
+      const orderRes = await request(app.getHttpServer())
+        .get(`/v1/orders/${orderId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const orderedTestId = (
+        orderRes.body as { orderedTests: { id: string }[] }
+      ).orderedTests[0].id;
+
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: versionId,
+          responses: [
+            { elementKey: 'diagnosis_note', value: 'initial note' },
+            {
+              elementKey: makeInstanceResponseKey('tumor_identifier', 'i1'),
+              value: '1',
+            },
+            {
+              elementKey: makeInstanceResponseKey('tumor_size_mm', 'i1'),
+              value: 12,
+            },
+            {
+              elementKey: makeInstanceResponseKey('tumor_identifier', 'i2'),
+              value: '2',
+            },
+            {
+              elementKey: makeInstanceResponseKey('tumor_size_mm', 'i2'),
+              value: 8,
+            },
+          ],
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/finalize`)
+        .set('Authorization', `Bearer ${tokenVerifier}`)
+        .expect(200);
+
+      // Re-record before amending -- issue #669's own bug fix: the
+      // amended version's snapshot must capture only the CURRENT value,
+      // not both the old (now-superseded) and new one.
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: versionId,
+          responses: [
+            { elementKey: 'diagnosis_note', value: 'corrected note' },
+            {
+              elementKey: makeInstanceResponseKey('tumor_identifier', 'i1'),
+              value: '1',
+            },
+            {
+              elementKey: makeInstanceResponseKey('tumor_size_mm', 'i1'),
+              value: 12,
+            },
+            {
+              elementKey: makeInstanceResponseKey('tumor_identifier', 'i2'),
+              value: '2',
+            },
+            {
+              elementKey: makeInstanceResponseKey('tumor_size_mm', 'i2'),
+              value: 8,
+            },
+          ],
+        })
+        .expect(201);
+
+      const amendRes = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/amend`)
+        .set('Authorization', `Bearer ${tokenVerifier}`)
+        .send({ reason: 'issue #669 report-content test' })
+        .expect(200);
+      const versionId2 = (amendRes.body as { reportVersion: { id: string } })
+        .reportVersion.id;
+
+      const [versionRow] = await db
+        .select({ includedContent: caseReportVersion.includedContent })
+        .from(caseReportVersion)
+        .where(eq(caseReportVersion.id, versionId2))
+        .limit(1);
+      const assembled = await db.transaction((tx) =>
+        assembleCaseReportContent(
+          tx,
+          versionRow.includedContent as Parameters<
+            typeof assembleCaseReportContent
+          >[1],
+        ),
+      );
+      const group = assembled.synopticGroups.find(
+        (g) =>
+          g.responses.some((r) => r.elementLabel === 'diagnosis_note') ||
+          g.repeatingGroups.some(
+            (rg) => rg.rootLabel === 'tumor_characteristics',
+          ),
+      );
+      if (!group) {
+        throw new Error(
+          `expected a synoptic group for the throwaway protocol, got ${JSON.stringify(assembled.synopticGroups)}`,
+        );
+      }
+
+      const diagnosisResponses = group.responses.filter(
+        (r) => r.elementLabel === 'diagnosis_note',
+      );
+      if (
+        diagnosisResponses.length !== 1 ||
+        diagnosisResponses[0].value !== 'corrected note'
+      ) {
+        throw new Error(
+          `expected exactly one current 'diagnosis_note' response ('corrected note'), got ${JSON.stringify(diagnosisResponses)}`,
+        );
+      }
+
+      const repeatingGroup = group.repeatingGroups.find(
+        (rg) => rg.rootLabel === 'tumor_characteristics',
+      );
+      if (repeatingGroup?.instances.length !== 2) {
+        throw new Error(
+          `expected two distinct tumor_characteristics instances, got ${JSON.stringify(repeatingGroup)}`,
+        );
+      }
+      const sizes = repeatingGroup.instances
+        .map(
+          (instance) =>
+            instance.responses.find((r) => r.elementLabel === 'tumor_size_mm')
+              ?.value,
+        )
+        .sort();
+      if (sizes.join(',') !== '12,8'.split(',').sort().join(',')) {
+        throw new Error(
+          `expected both instances' own tumor_size_mm values, got ${JSON.stringify(sizes)}`,
+        );
+      }
     });
   });
 });

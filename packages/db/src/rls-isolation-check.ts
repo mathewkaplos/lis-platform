@@ -536,7 +536,22 @@ async function liveLeakCheck(db: Db, tables: string[]): Promise<string[]> {
 }
 
 async function main() {
-  const db = createDb(APP_DATABASE_URL);
+  // Real bug found live in CI, not locally (a low-load single-user local
+  // run happens to keep reusing the same idle pooled connection; CI's own
+  // load pattern doesn't): `setTenant()` uses session-level `set_config`
+  // (`is_local: false`, deliberately -- see its own comment), which sticks
+  // to whichever physical connection ran it. Without `{ max: 1 }`, `pg.Pool`
+  // defaults to up to 10 connections, so the TENANT_A fixture-insert phase
+  // and the TENANT_B leak-check phase can land on different physical
+  // connections -- a query that never had `set_config` called on ITS OWN
+  // connection at all falls back to Postgres's session default, and
+  // whatever tenant context happened to be set on that specific connection
+  // by an earlier, unrelated query on the same pool leaks through, looking
+  // exactly like a real RLS leak. `tenant-catalog-seed-check.ts` (a sibling
+  // script with the identical single-shot-but-multi-tenant shape) already
+  // pins `{ max: 1 }` for exactly this reason -- this script just never
+  // matched that precedent until now.
+  const db = createDb(APP_DATABASE_URL, { max: 1 });
 
   console.log("TASK-024: cross-table RLS isolation check (connected as lis_app)\n");
 

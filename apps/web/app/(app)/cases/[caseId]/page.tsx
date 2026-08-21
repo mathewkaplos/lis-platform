@@ -9,25 +9,20 @@ import { AddBlockForm } from './add-block-form';
 import { AddOrderedTestForm } from './add-ordered-test-form';
 import { AddSlideForm } from './add-slide-form';
 import { AmendCaseForm } from './amend-case-form';
+import { AMENDABLE_STATUSES, NOT_YET_SIGNED_STATUSES, SCREENABLE_STATUSES } from '../case-status';
 import { NarrativeForm } from './narrative-form';
 import { ReturnToScreeningForm } from './return-to-screening-form';
 import { ScreenCaseForm } from './screen-case-form';
 import { SignOutCaseForm } from './sign-out-case-form';
 import { UploadWsiForm } from './upload-wsi-form';
 
-const AMENDABLE_STATUSES = new Set(['signed_out', 'amended']);
-// issue #621: exactly the complement of AMENDABLE_STATUSES over
-// caseStatusSchema's 5-value enum -- a case is never in both sets at once.
-const NOT_YET_SIGNED_STATUSES = new Set(['accessioned', 'in_process', 'pending_review']);
-// issue #624: same membership as the non-`pending_review` slice of
-// NOT_YET_SIGNED_STATUSES -- a separate constant since it drives a
-// different card with a different role gate, not because the sets differ.
-// Deliberately not narrowed to cytology specimen types (proposal §5):
-// `requiresTwoTierReview`'s logic lives in apps/api, not an importable
-// shared package, so a histology case's Screen attempt just 400s with the
-// API's own "does not require screening" message instead of duplicating
-// that business rule here.
-const SCREENABLE_STATUSES = new Set(['accessioned', 'in_process']);
+// issue #624: SCREENABLE_STATUSES drives a different card with a different
+// role gate than NOT_YET_SIGNED_STATUSES, not because the sets differ in
+// membership. Deliberately not narrowed to cytology specimen types
+// (proposal §5): `requiresTwoTierReview`'s logic lives in apps/api, not an
+// importable shared package, so a histology case's Screen attempt just
+// 400s with the API's own "does not require screening" message instead of
+// duplicating that business rule here.
 
 /**
  * FEAT-067 (docs/plans/feat-067-wsi-viewer.md). The minimal case UI this

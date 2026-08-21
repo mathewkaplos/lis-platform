@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { Badge, DataTable } from '@lis/ui';
+import { STATUS_VARIANT } from './case-status';
 
 export interface CaseRow {
   id: string;
@@ -9,14 +10,6 @@ export interface CaseRow {
   status: string;
   createdAt: string;
 }
-
-const STATUS_VARIANT: Record<string, 'outline' | 'secondary' | 'destructive'> = {
-  accessioned: 'outline',
-  in_process: 'outline',
-  pending_review: 'secondary',
-  signed_out: 'secondary',
-  amended: 'secondary',
-};
 
 /**
  * FEAT-067 (docs/plans/feat-067-wsi-viewer.md). Thin client island around
@@ -40,7 +33,9 @@ export function CasesTable({ rows }: { rows: CaseRow[] }) {
           id: 'status',
           header: 'Status',
           cell: (row) => (
-            <Badge variant={STATUS_VARIANT[row.status] ?? 'outline'}>{row.status}</Badge>
+            <Badge variant={STATUS_VARIANT[row.status as keyof typeof STATUS_VARIANT] ?? 'outline'}>
+              {row.status}
+            </Badge>
           ),
         },
         {

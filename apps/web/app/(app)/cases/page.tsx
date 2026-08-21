@@ -2,19 +2,8 @@ import Link from 'next/link';
 import { Button } from '@lis/ui';
 import { getValidAccessToken } from '@/auth/access-token';
 import { createLisApiClient } from '@/lib/api-client';
+import { STATUS_TABS } from './case-status';
 import { CasesTable } from './cases-table';
-
-// issue #613 (BUG-CYTO-01): `GET /v1/cases` excludes `signed_out`/`amended`
-// cases by default, and accepts a single `status` value to see any one
-// status -- no "all" sentinel. `key: undefined` reproduces today's default
-// (omit `status` entirely, not an empty string -- an empty string 400s the
-// same way `orders/page.tsx`'s own documented gotcha describes).
-const STATUS_TABS = [
-  { key: undefined, label: 'Active' },
-  { key: 'pending_review', label: 'Pending Review' },
-  { key: 'signed_out', label: 'Signed Out' },
-  { key: 'amended', label: 'Amended' },
-] as const;
 
 /**
  * FEAT-067 (docs/plans/feat-067-wsi-viewer.md). A plain list, mirroring

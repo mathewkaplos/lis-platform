@@ -87,3 +87,8 @@ echo "Seed applied: concept-block-regional-lymph-nodes.sql (issue #667 concept-b
 # response options to their real ICD-O-3 codes -- must run after colorectal.
 docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/synoptic-response-option-terminology.sql
 echo "Seed applied: synoptic-response-option-terminology.sql (issue #670 ICD-O-3 binding)."
+
+# Issue #551/#668: real, cited CAP breast biomarker panel (ER/PR/HER2),
+# linked to the existing seeded breast organ protocol -- must run after it.
+docker compose exec -T postgres psql -U postgres -d lis -v ON_ERROR_STOP=1 -f - < db/seed/synoptic-protocol-breast-biomarker.sql
+echo "Seed applied: synoptic-protocol-breast-biomarker.sql (real, cited CAP breast biomarker panel, linked via issue #668)."

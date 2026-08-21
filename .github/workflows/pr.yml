@@ -166,6 +166,10 @@ jobs:
       # response options to their real ICD-O-3 codes, same ordering as
       # scripts/db-reset.sh.
       - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/synoptic-response-option-terminology.sql
+      # Issue #551/#668: real, cited CAP breast biomarker panel, linked to
+      # the existing seeded breast organ protocol, same ordering as
+      # scripts/db-reset.sh.
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/synoptic-protocol-breast-biomarker.sql
       - run: pnpm run-golden-datasets
       - run: pnpm test
       # TASK-029: waits here, not right after launch — gives Keycloak's own

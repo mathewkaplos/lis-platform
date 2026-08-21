@@ -41,7 +41,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         Skip to main content
       </a>
       <Sidebar />
-      <div className="flex flex-1 flex-col">
+      {/* Issue #713 (EPIC #697), live-verified follow-up: a flex item's default
+          min-width is `auto`, which means it won't shrink below its content's
+          intrinsic width -- without `min-w-0` here, any deeply-nested wide
+          content (e.g. the dashboard worklist table, which already has its own
+          `overflow-x-auto` wrapper) forces THIS column, and every ancestor up
+          to the page body, to grow to fit it instead of letting that nested
+          wrapper scroll internally. Confirmed live: without this, a narrow
+          viewport rendered the whole page ~4.5x wider than the actual
+          viewport. The classic, well-documented Flexbox "min-width: auto"
+          trap -- not visible from a static Tailwind-class read, only from an
+          actual narrow-viewport render, which is why the earlier code-only
+          audit for #713 missed it. */}
+      <div className="flex min-w-0 flex-1 flex-col">
         <MobileTopNav />
         <TopBar
           tenantId={session.tenantId}
@@ -52,7 +64,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <main
           id="main-content"
           tabIndex={-1}
-          className="flex-1 overflow-y-auto p-6 outline-none print:p-0"
+          className="min-w-0 flex-1 overflow-y-auto p-6 outline-none print:p-0"
         >
           {children}
         </main>

@@ -1,9 +1,108 @@
-# Status — 2026-08-20 (session 42)
+# Status — 2026-08-21 (session 43)
 
-Last commit on main: `4e2edfd` (`lis-platform`, PR #657 — mobile navigation trigger, closes #240).
-Session 41 closed with `70314e4` (PR #655); this pointer had drifted two commits stale (PR #656's
-own breadcrumb-refresh commit `ceaee0c`, then PR #657 itself) — caught and fixed by `/orient` at
-the start of session 42, not carried forward silently.
+Last commit on main: `295c790` (`lis-platform`, PR #695 — coded/table clinical result rendering,
+closes #694). Session 42 closed with `4e2edfd` (PR #657); this pointer had drifted three commits
+stale (PR #691, #693, #695, none referenced anywhere in this breadcrumb) — caught and fixed by
+`/close`'s own Pre-Close Report at the end of session 43, not carried forward silently.
+
+## Session 43 — #690/#551 (multi-protocol disambiguation + CAP colon/rectum protocol), #692 (per-org
+## default synoptic standard), #694 (coded/table result rendering), #489 split, #529/#530 closed
+
+Continuation of the AP synoptic-protocol thread. User asked "which protocol next" against #551
+(EPIC-012's own "additional CAP/ICCR protocols" tracker) — recommended and shipped the **Breast
+Biomarker Panel (ER/PR/HER2)**, real CAP-cited content linked to the existing seeded ICCR breast
+organ protocol via #668's own linked-panel mechanism (PR #689, merged before this session's own
+breadcrumb-visible window — see `git log` for the exact commit). While scoping the next protocol,
+found the design partner's own real, in-use local `COLON TEMPLATE.docx` (CAP, AJCC 8th edition) —
+structurally different from the already-seeded ICCR colorectal protocol — and a real architectural
+blocker: the synoptic recording page resolved which protocol to render via a plain `.find()` on
+`specimenType`, already silently non-deterministic for the just-shipped breast biomarker panel
+(shares `specimenType: 'breast'` with the organ protocol). Stopped and asked; human's answer:
+"Both — coexist for now, design the disambiguation mechanism."
+
+**Issue #690 (mechanism) + #551 (CAP colon/rectum content), PR #691, merged.** New
+`eligibleOrganProtocols` filter (excludes `isPanel: true`) plus a new `organProtocolId` query
+param (distinct from the existing `protocolId`, which keeps its own #668 meaning) — 0/1/2+
+eligible-count branching, a real "Choose reporting standard" picker only when 2+, zero behavior
+change for every existing single-protocol specimenType. Shipped alongside the real CAP colon/rectum
+resection protocol (22 elements, 117 response options, AJCC 8th edition pT/pN/pM, real conditional
+visibility) as `synoptic-protocol-colon-rectum-cap.sql`, deliberately colliding `specimenType:
+'colorectal'` with the existing ICCR protocol — safe only because of #690's own mechanism landing
+in the same PR. `#551` itself was reopened after merge (its own commit's `Closes #551` wrongly
+auto-closed an issue meant to stay open as an ongoing tracker per its own body) with a status
+comment; left open.
+
+**Issue #692 (per-org default reporting standard), PR #693, merged.** Raised directly by a design
+partner who called to ask whether the ICCR/CAP coexistence decision would affect their CAP-based
+workflow — it doesn't, but every lab now sees #690's picker on every case with 2+ eligible
+protocols, an unnecessary click for a lab that only ever uses one standard. New
+`tenant.preferred_synoptic_source_standard` (nullable text, lazily-upserted — most tenants in this
+system predate FEAT-045 and have no `tenant` row at all, confirmed directly against the dev DB; a
+plain `UPDATE` would have silently no-op'd) plus `GET/PUT /v1/org-settings` (`manage_org_settings`,
+new capability, `qa`-only to write) and an auto-resolve step in the recording page: when 2+
+protocols are eligible and no explicit `organProtocolId` resolved the choice, checks the org
+preference and skips the picker if exactly one eligible protocol matches. **Deliberately does not
+add a settings UI** — no settings/admin surface exists anywhere in `apps/web` today, and where
+org-wide settings should live is a real product decision, not a minor implementation choice; the
+preference is usable today via the API, flagged as a follow-up in the proposal itself. Real bug
+caught and fixed during this PR's own testing, not shipped and found later: the `PUT` handler's own
+"before" read used the module-level `db` pool while already holding the request's one transaction
+connection — deadlocked outright under the e2e suite's `DB_POOL_MAX=1`; fixed by reading through
+the request's own `tx` instead.
+
+**Manual verification detour, `#529`/`#530` (both closed this session).** With browser + API access
+available, ran the two "manual check" issues live rather than leaving them for a human: recorded a
+real antibiogram (E. coli, Ampicillin R MIC 16, Meropenem S MIC 1) through the real API against a
+fresh local DB, then inspected both the interactive results screen and a real generated PDF.
+Findings, posted as comments on both issues, then fixed:
+
+**Issue #694, PR #695, merged.** `apps/web`'s results screen (`orders/[id]/results/page.tsx`)
+filtered every analyte row to `dataType === 'quantity' | 'ordinal'` only — organism ID (`coded`)
+and the antibiogram (`table`) never rendered there at all, not just undifferentiated, a pre-existing
+v1 scope limit surfaced as a real problem only once a Resistant flag needed to actually be seen.
+Separately, the PDF report showed a coded result's raw value (`112283007`) instead of its display
+name (`Escherichia coli`) — `formatObservationValue()`'s `coded` branch had always returned
+`valueCode` verbatim, across every discipline. Scoped into `docs/plans/task-694-coded-result-
+rendering.md`, all three open questions resolved to their narrow/deferred defaults on the human's
+own explicit "go with your default lean" instruction: (1) only Organism Identified's display
+resolves (reusing the exact `organism`↔`code_system_value` join `antibiogram-assembly.ts` already
+proved correct, keyed off the same LOINC 634-6 code — no other discipline's coded analyte touched);
+(2) the antibiogram keeps rendering as the existing compact summary string, no new mini-table/grid;
+(3) display-only, no new data-entry control for Organism Identified (still API-only). New
+`observationSchema.valueDisplay` field (additive) and a new `packages/ui` `SusceptibilityBadge`
+component — deliberately **not** a `StatusPill`/`FLAG_META` extension, since `'R'` is already
+reserved there for a future *reflex* flag (`observation.flags`'s own schema comment) and conflating
+the two would be a real semantic collision, not just a naming clash. Real browser verification done
+this session (logged in as `technologist`, real Keycloak login): confirmed "Escherichia coli"
+renders (not the raw code) and a red "R" badge appears next to the antibiogram's summary. Not
+verified live: the `Verify` action for a `verifier`-role session against a `coded`/`table` row
+specifically — reasoned correct via code read (Status/Verify columns never branch on `dataType`)
+but not clicked through; carried into `/close`'s own Manual Verification Checklist as a pending
+item. `#529`/`#530` closed once #694 shipped, each with a comment pointing at the fix.
+
+**Housekeeping: issue #489 split**, per explicit human request. §17.1 Invoice List (already shipped
+and browser-verified in an earlier session) closed out of the issue's own scope; the issue retitled
+to track only §17.5 Outstanding Balances/§17.6 Refunds (both still genuinely need a business-process
+decision — a reminder/payment-plan mechanism, a refund-approval threshold — neither exists anywhere
+in this schema today), left open.
+
+**Full backlog swept twice this session (once mid-session, once at close)** — nothing else open is
+concrete and unblocked. Every M13 item beyond #551 (`#546–554` except `#551` itself, `#673`) is
+explicitly demand-gated or flagged "decision needed" in its own text; everything else open
+(`#489` narrowed, `#506–510`, `#519/520`, `#483`, and the pre-M13 items `#2–8`/`#16`/`#36`/`#86`/
+`#171`/`#192`/`#427`) either needs a design-partner/product decision or predates this session's own
+active thread of work.
+
+**`/close` this session — Pre-Close Report only so far**
+(`~/work/lis-engineering/session-close-reports/2026-08-21-1025-pre.md`). One real Engineering Flow
+Retrospective finding, not yet acted on: a stale/orphaned `next dev` process from a prior session
+repeatedly blocked `pnpm dev` from starting cleanly on this Windows box (hit 3x this session), and
+`TaskStop` on the wrapping background task did not reliably free the port either — drafted fix (not
+applied) is a documented `netstat`/`taskkill` check before running `pnpm dev`, since `TaskStop`
+alone can't be trusted. Manual Verification Checklist carries the #690/#551 picker (never clicked
+through live, only typechecked/e2e-tested) and #694's verifier-role Verify action (noted above) as
+still-pending human checks. This breadcrumb refresh is itself one of that report's own pending
+items — a Final Close Report is still owed once the human has responded to the rest.
 
 ## Session 42 — orientation only: breadcrumb refresh for PR #657 (issue #240, mobile nav)
 

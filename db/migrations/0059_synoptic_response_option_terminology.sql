@@ -1,0 +1,2 @@
+ALTER TABLE "synoptic_element_response_option" ADD COLUMN "code_system_value_id" uuid;--> statement-breakpoint
+ALTER TABLE "synoptic_element_response_option" ADD CONSTRAINT "synoptic_element_response_option_code_system_value_id_code_system_value_id_fk" FOREIGN KEY ("code_system_value_id") REFERENCES "public"."code_system_value"("id") ON DELETE no action ON UPDATE no action;

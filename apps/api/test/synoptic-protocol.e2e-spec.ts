@@ -1747,6 +1747,87 @@ describe('Synoptic Protocol API (e2e)', () => {
     });
   });
 
+  describe('Response option terminology binding (issue #670)', () => {
+    // Real, seeded content (db/seed/synoptic-response-option-terminology.sql):
+    // colorectal's own histological_tumor_type option 'adenocarcinoma_nos'
+    // is bound to its real ICD-O-3 code 8140/3.
+    it('GET .../versions/:versionId resolves the ICD-O-3 binding for a real, seeded response option', async () => {
+      const res = await request(app.getHttpServer())
+        .get(
+          `/v1/synoptic-protocols/${colorectalProtocolId}/versions/${colorectalVersionId}`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const body = res.body as {
+        elements: {
+          key: string;
+          responseOptions: {
+            value: string;
+            codeSystemValueId: string | null;
+            codeSystemCode: string | null;
+            codeSystemDisplay: string | null;
+          }[];
+        }[];
+      };
+      const histType = body.elements.find(
+        (e) => e.key === 'histological_tumor_type',
+      );
+      const bound = histType?.responseOptions.find(
+        (o) => o.value === 'adenocarcinoma_nos',
+      );
+      if (
+        !bound?.codeSystemValueId ||
+        bound.codeSystemCode !== 'ICD-O-3 8140/3' ||
+        bound.codeSystemDisplay !== 'Adenocarcinoma, NOS'
+      ) {
+        throw new Error(
+          `expected adenocarcinoma_nos bound to ICD-O-3 8140/3, got ${JSON.stringify(bound)}`,
+        );
+      }
+      // Opportunistic, not a backfill (issue's own instruction) -- an
+      // unbound option on the same element is expected, not a gap.
+      const unbound = histType?.responseOptions.find(
+        (o) => o.value === 'other',
+      );
+      if (unbound?.codeSystemValueId !== null) {
+        throw new Error(
+          `expected 'other' to remain unbound, got ${JSON.stringify(unbound)}`,
+        );
+      }
+    });
+
+    it('a response bound to a terminology code records and reads exactly like any other coded response, end to end', async () => {
+      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const recorded = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: colorectalVersionId,
+          responses: baseColorectalResponses
+            .filter((r) => r.elementKey !== 'histological_tumor_type')
+            .concat([
+              {
+                elementKey: 'histological_tumor_type',
+                value: 'adenocarcinoma_nos',
+              },
+            ]),
+        })
+        .expect(201);
+      const results = (
+        recorded.body as { results: { elementKey: string; value: unknown }[] }
+      ).results;
+      if (
+        results.find((r) => r.elementKey === 'histological_tumor_type')
+          ?.value !== 'adenocarcinoma_nos'
+      ) {
+        throw new Error(
+          `expected the code-bound response option to record like any other, got ${JSON.stringify(results)}`,
+        );
+      }
+    });
+  });
+
   // No public "list versions" endpoint exists (issue #539 scope), so this
   // test resolves the seeded, real published version id via a direct
   // read -- the same real API surface `GET

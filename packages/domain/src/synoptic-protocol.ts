@@ -42,6 +42,13 @@ export const synopticElementResponseOptionSchema = z.object({
   value: z.string(),
   display: z.string(),
   displayOrder: z.number().int(),
+  // Issue #670: optional binding to a real terminology code (e.g. ICD-O-3
+  // 8140/3 for "Adenocarcinoma, NOS"), resolved server-side -- the
+  // frontend never resolves its own terminology display text, matching
+  // unitDisplay's own existing resolution pattern (issue #663).
+  codeSystemValueId: z.uuid().nullable(),
+  codeSystemCode: z.string().nullable(),
+  codeSystemDisplay: z.string().nullable(),
 });
 export type SynopticElementResponseOption = z.infer<typeof synopticElementResponseOptionSchema>;
 

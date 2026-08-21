@@ -174,6 +174,32 @@ export class SynopticProtocolController {
       unitRows.map((row) => [row.id, row.displayOverride ?? row.code]),
     );
 
+    // Issue #670: batch-resolve a response option's optional
+    // codeSystemValueId -> {system, code, display}, same pattern as
+    // unitId -> unitDisplay above.
+    const optionCodeSystemValueIds = [
+      ...new Set(
+        optionRows
+          .map((o) => o.codeSystemValueId)
+          .filter((id): id is string => id !== null),
+      ),
+    ];
+    const optionCodeSystemValueRows =
+      optionCodeSystemValueIds.length > 0
+        ? await db
+            .select({
+              id: codeSystemValue.id,
+              system: codeSystemValue.system,
+              code: codeSystemValue.code,
+              display: codeSystemValue.display,
+            })
+            .from(codeSystemValue)
+            .where(inArray(codeSystemValue.id, optionCodeSystemValueIds))
+        : [];
+    const codeSystemValueById = new Map(
+      optionCodeSystemValueRows.map((row) => [row.id, row]),
+    );
+
     // Issue #668: CAP's "linked document" shape -- panel protocols this
     // organ protocol recommends, each with its own current published
     // version id (or null, nothing to record yet).
@@ -234,12 +260,22 @@ export class SynopticProtocolController {
             : null,
           responseOptions: (optionsByElementId.get(element.id) ?? [])
             .sort((a, b) => a.displayOrder - b.displayOrder)
-            .map((o) => ({
-              id: o.id,
-              value: o.value,
-              display: o.display,
-              displayOrder: o.displayOrder,
-            })),
+            .map((o) => {
+              const codeSystemValueRow = o.codeSystemValueId
+                ? codeSystemValueById.get(o.codeSystemValueId)
+                : undefined;
+              return {
+                id: o.id,
+                value: o.value,
+                display: o.display,
+                displayOrder: o.displayOrder,
+                codeSystemValueId: o.codeSystemValueId,
+                codeSystemCode: codeSystemValueRow
+                  ? `${codeSystemValueRow.system} ${codeSystemValueRow.code}`
+                  : null,
+                codeSystemDisplay: codeSystemValueRow?.display ?? null,
+              };
+            }),
         })),
       linkedPanels: linkedPanelRows.map((panel) => ({
         id: panel.id,

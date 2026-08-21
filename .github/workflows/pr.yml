@@ -162,6 +162,10 @@ jobs:
       # colorectal/prostate (reuses their own analytes), same ordering as
       # scripts/db-reset.sh.
       - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/concept-block-regional-lymph-nodes.sql
+      # Issue #670: binds colorectal's already-seeded histological_tumor_type
+      # response options to their real ICD-O-3 codes, same ordering as
+      # scripts/db-reset.sh.
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/synoptic-response-option-terminology.sql
       - run: pnpm run-golden-datasets
       - run: pnpm test
       # TASK-029: waits here, not right after launch — gives Keycloak's own

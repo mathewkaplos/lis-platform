@@ -290,6 +290,15 @@ async function buildCaseReportContent(
     synopticAnalyteRows.map((row) => row.analyteId),
   );
 
+  // Issue #669: `isNull(supersededBy)` -- taken here, at sign time, so a
+  // re-recorded (amended, #662) element's stale predecessor Observation
+  // never gets snapshotted alongside its current value (a real bug found
+  // during this issue's own investigation: without this filter, every
+  // re-recording duplicated both the old and new value in every signed
+  // report thereafter). An already-signed version's own frozen snapshot
+  // is unaffected by a later amendment -- this filter only changes what a
+  // *future* sign/amend call captures, preserving the same immutability
+  // invariant `case_narrative`'s own value-snapshot already establishes.
   const observationRows =
     orderedTestIds.length > 0
       ? await tx
@@ -299,7 +308,12 @@ async function buildCaseReportContent(
             createdAt: observation.createdAt,
           })
           .from(observation)
-          .where(inArray(observation.orderedTestId, orderedTestIds))
+          .where(
+            and(
+              inArray(observation.orderedTestId, orderedTestIds),
+              isNull(observation.supersededBy),
+            ),
+          )
       : [];
   const synopticResponses = observationRows
     .filter((row) => synopticAnalyteIds.has(row.analyteId))

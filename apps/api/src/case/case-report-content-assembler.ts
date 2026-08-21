@@ -1,4 +1,4 @@
-import { inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { createDb } from '@lis/db';
 import {
   block,
@@ -8,6 +8,7 @@ import {
   synopticProtocolVersion,
 } from '@lis/db';
 import type { CaseReportContent } from '@lis/db';
+import { parseInstanceResponseKey } from '@lis/domain';
 
 type Tx = Parameters<
   Parameters<ReturnType<typeof createDb>['transaction']>[0]
@@ -25,9 +26,22 @@ export interface AssembledSynopticResponse {
   value: string;
 }
 
+// Issue #669: one repeating-group root's own recorded instances, each
+// under a distinguishing ordinal label ("Instance 1", not the raw
+// client-generated instanceKey, meaningless to a report reader).
+export interface AssembledSynopticRepeatingInstance {
+  instanceLabel: string;
+  responses: AssembledSynopticResponse[];
+}
+export interface AssembledSynopticRepeatingGroup {
+  rootLabel: string;
+  instances: AssembledSynopticRepeatingInstance[];
+}
+
 export interface AssembledSynopticGroup {
   protocolName: string;
   responses: AssembledSynopticResponse[];
+  repeatingGroups: AssembledSynopticRepeatingGroup[];
 }
 
 export interface AssembledCaseReportContent {
@@ -126,20 +140,50 @@ export async function assembleCaseReportContent(
     const observationById = new Map(observationRows.map((o) => [o.id, o]));
 
     const analyteIds = observationRows.map((o) => o.analyteId);
-    const elementRows =
+    const answeredElementRows =
       analyteIds.length > 0
         ? await tx
             .select()
             .from(synopticElement)
             .where(inArray(synopticElement.analyteId, analyteIds))
         : [];
+    const versionIds = [
+      ...new Set(answeredElementRows.map((e) => e.synopticProtocolVersionId)),
+    ];
+    // Issue #669: the *full* element tree per relevant protocol version,
+    // not just the answered elements -- a repeatable root is never
+    // directly answerable (#666), so it never appears in
+    // answeredElementRows, but its own `label` is needed to head each
+    // instance group; walking parentElementId up requires every ancestor,
+    // not only the leaf that was actually answered.
+    const elementRows =
+      versionIds.length > 0
+        ? await tx
+            .select()
+            .from(synopticElement)
+            .where(
+              inArray(synopticElement.synopticProtocolVersionId, versionIds),
+            )
+        : [];
     const elementByAnalyteId = new Map(
       elementRows.map((e) => [e.analyteId, e]),
     );
+    const elementById = new Map(elementRows.map((e) => [e.id, e]));
+    function findRepeatableRoot(
+      element: (typeof elementRows)[number],
+    ): (typeof elementRows)[number] | undefined {
+      let current = element.parentElementId
+        ? elementById.get(element.parentElementId)
+        : undefined;
+      while (current) {
+        if (current.repeatable) return current;
+        current = current.parentElementId
+          ? elementById.get(current.parentElementId)
+          : undefined;
+      }
+      return undefined;
+    }
 
-    const versionIds = [
-      ...new Set(elementRows.map((e) => e.synopticProtocolVersionId)),
-    ];
     const versionRows =
       versionIds.length > 0
         ? await tx
@@ -161,9 +205,61 @@ export async function assembleCaseReportContent(
         : [];
     const protocolById = new Map(protocolRows.map((p) => [p.id, p]));
 
+    // Issue #669: a discrete Observation row has no stored composite
+    // elementKey@instanceKey -- that mapping exists only in the grid
+    // Observation's own valueJson.results (the same shape #659's read
+    // path already returns verbatim). Scanning every grid for the same
+    // ordered tests (any status -- a pure reverse lookup by observationId,
+    // not filtered by which grid is "current") recovers it.
+    const orderedTestIds = [
+      ...new Set(
+        observationRows
+          .map((o) => o.orderedTestId)
+          .filter((id): id is string => id !== null),
+      ),
+    ];
+    const gridRows =
+      orderedTestIds.length > 0
+        ? await tx
+            .select({ valueJson: observation.valueJson })
+            .from(observation)
+            .where(
+              and(
+                inArray(observation.orderedTestId, orderedTestIds),
+                eq(observation.dataType, 'table'),
+              ),
+            )
+        : [];
+    const compositeKeyByObservationId = new Map<string, string>();
+    for (const grid of gridRows) {
+      const results =
+        (
+          grid.valueJson as {
+            results?: { elementKey: string; observationId: string }[];
+          } | null
+        )?.results ?? [];
+      for (const r of results) {
+        compositeKeyByObservationId.set(r.observationId, r.elementKey);
+      }
+    }
+
     const responsesByProtocolName = new Map<
       string,
       AssembledSynopticResponse[]
+    >();
+    // protocolName -> repeatableRootElementId -> instanceKey -> responses,
+    // preserving first-seen instanceKey order for ordinal labeling
+    // ("Instance 1", not the raw client-generated instanceKey).
+    const repeatingByProtocolName = new Map<
+      string,
+      Map<
+        string,
+        {
+          rootLabel: string;
+          instanceOrder: string[];
+          byInstance: Map<string, AssembledSynopticResponse[]>;
+        }
+      >
     >();
     for (const ref of rawSynopticResponses) {
       const obsRow = observationById.get(ref.id);
@@ -181,16 +277,67 @@ export async function assembleCaseReportContent(
         ? protocolById.get(versionRow.synopticProtocolId)
         : undefined;
       const protocolName = protocolRow?.name ?? UNAVAILABLE;
-
-      const bucket = responsesByProtocolName.get(protocolName) ?? [];
-      bucket.push({
+      const response: AssembledSynopticResponse = {
         elementLabel: elementRow?.label ?? UNAVAILABLE,
         value: formatObservationValue(obsRow),
-      });
+      };
+
+      const compositeKey = compositeKeyByObservationId.get(ref.id);
+      const { instanceKey } = compositeKey
+        ? parseInstanceResponseKey(compositeKey)
+        : { instanceKey: null };
+      const root = elementRow ? findRepeatableRoot(elementRow) : undefined;
+      if (instanceKey && root) {
+        const rootsByProtocol =
+          repeatingByProtocolName.get(protocolName) ??
+          new Map<
+            string,
+            {
+              rootLabel: string;
+              instanceOrder: string[];
+              byInstance: Map<string, AssembledSynopticResponse[]>;
+            }
+          >();
+        repeatingByProtocolName.set(protocolName, rootsByProtocol);
+        const rootEntry = rootsByProtocol.get(root.id) ?? {
+          rootLabel: root.label,
+          instanceOrder: [],
+          byInstance: new Map<string, AssembledSynopticResponse[]>(),
+        };
+        rootsByProtocol.set(root.id, rootEntry);
+        if (!rootEntry.byInstance.has(instanceKey)) {
+          rootEntry.instanceOrder.push(instanceKey);
+          rootEntry.byInstance.set(instanceKey, []);
+        }
+        rootEntry.byInstance.get(instanceKey)!.push(response);
+        continue;
+      }
+
+      const bucket = responsesByProtocolName.get(protocolName) ?? [];
+      bucket.push(response);
       responsesByProtocolName.set(protocolName, bucket);
     }
-    for (const [protocolName, responses] of responsesByProtocolName) {
-      synopticGroups.push({ protocolName, responses });
+
+    const protocolNames = new Set([
+      ...responsesByProtocolName.keys(),
+      ...repeatingByProtocolName.keys(),
+    ]);
+    for (const protocolName of protocolNames) {
+      const rootsByProtocol = repeatingByProtocolName.get(protocolName);
+      const repeatingGroups: AssembledSynopticRepeatingGroup[] = rootsByProtocol
+        ? [...rootsByProtocol.values()].map((rootEntry) => ({
+            rootLabel: rootEntry.rootLabel,
+            instances: rootEntry.instanceOrder.map((instanceKey, index) => ({
+              instanceLabel: `Instance ${index + 1}`,
+              responses: rootEntry.byInstance.get(instanceKey)!,
+            })),
+          }))
+        : [];
+      synopticGroups.push({
+        protocolName,
+        responses: responsesByProtocolName.get(protocolName) ?? [],
+        repeatingGroups,
+      });
     }
   }
 

@@ -43,5 +43,19 @@ export const tenant = pgTable("tenant", {
   // Null (the default) means "no preference" -- every specimenType with 2+
   // eligible protocols keeps showing the picker, unchanged.
   preferredSynopticSourceStandard: text("preferred_synoptic_source_standard"),
+  // Issue #706: organization profile fields, editable via
+  // GET/PUT /v1/org-settings -- previously only `name` existed, set once at
+  // signup and never editable. All nullable: a tenant may legitimately have
+  // none of these set yet, same convention as patient.ts's own optional
+  // contact fields.
+  address: text("address"),
+  phone: text("phone"),
+  email: text("email"),
+  logoUrl: text("logo_url"),
+  // Free text (ISO 4217 code), not a DB enum -- matches this table's own
+  // preferredSynopticSourceStandard convention of never enum-constraining
+  // this class of field. UI-level constraint (a <select> of common codes),
+  // not a schema-level one.
+  currency: text("currency"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -435,6 +435,13 @@
       "when": 1787290993130,
       "tag": "0061_tenant_preferred_synoptic_standard",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1787313988374,
+      "tag": "0062_tenant_profile_fields",
+      "breakpoints": true
     }
   ]
 }

@@ -52,9 +52,15 @@ type Db = ReturnType<typeof createDb>;
  * is the only real source of truth for "which tenant." A plain UPDATE
  * would therefore silently no-op for exactly the tenants this feature
  * needs to work for. `update()` below upserts instead -- lazily creates a
- * placeholder row (real tenants pre-dating FEAT-045 have no name to
- * preserve there either) on first write, updates in place afterward,
- * never touching `name` once a row exists.
+ * placeholder row on first write, updates in place afterward.
+ *
+ * Issue #706: extended to the full organization profile (name, address,
+ * phone, email, logo, currency) -- `name` was originally never touched on
+ * conflict (this feature had no reason to change it); now genuinely
+ * editable, since org identity being editable is #706's whole point. Every
+ * field falls back to `before`'s existing value via `??` when the caller's
+ * PUT body omits that key, so a partial update never clobbers fields it
+ * didn't mention -- matches `orgSettingsUpdateSchema`'s all-optional shape.
  */
 @Controller('v1/org-settings')
 @UseGuards(JwtAuthGuard)
@@ -83,25 +89,67 @@ export class OrgSettingsController {
     // (concretely reproduced under the e2e suite's DB_POOL_MAX=1).
     const before = await getOrgSettings(tx, user.tenantId);
 
-    await tx
+    // Issue #706: `name` is now genuinely editable -- unlike the original
+    // #692 shape (which deliberately never touched `name` on conflict,
+    // since that feature had no reason to change it), org identity being
+    // editable is this feature's whole point. `undefined` fields (the
+    // caller didn't send that key) fall back to the existing row's value
+    // via `coalesce`, so a partial PUT never clobbers fields it didn't
+    // mention -- matches `orgSettingsUpdateSchema`'s own all-optional shape.
+    const [row] = await tx
       .insert(tenant)
       .values({
         id: user.tenantId,
-        name: `Tenant ${user.tenantId}`,
-        preferredSynopticSourceStandard: body.preferredSynopticSourceStandard,
+        name: body.name ?? before.name ?? `Tenant ${user.tenantId}`,
+        address: body.address ?? before.address,
+        phone: body.phone ?? before.phone,
+        email: body.email ?? before.email,
+        logoUrl: body.logoUrl ?? before.logoUrl,
+        currency: body.currency ?? before.currency,
+        preferredSynopticSourceStandard:
+          body.preferredSynopticSourceStandard ??
+          before.preferredSynopticSourceStandard,
       })
       .onConflictDoUpdate({
         target: tenant.id,
         set: {
-          preferredSynopticSourceStandard: body.preferredSynopticSourceStandard,
+          name: body.name ?? before.name ?? `Tenant ${user.tenantId}`,
+          address: body.address ?? before.address,
+          phone: body.phone ?? before.phone,
+          email: body.email ?? before.email,
+          logoUrl: body.logoUrl ?? before.logoUrl,
+          currency: body.currency ?? before.currency,
+          preferredSynopticSourceStandard:
+            body.preferredSynopticSourceStandard ??
+            before.preferredSynopticSourceStandard,
         },
-      });
+      })
+      .returning();
 
-    const after: OrgSettings = {
-      preferredSynopticSourceStandard: body.preferredSynopticSourceStandard,
-    };
+    const after: OrgSettings = toOrgSettings(row);
     return { resourceId: user.tenantId, before, after };
   }
+}
+
+function toOrgSettings(row: {
+  name: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  logoUrl: string | null;
+  currency: string | null;
+  preferredSynopticSourceStandard: string | null;
+}): OrgSettings {
+  return {
+    name: row.name ?? null,
+    address: row.address ?? null,
+    phone: row.phone ?? null,
+    email: row.email ?? null,
+    logoUrl: row.logoUrl ?? null,
+    currency: row.currency ?? null,
+    preferredSynopticSourceStandard:
+      row.preferredSynopticSourceStandard ?? null,
+  };
 }
 
 async function getOrgSettings(
@@ -110,13 +158,26 @@ async function getOrgSettings(
 ): Promise<OrgSettings> {
   const [row] = await queryable
     .select({
+      name: tenant.name,
+      address: tenant.address,
+      phone: tenant.phone,
+      email: tenant.email,
+      logoUrl: tenant.logoUrl,
+      currency: tenant.currency,
       preferredSynopticSourceStandard: tenant.preferredSynopticSourceStandard,
     })
     .from(tenant)
     .where(eq(tenant.id, tenantId))
     .limit(1);
-  return {
-    preferredSynopticSourceStandard:
-      row?.preferredSynopticSourceStandard ?? null,
-  };
+  return row
+    ? toOrgSettings(row)
+    : {
+        name: null,
+        address: null,
+        phone: null,
+        email: null,
+        logoUrl: null,
+        currency: null,
+        preferredSynopticSourceStandard: null,
+      };
 }

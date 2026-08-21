@@ -107,6 +107,13 @@ export default async function CaseDetailPage({
         .then(({ data }) => data?.items ?? [])
     : [];
 
+  // Issue #714 (EPIC #697): sign-out/amend already record real, structured
+  // audit data (step-up method + timestamp) -- previously visible only by
+  // reading a raw API response, never from a screen.
+  const auditTrail = await client
+    .GET('/v1/cases/{id}/audit-trail', { params: { path: { id } } })
+    .then(({ data }) => data?.items ?? []);
+
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
       <Card className="mx-auto w-full max-w-3xl">
@@ -319,6 +326,43 @@ export default async function CaseDetailPage({
           </CardContent>
         </Card>
       ) : null}
+
+      <Card className="mx-auto w-full max-w-3xl">
+        <CardHeader>
+          <CardTitle>Audit trail</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {auditTrail.length === 0 ? (
+            <p className="text-sm text-text-secondary">No audited actions on this case yet.</p>
+          ) : (
+            <ul className="flex flex-col gap-3 text-sm">
+              {auditTrail.map((event) => (
+                <li key={event.id} className="border-b border-border pb-3 last:border-0">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="font-medium text-foreground">{event.action}</span>
+                    <span className="text-text-secondary">
+                      {new Date(event.occurredAt).toLocaleString()}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-text-secondary">
+                    By <span className="font-mono">{event.actorRole}</span>
+                    {event.stepUp ? (
+                      <>
+                        {' '}
+                        — re-authenticated via {event.stepUp.method} (
+                        {new Date(event.stepUp.authTime * 1000).toLocaleString()})
+                      </>
+                    ) : null}
+                  </p>
+                  {event.reason ? (
+                    <p className="mt-1 text-text-secondary">Reason: {event.reason}</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

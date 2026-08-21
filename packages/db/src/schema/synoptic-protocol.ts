@@ -18,8 +18,43 @@ export const synopticProtocol = pgTable("synoptic_protocol", {
   name: text("name").notNull(), // e.g. "Invasive Carcinoma of the Breast"
   sourceStandard: text("source_standard").notNull(), // 'ICCR' (v1) -- 'CAP' reserved for a future importer, ADR-0050 §Decision 5
   specimenType: text("specimen_type").notNull(), // e.g. 'breast', 'colorectal' -- free text, mirrors specimen.specimenType's own convention
+  // Issue #668: marks a protocol as biomarker/ancillary-panel-shaped
+  // (organ-agnostic, e.g. "ER/PR/HER2") rather than an organ protocol --
+  // metadata only, doesn't itself change recording/routing. A panel is an
+  // ordinary synoptic_protocol/synoptic_protocol_version otherwise (the
+  // issue's own "reuse this" instruction), linked from an organ protocol
+  // via synopticProtocolLinkedPanel below.
+  isPanel: boolean("is_panel").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// -- RLS-exempt per ADR-0050 (global reference data, identical across tenants)
+// Issue #668: CAP's "linked document" shape -- declares that an organ
+// protocol recommends a panel protocol, with no element-tree coupling (the
+// inline/ICCR shape instead composes the panel's elements by copy, see
+// composeProtocolVersionElements). A linked panel is recorded as its own,
+// fully independent response against its own published version -- the
+// existing recorder/read path already supports multiple protocol
+// responses per case, so this table is pure association metadata.
+export const synopticProtocolLinkedPanel = pgTable(
+  "synoptic_protocol_linked_panel",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organProtocolId: uuid("organ_protocol_id")
+      .notNull()
+      .references(() => synopticProtocol.id),
+    panelProtocolId: uuid("panel_protocol_id")
+      .notNull()
+      .references(() => synopticProtocol.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("ux_synoptic_protocol_linked_panel_organ_panel").on(
+      table.organProtocolId,
+      table.panelProtocolId,
+    ),
+  ],
+);
 
 // -- RLS-exempt per ADR-0050 (global reference data, identical across tenants)
 // Effective-dated + versioned-lifecycle, mirroring report_template_version's

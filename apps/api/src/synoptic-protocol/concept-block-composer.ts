@@ -173,3 +173,131 @@ export async function composeConceptBlockVersion(
 
   return { rootElementIds };
 }
+
+export interface ComposeProtocolVersionElementsParams {
+  sourceProtocolVersionId: string;
+  targetProtocolVersionId: string;
+  parentElementId: string | null;
+  keyPrefix: string;
+  displayOrderOffset: number;
+}
+
+/**
+ * Issue #668 (docs/plans/task-668-biomarker-panel-linking.md). ICCR's
+ * "inline" biomarker-panel embedding shape, sibling to
+ * `composeConceptBlockVersion`: copies one protocol version's own element
+ * tree into another (e.g. a biomarker panel's tree embedded directly into
+ * an organ protocol version) -- same compose-by-copy discipline, same
+ * cross-field visibilityCondition rewrite. A separate function rather than
+ * a generalization of `composeConceptBlockVersion`: the two source tables
+ * (`synopticElement` vs. `conceptBlockElement`) are structurally identical
+ * but distinct Drizzle-typed tables, and forcing one generic function
+ * through that type boundary is more complexity than two similar, direct
+ * functions.
+ */
+export async function composeProtocolVersionElements(
+  tx: Tx,
+  params: ComposeProtocolVersionElementsParams,
+): Promise<{ rootElementIds: string[] }> {
+  const {
+    sourceProtocolVersionId,
+    targetProtocolVersionId,
+    parentElementId,
+    keyPrefix,
+    displayOrderOffset,
+  } = params;
+
+  const sourceElements = await tx
+    .select()
+    .from(synopticElement)
+    .where(
+      eq(synopticElement.synopticProtocolVersionId, sourceProtocolVersionId),
+    );
+  if (sourceElements.length === 0) {
+    throw new Error(
+      `Protocol version ${sourceProtocolVersionId} has no elements`,
+    );
+  }
+
+  const allOptions = await tx.select().from(synopticElementResponseOption);
+  const optionsBySourceElementId = new Map<string, typeof allOptions>();
+  for (const row of allOptions) {
+    if (!sourceElements.some((e) => e.id === row.synopticElementId)) continue;
+    const existing = optionsBySourceElementId.get(row.synopticElementId) ?? [];
+    existing.push(row);
+    optionsBySourceElementId.set(row.synopticElementId, existing);
+  }
+
+  const childrenByParentId = new Map<string | null, typeof sourceElements>();
+  for (const el of sourceElements) {
+    const key = el.parentElementId;
+    const existing = childrenByParentId.get(key) ?? [];
+    existing.push(el);
+    childrenByParentId.set(key, existing);
+  }
+
+  const composedIdBySourceElementId = new Map<string, string>();
+  const rootElementIds: string[] = [];
+
+  const sourceKeys = new Set(sourceElements.map((e) => e.key));
+  function rewriteCondition(node: ConditionNode): ConditionNode {
+    if ('and' in node) return { and: node.and.map(rewriteCondition) };
+    if ('or' in node) return { or: node.or.map(rewriteCondition) };
+    if ('not' in node) return { not: rewriteCondition(node.not) };
+    return {
+      ...node,
+      field: sourceKeys.has(node.field)
+        ? `${keyPrefix}${node.field}`
+        : node.field,
+    };
+  }
+
+  async function insertSubtree(
+    sourceElement: (typeof sourceElements)[number],
+    newParentElementId: string | null,
+  ): Promise<void> {
+    const [inserted] = await tx
+      .insert(synopticElement)
+      .values({
+        synopticProtocolVersionId: targetProtocolVersionId,
+        parentElementId: newParentElementId,
+        key: `${keyPrefix}${sourceElement.key}`,
+        label: sourceElement.label,
+        dataType: sourceElement.dataType,
+        requirement: sourceElement.requirement,
+        analyteId: sourceElement.analyteId,
+        unitId: sourceElement.unitId,
+        visibilityCondition: sourceElement.visibilityCondition
+          ? rewriteCondition(sourceElement.visibilityCondition as ConditionNode)
+          : null,
+        displayOrder: displayOrderOffset + sourceElement.displayOrder,
+        repeatable: sourceElement.repeatable,
+        identityElementKey: sourceElement.identityElementKey
+          ? `${keyPrefix}${sourceElement.identityElementKey}`
+          : null,
+      })
+      .returning();
+    composedIdBySourceElementId.set(sourceElement.id, inserted.id);
+
+    const options = optionsBySourceElementId.get(sourceElement.id) ?? [];
+    for (const option of options) {
+      await tx.insert(synopticElementResponseOption).values({
+        synopticElementId: inserted.id,
+        value: option.value,
+        display: option.display,
+        displayOrder: option.displayOrder,
+      });
+    }
+
+    for (const child of childrenByParentId.get(sourceElement.id) ?? []) {
+      await insertSubtree(child, inserted.id);
+    }
+  }
+
+  for (const rootSourceElement of childrenByParentId.get(null) ?? []) {
+    await insertSubtree(rootSourceElement, parentElementId);
+    rootElementIds.push(composedIdBySourceElementId.get(rootSourceElement.id)!);
+  }
+
+  return { rootElementIds };
+}

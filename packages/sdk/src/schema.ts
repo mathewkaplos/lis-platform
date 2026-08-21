@@ -2736,6 +2736,7 @@ export interface components {
                 name: string;
                 sourceStandard: string;
                 specimenType: string;
+                isPanel: boolean;
                 /** Format: date-time */
                 createdAt: string;
                 /** Format: uuid */
@@ -2795,6 +2796,14 @@ export interface components {
                     display: string;
                     displayOrder: number;
                 }[];
+            }[];
+            linkedPanels: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                sourceStandard: string;
+                /** Format: uuid */
+                publishedVersionId: string | null;
             }[];
         };
         SynopticResponseCreateDto: {

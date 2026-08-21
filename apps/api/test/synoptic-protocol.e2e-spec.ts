@@ -12,12 +12,16 @@ import {
   observation,
   synopticElement,
   synopticProtocol,
+  synopticProtocolLinkedPanel,
   synopticProtocolVersion,
 } from '@lis/db';
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { makeInstanceResponseKey } from '@lis/domain';
-import { composeConceptBlockVersion } from '../src/synoptic-protocol/concept-block-composer';
+import {
+  composeConceptBlockVersion,
+  composeProtocolVersionElements,
+} from '../src/synoptic-protocol/concept-block-composer';
 import { AppModule } from './../src/app.module';
 import { getKeycloakToken } from './get-keycloak-token';
 
@@ -1532,6 +1536,211 @@ describe('Synoptic Protocol API (e2e)', () => {
             { elementKey: statusKey, value: 'tumor_present' },
             { elementKey: countKey, value: 2 },
             { elementKey: pnKey, value: 'pN1' },
+          ],
+        })
+        .expect(201);
+    });
+  });
+
+  describe('Biomarker panel linking (issue #668)', () => {
+    // Isolated, throwaway protocols -- same reasoning as the concept-block
+    // composition tests above: a real, ungated `required` element left
+    // behind on colorectalVersionId would permanently break every later
+    // test/file recording against that shared version for the rest of the
+    // run.
+    async function createThrowawayProtocol(
+      isPanel: boolean,
+    ): Promise<{ protocolId: string; versionId: string }> {
+      const suffix = randomUUID().slice(0, 8);
+      const [protocolRow] = await db
+        .insert(synopticProtocol)
+        .values({
+          name: `Biomarker panel linking test fixture ${suffix}`,
+          sourceStandard: 'CAP',
+          specimenType: 'test',
+          isPanel,
+        })
+        .returning();
+      const [versionRow] = await db
+        .insert(synopticProtocolVersion)
+        .values({
+          synopticProtocolId: protocolRow.id,
+          version: 1,
+          status: 'published',
+        })
+        .returning();
+      return { protocolId: protocolRow.id, versionId: versionRow.id };
+    }
+
+    async function insertTestElement(
+      versionId: string,
+      key: string,
+      opts: { visibilityCondition?: Record<string, unknown> } = {},
+    ) {
+      const [csv] = await db
+        .insert(codeSystemValue)
+        .values({
+          system: 'CAP-SYNOPTIC-TEST',
+          code: key,
+          version: '1',
+          display: key,
+        })
+        .returning();
+      const [a] = await db
+        .insert(analyte)
+        .values({ codeSystemValueId: csv.id, display: key, dataType: 'text' })
+        .returning();
+      await db.insert(synopticElement).values({
+        synopticProtocolVersionId: versionId,
+        key,
+        label: key,
+        dataType: 'text',
+        requirement: 'required',
+        analyteId: a.id,
+        displayOrder: 0,
+        visibilityCondition: opts.visibilityCondition ?? null,
+      });
+    }
+
+    it("GET .../versions/:versionId surfaces an organ protocol's linked panels, each with its own published version id", async () => {
+      const organ = await createThrowawayProtocol(false);
+      const panel = await createThrowawayProtocol(true);
+      await db.insert(synopticProtocolLinkedPanel).values({
+        organProtocolId: organ.protocolId,
+        panelProtocolId: panel.protocolId,
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(
+          `/v1/synoptic-protocols/${organ.protocolId}/versions/${organ.versionId}`,
+        )
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const body = res.body as {
+        linkedPanels: {
+          id: string;
+          name: string;
+          publishedVersionId: string | null;
+        }[];
+      };
+      const linked = body.linkedPanels.find((p) => p.id === panel.protocolId);
+      if (linked?.publishedVersionId !== panel.versionId) {
+        throw new Error(
+          `expected the organ protocol to surface the linked panel's own published version id, got ${JSON.stringify(body.linkedPanels)}`,
+        );
+      }
+    });
+
+    it('a linked panel is independently recordable and readable through the existing, unmodified recorder/read path', async () => {
+      const panel = await createThrowawayProtocol(true);
+      await insertTestElement(panel.versionId, 'er_status');
+
+      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      const recorded = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: panel.versionId,
+          responses: [{ elementKey: 'er_status', value: 'positive' }],
+        })
+        .expect(201);
+      const results = (
+        recorded.body as { results: { elementKey: string; value: unknown }[] }
+      ).results;
+      if (
+        results.find((r) => r.elementKey === 'er_status')?.value !== 'positive'
+      ) {
+        throw new Error(
+          `expected the linked panel's own response to record like any protocol, got ${JSON.stringify(results)}`,
+        );
+      }
+
+      const listRes = await request(app.getHttpServer())
+        .get(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const responses = (
+        listRes.body as {
+          responses: {
+            synopticProtocolVersionId: string;
+            results: { elementKey: string; value: unknown }[];
+          }[];
+        }
+      ).responses;
+      const match = responses.find(
+        (r) => r.synopticProtocolVersionId === panel.versionId,
+      );
+      if (
+        match?.results.find((r) => r.elementKey === 'er_status')?.value !==
+        'positive'
+      ) {
+        throw new Error(
+          `expected the linked panel's response to round-trip through the read path unchanged, got ${JSON.stringify(match)}`,
+        );
+      }
+    });
+
+    // ICCR's "inline" embedding shape: composeProtocolVersionElements
+    // copies one protocol version's own tree into another, including the
+    // same cross-field visibilityCondition rewrite #667 established for
+    // concept blocks.
+    it("composeProtocolVersionElements inline-embeds a panel's tree into an organ protocol version, rewriting cross-field conditions", async () => {
+      const panel = await createThrowawayProtocol(true);
+      await insertTestElement(panel.versionId, 'her2_status');
+      await insertTestElement(panel.versionId, 'her2_ihc_score', {
+        visibilityCondition: {
+          field: 'her2_status',
+          op: 'eq',
+          value: 'equivocal',
+        },
+      });
+
+      const organ = await createThrowawayProtocol(false);
+      const keyPrefix = `panel_${randomUUID().slice(0, 8)}_`;
+      const { rootElementIds } = await db.transaction((tx) =>
+        composeProtocolVersionElements(tx, {
+          sourceProtocolVersionId: panel.versionId,
+          targetProtocolVersionId: organ.versionId,
+          parentElementId: null,
+          keyPrefix,
+          displayOrderOffset: 0,
+        }),
+      );
+      if (rootElementIds.length !== 2) {
+        throw new Error(
+          `expected both panel elements to be composed as top-level elements, got ${rootElementIds.length}`,
+        );
+      }
+
+      const [composedScoreElement] = await db
+        .select({ visibilityCondition: synopticElement.visibilityCondition })
+        .from(synopticElement)
+        .where(
+          and(
+            eq(synopticElement.synopticProtocolVersionId, organ.versionId),
+            eq(synopticElement.key, `${keyPrefix}her2_ihc_score`),
+          ),
+        )
+        .limit(1);
+      const rewrittenField = (
+        composedScoreElement?.visibilityCondition as { field?: string } | null
+      )?.field;
+      if (rewrittenField !== `${keyPrefix}her2_status`) {
+        throw new Error(
+          `expected the composed element's visibilityCondition.field to be rewritten to '${keyPrefix}her2_status', got ${JSON.stringify(rewrittenField)}`,
+        );
+      }
+
+      const { caseId, orderedTestId } = await createCaseWithOrderedTest();
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          synopticProtocolVersionId: organ.versionId,
+          responses: [
+            { elementKey: `${keyPrefix}her2_status`, value: 'positive' },
           ],
         })
         .expect(201);

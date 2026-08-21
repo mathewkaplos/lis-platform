@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@lis/ui';
 import { getValidAccessToken } from '@/auth/access-token';
@@ -19,10 +20,13 @@ import { ProtocolForm } from './protocol-form';
  */
 export default async function SynopticProtocolPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ caseId: string; partId: string }>;
+  searchParams: Promise<{ protocolId?: string }>;
 }) {
   const { caseId, partId } = await params;
+  const { protocolId: requestedProtocolId } = await searchParams;
   const [accessToken, session] = await Promise.all([getValidAccessToken(), getSession()]);
   if (!accessToken) {
     throw new Error('Your session has expired — please log in again.');
@@ -95,30 +99,85 @@ export default async function SynopticProtocolPage({
     );
   }
 
-  const { data: version, response: versionResponse } = await client.GET(
+  const { data: organVersion, response: organVersionResponse } = await client.GET(
     '/v1/synoptic-protocols/{id}/versions/{versionId}',
     { params: { path: { id: protocol.id, versionId: protocol.publishedVersionId } } },
   );
-  if (!versionResponse.ok || !version) {
+  if (!organVersionResponse.ok || !organVersion) {
     throw new Error('Something went wrong loading this synoptic protocol. Please try again.');
   }
+
+  // Issue #668: CAP's "linked document" shape -- ?protocolId= reaches a
+  // linked biomarker/ancillary panel from the organ protocol's own
+  // recording page, recorded as its own independent response. Validated
+  // against the organ protocol's own linkedPanels for correct routing,
+  // not as a security boundary (the recorder itself has never scoped by
+  // specimenType eligibility, proposal §5).
+  let activeProtocolId = protocol.id;
+  let activeProtocolName = protocol.name;
+  let activeSourceStandard = protocol.sourceStandard;
+  let activeVersion = organVersion;
+  if (requestedProtocolId) {
+    const linkedPanel = organVersion.linkedPanels.find((p) => p.id === requestedProtocolId);
+    if (linkedPanel?.publishedVersionId) {
+      const { data: panelVersion, response: panelVersionResponse } = await client.GET(
+        '/v1/synoptic-protocols/{id}/versions/{versionId}',
+        { params: { path: { id: linkedPanel.id, versionId: linkedPanel.publishedVersionId } } },
+      );
+      if (panelVersionResponse.ok && panelVersion) {
+        activeProtocolId = linkedPanel.id;
+        activeProtocolName = linkedPanel.name;
+        activeSourceStandard = linkedPanel.sourceStandard;
+        activeVersion = panelVersion;
+      }
+    }
+  }
+  const viewingLinkedPanel = activeProtocolId !== protocol.id;
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
       <Card className="mx-auto w-full max-w-3xl">
         <CardHeader>
           <CardTitle>
-            {protocol.name} ({protocol.sourceStandard})
+            {activeProtocolName} ({activeSourceStandard})
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-4">
+          {viewingLinkedPanel ? (
+            <Link href={`/cases/${caseId}/synoptic/${partId}`} className="text-sm text-text-secondary underline">
+              ← Back to {protocol.name}
+            </Link>
+          ) : null}
           <ProtocolForm
             caseId={caseId}
             orderedTestId={orderedTestId}
-            synopticProtocolVersionId={version.id}
-            elements={version.elements}
-            sourceStandard={protocol.sourceStandard}
+            synopticProtocolVersionId={activeVersion.id}
+            elements={activeVersion.elements}
+            sourceStandard={activeSourceStandard}
           />
+          {!viewingLinkedPanel && organVersion.linkedPanels.length > 0 ? (
+            <div className="flex flex-col gap-2 border-t border-border pt-4">
+              <span className="text-sm font-medium text-foreground">Linked panels</span>
+              <ul className="flex flex-col gap-1">
+                {organVersion.linkedPanels.map((panel) => (
+                  <li key={panel.id}>
+                    {panel.publishedVersionId ? (
+                      <Link
+                        href={`/cases/${caseId}/synoptic/${partId}?protocolId=${panel.id}`}
+                        className="text-sm underline"
+                      >
+                        Record {panel.name} ({panel.sourceStandard})
+                      </Link>
+                    ) : (
+                      <span className="text-sm text-text-secondary">
+                        {panel.name} ({panel.sourceStandard}) — no published version
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     </div>

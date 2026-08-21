@@ -25,10 +25,11 @@ import {
   synopticElement,
   synopticElementResponseOption,
   synopticProtocol,
+  synopticProtocolLinkedPanel,
   synopticProtocolVersion,
   unit,
 } from '@lis/db';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import type { RequestWithGrantingRole } from '../auth/capability.guard';
@@ -173,6 +174,43 @@ export class SynopticProtocolController {
       unitRows.map((row) => [row.id, row.displayOverride ?? row.code]),
     );
 
+    // Issue #668: CAP's "linked document" shape -- panel protocols this
+    // organ protocol recommends, each with its own current published
+    // version id (or null, nothing to record yet).
+    const linkedPanelRows = await db
+      .select({
+        id: synopticProtocol.id,
+        name: synopticProtocol.name,
+        sourceStandard: synopticProtocol.sourceStandard,
+      })
+      .from(synopticProtocolLinkedPanel)
+      .innerJoin(
+        synopticProtocol,
+        eq(synopticProtocol.id, synopticProtocolLinkedPanel.panelProtocolId),
+      )
+      .where(eq(synopticProtocolLinkedPanel.organProtocolId, id));
+    const panelPublishedVersionRows =
+      linkedPanelRows.length > 0
+        ? await db
+            .select({
+              synopticProtocolId: synopticProtocolVersion.synopticProtocolId,
+              id: synopticProtocolVersion.id,
+            })
+            .from(synopticProtocolVersion)
+            .where(
+              and(
+                inArray(
+                  synopticProtocolVersion.synopticProtocolId,
+                  linkedPanelRows.map((p) => p.id),
+                ),
+                eq(synopticProtocolVersion.status, 'published'),
+              ),
+            )
+        : [];
+    const panelPublishedVersionIdByProtocolId = new Map(
+      panelPublishedVersionRows.map((row) => [row.synopticProtocolId, row.id]),
+    );
+
     return {
       ...versionRow,
       effectiveFrom: versionRow.effectiveFrom.toISOString(),
@@ -203,6 +241,13 @@ export class SynopticProtocolController {
               displayOrder: o.displayOrder,
             })),
         })),
+      linkedPanels: linkedPanelRows.map((panel) => ({
+        id: panel.id,
+        name: panel.name,
+        sourceStandard: panel.sourceStandard,
+        publishedVersionId:
+          panelPublishedVersionIdByProtocolId.get(panel.id) ?? null,
+      })),
     };
   }
 

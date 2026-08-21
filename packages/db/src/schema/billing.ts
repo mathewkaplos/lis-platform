@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, timestamp, index, pgPolicy, check } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, timestamp, index, uniqueIndex, pgPolicy, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { order } from "./order";
 import { patient } from "./patient";
@@ -26,6 +26,13 @@ export const invoice = pgTable(
     patientId: uuid("patient_id")
       .notNull()
       .references(() => patient.id),
+    // Issue #715: human-readable invoice number, same "cosmetic prefix +
+    // global sequence" shape as `accession.ts`'s own generateAccessionNumber
+    // -- `INV-YYMMDD-NNNNNN`, e.g. `INV-260821-000123`. Nullable at the
+    // schema level only because pre-existing rows (created before this
+    // column existed) have none; every invoice created after this migration
+    // always gets one (billing.service.ts's own generateInvoice()).
+    invoiceNumber: text("invoice_number"),
     // The only ledger-like concept this schema carries -- no running
     // account balance across invoices, no computed/stored AR aging.
     status: text("status").notNull().default("unpaid"),
@@ -45,6 +52,10 @@ export const invoice = pgTable(
   (table) => [
     index("ix_invoice_tenant_order").on(table.tenantId, table.orderId),
     index("ix_invoice_referring_facility").on(table.referringFacilityId),
+    // NULLs aren't considered equal by a Postgres unique index, so
+    // pre-existing rows with no invoiceNumber (created before this column
+    // existed) never collide with each other or with real values.
+    uniqueIndex("ux_invoice_tenant_invoice_number").on(table.tenantId, table.invoiceNumber),
     check("ck_invoice_status", sql`${table.status} IN ('unpaid','partial','paid')`),
     check("ck_invoice_payer_type", sql`${table.payerType} IN ('cash','corporate')`),
     tenantIsolation(),

@@ -75,3 +75,29 @@ export function deriveBlockCode(caseAccessionNumber: string, blockNumber: number
 export function deriveSlideCode(blockCode: string, slideNumber: number): string {
   return `${blockCode}-S${slideNumber}`;
 }
+
+/**
+ * Issue #715 (EPIC #697): human-readable invoice numbering -- invoices were
+ * previously identified only by raw UUID in the URL, on the invoice view,
+ * and on the printed receipt. Same "cosmetic date prefix + global sequence"
+ * shape as `generateAccessionNumber()` above, deliberately reusing the
+ * pattern rather than inventing a second one -- a separate
+ * `invoice_number_seq` (not `accession_number_seq`) since invoices and
+ * cases are unrelated counters that happen to share a format.
+ *
+ * Format: `INV-YYMMDD-NNNNNN`, e.g. `INV-260821-000123`.
+ */
+export async function generateInvoiceNumber(db: DbOrTx): Promise<string> {
+  const result = await db.execute<{ nextval: string }>(
+    sql`SELECT nextval('invoice_number_seq')`,
+  );
+  const sequenceValue = result.rows[0].nextval;
+
+  const now = new Date();
+  const yy = String(now.getUTCFullYear()).slice(2);
+  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(now.getUTCDate()).padStart(2, "0");
+  const datePrefix = `${yy}${mm}${dd}`;
+
+  return `INV-${datePrefix}-${sequenceValue.padStart(6, "0")}`;
+}

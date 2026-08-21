@@ -435,6 +435,20 @@
       "when": 1787290993130,
       "tag": "0061_tenant_preferred_synoptic_standard",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1787317307838,
+      "tag": "0063_invoice_number",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1787317434550,
+      "tag": "0064_invoice_number_sequence",
+      "breakpoints": true
     }
   ]
 }

@@ -2449,6 +2449,7 @@ export interface components {
                 id: string;
                 /** Format: uuid */
                 patientId: string;
+                invoiceNumber: string | null;
                 /** @enum {string} */
                 status: "unpaid" | "partial" | "paid";
                 /** @enum {string} */
@@ -2469,6 +2470,7 @@ export interface components {
             orderId: string;
             /** Format: uuid */
             patientId: string;
+            invoiceNumber: string | null;
             /** @enum {string} */
             status: "unpaid" | "partial" | "paid";
             totalCents: number;

@@ -47,3 +47,15 @@ export async function loginAsTechnologist(page: Page): Promise<void> {
 export async function loginAsLabAdmin(page: Page): Promise<void> {
   await login(page, 'test-user-11', 'test-password-11');
 }
+
+// test-user-4: seeded `technologist`+`pathologist` roles, TENANT_A -- same
+// verifier/sign-out fixture apps/api's own case-sign-out.e2e-spec.ts and
+// auto-verify.e2e-spec.ts already rely on. Real Authorization Code + PKCE
+// browser login (this file's own `login()`), unlike those API specs' own
+// direct-grant token fetch -- confirmed via apps/api/test/get-keycloak-
+// fresh-token.ts's own header comment that direct-grant tokens on this
+// realm carry no auth_time at all, so only this browser-driven login path
+// can ever produce a StepUpGuard-fresh session (needed for signOutCase).
+export async function loginAsPathologist(page: Page): Promise<void> {
+  await login(page, 'test-user-4', 'test-password-4');
+}

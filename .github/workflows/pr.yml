@@ -363,11 +363,16 @@ jobs:
       - run: pnpm --filter @lis/db migrate
       - run: psql "$DATABASE_URL" -c "ALTER ROLE lis_app WITH PASSWORD 'lis_app_ci_password';"
       - run: psql "$DATABASE_URL" -c "ALTER ROLE lis_scheduler WITH PASSWORD 'lis_scheduler_ci_password';"
-      # No discipline-catalog seeding -- referring_facility has no
-      # dependency on it, and this job's scope stays minimal-and-honest
-      # about what it actually needs, matching rls-isolation-check's own
-      # "only seed what the suite actually touches" precedent. Extend this
-      # if a future spec added to e2e/ needs real catalog data.
+      # Coverage-improvement pass (2026-08-23, part 2): clinical-workflow.spec.ts
+      # and case-sign-out.spec.ts (order entry, result finalize/verify, AP
+      # case sign-out) need a real ordered test to exist -- the chemistry
+      # catalog's own GLU (Glucose) test, same fixture apps/api's own
+      # case-sign-out.e2e-spec.ts already relies on. Only this one discipline
+      # seed, not every db/seed/*-catalog.sql build-and-test's job runs --
+      # matches rls-isolation-check's own "only seed what the suite actually
+      # touches" precedent; referring-facilities.spec.ts alone never needed
+      # this.
+      - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/chemistry-catalog.sql
       - run: pnpm --filter api build
       # Redirect to a log file + disown, not a bare `&` -- a plain
       # background job started in one `run:` step is not guaranteed to
@@ -406,6 +411,19 @@ jobs:
         with:
           name: web-e2e-test-results
           path: apps/web/test-results/
+          retention-days: 7
+      # Some clinical-workflow.spec.ts/case-sign-out.spec.ts failures are
+      # real server-side errors (production build redacts the actual thrown
+      # message to the browser, only a digest survives) -- apps/api's own
+      # stdout is where the real, un-redacted message lives. Uploaded
+      # unconditionally (not just on failure) since a passing run's own log
+      # is occasionally still useful context for a *different* run's
+      # failure investigated later.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-e2e-api-log
+          path: /tmp/api.log
           retention-days: 7
 
   # TASK-037: CI-enforcing a11y check on the 6 design-system primitives (packages/ui).

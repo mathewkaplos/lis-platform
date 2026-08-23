@@ -227,11 +227,21 @@ JOIN analyte a ON a.code_system_value_id = csv.id
 JOIN test_definition td ON td.tenant_id = '00000000-0000-0000-0000-000000000001' AND td.code = 'PBS'
 ON CONFLICT (test_definition_id, analyte_id) DO NOTHING;
 
--- FEAT-046: placeholder billing metadata (CPT-style code + price), NOT real
--- payer-negotiated rates -- same "placeholder, not partner data" framing
--- chemistry-catalog.sql's own equivalent block already establishes.
--- Idempotent (WHERE billing_code IS NULL) -- never overwrites a real price
--- a lab has since configured.
-UPDATE test_definition
-SET billing_code = code || '-PLACEHOLDER', price_cents = 1500
-WHERE tenant_id = '00000000-0000-0000-0000-000000000001' AND billing_code IS NULL;
+-- FEAT-046 (revised, pilot-readiness audit §Billing/§9): distinct,
+-- generic, published-adjacent US cash-pay lab reference prices per test --
+-- NOT real payer-negotiated rates, same "placeholder, not partner data"
+-- framing chemistry-catalog.sql's own equivalent block already
+-- establishes (see that file's own step 19 for the full rationale on why
+-- this replaces the original flat `code || '-PLACEHOLDER'` / $15.00
+-- convention). `billing_code` is the test's own already-existing `code`.
+-- PBS priced higher than CBC -- a manual peripheral smear morphology
+-- review is real additional technologist labor a routine automated CBC
+-- doesn't carry, the same "distinct by actual complexity" reasoning
+-- chemistry-catalog.sql's own revised prices use. Idempotent (WHERE
+-- billing_code IS NULL) -- never overwrites a real price a lab has since
+-- configured.
+UPDATE test_definition td
+SET billing_code = r.code, price_cents = r.price_cents
+FROM (VALUES ('CBC', 2500), ('PBS', 3000)) AS r(code, price_cents)
+WHERE td.tenant_id = '00000000-0000-0000-0000-000000000001'
+  AND td.code = r.code AND td.billing_code IS NULL;

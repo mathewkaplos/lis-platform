@@ -368,14 +368,35 @@ WHERE NOT EXISTS (
     AND existing.range_type = r.range_type
 );
 
--- 19. FEAT-046: placeholder billing metadata (CPT-style code + price), NOT
--- real payer-negotiated rates -- same "placeholder, not partner data"
+-- 19. FEAT-046 (revised, pilot-readiness audit §Billing/§9): distinct,
+-- generic, published-adjacent US cash-pay lab reference prices per test --
+-- NOT real payer-negotiated rates, same "placeholder, not partner data"
 -- framing this file's own header comment already establishes for its
--- clinical content. Needed so the billing feature is demoable against this
--- fixture data at all -- an order containing any unpriced test cannot be
--- invoiced (billing.service.ts's own validateAndTotal rejects it, rather
--- than silently billing $0). Idempotent (WHERE billing_code IS NULL) --
--- never overwrites a real price a lab has since configured.
-UPDATE test_definition
-SET billing_code = code || '-PLACEHOLDER', price_cents = 1500
-WHERE tenant_id = '00000000-0000-0000-0000-000000000001' AND billing_code IS NULL;
+-- clinical content, and the same framing anatomic-pathology-catalog.sql's
+-- own step 43 already uses for its own per-procedure pricing. Needed so
+-- the billing feature is demoable against this fixture data at all -- an
+-- order containing any unpriced test cannot be invoiced
+-- (billing.service.ts's own validateAndTotal rejects it, rather than
+-- silently billing $0).
+--
+-- Replaces the original flat `code || '-PLACEHOLDER'` / $15.00-for-
+-- everything convention (every test billed identically regardless of
+-- actual complexity, and the literal string "GLU-PLACEHOLDER" printed on
+-- a real invoice/receipt line item -- a real demo red flag the original
+-- pilot-readiness audit called out by name). `billing_code` is now just
+-- the test's own already-existing `code` -- a real, distinct identifier
+-- already used everywhere else in this app (order summaries, the results
+-- grid), not a second parallel "-PLACEHOLDER" string. Idempotent (WHERE
+-- billing_code IS NULL) -- never overwrites a real price a lab has since
+-- configured.
+UPDATE test_definition td
+SET billing_code = r.code, price_cents = r.price_cents
+FROM (VALUES
+  ('GLU',   1200), ('BUN',  1200), ('CREAT', 1200), ('NA',   1000),
+  ('K',     1000), ('CL',   1000), ('CO2',   1000), ('CA',   1200),
+  ('TP',    1200), ('ALB',  1200), ('TBIL',  1400), ('ALP',  1400),
+  ('AST',   1400), ('ALT',  1400), ('LIPID', 3500), ('TSH',  3500),
+  ('FT4',   3000)
+) AS r(code, price_cents)
+WHERE td.tenant_id = '00000000-0000-0000-0000-000000000001'
+  AND td.code = r.code AND td.billing_code IS NULL;

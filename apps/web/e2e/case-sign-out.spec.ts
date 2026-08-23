@@ -70,7 +70,18 @@ test.describe('AP case: accession -> add block -> add slide -> sign out (real se
     await expect(page.getByText(/^Slide /)).toBeVisible();
 
     // -- Sign the case out (real server action: signOutCase) ------------
+    // Not `getByText('Case signed out.')` (SignOutCaseForm's own client-side
+    // `state.status === 'done'` branch) -- a successful sign-out changes
+    // `case.status`, which `revalidatePath` immediately reflects by
+    // re-rendering the whole Server Component tree: `NOT_YET_SIGNED_STATUSES`
+    // no longer includes 'signed_out', so the entire Sign out card
+    // (including that client-only "done" text) unmounts before it can ever
+    // be observed -- confirmed live via a CI trace's captured page
+    // snapshot, which showed the case's own status badge already reading
+    // "signed_out" and a real "Version 1 final" report-versions entry
+    // instead. Assert the real, persisted proof that survives the
+    // re-render.
     await page.getByRole('button', { name: /sign out this case/i }).click();
-    await expect(page.getByText('Case signed out.')).toBeVisible();
+    await expect(page.getByText('signed_out', { exact: true })).toBeVisible();
   });
 });

@@ -412,6 +412,19 @@ jobs:
           name: web-e2e-test-results
           path: apps/web/test-results/
           retention-days: 7
+      # Some clinical-workflow.spec.ts/case-sign-out.spec.ts failures are
+      # real server-side errors (production build redacts the actual thrown
+      # message to the browser, only a digest survives) -- apps/api's own
+      # stdout is where the real, un-redacted message lives. Uploaded
+      # unconditionally (not just on failure) since a passing run's own log
+      # is occasionally still useful context for a *different* run's
+      # failure investigated later.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-e2e-api-log
+          path: /tmp/api.log
+          retention-days: 7
 
   # TASK-037: CI-enforcing a11y check on the 6 design-system primitives (packages/ui).
   # Independent of build-and-test above -- no Postgres/Keycloak needed, this is

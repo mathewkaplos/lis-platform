@@ -324,6 +324,15 @@ jobs:
       APP_DATABASE_URL: postgresql://lis_app:lis_app_ci_password@localhost:5432/lis
       SCHEDULER_DATABASE_URL: postgresql://lis_scheduler:lis_scheduler_ci_password@localhost:5432/lis
       KEYCLOAK_ISSUER_URL: http://localhost:8080/realms/lis
+      # apps/web/auth/public-origin.ts's own header comment: standalone
+      # mode's route handlers can't trust the incoming Host header to
+      # derive request.nextUrl.origin, so PUBLIC_APP_URL must be set
+      # explicitly -- every real deployment already does this
+      # (deploy-staging.yml/docker-compose.staging.yml). Third CI run of
+      # this job failed here first: Keycloak rejected the login redirect
+      # with "Invalid parameter: redirect_uri" because the unset
+      # PUBLIC_APP_URL let it fall back to a wrong origin.
+      PUBLIC_APP_URL: http://localhost:3000
       SESSION_SECRET: lis_web_ci_session_secret_at_least_32_bytes_long
       SIGNING_SECRET: lis_api_ci_signing_secret_at_least_32_bytes_long
       OBJECT_STORAGE_ENDPOINT: http://localhost:9000

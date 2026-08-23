@@ -59,3 +59,11 @@ export async function loginAsLabAdmin(page: Page): Promise<void> {
 export async function loginAsPathologist(page: Page): Promise<void> {
   await login(page, 'test-user-4', 'test-password-4');
 }
+
+// test-user-5: seeded `qa` role, TENANT_A -- holds manage_catalog/
+// manage_org_settings (apps/api/src/auth/capabilities.ts), the same
+// fixture apps/api's own antibiogram.e2e-spec.ts/amr-surveillance.e2e-
+// spec.ts already rely on.
+export async function loginAsQa(page: Page): Promise<void> {
+  await login(page, 'test-user-5', 'test-password-5');
+}

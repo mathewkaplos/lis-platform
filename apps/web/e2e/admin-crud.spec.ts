@@ -35,7 +35,11 @@ test.describe('Admin CRUD (real server actions)', () => {
     await page.getByRole('button', { name: /add user/i }).click();
 
     await expect(page.getByText('User added')).toBeVisible();
-    await expect(page.getByText(uniqueEmail)).toBeVisible();
+    // .first() -- the email legitimately appears twice: the "User added"
+    // success message and the users table's own new row for this user
+    // (revalidatePath keeps both mounted here, unlike the sign-out/payment
+    // "client state unmounts" class of bug found elsewhere in this harness).
+    await expect(page.getByText(uniqueEmail).first()).toBeVisible();
   });
 
   test('a qa-roled user creates a test bound to an existing analyte', async ({ page }) => {

@@ -234,3 +234,20 @@ WHERE td.tenant_id = '00000000-0000-0000-0000-000000000001' AND td.code = 'ORGID
   AND csv.system = 'LOINC' AND csv.version = '2.78' AND csv.code = '50545-3'
   AND a.code_system_value_id = csv.id
 ON CONFLICT (test_definition_id, analyte_id) DO NOTHING;
+
+-- Pilot-readiness audit follow-up: unlike chemistry-catalog.sql/
+-- haematology-catalog.sql, this file never gave CULT/ORGID a
+-- billing_code/price_cents at all -- a real gap, not a placeholder-text
+-- cosmetic issue: billing.service.ts's own validateAndTotal rejects
+-- invoicing any order containing an unpriced test, so a culture order
+-- placed and worked through this app's own real workflow could never
+-- actually be invoiced. Same distinct, generic, published-adjacent
+-- "placeholder, not partner data" pricing convention as every other
+-- catalog file in this directory. ORGID priced lower than CULT -- it's
+-- reflex-created off an already-billed CULT result (AddReflexTest, this
+-- file's own step 3 comment), not a separately ordered specimen workup.
+UPDATE test_definition td
+SET billing_code = r.code, price_cents = r.price_cents
+FROM (VALUES ('CULT', 4500), ('ORGID', 3000)) AS r(code, price_cents)
+WHERE td.tenant_id = '00000000-0000-0000-0000-000000000001'
+  AND td.code = r.code AND td.billing_code IS NULL;

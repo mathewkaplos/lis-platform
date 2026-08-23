@@ -7,3 +7,6 @@ dist/
 .DS_Store
 *.tsbuildinfo
 storybook-static/
+test-results/
+playwright-report/
+blob-report/

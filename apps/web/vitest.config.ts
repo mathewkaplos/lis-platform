@@ -10,7 +10,10 @@ export default defineConfig({
   test: {
     globals: true,
     include: ['**/*.spec.ts'],
-    exclude: ['**/node_modules/**', '**/.next/**'],
+    // e2e/ holds real-browser Playwright specs (its own `test`/`expect`
+    // globals, incompatible with vitest's), same directory-based unit/e2e
+    // split apps/api already uses (src/**/*.spec.ts vs test/**/*.e2e-spec.ts).
+    exclude: ['**/node_modules/**', '**/.next/**', 'e2e/**'],
     environment: 'node',
   },
 });

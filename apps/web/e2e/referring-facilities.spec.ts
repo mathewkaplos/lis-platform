@@ -21,7 +21,15 @@ test.describe('Referring facilities: create (real server action)', () => {
     // fixed name would collide across repeated local runs.
     const uniqueName = `E2E Referring Facility ${Date.now()}`;
 
-    await page.getByLabel('Name', { exact: true }).fill(uniqueName);
+    // Not exact: true -- packages/ui's FormField renders the required
+    // marker as a sibling `<span aria-hidden="true"> *</span>` *inside* the
+    // <label> (form-field.tsx). getByLabel's exact match compares against
+    // the label element's raw textContent ("Name *"), not the ARIA
+    // accessible name ("Name", which does exclude aria-hidden content) --
+    // confirmed live via a CI trace's captured DOM snapshot, where exact:
+    // true hung the full 60s timeout waiting for a locator that could never
+    // resolve. Any required field's label hits this; drop exact here.
+    await page.getByLabel('Name').fill(uniqueName);
     await page.getByLabel('Phone').fill('555-0100');
     await page.getByRole('button', { name: /save facility/i }).click();
 
@@ -45,7 +53,7 @@ test.describe('Referring facilities: create (real server action)', () => {
     // actually exercises the schema's own server-side validation
     // (referringFacilityCreateSchema's `name: z.string().min(1)`), not
     // just the browser's built-in form guard.
-    await page.getByLabel('Name', { exact: true }).evaluate((el) => el.removeAttribute('required'));
+    await page.getByLabel('Name').evaluate((el) => el.removeAttribute('required'));
     await page.getByRole('button', { name: /save facility/i }).click();
 
     // Loose on exact wording (Zod's own default message, not this app's to

@@ -3,12 +3,25 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { SMTPServer } from 'smtp-server';
-import { simpleParser, type ParsedMail } from 'mailparser';
+import { simpleParser, type AddressObject, type ParsedMail } from 'mailparser';
 import { AppModule } from './../src/app.module';
 import { getKeycloakToken } from './get-keycloak-token';
 import { getKeycloakFreshToken } from './get-keycloak-fresh-token';
 
 const TENANT_A_GLUCOSE_CODE = 'GLU';
+
+// mailparser types `ParsedMail.to` as `AddressObject | AddressObject[] |
+// undefined` -- a real single-recipient message from this suite's own
+// sendEmail() call is always the singular-object case, but the type
+// itself doesn't know that; normalize rather than assert past it.
+function addressText(
+  value: AddressObject | AddressObject[] | undefined,
+): string {
+  if (!value) return '';
+  return Array.isArray(value)
+    ? value.map((a) => a.text).join(', ')
+    : value.text;
+}
 
 /**
  * Pilot-readiness audit follow-up (email delivery, deliberately deferred at
@@ -190,7 +203,7 @@ describe('Case report email (e2e)', () => {
 
     expect(receivedMessages).toHaveLength(1);
     const [message] = receivedMessages;
-    expect(message.to?.text).toContain('recipient@example.invalid');
+    expect(addressText(message.to)).toContain('recipient@example.invalid');
     expect(message.attachments).toHaveLength(1);
     const [attachment] = message.attachments;
     expect(attachment.contentType).toBe('application/pdf');
@@ -211,7 +224,7 @@ describe('Case report email (e2e)', () => {
       .expect(200);
 
     expect(receivedMessages).toHaveLength(1);
-    expect(receivedMessages[0].to?.text).toContain(
+    expect(addressText(receivedMessages[0].to)).toContain(
       'patient-on-file@example.invalid',
     );
   });

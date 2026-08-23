@@ -13,6 +13,7 @@ import { AMENDABLE_STATUSES, NOT_YET_SIGNED_STATUSES, SCREENABLE_STATUSES } from
 import { NarrativeForm } from './narrative-form';
 import { ReturnToScreeningForm } from './return-to-screening-form';
 import { ScreenCaseForm } from './screen-case-form';
+import { SendReportEmailForm } from './send-report-email-form';
 import { SignOutCaseForm } from './sign-out-case-form';
 import { UploadWsiForm } from './upload-wsi-form';
 
@@ -106,6 +107,24 @@ export default async function CaseDetailPage({
         .GET('/v1/cases/{id}/report-versions', { params: { path: { id } } })
         .then(({ data }) => data?.items ?? [])
     : [];
+
+  // Pilot-readiness audit follow-up (email delivery, deliberately deferred
+  // at #698, now built): a two-hop lookup (case's own order → order's own
+  // patient) purely to prefill SendReportEmailForm's "Email to" field --
+  // sendReportEmail() itself doesn't need this, it resolves the same
+  // patient.email server-side when the field is submitted empty. Only
+  // fetched when the report-versions section actually renders.
+  const patientEmail = isAmendable
+    ? await client
+        .GET('/v1/orders/{id}', { params: { path: { id: caseData.orderId } } })
+        .then(({ data: orderData }) =>
+          orderData
+            ? client
+                .GET('/v1/patients/{id}', { params: { path: { id: orderData.patientId } } })
+                .then(({ data: patientData }) => patientData?.email ?? null)
+            : null,
+        )
+    : null;
 
   // Issue #714 (EPIC #697): sign-out/amend already record real, structured
   // audit data (step-up method + timestamp) -- previously visible only by
@@ -318,6 +337,13 @@ export default async function CaseDetailPage({
                     >
                       Download PDF
                     </a>
+                    {hasSpecimenManagementRole(session) ? (
+                      <SendReportEmailForm
+                        caseId={id}
+                        versionId={version.id}
+                        defaultTo={patientEmail}
+                      />
+                    ) : null}
                   </li>
                 ))}
               </ul>

@@ -10,6 +10,7 @@ import type {
   AmendCaseState,
   ReturnToScreeningState,
   ScreenCaseState,
+  SendReportEmailState,
   SignOutCaseState,
   UpdateNarrativeState,
   UploadWholeSlideImageState,
@@ -490,4 +491,69 @@ export async function returnToScreening(
 
   revalidatePath(`/cases/${caseId}`);
   return { status: 'done' };
+}
+
+/**
+ * Pilot-readiness audit follow-up (email delivery, deliberately deferred at
+ * #698, now built). `POST /v1/cases/:id/report-versions/:versionId/
+ * send-email` has no `@ZodResponse` -- same raw-`fetch` precedent every
+ * other action on this page already establishes (`AuditInterceptor` wraps
+ * every `@Audit()` route's return value into `{resourceId, before, after,
+ * actorRole}`, no clean documentable response shape to type against, same
+ * reasoning `updateNarrative()`'s own header comment gives). No
+ * `step_up_required` branch -- `sendReportVersionEmail()` has no
+ * `@RequireStepUp()` (confirmed directly in the controller), same as
+ * `screenCase`/`addBlock`. An empty `to` field is sent as `undefined`, not
+ * an empty string -- the server resolves the patient's own on-file email
+ * in that case (case.controller.ts's own header comment); an empty string
+ * would instead fail `z.email()` validation as a real 400.
+ */
+export async function sendReportEmail(
+  _prevState: SendReportEmailState,
+  formData: FormData,
+): Promise<SendReportEmailState> {
+  const caseId = String(formData.get('caseId') ?? '');
+  const versionId = String(formData.get('versionId') ?? '');
+  const to = String(formData.get('to') ?? '').trim();
+
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    return { status: 'error', formError: 'Your session has expired — please log in again.' };
+  }
+
+  const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
+  const res = await fetch(
+    `${baseUrl}/v1/cases/${caseId}/report-versions/${versionId}/send-email`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ to: to || undefined }),
+    },
+  );
+
+  if (!res.ok) {
+    if (res.status === 403) {
+      return {
+        status: 'error',
+        formError: 'You do not have permission to email this report.',
+      };
+    }
+    if (res.status === 400) {
+      const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+      return {
+        status: 'error',
+        formError: body?.detail ?? 'This report could not be emailed right now.',
+      };
+    }
+    return {
+      status: 'error',
+      formError: 'Something went wrong sending this email. Please try again.',
+    };
+  }
+
+  const body = (await res.json().catch(() => null)) as { after?: { sentTo?: string } } | null;
+  return { status: 'done', sentTo: body?.after?.sentTo };
 }

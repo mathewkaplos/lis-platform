@@ -215,6 +215,21 @@ export type CaseReturnToScreeningRequestInput = z.infer<
   typeof caseReturnToScreeningRequestSchema
 >;
 
+/** `POST /v1/cases/:id/report-versions/:versionId/send-email` body
+ * (pilot-readiness audit follow-up, email delivery deferred at #698, now
+ * built). `to` is optional -- omitted, the server resolves the case's own
+ * order's patient's on-file email (case.controller.ts's own
+ * sendReportEmail()); the field exists so staff can override to a
+ * referring clinician or anyone else instead, the same
+ * "prefill from real data, always overridable" shape patients/new's own
+ * duplicate-confirm flow already established for a different field. */
+export const caseReportSendEmailRequestSchema = z.object({
+  to: z.email().optional(),
+});
+export type CaseReportSendEmailRequestInput = z.infer<
+  typeof caseReportSendEmailRequestSchema
+>;
+
 /**
  * FEAT-063 (docs/plans/feat-063-cytology-two-tier-workflow.md, §10 Q3/Q4).
  * `GET /v1/cases` -- a live query over `case.status` (KB-26's "worklist"

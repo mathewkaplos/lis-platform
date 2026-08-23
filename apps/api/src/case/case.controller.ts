@@ -25,6 +25,7 @@ import {
   caseListQuerySchema,
   caseListResponseSchema,
   caseNarrativeUpdateSchema,
+  caseReportSendEmailRequestSchema,
   caseReportVersionListResponseSchema,
   caseSynopticResponseListSchema,
   type Block,
@@ -56,6 +57,7 @@ import {
   observation,
   order,
   orderedTest,
+  patient,
   signCaseReportContent,
   slide,
   specimen,
@@ -68,6 +70,7 @@ import {
   writeAuditEvent,
 } from '@lis/db';
 import { assembleCaseReportContent } from './case-report-content-assembler';
+import { sendEmail } from '../email/email.client';
 import { renderCaseReportPdf } from './case-report-render';
 import { findSynopticGridAnalyte } from '../synoptic-protocol/synoptic-response-recorder';
 import {
@@ -110,6 +113,9 @@ class CaseReturnToScreeningRequestDto extends createZodDto(
   caseReturnToScreeningRequestSchema,
 ) {}
 class CaseNarrativeUpdateDto extends createZodDto(caseNarrativeUpdateSchema) {}
+class CaseReportSendEmailRequestDto extends createZodDto(
+  caseReportSendEmailRequestSchema,
+) {}
 class CaseListQueryDto extends createZodDto(caseListQuerySchema) {}
 class CaseListResponseDto extends createZodDto(caseListResponseSchema) {}
 class CaseAuditTrailResponseDto extends createZodDto(
@@ -1268,6 +1274,122 @@ export class CaseController {
       type: 'application/pdf',
       disposition: `attachment; filename="case-report-${id}-v${versionRow.versionNumber}.pdf"`,
     });
+  }
+
+  /**
+   * Pilot-readiness audit follow-up (email delivery, deliberately deferred
+   * at #698, now built per explicit human decision -- Gmail SMTP with an
+   * app password, `apps/api/src/email/email.client.ts`). Renders the exact
+   * same PDF `getReportVersionPdf` above does (same already-signed,
+   * immutable content -- no new fact recorded about the report itself) and
+   * emails it as an attachment.
+   *
+   * `manage_specimens` (not `verify`) -- same capability every other
+   * routine AP workflow action in this controller uses
+   * (`screen`/`addBlock`/`addSlide`), not the higher `verify` bar
+   * `finalize`/`amend` require. Sending an already-signed, immutable
+   * report externally is a distribution action on content a
+   * `manage_specimens`-capable user can already read in full via
+   * `getReportVersionPdf` above (same capability gate) -- it doesn't
+   * itself alter or attest to anything new, unlike `finalize`/`amend`'s
+   * own diagnostic-release actions. No `@RequireStepUp()` for the same
+   * reason `screen()`'s own header comment gives: this isn't the actual
+   * diagnostic release ADR-0051 scopes step-up to.
+   *
+   * `to` is optional in the request body -- when omitted, resolves the
+   * case's own order's patient's on-file email (`patient.email`, FEAT-066).
+   * A patient with no email on file AND no explicit `to` is a real 400,
+   * not a silent no-op.
+   */
+  @Post('v1/cases/:id/report-versions/:versionId/send-email')
+  @HttpCode(200) // an action on an existing resource, not a creation
+  @UseGuards(JwtAuthGuard, CapabilityGuard)
+  @RequireCapability('manage_specimens')
+  @UseInterceptors(TenantContextInterceptor, AuditInterceptor)
+  @Audit({ action: 'case.report_emailed', resourceType: 'case_report_version' })
+  async sendReportVersionEmail(
+    @Param(new ZodValidationPipe(reportVersionPdfParamSchema))
+    { id, versionId }: ReportVersionPdfParamDto,
+    @Body(new ZodValidationPipe(caseReportSendEmailRequestSchema))
+    body: CaseReportSendEmailRequestDto,
+    @DbTx() tx: RequestWithTx['tx'],
+  ) {
+    const [caseRow] = await tx
+      .select()
+      .from(caseTable)
+      .where(eq(caseTable.id, id))
+      .limit(1);
+    if (!caseRow) {
+      throw new NotFoundException('Case not found');
+    }
+
+    const [versionRow] = await tx
+      .select()
+      .from(caseReportVersion)
+      .where(eq(caseReportVersion.id, versionId))
+      .limit(1);
+    if (!versionRow || versionRow.caseId !== id) {
+      throw new NotFoundException('Report version not found');
+    }
+
+    let recipient = body.to;
+    if (!recipient) {
+      const [orderRow] = await tx
+        .select()
+        .from(order)
+        .where(eq(order.id, caseRow.orderId))
+        .limit(1);
+      if (orderRow) {
+        const [patientRow] = await tx
+          .select()
+          .from(patient)
+          .where(eq(patient.id, orderRow.patientId))
+          .limit(1);
+        recipient = patientRow?.email ?? undefined;
+      }
+    }
+    if (!recipient) {
+      throw new BadRequestException(
+        'This patient has no email on file — enter a recipient address.',
+      );
+    }
+
+    const content = await assembleCaseReportContent(
+      tx,
+      versionRow.includedContent as Parameters<
+        typeof assembleCaseReportContent
+      >[1],
+    );
+    const pdf = await renderCaseReportPdf({
+      caseAccessionNumber: caseRow.accessionNumber,
+      caseStatus: caseRow.status,
+      content,
+      version: {
+        versionNumber: versionRow.versionNumber,
+        status: versionRow.status,
+        signedByRole: versionRow.signedByRole,
+        signedAt: versionRow.signedAt.toISOString(),
+        reason: versionRow.reason,
+      },
+    });
+
+    await sendEmail({
+      to: recipient,
+      subject: `Pathology report — case ${caseRow.accessionNumber}`,
+      text: `The signed pathology report for case ${caseRow.accessionNumber} (version ${versionRow.versionNumber}) is attached.`,
+      attachments: [
+        {
+          filename: `case-report-${id}-v${versionRow.versionNumber}.pdf`,
+          content: pdf,
+          contentType: 'application/pdf',
+        },
+      ],
+    });
+
+    return {
+      resourceId: versionRow.id,
+      after: { sentTo: recipient },
+    };
   }
 
   /**

@@ -1364,6 +1364,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/cases/{id}/report-versions/{versionId}/send-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CaseController_sendReportVersionEmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/cases/{id}/screen": {
         parameters: {
             query?: never;
@@ -2825,6 +2841,10 @@ export interface components {
                     observationId: string;
                 }[];
             }[];
+        };
+        CaseReportSendEmailRequestDto: {
+            /** Format: email */
+            to?: string;
         };
         CaseReturnToScreeningRequestDto: {
             reason: string;
@@ -5046,6 +5066,30 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CaseController_sendReportVersionEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaseReportSendEmailRequestDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {

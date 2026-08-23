@@ -48,7 +48,18 @@ test.describe('Clinical spine: register -> order -> receive -> finalize -> verif
     await expect(page.getByText('Order placed')).toBeVisible();
 
     await page.getByRole('link', { name: /view order/i }).click();
-    const orderIdMatch = page.url().match(/\/orders\/([^/]+)$/);
+    // Explicit wait, not just a synchronous `page.url()` read right after
+    // `.click()` -- confirmed live via a CI trace: `.click()`'s own
+    // "waiting for scheduled navigations to finish" resolved before this
+    // Link's client-side (App Router soft) navigation had actually
+    // committed the new URL, so `page.url()` still read the *previous*
+    // page (`/orders/new?patientId=...`). The old regex (`[^/]+`, no `?`
+    // excluded) then silently captured the query string itself as
+    // `orderId`, sending later steps to a nonsense URL instead of failing
+    // loudly. `waitForURL` forces a real wait for the URL to actually
+    // reach the order-detail shape before this ever reads it.
+    await page.waitForURL(/\/orders\/[0-9a-f-]+$/i);
+    const orderIdMatch = page.url().match(/\/orders\/([0-9a-f-]+)$/i);
     if (!orderIdMatch) {
       throw new Error(`expected an order detail URL, got ${page.url()}`);
     }

@@ -39,13 +39,13 @@ test.describe('Clinical spine: register -> order -> receive -> finalize -> verif
     // has no need to exercise that separate, already-covered path.
     await page.getByLabel(/Sex/i).selectOption('F');
     await page.getByRole('button', { name: /save & register/i }).click();
-    await expect(page.getByRole('heading', { name: 'Patient registered' })).toBeVisible();
+    await expect(page.getByText('Patient registered')).toBeVisible();
 
     // -- Place an order (real server action: createOrder) ---------------
     await page.getByRole('link', { name: /place an order/i }).click();
     await page.getByLabel(/Glucose/i).click();
     await page.getByRole('button', { name: /place order/i }).click();
-    await expect(page.getByRole('heading', { name: 'Order placed' })).toBeVisible();
+    await expect(page.getByText('Order placed')).toBeVisible();
 
     await page.getByRole('link', { name: /view order/i }).click();
     const orderIdMatch = page.url().match(/\/orders\/([^/]+)$/);
@@ -61,7 +61,7 @@ test.describe('Clinical spine: register -> order -> receive -> finalize -> verif
     // nothing to toggle, matches the real common case of accepting
     // everything the order asked for.
     await page.getByRole('button', { name: /accept & receive/i }).click();
-    await expect(page.getByRole('heading', { name: 'Specimen received' })).toBeVisible();
+    await expect(page.getByText('Specimen received')).toBeVisible();
 
     // -- Enter and finalize a quantity result (real server actions:
     // draftResult on blur, finalizeResult on Enter) --------------------

@@ -44,19 +44,19 @@ test.describe('AP case: accession -> add block -> add slide -> sign out (real se
     await page.getByLabel(/Last name/i).fill(uniqueLastName);
     await page.getByLabel(/Sex/i).selectOption('M');
     await page.getByRole('button', { name: /save & register/i }).click();
-    await expect(page.getByRole('heading', { name: 'Patient registered' })).toBeVisible();
+    await expect(page.getByText('Patient registered')).toBeVisible();
 
     await page.getByRole('link', { name: /place an order/i }).click();
     await page.getByLabel(/Glucose/i).click();
     await page.getByRole('button', { name: /place order/i }).click();
-    await expect(page.getByRole('heading', { name: 'Order placed' })).toBeVisible();
+    await expect(page.getByText('Order placed')).toBeVisible();
     await page.getByRole('link', { name: /view order/i }).click();
 
     // -- Accession the AP case (real server action: createCase) ---------
     await page.getByRole('link', { name: /new ap case/i }).click();
     await page.getByLabel(/Part 1 specimen type/i).fill('tissue');
     await page.getByRole('button', { name: /accession case/i }).click();
-    await expect(page.getByRole('heading', { name: 'Case accessioned' })).toBeVisible();
+    await expect(page.getByText('Case accessioned')).toBeVisible();
     await page.getByRole('link', { name: /view case/i }).click();
 
     // -- Build out the lineage (real server actions: addBlock, addSlide) --

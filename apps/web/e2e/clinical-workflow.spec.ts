@@ -107,7 +107,12 @@ test.describe('Clinical spine: register -> order -> receive -> finalize -> verif
       await loginAsPathologist(pathologistPage);
       await pathologistPage.goto(`/orders/${orderId}/results`);
       await pathologistPage.getByRole('button', { name: 'Verify' }).click();
-      await expect(pathologistPage.getByText('Verified')).toBeVisible();
+      // exact: true -- results-grid.tsx renders "Verified" (the status
+      // column) AND, in a separate cell, "Verified by {userId} · {date}"
+      // (the verify column) once a row is verified. A plain substring
+      // getByText('Verified') matches both, a real strict-mode violation
+      // (confirmed live via CI) -- exact excludes the second, longer text.
+      await expect(pathologistPage.getByText('Verified', { exact: true })).toBeVisible();
     } finally {
       await pathologistContext.close();
     }

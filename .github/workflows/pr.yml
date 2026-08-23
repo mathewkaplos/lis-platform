@@ -389,6 +389,15 @@ jobs:
       - run: pnpm --filter web test:e2e
         env:
           CI: true
+      # Playwright's own screenshot/trace attachments only show up as file
+      # paths in the plain-text CI log, not as viewable content -- upload
+      # them as a real artifact so a failure here is diagnosable at all.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: web-e2e-test-results
+          path: apps/web/test-results/
+          retention-days: 7
 
   # TASK-037: CI-enforcing a11y check on the 6 design-system primitives (packages/ui).
   # Independent of build-and-test above -- no Postgres/Keycloak needed, this is

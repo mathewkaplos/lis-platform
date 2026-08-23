@@ -282,6 +282,114 @@ jobs:
       - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/default-report-templates.sql
       - run: pnpm --filter @lis/db rls-check
 
+  # Coverage-improvement pass (2026-08-23): apps/web's first real-browser
+  # integration test. Server actions ('use server' files) call
+  # getValidAccessToken(), which needs Next.js's own request-scoped
+  # cookies() -- can't be unit-tested without either mocking next/headers
+  # (a precedent this repo has deliberately avoided everywhere else,
+  # apps/web/auth/access-token.spec.ts's own header comment) or driving a
+  # real browser against a real running server. Chose the latter
+  # (apps/web/playwright.config.ts).
+  #
+  # Own job, own Postgres/Keycloak/MinIO, mirroring build-and-test's own
+  # setup rather than reusing its Postgres directly -- this suite creates
+  # real, named ("E2E Referring Facility <timestamp>") rows a real user
+  # could plausibly search for, and keeping it isolated avoids any future
+  # confusion about who created what data in a shared job's DB.
+  #
+  # Plain ubuntu-latest with an explicit `playwright install --with-deps`
+  # step, not the Playwright container image storybook-a11y's own job
+  # uses -- that job needs no Postgres/Keycloak/MinIO at all, so running
+  # inside a container is free; this job needs the same raw `docker run`
+  # background-container pattern build-and-test already uses for Keycloak/
+  # MinIO, which isn't available from inside a job that's itself already
+  # running inside a container without extra Docker-outside-of-Docker
+  # setup. GitHub-hosted runners have real root access (unlike this repo's
+  # own local dev sandbox, which is why `--with-deps` needed a workaround
+  # there -- `web-verify` Skill), so the plain install works cleanly here.
+  web-e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lis
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lis
+      APP_DATABASE_URL: postgresql://lis_app:lis_app_ci_password@localhost:5432/lis
+      SCHEDULER_DATABASE_URL: postgresql://lis_scheduler:lis_scheduler_ci_password@localhost:5432/lis
+      KEYCLOAK_ISSUER_URL: http://localhost:8080/realms/lis
+      SESSION_SECRET: lis_web_ci_session_secret_at_least_32_bytes_long
+      SIGNING_SECRET: lis_api_ci_signing_secret_at_least_32_bytes_long
+      OBJECT_STORAGE_ENDPOINT: http://localhost:9000
+      OBJECT_STORAGE_ACCESS_KEY: minioadmin
+      OBJECT_STORAGE_SECRET_KEY: minioadmin
+      OBJECT_STORAGE_BUCKET: lis-images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: 'pnpm' }
+      - run: |
+          docker run -d --name keycloak -p 8080:8080 \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
+            -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+            -v "${{ github.workspace }}/infra/keycloak/lis-realm.json:/opt/keycloak/data/import/lis-realm.json" \
+            quay.io/keycloak/keycloak:26.0 start-dev --import-realm
+      - run: |
+          docker run -d --name minio -p 9000:9000 -p 9001:9001 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:latest server /data --console-address :9001
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lis/db build
+      - run: pnpm --filter @lis/domain build
+      - run: pnpm --filter @lis/sdk build
+      - run: pnpm --filter @lis/ui build
+      - run: pnpm --filter @lis/db migrate
+      - run: psql "$DATABASE_URL" -c "ALTER ROLE lis_app WITH PASSWORD 'lis_app_ci_password';"
+      - run: psql "$DATABASE_URL" -c "ALTER ROLE lis_scheduler WITH PASSWORD 'lis_scheduler_ci_password';"
+      # No discipline-catalog seeding -- referring_facility has no
+      # dependency on it, and this job's scope stays minimal-and-honest
+      # about what it actually needs, matching rls-isolation-check's own
+      # "only seed what the suite actually touches" precedent. Extend this
+      # if a future spec added to e2e/ needs real catalog data.
+      - run: pnpm --filter api build
+      # Redirect to a log file + disown, not a bare `&` -- a plain
+      # background job started in one `run:` step is not guaranteed to
+      # survive into later steps on a GitHub-hosted runner, and without a
+      # captured log a startup failure here would be invisible until the
+      # apps/api readiness poll below times out uninformatively.
+      - run: |
+          node apps/api/dist/main.js > /tmp/api.log 2>&1 &
+          disown
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - run: |
+          for i in $(seq 1 24); do
+            curl -sf http://localhost:8080/realms/lis/.well-known/openid-configuration > /dev/null && exit 0
+            sleep 5
+          done
+          echo "Keycloak did not become ready in time" >&2
+          docker logs keycloak
+          exit 1
+      - run: |
+          for i in $(seq 1 24); do
+            curl -sf http://localhost:4000/v1/org-settings -o /dev/null -w '%{http_code}' | grep -qE '^(200|401)$' && exit 0
+            sleep 2
+          done
+          echo "apps/api did not become ready in time" >&2
+          cat /tmp/api.log
+          exit 1
+      - run: pnpm --filter web test:e2e
+        env:
+          CI: true
+
   # TASK-037: CI-enforcing a11y check on the 6 design-system primitives (packages/ui).
   # Independent of build-and-test above -- no Postgres/Keycloak needed, this is
   # packages/ui-only. Runs inside the official Playwright image specifically to avoid

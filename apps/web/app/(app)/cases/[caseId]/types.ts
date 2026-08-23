@@ -84,3 +84,13 @@ export interface ReturnToScreeningState {
 export const returnToScreeningInitialState: ReturnToScreeningState = {
   status: 'idle',
 };
+
+export interface SendReportEmailState {
+  status: 'idle' | 'submitting' | 'done' | 'error';
+  formError?: string;
+  sentTo?: string;
+}
+
+export const sendReportEmailInitialState: SendReportEmailState = {
+  status: 'idle',
+};

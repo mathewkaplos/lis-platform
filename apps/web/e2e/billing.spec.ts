@@ -44,7 +44,11 @@ test.describe('Billing: generate invoice -> record payment (real server actions)
     // immediately after the click.
     await page.getByRole('button', { name: /generate invoice/i }).click();
     await page.waitForURL(/\/billing\/invoices\/[0-9a-f-]+$/i);
-    await expect(page.getByText('unpaid', { exact: true })).toBeVisible();
+    // .first() -- invoice-view.tsx renders "unpaid" twice (the status
+    // badge and the receipt card's own "Status: unpaid" line), the same
+    // legitimate-double-render class the final "paid" assertion below
+    // already accounts for.
+    await expect(page.getByText('unpaid', { exact: true }).first()).toBeVisible();
 
     // -- Record full payment (real server action: recordPayment) --------
     // The amount field already defaults to the invoice's own full balance

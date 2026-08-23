@@ -23,7 +23,15 @@ test.describe('Admin CRUD (real server actions)', () => {
     await page.getByLabel(/Last name/i).fill('User');
     await page.getByLabel(/Email/i).fill(uniqueEmail);
     await page.getByLabel(/Temporary password/i).fill('E2ePassword123');
-    await page.getByLabel(/Role/i).selectOption('technologist');
+    // Not /Role/i -- users-table.tsx's own per-row role-change control
+    // carries an explicit `aria-label="Role for {email}"` on each existing
+    // user, and getByLabel matches both real <label> associations and
+    // aria-label -- a broad "Role" regex hit all of those too (a real
+    // strict-mode violation across 10 elements, confirmed live via CI).
+    // "Role *" (the create form's own full label text, asterisk included
+    // per the FormField gotcha) is the one substring none of those
+    // aria-labels contain.
+    await page.getByLabel('Role *').selectOption('technologist');
     await page.getByRole('button', { name: /add user/i }).click();
 
     await expect(page.getByText('User added')).toBeVisible();
@@ -80,6 +88,12 @@ test.describe('Admin CRUD (real server actions)', () => {
     await page.goto('/admin/org-settings');
 
     const uniquePhone = `+1555${Date.now().toString().slice(-7)}`;
+    // The seeded tenant has no `name` set (confirmed live via a CI
+    // screenshot: an empty, required "Organization name" field blocked
+    // submission with the browser's own native validation tooltip) --
+    // fill it explicitly rather than relying on `settings.name` already
+    // being present.
+    await page.getByLabel(/Organization name/i).fill('E2E Test Org');
     await page.getByLabel(/^Phone$/i).fill(uniquePhone);
     await page.getByRole('button', { name: /^save$/i }).click();
     await expect(page.getByText('Saved.')).toBeVisible();

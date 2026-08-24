@@ -69,7 +69,10 @@ import {
   testDefinition,
   writeAuditEvent,
 } from '@lis/db';
-import { assembleCaseReportContent } from './case-report-content-assembler';
+import {
+  assembleCaseReportContent,
+  loadCaseReportPatientContext,
+} from './case-report-content-assembler';
 import { sendEmail } from '../email/email.client';
 import { getTenantSmtpConfig } from '../org-settings/org-settings.controller';
 import { renderCaseReportPdf } from './case-report-render';
@@ -1258,9 +1261,16 @@ export class CaseController {
         typeof assembleCaseReportContent
       >[1],
     );
+    const patientContext = await loadCaseReportPatientContext(
+      tx,
+      caseRow.orderId,
+    );
     const pdf = await renderCaseReportPdf({
       caseAccessionNumber: caseRow.accessionNumber,
       caseStatus: caseRow.status,
+      patient: patientContext.patient,
+      referringFacilityName: patientContext.referringFacilityName,
+      orderingProviderName: patientContext.orderingProviderName,
       content,
       version: {
         versionNumber: versionRow.versionNumber,
@@ -1361,9 +1371,16 @@ export class CaseController {
         typeof assembleCaseReportContent
       >[1],
     );
+    const patientContext = await loadCaseReportPatientContext(
+      tx,
+      caseRow.orderId,
+    );
     const pdf = await renderCaseReportPdf({
       caseAccessionNumber: caseRow.accessionNumber,
       caseStatus: caseRow.status,
+      patient: patientContext.patient,
+      referringFacilityName: patientContext.referringFacilityName,
+      orderingProviderName: patientContext.orderingProviderName,
       content,
       version: {
         versionNumber: versionRow.versionNumber,
@@ -1384,7 +1401,7 @@ export class CaseController {
 
     await sendEmail({
       to: recipient,
-      subject: `Pathology report — case ${caseRow.accessionNumber}`,
+      subject: `Pathology report for ${patientContext.patient.name} — case ${caseRow.accessionNumber}`,
       text: `The signed pathology report for case ${caseRow.accessionNumber} (version ${versionRow.versionNumber}) is attached.`,
       attachments: [
         {

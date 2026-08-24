@@ -130,20 +130,29 @@ export class BillingController {
       throw new NotFoundException('Order not found');
     }
 
-    const { invoice: invoiceRow, lineItems } =
-      await this.billingService.generateInvoice(tx, {
-        tenantId: orderRow.tenantId,
-        orderId: id,
-        patientId: orderRow.patientId,
-        payerType: body.payerType,
-        referringFacilityId: body.referringFacilityId,
-      });
+    const {
+      invoice: invoiceRow,
+      lineItems,
+      alreadyExisted,
+    } = await this.billingService.generateInvoice(tx, {
+      tenantId: orderRow.tenantId,
+      orderId: id,
+      patientId: orderRow.patientId,
+      payerType: body.payerType,
+      referringFacilityId: body.referringFacilityId,
+    });
+
+    // Pilot-readiness audit fix (P0): a re-generate request against an order
+    // that already has an invoice returns that same invoice -- its real
+    // paid total, not the `0` a genuinely-new invoice can safely assume.
+    const paidCents = alreadyExisted
+      ? await getPaidCents(tx, invoiceRow.id)
+      : 0;
 
     return {
       resourceId: invoiceRow.id,
-      // A just-generated invoice has no payments yet -- `0`, not a query,
-      // same reasoning as not re-deriving `totalCents` from a fresh read.
-      after: toInvoiceDto(invoiceRow, lineItems, 0),
+      alreadyExisted,
+      after: toInvoiceDto(invoiceRow, lineItems, paidCents),
     };
   }
 
@@ -179,6 +188,7 @@ export class BillingController {
       query.referringFacilityId
         ? eq(invoice.referringFacilityId, query.referringFacilityId)
         : undefined,
+      query.orderId ? eq(invoice.orderId, query.orderId) : undefined,
     ].filter((c) => c !== undefined);
 
     // Issue #704: joined for `patientName` on the list response -- a

@@ -127,10 +127,28 @@ export class OrgSettingsController {
     // A first version of this used `??` and broke #692's own existing e2e
     // test ("clearing the preference back to null works") -- caught by CI,
     // not by typecheck/lint, since both shapes typecheck identically.
+    // Pilot-readiness audit fix (P0): `tenant.name` is NOT NULL, so the
+    // lazy-upsert INSERT path (the very first write to this tenant's row --
+    // see this handler's own header comment) needs *some* value even when
+    // the caller's PUT body never mentions `name` (e.g. an unrelated save,
+    // like #692's own synoptic-standard-preference PUT, or session 44's
+    // per-tenant SMTP settings PUT). The previous fallback baked the raw
+    // tenant UUID into a real, permanently-stored column value
+    // (`Tenant 00000000-...`) -- confirmed live: it rendered as the org's
+    // actual name in the settings form *and* the header on every screen,
+    // indistinguishable from a real name once written, for a pilot demo
+    // that never happened to touch the Organization Name field first. A
+    // real self-signup (`onboarding.service.ts`) already sets a real name
+    // at row-creation time and never hits this fallback at all -- this
+    // path is reachable only for a pre-existing tenant row that predates
+    // real name-setting (dev/seed data). `'Unnamed organization'` keeps the
+    // same NOT NULL-satisfying necessity but reads as an obvious, honest
+    // placeholder an admin would actually notice and fix, not a technical
+    // string that looks like it might be intentional.
     const resolvedName =
       body.name !== undefined
         ? body.name
-        : (beforeRow.name ?? `Tenant ${user.tenantId}`);
+        : (beforeRow.name ?? 'Unnamed organization');
     const resolvedAddress =
       body.address !== undefined ? body.address : beforeRow.address;
     const resolvedPhone =

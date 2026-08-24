@@ -206,6 +206,11 @@ describe('Case report email (e2e)', () => {
     expect(receivedMessages).toHaveLength(1);
     const [message] = receivedMessages;
     expect(addressText(message.to)).toContain('recipient@example.invalid');
+    // Pilot-readiness audit fix (P0): the subject line must identify the
+    // patient too, not just the accession number -- a referring clinician's
+    // inbox otherwise shows an indistinguishable wall of "Pathology report
+    // — case {accession}" subjects.
+    expect(message.subject).toContain('ReportEmail Fixture');
     expect(message.attachments).toHaveLength(1);
     const [attachment] = message.attachments;
     expect(attachment.contentType).toBe('application/pdf');

@@ -141,6 +141,16 @@
  * `manage_org_settings` — user administration and org-profile editing are
  * different real actions even though the same `lab_admin` role holds both
  * today.
+ *
+ * Follow-up pilot-readiness audit fix: the paragraph above's own
+ * `manage_org_settings` + `manage_users`-only grant turned out narrower
+ * than #698's own recommended default actually specified ("org settings,
+ * user management, catalog/workflow/report-template authoring") —
+ * confirmed live, a real design-partner pilot's own org-signup owner got a
+ * 403 on the test catalog and referring facilities and an uncaught 500 on
+ * invoices. `lab_admin` now also carries `manage_catalog`/`manage_billing`/
+ * `manage_patients` (see that grant's own inline comment for the exact
+ * reasoning and what was deliberately left out).
  */
 export type Capability =
   | 'enter_result'
@@ -190,7 +200,31 @@ const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
   ],
   reception: ['manage_patients', 'manage_orders'],
   cashier: ['manage_billing'],
-  lab_admin: ['manage_org_settings', 'manage_users'],
+  // Pilot-readiness audit fix (P0): the recorded design decision
+  // (docs/plans/phase-0-pilot-decisions.md §1, #698)'s own recommended
+  // default names lab_admin's scope as "org settings, user management,
+  // catalog/workflow/report-template authoring" -- but the capability grant
+  // that actually shipped only carried manage_org_settings/manage_users,
+  // confirmed live: the org-signup owner got a real 403 on the test catalog
+  // and referring facilities, and an uncaught 500 on invoices. Adding
+  // manage_catalog (catalog authoring, matches the decision's own text) and
+  // manage_billing/manage_patients (billing visibility and referring-
+  // facility CRUD -- the capability that's actually gated on, per
+  // referring-facility.controller.ts) -- the concrete gaps the human
+  // explicitly named. Deliberately leaving manage_workflow/
+  // manage_report_templates/resolve_qc/view_operational_reports off:
+  // capabilities.ts's own header comment for this exact grant already draws
+  // a real, intentional line -- "user administration is lab_admin's own
+  // real responsibility, not QC/workflow oversight's" -- and nothing in
+  // this pilot-readiness pass found a live gap there to justify widening it
+  // further than what was actually reported broken.
+  lab_admin: [
+    'manage_org_settings',
+    'manage_users',
+    'manage_catalog',
+    'manage_billing',
+    'manage_patients',
+  ],
   'gateway-ingest': ['gateway_ingest'],
   'interop-ingest': ['interop_ingest'],
   'platform-analytics': ['platform_analytics'],

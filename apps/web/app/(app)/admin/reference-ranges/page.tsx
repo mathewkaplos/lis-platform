@@ -1,5 +1,5 @@
 import { getSession } from '@/auth/get-session';
-import { hasQaRole } from '@/auth/roles';
+import { hasCatalogManagementRole } from '@/auth/roles';
 import { getValidAccessToken } from '@/auth/access-token';
 import { createLisApiClient } from '@/lib/api-client';
 import { ReferenceRangesTable, type AnalyteOption, type ReferenceRangeRow } from './reference-ranges-table';
@@ -23,7 +23,11 @@ import { ReferenceRangesTable, type AnalyteOption, type ReferenceRangeRow } from
  */
 export default async function ReferenceRangesAdminPage() {
   const session = await getSession();
-  const isQa = hasQaRole(session);
+  // Pilot-readiness audit fix: `manage_catalog` is now also granted to
+  // `lab_admin` (capabilities.ts), so this local stays named `isQa` (it's
+  // passed straight through as a prop below) but its real meaning is now
+  // "can manage the catalog," not literally "is the qa role."
+  const isQa = hasCatalogManagementRole(session);
 
   const accessToken = await getValidAccessToken();
   if (!accessToken) {

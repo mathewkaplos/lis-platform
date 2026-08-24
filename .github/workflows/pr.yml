@@ -339,6 +339,22 @@ jobs:
       OBJECT_STORAGE_ACCESS_KEY: minioadmin
       OBJECT_STORAGE_SECRET_KEY: minioadmin
       OBJECT_STORAGE_BUCKET: lis-images
+      # case-report-email.spec.ts needs a real SMTP conversation to verify
+      # against -- MailHog (started below, alongside Keycloak/MinIO) is a
+      # real, unauthenticated SMTP acceptor + REST API purpose-built for
+      # exactly this, no onAuth hack needed (confirmed live locally: a
+      # plain nodemailer send with a dummy auth object just works against
+      # it, unlike apps/api's own smtp-server test double, which needed one
+      # -- MailHog never advertises AUTH at all, so nodemailer's client
+      # never attempts it). Never real Gmail credentials -- same
+      # SMTP_SECURE=false escape hatch apps/api/src/email/email.client.ts
+      # already documents for exactly this purpose.
+      SMTP_HOST: localhost
+      SMTP_PORT: 1025
+      SMTP_SECURE: 'false'
+      SMTP_USER: lis-e2e@example.invalid
+      SMTP_APP_PASSWORD: not-a-real-credential
+      SMTP_FROM: lis-noreply@example.invalid
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -355,6 +371,7 @@ jobs:
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
             minio/minio:latest server /data --console-address :9001
+      - run: docker run -d --name mailhog -p 1025:1025 -p 8025:8025 mailhog/mailhog:latest
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @lis/db build
       - run: pnpm --filter @lis/domain build
@@ -399,6 +416,14 @@ jobs:
           done
           echo "apps/api did not become ready in time" >&2
           cat /tmp/api.log
+          exit 1
+      - run: |
+          for i in $(seq 1 24); do
+            curl -sf http://localhost:8025/api/v2/messages > /dev/null && exit 0
+            sleep 2
+          done
+          echo "MailHog did not become ready in time" >&2
+          docker logs mailhog
           exit 1
       - run: pnpm --filter web test:e2e
         env:

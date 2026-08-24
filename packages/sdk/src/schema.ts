@@ -3062,6 +3062,9 @@ export interface components {
             logoUrl: string | null;
             currency: string | null;
             preferredSynopticSourceStandard: string | null;
+            smtpUser: string | null;
+            smtpFrom: string | null;
+            smtpConfigured: boolean;
         };
         OrgSettingsUpdateDto: {
             name?: string;
@@ -3071,6 +3074,9 @@ export interface components {
             logoUrl?: string | null;
             currency?: string | null;
             preferredSynopticSourceStandard?: string | null;
+            smtpUser?: string | null;
+            smtpFrom?: string | null;
+            smtpAppPassword?: string | null;
         };
         UserListResponseDto_Output: {
             items: {

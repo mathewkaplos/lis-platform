@@ -11,7 +11,7 @@ import {
   orgSettingsUpdateSchema,
   type OrgSettings,
 } from '@lis/domain';
-import { createDb, tenant } from '@lis/db';
+import { createDb, decryptSecret, encryptSecret, tenant } from '@lis/db';
 import { eq } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { Audit } from '../auth/audit.decorator';
@@ -30,6 +30,19 @@ class OrgSettingsDto extends createZodDto(orgSettingsSchema) {}
 class OrgSettingsUpdateDto extends createZodDto(orgSettingsUpdateSchema) {}
 
 type Db = ReturnType<typeof createDb>;
+
+interface TenantRow {
+  name: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  logoUrl: string | null;
+  currency: string | null;
+  preferredSynopticSourceStandard: string | null;
+  smtpUser: string | null;
+  smtpAppPasswordEncrypted: string | null;
+  smtpFrom: string | null;
+}
 
 /**
  * Issue #692. `tenant` is the global registry table itself (ADR-0039) --
@@ -64,6 +77,15 @@ type Db = ReturnType<typeof createDb>;
  * own "clearing the preference back to null" e2e test the first time this
  * was written; see `update()`'s own comment), so a partial update never
  * clobbers fields it didn't mention, while an explicit `null` still clears.
+ *
+ * Pilot-readiness audit follow-up: per-tenant report-email sender
+ * (`smtpUser`/`smtpAppPassword`/`smtpFrom`). `smtpAppPassword` gets the
+ * exact same three-way `!== undefined` resolution as every other field
+ * here (omitted = unchanged, explicit `null` = clear, a string = replace),
+ * except the "replace" branch encrypts it (`@lis/db`'s
+ * `encryptSecret`) before it ever reaches a `tx.insert`/`tx.update` call --
+ * the plaintext is never written to the database, and the ciphertext is
+ * never read back out through `GET` (see `toOrgSettings`'s own comment).
  */
 @Controller('v1/org-settings')
 @UseGuards(JwtAuthGuard)
@@ -71,7 +93,7 @@ export class OrgSettingsController {
   @Get()
   @ZodResponse({ type: OrgSettingsDto, status: 200 })
   async get(@CurrentUser() user: RequestContext): Promise<OrgSettings> {
-    return getOrgSettings(db, user.tenantId);
+    return toOrgSettings(await getTenantRow(db, user.tenantId));
   }
 
   @Put()
@@ -90,7 +112,8 @@ export class OrgSettingsController {
     // own transaction, so a second `db`-pool query here would deadlock
     // waiting for a connection the current request itself is holding
     // (concretely reproduced under the e2e suite's DB_POOL_MAX=1).
-    const before = await getOrgSettings(tx, user.tenantId);
+    const beforeRow = await getTenantRow(tx, user.tenantId);
+    const before = toOrgSettings(beforeRow);
 
     // Issue #706: `name` is now genuinely editable -- unlike the original
     // #692 shape (which deliberately never touched `name` on conflict,
@@ -107,19 +130,35 @@ export class OrgSettingsController {
     const resolvedName =
       body.name !== undefined
         ? body.name
-        : (before.name ?? `Tenant ${user.tenantId}`);
+        : (beforeRow.name ?? `Tenant ${user.tenantId}`);
     const resolvedAddress =
-      body.address !== undefined ? body.address : before.address;
-    const resolvedPhone = body.phone !== undefined ? body.phone : before.phone;
-    const resolvedEmail = body.email !== undefined ? body.email : before.email;
+      body.address !== undefined ? body.address : beforeRow.address;
+    const resolvedPhone =
+      body.phone !== undefined ? body.phone : beforeRow.phone;
+    const resolvedEmail =
+      body.email !== undefined ? body.email : beforeRow.email;
     const resolvedLogoUrl =
-      body.logoUrl !== undefined ? body.logoUrl : before.logoUrl;
+      body.logoUrl !== undefined ? body.logoUrl : beforeRow.logoUrl;
     const resolvedCurrency =
-      body.currency !== undefined ? body.currency : before.currency;
+      body.currency !== undefined ? body.currency : beforeRow.currency;
     const resolvedPreferredSynopticSourceStandard =
       body.preferredSynopticSourceStandard !== undefined
         ? body.preferredSynopticSourceStandard
-        : before.preferredSynopticSourceStandard;
+        : beforeRow.preferredSynopticSourceStandard;
+    const resolvedSmtpUser =
+      body.smtpUser !== undefined ? body.smtpUser : beforeRow.smtpUser;
+    const resolvedSmtpFrom =
+      body.smtpFrom !== undefined ? body.smtpFrom : beforeRow.smtpFrom;
+    // Same three-way resolution as every field above, plus encryption on
+    // the "replace" branch only -- the omitted/unchanged branch keeps the
+    // existing ciphertext exactly as stored, never re-encrypts it (which
+    // would be harmless but pointless busywork on every unrelated save).
+    const resolvedSmtpAppPasswordEncrypted =
+      body.smtpAppPassword !== undefined
+        ? body.smtpAppPassword === null
+          ? null
+          : encryptSecret(body.smtpAppPassword)
+        : beforeRow.smtpAppPasswordEncrypted;
 
     const [row] = await tx
       .insert(tenant)
@@ -133,6 +172,9 @@ export class OrgSettingsController {
         currency: resolvedCurrency,
         preferredSynopticSourceStandard:
           resolvedPreferredSynopticSourceStandard,
+        smtpUser: resolvedSmtpUser,
+        smtpAppPasswordEncrypted: resolvedSmtpAppPasswordEncrypted,
+        smtpFrom: resolvedSmtpFrom,
       })
       .onConflictDoUpdate({
         target: tenant.id,
@@ -145,6 +187,9 @@ export class OrgSettingsController {
           currency: resolvedCurrency,
           preferredSynopticSourceStandard:
             resolvedPreferredSynopticSourceStandard,
+          smtpUser: resolvedSmtpUser,
+          smtpAppPasswordEncrypted: resolvedSmtpAppPasswordEncrypted,
+          smtpFrom: resolvedSmtpFrom,
         },
       })
       .returning();
@@ -154,15 +199,13 @@ export class OrgSettingsController {
   }
 }
 
-function toOrgSettings(row: {
-  name: string | null;
-  address: string | null;
-  phone: string | null;
-  email: string | null;
-  logoUrl: string | null;
-  currency: string | null;
-  preferredSynopticSourceStandard: string | null;
-}): OrgSettings {
+/** Never exposed outside this controller module -- `smtpAppPasswordEncrypted`
+ * (real ciphertext) is present here so `update()` can resolve its own
+ * "unchanged" branch and so `case.controller.ts`'s `sendReportVersionEmail`
+ * (via `getTenantSmtpConfig` below) can decrypt it for a real send --
+ * `toOrgSettings` is the one and only place this ever gets collapsed down
+ * to the public `smtpConfigured` boolean. */
+function toOrgSettings(row: TenantRow): OrgSettings {
   return {
     name: row.name ?? null,
     address: row.address ?? null,
@@ -172,13 +215,16 @@ function toOrgSettings(row: {
     currency: row.currency ?? null,
     preferredSynopticSourceStandard:
       row.preferredSynopticSourceStandard ?? null,
+    smtpUser: row.smtpUser ?? null,
+    smtpFrom: row.smtpFrom ?? null,
+    smtpConfigured: row.smtpAppPasswordEncrypted !== null,
   };
 }
 
-async function getOrgSettings(
+async function getTenantRow(
   queryable: Db | RequestWithTx['tx'],
   tenantId: string,
-): Promise<OrgSettings> {
+): Promise<TenantRow> {
   const [row] = await queryable
     .select({
       name: tenant.name,
@@ -188,19 +234,48 @@ async function getOrgSettings(
       logoUrl: tenant.logoUrl,
       currency: tenant.currency,
       preferredSynopticSourceStandard: tenant.preferredSynopticSourceStandard,
+      smtpUser: tenant.smtpUser,
+      smtpAppPasswordEncrypted: tenant.smtpAppPasswordEncrypted,
+      smtpFrom: tenant.smtpFrom,
     })
     .from(tenant)
     .where(eq(tenant.id, tenantId))
     .limit(1);
-  return row
-    ? toOrgSettings(row)
-    : {
-        name: null,
-        address: null,
-        phone: null,
-        email: null,
-        logoUrl: null,
-        currency: null,
-        preferredSynopticSourceStandard: null,
-      };
+  return (
+    row ?? {
+      name: null,
+      address: null,
+      phone: null,
+      email: null,
+      logoUrl: null,
+      currency: null,
+      preferredSynopticSourceStandard: null,
+      smtpUser: null,
+      smtpAppPasswordEncrypted: null,
+      smtpFrom: null,
+    }
+  );
+}
+
+/**
+ * The one function outside this module allowed to see a decrypted app
+ * password -- `case.controller.ts`'s `sendReportVersionEmail` calls this to
+ * build a real SMTP transport for this tenant. Returns `null` when nothing
+ * is configured (the caller's own job to fall back to the platform-wide
+ * `SMTP_*` env config, matching the pre-per-tenant behavior exactly for a
+ * tenant that never set one up).
+ */
+export async function getTenantSmtpConfig(
+  queryable: Db | RequestWithTx['tx'],
+  tenantId: string,
+): Promise<{ user: string; appPassword: string; from: string | null } | null> {
+  const row = await getTenantRow(queryable, tenantId);
+  if (!row.smtpUser || !row.smtpAppPasswordEncrypted) {
+    return null;
+  }
+  return {
+    user: row.smtpUser,
+    appPassword: decryptSecret(row.smtpAppPasswordEncrypted),
+    from: row.smtpFrom,
+  };
 }

@@ -34,13 +34,18 @@ describe('Org settings (e2e)', () => {
   });
 
   afterAll(async () => {
-    // Real, shared tenant row -- reset to the default 'no preference'
-    // state so this spec never leaks state into any other spec run
-    // against the same tenant.
+    // Real, shared tenant row -- reset to the default 'no preference'/
+    // no-SMTP-configured state so this spec never leaks state into any
+    // other spec run against the same tenant.
     await request(app.getHttpServer())
       .put('/v1/org-settings')
       .set('Authorization', `Bearer ${qaToken}`)
-      .send({ preferredSynopticSourceStandard: null });
+      .send({
+        preferredSynopticSourceStandard: null,
+        smtpUser: null,
+        smtpAppPassword: null,
+        smtpFrom: null,
+      });
     await app.close();
   });
 
@@ -100,5 +105,122 @@ describe('Org settings (e2e)', () => {
         `expected clearing the preference to record null, got ${JSON.stringify(clearedBody)}`,
       );
     }
+  });
+
+  describe('Per-tenant SMTP (pilot-readiness audit follow-up)', () => {
+    const APP_PASSWORD = 'a-real-looking-app-password-16c';
+
+    afterEach(async () => {
+      await request(app.getHttpServer())
+        .put('/v1/org-settings')
+        .set('Authorization', `Bearer ${qaToken}`)
+        .send({ smtpUser: null, smtpAppPassword: null, smtpFrom: null });
+    });
+
+    it('setting an app password never echoes it back -- GET and the PUT response itself only ever expose smtpConfigured', async () => {
+      const updated = await request(app.getHttpServer())
+        .put('/v1/org-settings')
+        .set('Authorization', `Bearer ${qaToken}`)
+        .send({
+          smtpUser: 'lab@example.invalid',
+          smtpAppPassword: APP_PASSWORD,
+          smtpFrom: 'reports@example.invalid',
+        })
+        .expect(200);
+
+      // Real proof, not just "the schema doesn't declare the field" --
+      // the plaintext (and, since AES-256-GCM ciphertext is base64, any
+      // encrypted form of it) must never appear anywhere in the raw
+      // response body, not just be absent from a typed accessor.
+      const rawBody = JSON.stringify(updated.body);
+      if (rawBody.includes(APP_PASSWORD)) {
+        throw new Error(
+          'the PUT response echoed the plaintext app password back',
+        );
+      }
+
+      const updatedBody = updated.body as {
+        after: {
+          smtpUser: string | null;
+          smtpFrom: string | null;
+          smtpConfigured: boolean;
+        };
+      };
+      if (
+        updatedBody.after.smtpUser !== 'lab@example.invalid' ||
+        updatedBody.after.smtpFrom !== 'reports@example.invalid' ||
+        updatedBody.after.smtpConfigured !== true
+      ) {
+        throw new Error(
+          `expected smtpUser/smtpFrom set and smtpConfigured true, got ${JSON.stringify(updatedBody)}`,
+        );
+      }
+
+      const read = await request(app.getHttpServer())
+        .get('/v1/org-settings')
+        .set('Authorization', `Bearer ${qaToken}`)
+        .expect(200);
+      if (JSON.stringify(read.body).includes(APP_PASSWORD)) {
+        throw new Error('GET echoed the plaintext app password back');
+      }
+      const readBody = read.body as { smtpConfigured: boolean };
+      if (readBody.smtpConfigured !== true) {
+        throw new Error(
+          `expected GET to reflect smtpConfigured: true, got ${JSON.stringify(readBody)}`,
+        );
+      }
+    });
+
+    it('omitting smtpAppPassword on a later, unrelated update leaves the stored one unchanged', async () => {
+      await request(app.getHttpServer())
+        .put('/v1/org-settings')
+        .set('Authorization', `Bearer ${qaToken}`)
+        .send({
+          smtpUser: 'lab@example.invalid',
+          smtpAppPassword: APP_PASSWORD,
+        })
+        .expect(200);
+
+      // Same tenant, a completely unrelated field, smtpAppPassword key not
+      // present in the body at all -- the three-way `!== undefined`
+      // resolution (org-settings.controller.ts's own header comment) must
+      // treat this as "leave it alone," not silently clear it.
+      const after = await request(app.getHttpServer())
+        .put('/v1/org-settings')
+        .set('Authorization', `Bearer ${qaToken}`)
+        .send({ address: '123 Lab Street' })
+        .expect(200);
+      const afterBody = after.body as { after: { smtpConfigured: boolean } };
+      if (afterBody.after.smtpConfigured !== true) {
+        throw new Error(
+          `expected an unrelated update to leave smtpConfigured: true untouched, got ${JSON.stringify(afterBody)}`,
+        );
+      }
+    });
+
+    it('an explicit null clears it -- smtpConfigured flips back to false', async () => {
+      await request(app.getHttpServer())
+        .put('/v1/org-settings')
+        .set('Authorization', `Bearer ${qaToken}`)
+        .send({
+          smtpUser: 'lab@example.invalid',
+          smtpAppPassword: APP_PASSWORD,
+        })
+        .expect(200);
+
+      const cleared = await request(app.getHttpServer())
+        .put('/v1/org-settings')
+        .set('Authorization', `Bearer ${qaToken}`)
+        .send({ smtpAppPassword: null })
+        .expect(200);
+      const clearedBody = cleared.body as {
+        after: { smtpConfigured: boolean };
+      };
+      if (clearedBody.after.smtpConfigured !== false) {
+        throw new Error(
+          `expected clearing smtpAppPassword to flip smtpConfigured to false, got ${JSON.stringify(clearedBody)}`,
+        );
+      }
+    });
   });
 });

@@ -71,6 +71,7 @@ import {
 } from '@lis/db';
 import { assembleCaseReportContent } from './case-report-content-assembler';
 import { sendEmail } from '../email/email.client';
+import { getTenantSmtpConfig } from '../org-settings/org-settings.controller';
 import { renderCaseReportPdf } from './case-report-render';
 import { findSynopticGridAnalyte } from '../synoptic-protocol/synoptic-response-recorder';
 import {
@@ -1373,6 +1374,14 @@ export class CaseController {
       },
     });
 
+    // Per-tenant email delivery follow-up: a tenant that configured its
+    // own Gmail account (org-settings) sends from that account; a tenant
+    // that never did falls back to the platform-wide SMTP_* env config
+    // exactly as before (sendEmail()'s own `from` is optional for exactly
+    // this reason) -- no behavior change for a pilot tenant that hasn't
+    // touched this new setting.
+    const tenantSmtp = await getTenantSmtpConfig(tx, caseRow.tenantId);
+
     await sendEmail({
       to: recipient,
       subject: `Pathology report — case ${caseRow.accessionNumber}`,
@@ -1384,6 +1393,13 @@ export class CaseController {
           contentType: 'application/pdf',
         },
       ],
+      from: tenantSmtp
+        ? {
+            user: tenantSmtp.user,
+            appPassword: tenantSmtp.appPassword,
+            displayFrom: tenantSmtp.from,
+          }
+        : undefined,
     });
 
     return {

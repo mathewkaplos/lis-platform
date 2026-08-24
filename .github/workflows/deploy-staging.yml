@@ -249,6 +249,13 @@ jobs:
           # request, not a container crash-loop, but must still be a real
           # secret before staging sign-out is exercised for real.
           SIGNING_SECRET=${{ secrets.SIGNING_SECRET }}
+          # Per-tenant email delivery follow-up: AES-256-GCM key encrypting
+          # each org's own Gmail app password at rest (packages/db/src/
+          # secret-encryption.ts). Same "new secret, must be added under
+          # repo Settings -> Secrets before this deploy step has a real
+          # value" convention as MINIO_ROOT_PASSWORD below -- generate with
+          # `openssl rand -hex 32` (exactly 32 bytes, hex-encoded).
+          SETTINGS_ENCRYPTION_KEY=${{ secrets.SETTINGS_ENCRYPTION_KEY }}
           # #564: new secret, must be added under repo Settings -> Secrets
           # before this deploy step will have a real value -- same
           # generate-and-store convention as POSTGRES_PASSWORD etc.

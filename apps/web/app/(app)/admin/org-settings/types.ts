@@ -16,6 +16,15 @@ export interface SubmittedOrgSettings {
   logoUrl: string;
   currency: string;
   preferredSynopticSourceStandard: string;
+  // Per-tenant email delivery follow-up: smtpUser/smtpFrom are plain email
+  // addresses, safe to redisplay on a validation error like every other
+  // field here. smtpAppPassword is deliberately NOT part of this type --
+  // a submitted plaintext password is never persisted into redisplay
+  // state, the same "never echo a secret back" discipline the server side
+  // already applies (org-settings.controller.ts's own toOrgSettings never
+  // returns it either).
+  smtpUser: string;
+  smtpFrom: string;
 }
 
 export type OrgSettingsFormState =

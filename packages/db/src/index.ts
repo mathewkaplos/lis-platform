@@ -38,3 +38,4 @@ export {
   type ResolvedBreakpoint,
   type NoBreakpointResult,
 } from "./breakpoint-resolution";
+export { encryptSecret, decryptSecret } from "./secret-encryption";

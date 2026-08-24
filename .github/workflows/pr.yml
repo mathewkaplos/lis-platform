@@ -43,6 +43,10 @@ jobs:
       # same reasoning/enforcement as SESSION_SECRET above (>=32 bytes). CI-only
       # value, never a real secret.
       SIGNING_SECRET: lis_api_ci_signing_secret_at_least_32_bytes_long
+      # Per-tenant email delivery follow-up: AES-256-GCM key encrypting each
+      # org's own Gmail app password at rest (packages/db/src/secret-
+      # encryption.ts). CI-only value, never reused for staging/production.
+      SETTINGS_ENCRYPTION_KEY: 50f1a982166c9d56503bbd468219f9ee02862af39f2f1a610fb3d17c7a2560a9
       # FEAT-061 (ADR-0052): object-storage.client.ts requiredEnv()s these.
       # Matches docker-compose.yml's local minio service exactly (same
       # ports/credentials) -- CI-only values, never real secrets.
@@ -335,6 +339,10 @@ jobs:
       PUBLIC_APP_URL: http://localhost:3000
       SESSION_SECRET: lis_web_ci_session_secret_at_least_32_bytes_long
       SIGNING_SECRET: lis_api_ci_signing_secret_at_least_32_bytes_long
+      # Per-tenant email delivery follow-up: AES-256-GCM key encrypting each
+      # org's own Gmail app password at rest (packages/db/src/secret-
+      # encryption.ts). CI-only value, never reused for staging/production.
+      SETTINGS_ENCRYPTION_KEY: 50f1a982166c9d56503bbd468219f9ee02862af39f2f1a610fb3d17c7a2560a9
       OBJECT_STORAGE_ENDPOINT: http://localhost:9000
       OBJECT_STORAGE_ACCESS_KEY: minioadmin
       OBJECT_STORAGE_SECRET_KEY: minioadmin

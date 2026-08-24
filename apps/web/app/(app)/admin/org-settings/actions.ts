@@ -14,6 +14,21 @@ function rawFormValues(formData: FormData) {
     logoUrl: formData.get('logoUrl') || null,
     currency: formData.get('currency') || null,
     preferredSynopticSourceStandard: formData.get('preferredSynopticSourceStandard') || null,
+    smtpUser: formData.get('smtpUser') || null,
+    smtpFrom: formData.get('smtpFrom') || null,
+    // "clearSmtpAppPassword" (a checkbox) wins over whatever's in the text
+    // field -- explicit removal, not just "field happened to be blank."
+    // A blank field with the checkbox unchecked sends `undefined`
+    // (omitted), matching this whole schema's own "omitted key = leave
+    // unchanged" convention (org-settings.controller.ts's own header
+    // comment) -- the one field on this form where "leave blank" and
+    // "clear it" must be two different, deliberate actions, since a
+    // once-set app password has no visible current value to compare
+    // against.
+    smtpAppPassword:
+      formData.get('clearSmtpAppPassword') === 'true'
+        ? null
+        : formData.get('smtpAppPassword') || undefined,
   };
 }
 
@@ -28,6 +43,8 @@ function submittedValuesOf(formData: FormData): SubmittedOrgSettings {
     preferredSynopticSourceStandard: String(
       formData.get('preferredSynopticSourceStandard') ?? '',
     ),
+    smtpUser: String(formData.get('smtpUser') ?? ''),
+    smtpFrom: String(formData.get('smtpFrom') ?? ''),
   };
 }
 

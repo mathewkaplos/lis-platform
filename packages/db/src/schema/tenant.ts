@@ -57,5 +57,21 @@ export const tenant = pgTable("tenant", {
   // this class of field. UI-level constraint (a <select> of common codes),
   // not a schema-level one.
   currency: text("currency"),
+  // Pilot-readiness audit follow-up (per-tenant email delivery, decided
+  // explicitly over the single-shared-account alternative): each org sends
+  // its own signed reports from its own Gmail account, not a single
+  // platform-wide one. `smtpAppPasswordEncrypted` is AES-256-GCM ciphertext
+  // (packages/db/src/secret-encryption.ts), never plaintext at rest --
+  // this table has no RLS (this file's own header comment), so an
+  // encrypted-at-rest credential is the real boundary, not row-level
+  // isolation. Host/port/secure aren't columns here -- Gmail's own fixed
+  // SMTP endpoint (smtp.gmail.com:465, implicit TLS) is the only provider
+  // this feature supports today, matching the "for now" scope decision;
+  // nothing here prevents adding those columns later if that changes.
+  // `smtpUser`/`smtpFrom` are plain text (not secrets) -- an email address
+  // is not sensitive the way the app password is.
+  smtpUser: text("smtp_user"),
+  smtpAppPasswordEncrypted: text("smtp_app_password_encrypted"),
+  smtpFrom: text("smtp_from"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

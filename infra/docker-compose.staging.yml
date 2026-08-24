@@ -162,6 +162,11 @@ services:
       # this at call time (case.controller.ts finalize()/amend()) -- same
       # secret-management convention as web's SESSION_SECRET below.
       SIGNING_SECRET: ${SIGNING_SECRET}
+      # Per-tenant email delivery follow-up: packages/db/src/secret-
+      # encryption.ts reads this at call time (org-settings.controller.ts's
+      # update()/getTenantSmtpConfig) -- same secret-management convention
+      # as SIGNING_SECRET immediately above.
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY}
       # #564: apps/api/src/storage/object-storage.client.ts's OnModuleInit
       # already catches its own failure and degrades gracefully (#568) if
       # these are absent -- adding them now for real, wired to the new minio

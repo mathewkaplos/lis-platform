@@ -18,6 +18,15 @@ const COMMON_CURRENCIES = ['USD', 'KES', 'EUR', 'GBP', 'TZS', 'UGX', 'ZAR', 'NGN
  * (name/address/phone/email/logo/currency) plus the pre-existing #692
  * `preferredSynopticSourceStandard` preference, which had no editing UI at
  * all before this feature -- confirmed via `grep` before building this.
+ *
+ * Pilot-readiness audit follow-up: the "Report email (Gmail)" section
+ * below. `smtpAppPassword`'s own `<Input>` is never prefilled (the server
+ * never returns the plaintext, encrypted or otherwise -- `settings` only
+ * ever carries `smtpConfigured`, a boolean) -- a blank submission leaves
+ * whatever's already saved untouched; the "Remove the saved app password"
+ * checkbox (only rendered once one exists) is the one explicit way to
+ * clear it, matching a real password-change form's own "type a new one,
+ * or check a box to remove it, blank alone does nothing" convention.
  */
 export function OrgSettingsForm({ settings }: { settings: OrgSettings }) {
   const [state, formAction, pending] = useActionState(
@@ -103,6 +112,65 @@ export function OrgSettingsForm({ settings }: { settings: OrgSettings }) {
               <option value="ICCR">ICCR</option>
             </select>
           </FormField>
+
+          <div className="mt-2 flex flex-col gap-4 border-t border-border pt-4">
+            <div>
+              <h3 className="text-sm font-medium text-foreground">Report email (Gmail)</h3>
+              <p className="mt-1 text-xs text-text-secondary">
+                Signed case reports send from this account instead of the platform default,
+                once configured. Requires a Gmail app password, not the account&apos;s real
+                password — mint one at{' '}
+                <a
+                  href="https://myaccount.google.com/apppasswords"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                >
+                  myaccount.google.com/apppasswords
+                </a>{' '}
+                (needs 2-Step Verification already on).
+              </p>
+            </div>
+            <FormField id="smtpUser" label="Gmail address">
+              <Input
+                type="email"
+                name="smtpUser"
+                placeholder="lab@example.com"
+                defaultValue={values?.smtpUser ?? settings.smtpUser ?? ''}
+              />
+            </FormField>
+            <FormField
+              id="smtpAppPassword"
+              label="App password"
+              helperText={
+                settings.smtpConfigured
+                  ? 'An app password is already saved. Leave blank to keep it, or enter a new one to replace it.'
+                  : 'No app password saved yet.'
+              }
+            >
+              <Input
+                type="password"
+                name="smtpAppPassword"
+                placeholder={settings.smtpConfigured ? '••••••••••••••••' : 'xxxx xxxx xxxx xxxx'}
+                autoComplete="new-password"
+              />
+            </FormField>
+            {settings.smtpConfigured ? (
+              <label className="flex items-center gap-2 text-sm text-text-secondary">
+                <input type="checkbox" name="clearSmtpAppPassword" value="true" className="size-4" />
+                Remove the saved app password
+              </label>
+            ) : null}
+            <FormField id="smtpFrom" label="From address (optional)" helperText="Defaults to the Gmail address above.">
+              <Input
+                type="email"
+                name="smtpFrom"
+                placeholder="reports@example.com"
+                defaultValue={values?.smtpFrom ?? settings.smtpFrom ?? ''}
+              />
+            </FormField>
+          </div>
+
           <Button type="submit" disabled={pending}>
             {pending ? 'Saving…' : 'Save'}
           </Button>

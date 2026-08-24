@@ -25,6 +25,17 @@ export const orgSettingsSchema = z.object({
   logoUrl: z.string().nullable(),
   currency: z.string().nullable(),
   preferredSynopticSourceStandard: z.string().nullable(),
+  // Pilot-readiness audit follow-up: per-tenant report-email sender.
+  // `smtpUser`/`smtpFrom` are plain email addresses, not secrets -- safe to
+  // read back exactly like every other field here. The app password itself
+  // is NEVER returned, encrypted or otherwise (packages/db/src/
+  // secret-encryption.ts's own ciphertext never leaves the DB) --
+  // `smtpConfigured` is the only signal the client gets that one is on
+  // file, the same "write-only credential, boolean status only" shape a
+  // real password-change form uses.
+  smtpUser: z.string().nullable(),
+  smtpFrom: z.string().nullable(),
+  smtpConfigured: z.boolean(),
 });
 export type OrgSettings = z.infer<typeof orgSettingsSchema>;
 
@@ -36,5 +47,13 @@ export const orgSettingsUpdateSchema = z.object({
   logoUrl: z.string().nullable().optional(),
   currency: z.string().nullable().optional(),
   preferredSynopticSourceStandard: z.string().nullable().optional(),
+  smtpUser: z.string().nullable().optional(),
+  smtpFrom: z.string().nullable().optional(),
+  // Plaintext on the way IN only -- the server encrypts before storage
+  // (org-settings.controller.ts's own update()). Omitted key: leave the
+  // currently-stored app password (if any) unchanged. Explicit `null`:
+  // clear it. A non-empty string: replace it. Never round-tripped back out
+  // via orgSettingsSchema -- this field only ever appears in the request.
+  smtpAppPassword: z.string().nullable().optional(),
 });
 export type OrgSettingsUpdate = z.infer<typeof orgSettingsUpdateSchema>;

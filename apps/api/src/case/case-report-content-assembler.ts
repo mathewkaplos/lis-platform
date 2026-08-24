@@ -3,6 +3,9 @@ import type { createDb } from '@lis/db';
 import {
   block,
   observation,
+  order,
+  patient,
+  referringFacility,
   synopticElement,
   synopticProtocol,
   synopticProtocolVersion,
@@ -48,6 +51,90 @@ export interface AssembledCaseReportContent {
   parts: AssembledCaseReportPart[];
   narrative: { label: string; value: string }[];
   synopticGroups: AssembledSynopticGroup[];
+}
+
+export interface AssembledCaseReportPatientContext {
+  patient: {
+    name: string;
+    mrn: string;
+    dateOfBirth: string | null;
+    sex: string;
+  };
+  referringFacilityName: string | null;
+  orderingProviderName: string | null;
+}
+
+/**
+ * Pilot-readiness audit fix (P0): the signed case-level PDF/email never
+ * identified a patient at all -- confirmed missing by grep, unlike the
+ * per-ordered-test path's own `report-assembly.ts`/`report-render.ts`,
+ * which already resolves this exact order -> patient join
+ * (`loadReportContext`). Mirrors that pattern rather than inventing a new
+ * one: same `order` -> `patient` join, plus `order.referringFacilityId` /
+ * `order.orderingProviderName` already on the order row. Deliberately not
+ * part of `assembleCaseReportContent`'s own `content` rejoin above --
+ * `content` is the signed, hash-covered `case_report_version.includedContent`
+ * snapshot; patient identity is live/current-state context about the case's
+ * order, the same way `caseAccessionNumber`/`caseStatus` already are in the
+ * render input, not part of what was actually signed.
+ */
+export async function loadCaseReportPatientContext(
+  tx: Tx,
+  orderId: string,
+): Promise<AssembledCaseReportPatientContext> {
+  const [orderRow] = await tx
+    .select()
+    .from(order)
+    .where(eq(order.id, orderId))
+    .limit(1);
+  if (!orderRow) {
+    return {
+      patient: {
+        name: UNAVAILABLE,
+        mrn: UNAVAILABLE,
+        dateOfBirth: null,
+        sex: UNAVAILABLE,
+      },
+      referringFacilityName: null,
+      orderingProviderName: null,
+    };
+  }
+
+  const [patientRow] = await tx
+    .select()
+    .from(patient)
+    .where(eq(patient.id, orderRow.patientId))
+    .limit(1);
+
+  let referringFacilityName: string | null = null;
+  if (orderRow.referringFacilityId) {
+    const [facilityRow] = await tx
+      .select({ name: referringFacility.name })
+      .from(referringFacility)
+      .where(eq(referringFacility.id, orderRow.referringFacilityId))
+      .limit(1);
+    referringFacilityName = facilityRow?.name ?? null;
+  }
+
+  return {
+    patient: patientRow
+      ? {
+          name: `${patientRow.firstName} ${patientRow.lastName}`,
+          mrn: patientRow.mrn,
+          dateOfBirth: patientRow.birthDate
+            ? patientRow.birthDate.toISOString().slice(0, 10)
+            : null,
+          sex: patientRow.sex,
+        }
+      : {
+          name: UNAVAILABLE,
+          mrn: UNAVAILABLE,
+          dateOfBirth: null,
+          sex: UNAVAILABLE,
+        },
+    referringFacilityName,
+    orderingProviderName: orderRow.orderingProviderName ?? null,
+  };
 }
 
 function formatObservationValue(row: typeof observation.$inferSelect): string {

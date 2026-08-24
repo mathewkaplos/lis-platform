@@ -63,7 +63,12 @@ export function hasPatientManagementRole(session: SessionPayload | undefined): b
       (session.roles.includes('technologist') ||
         session.roles.includes('pathologist') ||
         // Issue #701: 'reception' also carries manage_patients.
-        session.roles.includes('reception')),
+        session.roles.includes('reception') ||
+        // Pilot-readiness audit fix: lab_admin (#701) now carries
+        // manage_patients too -- capabilities.ts's own header comment on
+        // that grant explains why (referring-facility CRUD, the concrete
+        // gap this fixes, rides on manage_patients).
+        session.roles.includes('lab_admin')),
   );
 }
 
@@ -103,7 +108,29 @@ export function hasBillingRole(session: SessionPayload | undefined): boolean {
       (session.roles.includes('technologist') ||
         session.roles.includes('pathologist') ||
         // Issue #701: 'cashier' also carries manage_billing.
-        session.roles.includes('cashier')),
+        session.roles.includes('cashier') ||
+        // Pilot-readiness audit fix: lab_admin now carries manage_billing
+        // too -- confirmed live, the org-signup owner got an uncaught 500
+        // trying to view invoices before this.
+        session.roles.includes('lab_admin')),
+  );
+}
+
+/**
+ * Pilot-readiness audit fix (P0): gates the "add a test"/"add a reference
+ * range" forms. `manage_catalog` (`apps/api/src/auth/capabilities.ts`) --
+ * the real capability guarding `POST /v1/test-definitions` and
+ * `POST /v1/reference-ranges` -- is granted to `qa` and, as of this fix,
+ * `lab_admin` too. Deliberately its own helper, not folded into
+ * `hasQaRole()` -- `manage_report_templates`/`resolve_qc` (both still
+ * `qa`-only, `hasQaRole()`'s other real callers) must NOT widen to
+ * `lab_admin` just because this one capability did.
+ */
+export function hasCatalogManagementRole(session: SessionPayload | undefined): boolean {
+  return Boolean(
+    session &&
+      Array.isArray(session.roles) &&
+      (session.roles.includes('qa') || session.roles.includes('lab_admin')),
   );
 }
 

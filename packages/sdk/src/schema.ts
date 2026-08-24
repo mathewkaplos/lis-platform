@@ -4654,6 +4654,7 @@ export interface operations {
                 createdFrom?: string;
                 createdTo?: string;
                 referringFacilityId?: string;
+                orderId?: string;
             };
             header?: never;
             path?: never;

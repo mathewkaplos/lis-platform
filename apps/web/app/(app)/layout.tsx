@@ -1,5 +1,7 @@
 import { cookies } from 'next/headers';
 import { getSession } from '@/auth/get-session';
+import { getValidAccessToken } from '@/auth/access-token';
+import { createLisApiClient } from '@/lib/api-client';
 import { THEME_COOKIE_NAME, isTheme } from '@/lib/theme';
 import { DEFAULT_LOCALE, LOCALE_COOKIE_NAME, isLocale } from '@/lib/locale';
 import { MobileTopNav, Sidebar } from './_components/sidebar';
@@ -25,6 +27,30 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const cookieStore = await cookies();
   const themeCookie = cookieStore.get(THEME_COOKIE_NAME)?.value;
   const localeCookie = cookieStore.get(LOCALE_COOKIE_NAME)?.value;
+
+  // Pilot-readiness audit fix (P1): TASK-036's own original proposal (§10)
+  // deliberately made this badge a raw tenant id label, not a real org
+  // name, because no org-identity data model existed yet -- confirmed
+  // live, a freshly signed-up org's own top bar showed its raw UUID on
+  // every single screen, which read as a broken build to a first-time
+  // viewer. #706 later added a real `tenant.name` this badge never picked
+  // up. GET /v1/org-settings needs no capability (any authenticated tenant
+  // member can read it, matching org-settings.controller.ts's own comment)
+  // and is cheap (one indexed row lookup) -- fetched here, once per layout
+  // render, same pattern this file already uses for `getSession()`. A
+  // failed fetch (network hiccup, org-settings row genuinely absent) falls
+  // back to the original tenantId label rather than breaking the shared
+  // app shell every page renders through.
+  let orgName: string | null = null;
+  const accessToken = await getValidAccessToken();
+  if (accessToken) {
+    const { data, response } = await createLisApiClient(accessToken).GET(
+      '/v1/org-settings',
+    );
+    if (response.ok && data?.name) {
+      orgName = data.name;
+    }
+  }
 
   return (
     <div className="flex min-h-full flex-1">
@@ -57,6 +83,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <MobileTopNav />
         <TopBar
           tenantId={session.tenantId}
+          orgName={orgName}
           userSub={session.sub}
           theme={isTheme(themeCookie) ? themeCookie : undefined}
           locale={isLocale(localeCookie) ? localeCookie : DEFAULT_LOCALE}

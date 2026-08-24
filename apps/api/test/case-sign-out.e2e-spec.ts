@@ -771,6 +771,33 @@ describe('Case sign-out / step-up / digital signature (e2e)', () => {
         throw new Error('expected real PDF bytes starting with %PDF-');
       }
 
+      // Pilot-readiness audit fix (P0): the signed report must identify the
+      // patient. pdfkit's text streams aren't compressed
+      // (`compress: false`, same as report-render.ts's own renderer), so a
+      // plain substring check on the raw bytes is enough -- no PDF-parsing
+      // library needed, matching this repo's existing report-render.spec.ts
+      // precedent of asserting on the raw buffer text.
+      const patientRes = await request(app.getHttpServer())
+        .get(`/v1/patients/${patientId}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      const mrn = (patientRes.body as { mrn: string }).mrn;
+      // pdfkit (compress: false, same as report-render.ts's own renderer)
+      // still shows text via hex-string `TJ` operators
+      // (`<48656c6c6f> 20 ...`), not plain ASCII substrings in the raw
+      // bytes -- decode every hex-string token and concatenate, rather than
+      // searching the raw buffer directly.
+      const pdfLatin1 = pdfBytes.toString('latin1');
+      const decodedText = [...pdfLatin1.matchAll(/<([0-9a-fA-F]+)>/g)]
+        .map(([, hex]) => Buffer.from(hex, 'hex').toString('latin1'))
+        .join('');
+      if (!decodedText.includes('SignOut Fixture')) {
+        throw new Error('expected the PDF to contain the patient name');
+      }
+      if (!decodedText.includes(mrn)) {
+        throw new Error('expected the PDF to contain the patient MRN');
+      }
+
       const reportCountAfter = await reportRowCount();
       const auditCountAfter = await auditCount();
       if (

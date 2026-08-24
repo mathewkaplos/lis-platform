@@ -35,9 +35,21 @@ export default async function OrderDetailPage({
   const [
     { data: order, response: orderResponse },
     { data: catalog, response: catalogResponse },
+    { data: invoices, response: invoicesResponse },
   ] = await Promise.all([
     client.GET('/v1/orders/{id}', { params: { path: { id } } }),
     client.GET('/v1/catalog'),
+    // Pilot-readiness audit fix (P0, duplicate-invoice bug): a user landing
+    // back on this page after already generating an invoice (back button,
+    // a second tab, re-navigating from the patient/cases screen) saw the
+    // exact same "Generate invoice" button as before, with nothing telling
+    // them one already existed -- confirmed live, that's what actually let
+    // a second real click create a second invoice. `manage_billing`-gated
+    // like every other invoice route, so a role without it (reception) gets
+    // a 403 here -- handled below by simply not rendering either the link
+    // or the button, rather than crashing this whole page for a role that
+    // was never going to be able to generate one anyway.
+    client.GET('/v1/invoices', { params: { query: { orderId: id } } }),
   ]);
   if (orderResponse.status === 404) {
     notFound();
@@ -48,6 +60,8 @@ export default async function OrderDetailPage({
   if (!catalogResponse.ok || !catalog) {
     throw new Error('Something went wrong loading the test catalog. Please try again.');
   }
+  const existingInvoice =
+    invoicesResponse.ok && invoices ? (invoices.items[0] ?? null) : null;
 
   const testNameById = new Map(catalog.tests.map((t) => [t.id, t.displayName]));
 
@@ -98,7 +112,14 @@ export default async function OrderDetailPage({
                 <Link href={`/cases/new?orderId=${order.id}`}>New AP case</Link>
               </Button>
             ) : null}
-            {order.status !== 'cancelled' ? (
+            {order.status !== 'cancelled' && existingInvoice ? (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/billing/invoices/${existingInvoice.id}`}>
+                  View invoice {existingInvoice.invoiceNumber ?? ''}
+                </Link>
+              </Button>
+            ) : null}
+            {order.status !== 'cancelled' && !existingInvoice ? (
               <GenerateInvoiceButton
                 orderId={order.id}
                 referringFacilityId={order.referringFacilityId}

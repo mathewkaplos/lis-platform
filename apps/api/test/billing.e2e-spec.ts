@@ -156,6 +156,83 @@ describe('Billing & payments (e2e)', () => {
       .where(eq(testDefinition.id, glucoseId));
   });
 
+  it('is idempotent -- re-generating an invoice for the same order returns the existing invoice, not a duplicate (pilot-readiness audit fix)', async () => {
+    const orderId = await createOrder([glucoseId, bunId]);
+
+    const first = await request(app.getHttpServer())
+      .post(`/v1/orders/${orderId}/invoice`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(201);
+    const firstBody = first.body as {
+      resourceId: string;
+      alreadyExisted: boolean;
+    };
+    if (firstBody.alreadyExisted !== false) {
+      throw new Error(
+        'expected the first generate to report alreadyExisted: false',
+      );
+    }
+
+    // The exact reproduced bug: a second click before/after the first
+    // request's own response -- must return the *same* invoice, not a
+    // second row.
+    const second = await request(app.getHttpServer())
+      .post(`/v1/orders/${orderId}/invoice`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(201);
+    const secondBody = second.body as {
+      resourceId: string;
+      alreadyExisted: boolean;
+      after: { totalCents: number };
+    };
+    if (secondBody.resourceId !== firstBody.resourceId) {
+      throw new Error(
+        `expected the same invoice id on re-generate, got ${firstBody.resourceId} then ${secondBody.resourceId}`,
+      );
+    }
+    if (secondBody.alreadyExisted !== true) {
+      throw new Error(
+        'expected the second generate to report alreadyExisted: true',
+      );
+    }
+    if (secondBody.after.totalCents !== GLUCOSE_PRICE_CENTS + BUN_PRICE_CENTS) {
+      throw new Error(
+        'expected the re-fetched invoice to carry the same total',
+      );
+    }
+
+    const listRes = await request(app.getHttpServer())
+      .get('/v1/invoices')
+      .query({ orderId })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const items = (listRes.body as { items: unknown[] }).items;
+    if (items.length !== 1) {
+      throw new Error(
+        `expected exactly one invoice for the order, found ${items.length}`,
+      );
+    }
+
+    // A re-generate after a real payment must reflect that payment, not
+    // report `0` paid -- the exact bug the naive "just hardcode 0" shortcut
+    // would have introduced.
+    await request(app.getHttpServer())
+      .post(`/v1/invoices/${firstBody.resourceId}/payments`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ method: 'cash', amountCents: GLUCOSE_PRICE_CENTS })
+      .expect(201);
+    const third = await request(app.getHttpServer())
+      .post(`/v1/orders/${orderId}/invoice`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(201);
+    const thirdBody = third.body as { after: { amountPaidCents: number } };
+    if (thirdBody.after.amountPaidCents !== GLUCOSE_PRICE_CENTS) {
+      throw new Error(
+        `expected re-generate to reflect the real paid amount (${GLUCOSE_PRICE_CENTS}), got ${thirdBody.after.amountPaidCents}`,
+      );
+    }
+  });
+
   it('rejects invoicing an order containing a test with no price configured (400, not a silent $0)', async () => {
     const db = createDb();
     const [unpriced] = await db

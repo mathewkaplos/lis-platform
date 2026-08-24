@@ -416,7 +416,8 @@ describe('Antibiogram (e2e)', () => {
       }[];
 
       const organismRow = rows.find(
-        (r) => r.dataType === 'coded' && r.analyteId === organismIdentifiedAnalyteId,
+        (r) =>
+          r.dataType === 'coded' && r.analyteId === organismIdentifiedAnalyteId,
       );
       if (organismRow?.valueDisplay !== 'Escherichia coli') {
         throw new Error(

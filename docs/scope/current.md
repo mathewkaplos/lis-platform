@@ -1,9 +1,132 @@
-# Status — 2026-08-21 (session 43)
+# Status — 2026-08-24 (session 44)
 
-Last commit on main: `295c790` (`lis-platform`, PR #695 — coded/table clinical result rendering,
-closes #694). Session 42 closed with `4e2edfd` (PR #657); this pointer had drifted three commits
-stale (PR #691, #693, #695, none referenced anywhere in this breadcrumb) — caught and fixed by
-`/close`'s own Pre-Close Report at the end of session 43, not carried forward silently.
+Last commit on main: `5242234` (`lis-platform`, PR #744 — per-tenant SMTP settings with encryption
+at rest). Session 43 closed with `295c790` (PR #695); this pointer had drifted 26 commits/~25 PRs
+stale (#720–#744, spanning an entire unrecorded session plus this whole session's own 8 PRs) —
+caught by `/close`'s own Pre-Close Report at the start of this refresh, not carried forward
+silently. The prior-session PRs (#720–#736) were pilot-readiness-audit fixes and coverage work this
+breadcrumb never recorded a session for; see `docs/pilot-readiness.html`/the artifact of the same
+name for that audit's own full detail rather than reconstructing it here.
+
+## Session 44 — pilot-readiness follow-ups: `apps/web` e2e coverage, real catalog pricing, Gmail
+## report-email delivery (platform-wide then per-tenant, with new encryption-at-rest infrastructure)
+
+Continuation of the pilot-readiness audit thread (score 87/100 going in — 19 of 22 roadmap items
+already shipped, email delivery the one deliberately-deferred item per decision #698). User asked
+"what can be done to improve the coverage," clarified to mean automated test coverage specifically;
+then, once that pass closed out, asked "what's the pilot readiness," then "address the remaining
+issues" (the one concrete open item: the original chemistry/haematology catalog's placeholder
+billing codes), then "for email, we will use Gmail app password for now" (building the deferred
+delivery feature), then "can we have an option of defaulting to referral facility email?" and
+finally "now can we make the settings on the organization setup?" (per-tenant SMTP credentials).
+Eight PRs, all merged, CI green throughout, iterated via real CI-log/artifact diagnosis on every
+failure rather than guessing.
+
+**PR #737 — `apps/web`'s first real-browser Playwright harness.** Zero prior coverage of any
+Server Action (`getValidAccessToken()` needs Next.js's request-scoped `cookies()`, unreachable from
+plain vitest without mocking `next/headers` — a precedent this repo deliberately avoids elsewhere).
+User chose "build a real integration harness" over mocking or skipping. New `playwright.config.ts`
+(CI: real `next build` + the standalone `server.js` output, since `output: "standalone"` makes
+plain `next start` silently not serve at all — found live, the harness's own first CI failure) and
+`e2e/auth.ts` (real Keycloak OIDC login, not the `web-verify` Skill's cookie-signing shortcut),
+proven against `referring-facilities.spec.ts`. Real bugs found and fixed along the way, all in the
+harness itself: `getByLabel(exact:true)` can never match a required field (`packages/ui`'s
+`FormField` bakes the asterisk into the `<label>`'s raw text, invisible to the accessible-name
+computation `exact` actually checks); `CardTitle` is a plain `<div>`, not a semantic heading, so
+`getByRole('heading', ...)` silently never matches anywhere in this app; a missing `PUBLIC_APP_URL`
+in the new `web-e2e` CI job made Keycloak reject the login redirect (standalone mode can't trust the
+incoming Host header for `request.nextUrl.origin`, confirmed via the exact file every real
+deployment already sets this for).
+
+**PR #738 — clinical spine + AP case sign-out coverage.** Extended the harness to the highest-value
+untested paths: `clinical-workflow.spec.ts` (register → order → receive → finalize a result →
+verify it from a **second, independent browser context** logged in as a different pathologist-roled
+user — proving both that verification works and that a technologist session's Verify control is
+genuinely absent from the DOM) and `case-sign-out.spec.ts` (accession → block → slide → the real,
+step-up-gated sign-out). More real bugs found via CI trace/artifact diagnosis, none in application
+code: a race between a client-side (App Router soft) navigation and reading `page.url()` right
+after, compounded by an ID-extraction regex that silently captured a query string as if it were a
+UUID instead of failing loudly; two `getByText` strict-mode violations where the real UI legitimately
+renders the same text twice (a status badge plus a receipt/verify-column echo).
+
+**PR #739 — Tier 3 coverage: admin CRUD + billing.** `admin-crud.spec.ts` (createUser, createTest,
+createReferenceRange, updateOrgSettings) and `billing.spec.ts` (generateInvoice → recordPayment,
+against the seeded, priced GLU test). Three more real bugs found by the first CI run: the seeded
+tenant had no `name` set, so the required "Organization name" field blocked submission via native
+HTML5 validation; `getByLabel(/Role/i)` matched 10 elements (`users-table.tsx`'s own per-row
+`aria-label="Role for {email}"` on every existing user, which `getByLabel` also matches); two more
+legitimate-double-render strict-mode collisions (a just-created user's email appearing in both the
+success message and the new table row; "unpaid"/"paid" appearing in both the status badge and the
+receipt's own echo).
+
+**PR #740 — real, distinct catalog billing prices (the one remaining concrete pilot-readiness
+item).** The original chemistry/haematology seed billed every test as `"{code}-PLACEHOLDER"` at a
+flat $15 regardless of complexity — a real demo red flag the audit named directly. Replaced with
+real distinct codes/prices per test (chemistry: 17 tests, $10–$35; haematology: CBC $25/PBS $30,
+priced higher for real manual-review labor). Found and fixed a related, more serious gap along the
+way: microbiology (CULT/ORGID) had **no** billing metadata at all — a real culture order could never
+be invoiced, not just displayed with an ugly code. Live-verified against a real local Postgres (full
+`db-reset.sh`, confirmed idempotent on a second run) and a real order→invoice API cycle, not just
+reviewed.
+
+**PR #741 — email delivery for signed case reports, via Gmail SMTP + app password.** The pilot-
+readiness audit's only deliberately-deferred item, built now per explicit direction. New
+`apps/api/src/email/email.client.ts` (nodemailer, same `requiredEnv`-per-call loud-failure
+convention `object-storage.client.ts` already established) and
+`POST /v1/cases/:id/report-versions/:versionId/send-email` (renders the same already-signed PDF
+`getReportVersionPdf` serves; `manage_specimens`-gated, not `verify` — a distribution action on
+already-readable content, not a new attestation, so no step-up). Defaults to the patient's on-file
+email when `to` is omitted; a real 400 if neither exists. Live-verified through a **real SMTP
+conversation** — a real local `smtp-server` instance the new e2e spec spins up itself (not a mocked
+`sendEmail()` call), checking the actual received message's recipient/subject/PDF attachment
+(`%PDF-` magic-number verified). A real sample email was also sent to the user's own inbox via their
+real Gmail credentials once configured locally, confirming the whole path end to end outside the
+test suite too (a stray local `apps/api` process running with stale pre-SMTP-config env vars caused
+the first live attempt to 500 — found and killed).
+
+**PR #742 — quick-fill referring-facility email.** Per request, `SendReportEmailForm` now shows a
+second quick-fill button (alongside the existing patient-email one) when the case's own order has a
+referring facility on file — a referring clinician is often the intended recipient, not the patient
+directly. Not a default-behavior change: the field's own initial prefill and the server's own
+omitted-`to` resolution both still default to the patient's email exactly as before.
+
+**PR #743 — e2e coverage for the send-report-email UI.** The one feature from #741/#742 that shipped
+without `apps/web` browser coverage (only API-layer). New `case-report-email.spec.ts`, verified
+against a **real MailHog instance** (not the same `smtp-server` double the API-layer spec uses —
+MailHog's REST API is reachable from a separate real running `apps/api` process, which an in-process
+vitest test double isn't). One real bug found: the whole flow actually worked on the very first CI
+run (a real email, a real PDF, `%PDF-1.3` magic bytes visible in the captured MIME body) — the test's
+own regex assertion was just too strict, not tolerant of nodemailer's real MIME line-folding and
+unquoted `filename=`.
+
+**PR #744 — per-tenant SMTP settings, with real encryption-at-rest infrastructure (new to this
+repo).** Per explicit request/choice (per-tenant credentials over a single shared-account
+alternative): each org now configures its own Gmail account on its own org-settings screen. New
+`packages/db/src/secret-encryption.ts` (AES-256-GCM, authenticated — a tampered ciphertext fails to
+decrypt rather than silently producing garbage), keyed by a new `SETTINGS_ENCRYPTION_KEY` env var,
+wired into CI and staging (`deploy-staging.yml`/`docker-compose.staging.yml`) matching
+`SIGNING_SECRET`'s own convention. `tenant` gains `smtp_user`/`smtp_app_password_encrypted`
+(ciphertext only)/`smtp_from`; the API never returns the app password, encrypted or otherwise — only
+a `smtpConfigured` boolean. A tenant that never configures this falls back to the platform-wide env
+config exactly as before (no behavior change for the pilot tenant). New "Report email (Gmail)"
+section on the org-settings form: the app password field is write-only (never prefilled), blank
+means "leave unchanged," an explicit "Remove the saved app password" checkbox is the one way to
+clear it. Live-verified: `org-settings.e2e-spec.ts`'s new suite proves the app password never
+echoes back in any raw response body (not just a typed-accessor check); `case-report-email.e2e-spec.ts`
+gained a test against a **second, independent local SMTP server** that only accepts the tenant's own
+configured username — real proof the send routed through the tenant-specific account, not the
+shared default. Also verified directly against the running API plus a raw `SELECT` against the real
+Postgres row, confirming genuine ciphertext at rest, not plaintext.
+
+**`/close` this session — Pre-Close Report produced**
+(`~/work/lis-engineering/session-close-reports/2026-08-24-1357-pre.md`), addressed in full this same
+pass: this breadcrumb refresh (item 1); `docs/plans/phase-0-pilot-decisions.md`'s stale
+`Status: DRAFT` reconciled against #698's own already-shipped decisions (item 2, see its own updated
+Status line); the drafted `eslint --fix` one-time cleanup for `antibiogram.e2e-spec.ts`/
+`report-template-designer.e2e-spec.ts` applied directly (item 3); the Manual Verification Checklist
+(item 4) — none of this session's new `apps/web` UI had been seen in a real browser before this
+close pass; see the Final Close Report for what was actually checked. A Final Close Report is still
+owed once that verification pass and the other three items are confirmed resolved.
 
 ## Session 43 — #690/#551 (multi-protocol disambiguation + CAP colon/rectum protocol), #692 (per-org
 ## default synoptic standard), #694 (coded/table result rendering), #489 split, #529/#530 closed

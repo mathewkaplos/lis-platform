@@ -1,5 +1,12 @@
 # Phase 0 decision doc: role model, billing cadence, fee schedule, delivery
-Status: DRAFT — needs design-partner + internal sign-off, not an Implementation Proposal
+Status: APPROVED — all four decisions recorded on #698 (2026-08-21); found still
+marked DRAFT by `/close`'s session-44 Pre-Close Report (2026-08-24) even
+though every decision below had already shipped (PRs #730/#726/#732, and
+delivery has since gone further than "deferred" — see #741-#744) — this
+file's own Decision lines were simply never filled in after the real
+conversation happened, not a decision genuinely still open. Reconciled
+here against `pilot-readiness.html`'s own "Decisions recorded (#698,
+2026-08-21)" section, not re-litigated.
 Tracks: #698 (part of EPIC #697, Pilot Readiness)
 
 This is not code and not an Implementation Proposal — it's the artifact #698 asks
@@ -46,7 +53,12 @@ settings, user management, catalog/workflow/report-template authoring — what
 `qa` currently does, plus user management). Keep `qa` itself for its existing
 QC-resolution meaning rather than overloading it further.
 
-**Decision:** _(pending)_
+**Decision:** Recommended default adopted as-is — five real roles shipped:
+`reception`, `technologist`, `pathologist` (renamed from generic
+`verifier`), `cashier`, `lab_admin` (the org-signup owner's own default
+role, replacing `qa`). `qa` kept for its existing QC-resolution meaning,
+not overloaded further. Shipped in PR #730 (role model + org-owner
+capability fix), live-verified.
 
 ## 2. Billing cadence
 
@@ -65,7 +77,11 @@ it) — building calendar-month-only first and generalizing later is the kind
 of two-implementations risk this repo's own rule-of-engagement discipline
 flags.
 
-**Decision:** _(pending)_
+**Decision:** Recommended default adopted — arbitrary date range, not
+calendar-month-only. Confirmed the facility-statement screen (PR #726,
+shipped independently before this question was formally answered) already
+built exactly this shape; the decision confirmed the build matched the
+real requirement rather than requiring a rebuild.
 
 ## 3. Procedure / fee schedule
 
@@ -86,7 +102,15 @@ fidelity, least rework); fall back to a CAP-standard starter set
 list) only if they don't have one readily exportable, with the explicit
 understanding that real codes replace it before go-live, not after.
 
-**Decision:** _(pending)_
+**Decision:** Seed generic, CAP-adjacent starter codes now rather than
+wait for a design-partner fee schedule — deliberately not real CPT codes
+(AMA's own licensed, copyrighted code set; reproducing it without a
+license is a real legal exposure, not a style choice). Shipped as 8 real
+AP procedure codes across 3 surgical-pathology complexity tiers plus
+frozen section/special stain/IHC (PR #732), verified through a full real
+order → invoice cycle. Replace with the design partner's own real fee
+schedule once one exists, same as every other seed-catalog placeholder in
+this repo.
 
 ## 4. Delivery expectations
 
@@ -102,7 +126,14 @@ first weeks (it's what's already reliable and tested); scope email delivery
 as Phase 3 (#711) rather than blocking Phase 1–2 on it, unless the design
 partner states it's a hard requirement from day one.
 
-**Decision:** _(pending)_
+**Decision:** Printed/downloadable PDF handoff accepted as sufficient for
+the pilot's first weeks (recommended default). **Superseded by further
+work, not just accepted as scoped:** email delivery itself has since been
+built (session 44, PRs #741/#743 — Gmail SMTP + app password, per
+explicit later direction) and extended to per-tenant credentials (PR
+#744) rather than staying deferred to a later phase — the original
+"acceptable for phase one" answer held only until it was explicitly asked
+for.
 
 ## Exit criteria (from #698)
 

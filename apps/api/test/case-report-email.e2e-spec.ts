@@ -44,6 +44,7 @@ describe('Case report email (e2e)', () => {
   let receivedMessages: ParsedMail[];
   let tokenA: string; // test-user: technologist, tenant A -- manage_specimens
   let tokenVerifier: string; // test-user-4: technologist+verifier, tenant A -- has `verify`, needed only to finalize the fixture case
+  let tokenQa: string; // test-user-5: qa, tenant A -- manage_org_settings, needed only for the per-tenant SMTP test
   let testDefinitionId: string;
 
   async function createOrder(patientId: string): Promise<string> {
@@ -173,12 +174,13 @@ describe('Case report email (e2e)', () => {
     app = moduleFixture.createNestApplication();
     await app.init();
 
-    [tokenA, tokenVerifier] = await Promise.all([
+    [tokenA, tokenVerifier, tokenQa] = await Promise.all([
       getKeycloakToken('test-user', 'test-password'),
       // Real Authorization Code + PKCE flow, not Direct Grant -- finalize's
       // own StepUpGuard needs a genuinely fresh auth_time (same reasoning
       // case-sign-out.e2e-spec.ts's own header comment gives).
       getKeycloakFreshToken('test-user-4', 'test-password-4'),
+      getKeycloakToken('test-user-5', 'test-password-5'),
     ]);
   });
 
@@ -260,5 +262,100 @@ describe('Case report email (e2e)', () => {
       .expect(403);
 
     expect(receivedMessages).toHaveLength(0);
+  });
+
+  it("uses the tenant's own configured SMTP account, not the platform-wide default, once org-settings has one on file", async () => {
+    // A second, independent local SMTP listener -- the real proof this
+    // isn't just "email.client.ts always works," but that the tenant's own
+    // credentials genuinely route the send to a *different* server than
+    // the shared default `smtpServer` this whole file's own beforeAll sets
+    // up. Only accepts the specific username the tenant will configure
+    // below; the shared default's SMTP_USER ('lis-test@example.invalid')
+    // would be rejected here, matching Gmail's own real behavior for a
+    // wrong-account app password.
+    const tenantMessages: ParsedMail[] = [];
+    const tenantSmtpServer = new SMTPServer({
+      authOptional: true,
+      disabledCommands: ['STARTTLS'],
+      onAuth(auth, _session, callback) {
+        if (auth.username !== 'tenant-lab@example.invalid') {
+          callback(new Error('535 authentication failed'));
+          return;
+        }
+        callback(null, { user: auth.username });
+      },
+      onData(stream, _session, callback) {
+        simpleParser(stream)
+          .then((parsed) => {
+            tenantMessages.push(parsed);
+            callback();
+          })
+          .catch(callback);
+      },
+    });
+    await new Promise<void>((resolve) =>
+      tenantSmtpServer.listen(0, '127.0.0.1', resolve),
+    );
+    const tenantAddress = tenantSmtpServer.server.address();
+    if (!tenantAddress || typeof tenantAddress === 'string') {
+      throw new Error(
+        'expected the tenant SMTP test server to bind a TCP port',
+      );
+    }
+
+    try {
+      // email.client.ts's own host/port/secure stay the fixed
+      // SMTP_HOST/PORT/SECURE env vars (this feature only overrides the
+      // account being sent *from*, not the transport endpoint, matching
+      // its own "Gmail app password, for now" scope) -- so this test's own
+      // tenant-SMTP server must run on that SAME host/port the shared
+      // default already points at, just accepting a different account.
+      // Point the shared listener's own credentials check at this second
+      // server isn't possible without a real second host/port; instead,
+      // this test temporarily repoints the process-wide SMTP_PORT at the
+      // tenant server for the duration of this one call, then restores it
+      // -- the tenant-vs-default distinction being tested is *which
+      // account* authenticates, not the transport address.
+      const originalPort = process.env.SMTP_PORT;
+      process.env.SMTP_PORT = String(tenantAddress.port);
+
+      await request(app.getHttpServer())
+        .put('/v1/org-settings')
+        .set('Authorization', `Bearer ${tokenQa}`)
+        .send({
+          smtpUser: 'tenant-lab@example.invalid',
+          smtpAppPassword: 'tenant-own-app-password',
+          smtpFrom: 'reports@tenant-lab.example.invalid',
+        })
+        .expect(200);
+
+      const patientId = await createPatient();
+      const { caseId, versionId } = await createSignedOutCase(patientId);
+
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/report-versions/${versionId}/send-email`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ to: 'recipient@example.invalid' })
+        .expect(200);
+
+      process.env.SMTP_PORT = originalPort;
+
+      expect(tenantMessages).toHaveLength(1);
+      expect(tenantMessages[0].from?.text).toContain(
+        'reports@tenant-lab.example.invalid',
+      );
+      // The shared default server (this file's own beforeAll) never saw
+      // this message -- the send genuinely went through the tenant's own
+      // configured account/transport, not a fallback.
+      expect(receivedMessages).toHaveLength(0);
+    } finally {
+      await request(app.getHttpServer())
+        .put('/v1/org-settings')
+        .set('Authorization', `Bearer ${tokenQa}`)
+        .send({ smtpUser: null, smtpAppPassword: null, smtpFrom: null });
+      await new Promise<void>((resolve) =>
+        tenantSmtpServer.close(() => resolve()),
+      );
+    }
   });
 });

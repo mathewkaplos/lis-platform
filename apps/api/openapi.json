@@ -9603,6 +9603,17 @@
           "preferredSynopticSourceStandard": {
             "type": "string",
             "nullable": true
+          },
+          "smtpUser": {
+            "type": "string",
+            "nullable": true
+          },
+          "smtpFrom": {
+            "type": "string",
+            "nullable": true
+          },
+          "smtpConfigured": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -9612,7 +9623,10 @@
           "email",
           "logoUrl",
           "currency",
-          "preferredSynopticSourceStandard"
+          "preferredSynopticSourceStandard",
+          "smtpUser",
+          "smtpFrom",
+          "smtpConfigured"
         ],
         "additionalProperties": false
       },
@@ -9644,6 +9658,18 @@
             "nullable": true
           },
           "preferredSynopticSourceStandard": {
+            "type": "string",
+            "nullable": true
+          },
+          "smtpUser": {
+            "type": "string",
+            "nullable": true
+          },
+          "smtpFrom": {
+            "type": "string",
+            "nullable": true
+          },
+          "smtpAppPassword": {
             "type": "string",
             "nullable": true
           }

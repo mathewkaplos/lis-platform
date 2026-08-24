@@ -51,7 +51,9 @@ describe('Report template designer (e2e)', () => {
 
     qaToken = await getKeycloakToken('test-user-5', 'test-password-5');
 
-    await db.execute(sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`);
+    await db.execute(
+      sql`SELECT set_config('app.tenant_id', ${TENANT_A}, false)`,
+    );
 
     const [mgdl] = await db
       .select({ id: unit.id })
@@ -122,8 +124,16 @@ describe('Report template designer (e2e)', () => {
       .returning({ id: testDefinition.id });
     testDefId = def.id;
     await db.insert(testAnalyte).values([
-      { tenantId: TENANT_A, testDefinitionId: testDefId, analyteId: analyteAId },
-      { tenantId: TENANT_A, testDefinitionId: testDefId, analyteId: analyteBId },
+      {
+        tenantId: TENANT_A,
+        testDefinitionId: testDefId,
+        analyteId: analyteAId,
+      },
+      {
+        tenantId: TENANT_A,
+        testDefinitionId: testDefId,
+        analyteId: analyteBId,
+      },
     ]);
   });
 
@@ -131,7 +141,7 @@ describe('Report template designer (e2e)', () => {
     await app.close();
   });
 
-  it('creates and publishes a definition covering all 5 field types + a visibilityCondition, via the designer\'s own request shape', async () => {
+  it("creates and publishes a definition covering all 5 field types + a visibilityCondition, via the designer's own request shape", async () => {
     const createRes = await request(app.getHttpServer())
       .post('/v1/report-templates')
       .set('Authorization', `Bearer ${qaToken}`)
@@ -147,9 +157,18 @@ describe('Report template designer (e2e)', () => {
                   label: 'Analyte A',
                   type: 'numeric',
                   analyteBinding: analyteAId,
-                  visibilityCondition: { field: 'isCritical', op: 'eq', value: true },
+                  visibilityCondition: {
+                    field: 'isCritical',
+                    op: 'eq',
+                    value: true,
+                  },
                 },
-                { key: 'b-coded', label: 'Analyte B (coded)', type: 'coded', analyteBinding: analyteBId },
+                {
+                  key: 'b-coded',
+                  label: 'Analyte B (coded)',
+                  type: 'coded',
+                  analyteBinding: analyteBId,
+                },
                 {
                   key: 'a-range',
                   label: 'Analyte A range',
@@ -162,7 +181,12 @@ describe('Report template designer (e2e)', () => {
                   type: 'table',
                   analyteBindings: [analyteAId, analyteBId],
                 },
-                { key: 'note', label: 'Note', type: 'richText', content: 'Interpreted by the lab director.' },
+                {
+                  key: 'note',
+                  label: 'Note',
+                  type: 'richText',
+                  content: 'Interpreted by the lab director.',
+                },
               ],
             },
           ],
@@ -172,7 +196,9 @@ describe('Report template designer (e2e)', () => {
     const body = createRes.body as { id: string; versions: { id: string }[] };
 
     await request(app.getHttpServer())
-      .post(`/v1/report-templates/${body.id}/versions/${body.versions[0].id}/publish`)
+      .post(
+        `/v1/report-templates/${body.id}/versions/${body.versions[0].id}/publish`,
+      )
       .set('Authorization', `Bearer ${qaToken}`)
       .expect(200);
 
@@ -184,7 +210,7 @@ describe('Report template designer (e2e)', () => {
     expect(row.status).toBe('published');
   });
 
-  it('rejects a table field with no analyteBindings at publish time, even shaped like the designer\'s own save action', async () => {
+  it("rejects a table field with no analyteBindings at publish time, even shaped like the designer's own save action", async () => {
     const [templateRow] = await db
       .select({ id: reportTemplate.id })
       .from(reportTemplate)
@@ -203,7 +229,9 @@ describe('Report template designer (e2e)', () => {
               // admin submit this (client-side "fast feedback" -- proposal
               // AC #3) -- a direct request proves the server's own
               // guardrail is the real, non-bypassable check regardless.
-              fields: [{ key: 'empty-table', label: 'Empty table', type: 'table' }],
+              fields: [
+                { key: 'empty-table', label: 'Empty table', type: 'table' },
+              ],
             },
           ],
         },
@@ -212,7 +240,9 @@ describe('Report template designer (e2e)', () => {
     const versionBody = versionRes.body as { id: string };
 
     await request(app.getHttpServer())
-      .post(`/v1/report-templates/${templateRow.id}/versions/${versionBody.id}/publish`)
+      .post(
+        `/v1/report-templates/${templateRow.id}/versions/${versionBody.id}/publish`,
+      )
       .set('Authorization', `Bearer ${qaToken}`)
       .expect(400);
 

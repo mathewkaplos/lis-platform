@@ -109,22 +109,36 @@ export default async function CaseDetailPage({
     : [];
 
   // Pilot-readiness audit follow-up (email delivery, deliberately deferred
-  // at #698, now built): a two-hop lookup (case's own order → order's own
-  // patient) purely to prefill SendReportEmailForm's "Email to" field --
-  // sendReportEmail() itself doesn't need this, it resolves the same
-  // patient.email server-side when the field is submitted empty. Only
-  // fetched when the report-versions section actually renders.
-  const patientEmail = isAmendable
-    ? await client
-        .GET('/v1/orders/{id}', { params: { path: { id: caseData.orderId } } })
-        .then(({ data: orderData }) =>
-          orderData
-            ? client
-                .GET('/v1/patients/{id}', { params: { path: { id: orderData.patientId } } })
-                .then(({ data: patientData }) => patientData?.email ?? null)
-            : null,
-        )
-    : null;
+  // at #698, now built): fetches purely to prefill SendReportEmailForm's
+  // own quick-fill buttons -- sendReportEmail() itself doesn't need either
+  // of these, it resolves the same patient.email server-side when the
+  // field is submitted empty (facilityEmail is UI-only, always requires an
+  // explicit `to` since the server has no "prefer the facility" default of
+  // its own). Only fetched when the report-versions section actually
+  // renders.
+  let patientEmail: string | null = null;
+  let facilityEmail: string | null = null;
+  if (isAmendable) {
+    const { data: orderData } = await client.GET('/v1/orders/{id}', {
+      params: { path: { id: caseData.orderId } },
+    });
+    if (orderData) {
+      const [{ data: patientData }, { data: facilityData }] = await Promise.all([
+        client.GET('/v1/patients/{id}', { params: { path: { id: orderData.patientId } } }),
+        // Not every order has a referring facility (FEAT-066, order-entry's
+        // own optional field) -- request()'s param typing requires a real
+        // id either way, so this branch skips the call entirely rather
+        // than passing a null id through.
+        orderData.referringFacilityId
+          ? client.GET('/v1/referring-facilities/{id}', {
+              params: { path: { id: orderData.referringFacilityId } },
+            })
+          : Promise.resolve({ data: undefined }),
+      ]);
+      patientEmail = patientData?.email ?? null;
+      facilityEmail = facilityData?.email ?? null;
+    }
+  }
 
   // Issue #714 (EPIC #697): sign-out/amend already record real, structured
   // audit data (step-up method + timestamp) -- previously visible only by
@@ -342,6 +356,7 @@ export default async function CaseDetailPage({
                         caseId={id}
                         versionId={version.id}
                         defaultTo={patientEmail}
+                        facilityEmail={facilityEmail}
                       />
                     ) : null}
                   </li>

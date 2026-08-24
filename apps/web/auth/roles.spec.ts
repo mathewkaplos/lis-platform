@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SessionPayload } from './session';
 import {
   hasBillingRole,
+  hasCatalogManagementRole,
   hasLabAdminRole,
   hasPatientManagementRole,
   hasPathologistRole,
@@ -60,15 +61,28 @@ describe('hasTechnologistRole', () => {
 });
 
 describe('hasPatientManagementRole', () => {
-  it('grants for technologist, pathologist, and reception (#701)', () => {
+  it('grants for technologist, pathologist, reception (#701), and lab_admin (pilot-readiness audit fix)', () => {
     expect(hasPatientManagementRole(session(['technologist']))).toBe(true);
     expect(hasPatientManagementRole(session(['pathologist']))).toBe(true);
     expect(hasPatientManagementRole(session(['reception']))).toBe(true);
+    expect(hasPatientManagementRole(session(['lab_admin']))).toBe(true);
   });
   it('denies for roles with no manage_patients grant', () => {
     expect(hasPatientManagementRole(session(['qa']))).toBe(false);
     expect(hasPatientManagementRole(session(['cashier']))).toBe(false);
-    expect(hasPatientManagementRole(session(['lab_admin']))).toBe(false);
+  });
+});
+
+describe('hasCatalogManagementRole (pilot-readiness audit fix)', () => {
+  it('grants for qa and lab_admin', () => {
+    expect(hasCatalogManagementRole(session(['qa']))).toBe(true);
+    expect(hasCatalogManagementRole(session(['lab_admin']))).toBe(true);
+  });
+  it('denies every other role', () => {
+    expect(hasCatalogManagementRole(session(['technologist']))).toBe(false);
+    expect(hasCatalogManagementRole(session(['pathologist']))).toBe(false);
+    expect(hasCatalogManagementRole(session(['reception']))).toBe(false);
+    expect(hasCatalogManagementRole(session(['cashier']))).toBe(false);
   });
 });
 
@@ -83,10 +97,11 @@ describe('hasSpecimenManagementRole', () => {
 });
 
 describe('hasBillingRole', () => {
-  it('grants for technologist, pathologist, and cashier (#701)', () => {
+  it('grants for technologist, pathologist, cashier (#701), and lab_admin (pilot-readiness audit fix)', () => {
     expect(hasBillingRole(session(['technologist']))).toBe(true);
     expect(hasBillingRole(session(['pathologist']))).toBe(true);
     expect(hasBillingRole(session(['cashier']))).toBe(true);
+    expect(hasBillingRole(session(['lab_admin']))).toBe(true);
   });
   it('denies reception -- manage_billing is a different grant than manage_patients', () => {
     expect(hasBillingRole(session(['reception']))).toBe(false);

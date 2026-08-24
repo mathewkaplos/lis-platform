@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import {
   generateInvoiceNumber,
   invoice,
@@ -57,6 +57,40 @@ export function validateAndTotal(lines: readonly InvoiceableLine[]): number {
  */
 export class BillingService {
   async generateInvoice(tx: Tx, input: GenerateInvoiceInput) {
+    // Pilot-readiness audit fix (P0): one order has at most one invoice --
+    // the whole billing UI (order detail's own single invoice slot, facility
+    // statements, the invoice list) already assumes this 1:1 shape even
+    // though nothing enforced it. Idempotent by design rather than
+    // rejecting outright: a user re-clicking "Generate invoice" (the exact,
+    // reproduced audit repro -- two rapid clicks before the first request's
+    // response lands) should land on the *same* invoice, not see an error
+    // for doing the same thing twice. `ux_invoice_tenant_order` (migration
+    // 0066) is the real, race-safe backstop for genuinely concurrent
+    // requests; this check just avoids a wasted round trip and gives a
+    // clean "already exists" path for the sequential case this bug was
+    // actually reported as.
+    const [existingInvoice] = await tx
+      .select()
+      .from(invoice)
+      .where(
+        and(
+          eq(invoice.tenantId, input.tenantId),
+          eq(invoice.orderId, input.orderId),
+        ),
+      )
+      .limit(1);
+    if (existingInvoice) {
+      const existingLineItems = await tx
+        .select()
+        .from(invoiceLineItem)
+        .where(eq(invoiceLineItem.invoiceId, existingInvoice.id));
+      return {
+        invoice: existingInvoice,
+        lineItems: existingLineItems,
+        alreadyExisted: true as const,
+      };
+    }
+
     const payerType = input.payerType ?? 'cash';
     if (payerType === 'corporate' && input.referringFacilityId === undefined) {
       throw new BadRequestException(
@@ -124,6 +158,6 @@ export class BillingService {
       )
       .returning();
 
-    return { invoice: invoiceRow, lineItems };
+    return { invoice: invoiceRow, lineItems, alreadyExisted: false as const };
   }
 }

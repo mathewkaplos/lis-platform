@@ -50,12 +50,21 @@ export const invoice = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index("ix_invoice_tenant_order").on(table.tenantId, table.orderId),
     index("ix_invoice_referring_facility").on(table.referringFacilityId),
     // NULLs aren't considered equal by a Postgres unique index, so
     // pre-existing rows with no invoiceNumber (created before this column
     // existed) never collide with each other or with real values.
     uniqueIndex("ux_invoice_tenant_invoice_number").on(table.tenantId, table.invoiceNumber),
+    // Pilot-readiness audit fix (P0): one order, at most one invoice --
+    // billing.service.ts's own generateInvoice() is now idempotent at the
+    // application layer for the sequential case (return the existing
+    // invoice instead of inserting a second), but only a real DB constraint
+    // closes the genuinely-concurrent race (two near-simultaneous requests
+    // both passing the app-level existence check before either insert).
+    // `order_id` is `NOT NULL` on every row (unlike `invoiceNumber` above),
+    // so this is a plain always-enforced unique index, not a NULLs-not-equal
+    // one.
+    uniqueIndex("ux_invoice_tenant_order").on(table.tenantId, table.orderId),
     check("ck_invoice_status", sql`${table.status} IN ('unpaid','partial','paid')`),
     check("ck_invoice_payer_type", sql`${table.payerType} IN ('cash','corporate')`),
     tenantIsolation(),

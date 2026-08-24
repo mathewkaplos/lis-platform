@@ -1,5 +1,5 @@
 import { getSession } from '@/auth/get-session';
-import { hasQaRole } from '@/auth/roles';
+import { hasCatalogManagementRole } from '@/auth/roles';
 import { getValidAccessToken } from '@/auth/access-token';
 import { createLisApiClient } from '@/lib/api-client';
 import { CreateTestForm, type AnalyteOption } from './create-test-form';
@@ -14,7 +14,7 @@ import { CreateTestForm, type AnalyteOption } from './create-test-form';
  */
 export default async function AdminTestsPage() {
   const session = await getSession();
-  const isQa = hasQaRole(session);
+  const canManageCatalog = hasCatalogManagementRole(session);
 
   const accessToken = await getValidAccessToken();
   if (!accessToken) {
@@ -42,7 +42,7 @@ export default async function AdminTestsPage() {
           test(s) already configured.
         </p>
       </div>
-      {isQa ? (
+      {canManageCatalog ? (
         <CreateTestForm analyteOptions={analyteOptions} />
       ) : (
         <p role="alert" className="text-sm text-text-secondary">

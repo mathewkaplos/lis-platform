@@ -2,6 +2,8 @@ import request from 'supertest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { App } from 'supertest/types';
+import { eq } from 'drizzle-orm';
+import { createDb, tenant } from '@lis/db';
 import { AppModule } from './../src/app.module';
 import { getKeycloakToken } from './get-keycloak-token';
 
@@ -105,6 +107,56 @@ describe('Org settings (e2e)', () => {
         `expected clearing the preference to record null, got ${JSON.stringify(clearedBody)}`,
       );
     }
+  });
+
+  describe('Organization name fallback (pilot-readiness audit fix)', () => {
+    // TENANT_C (test-user-6, qa role) has no `tenant` table row at all --
+    // confirmed directly (`SELECT * FROM tenant WHERE id = ...` returns zero
+    // rows) -- exactly the real "pre-existing tenant, never onboarded
+    // through the real self-signup flow" precondition this fallback exists
+    // for (this file's own header comment). Using it directly, rather than
+    // TENANT_A (shared by most of this suite and already has a row by the
+    // time this spec runs), avoids needing to force an impossible state --
+    // `tenant.name` is NOT NULL, so there is no way to UPDATE an existing
+    // row back to "no name yet" without violating that constraint.
+    const TENANT_C = '00000000-0000-0000-0000-000000000099';
+    let qaTokenC: string;
+
+    beforeAll(async () => {
+      qaTokenC = await getKeycloakToken('test-user-6', 'test-password-6');
+    });
+
+    afterEach(async () => {
+      // Deletes the row this test's own PUT created, restoring the exact
+      // "no tenant row yet" precondition the fallback under test needs --
+      // leaving a named row behind (an earlier version of this cleanup)
+      // made the test pass exactly once per fresh DB and fail on every
+      // re-run afterward, since the precondition it needs is a one-time-only
+      // state per tenant. `tenant` carries no FK from any other table this
+      // suite touches (a genuinely standalone registry row for a tenant no
+      // other spec seeds real data under), so deleting it is safe.
+      const db = createDb(process.env.APP_DATABASE_URL, { max: 1 });
+      await db.delete(tenant).where(eq(tenant.id, TENANT_C));
+    });
+
+    it('an unrelated update (name omitted) on a tenant with no row yet fills a human-readable placeholder, never the raw tenant id', async () => {
+      const updated = await request(app.getHttpServer())
+        .put('/v1/org-settings')
+        .set('Authorization', `Bearer ${qaTokenC}`)
+        .send({ currency: 'USD' }) // deliberately omits `name`
+        .expect(200);
+      const after = (updated.body as { after: { name: string | null } }).after;
+      if (after.name !== 'Unnamed organization') {
+        throw new Error(
+          `expected the human-readable placeholder, got ${JSON.stringify(after.name)}`,
+        );
+      }
+      if (after.name?.includes(TENANT_C)) {
+        throw new Error(
+          'expected the placeholder to never embed the raw tenant id',
+        );
+      }
+    });
   });
 
   describe('Per-tenant SMTP (pilot-readiness audit follow-up)', () => {

@@ -183,17 +183,32 @@ describe('resolveGrantingRole', () => {
     expect(resolveGrantingRole(['cashier'], 'enter_result')).toBeUndefined();
   });
 
-  it('grants manage_org_settings and manage_users to lab_admin, no clinical capability', () => {
-    expect(resolveGrantingRole(['lab_admin'], 'manage_org_settings')).toBe(
-      'lab_admin',
-    );
-    expect(resolveGrantingRole(['lab_admin'], 'manage_users')).toBe(
-      'lab_admin',
-    );
+  it('grants lab_admin the org-operating capabilities its own recorded design decision specifies, no clinical result-entry capability', () => {
+    // Pilot-readiness audit fix: lab_admin's grant was narrower than #698's
+    // own recorded default ("org settings, user management, catalog/
+    // workflow/report-template authoring") -- confirmed live, the org-
+    // signup owner couldn't add a referring facility, a catalog test, or
+    // view invoices. `manage_workflow`/`manage_report_templates`/
+    // `resolve_qc` deliberately stay off lab_admin -- see capabilities.ts's
+    // own header comment for why.
+    for (const capability of [
+      'manage_org_settings',
+      'manage_users',
+      'manage_catalog',
+      'manage_billing',
+      'manage_patients',
+    ] as const) {
+      expect(resolveGrantingRole(['lab_admin'], capability)).toBe('lab_admin');
+    }
     expect(resolveGrantingRole(['lab_admin'], 'enter_result')).toBeUndefined();
+    expect(resolveGrantingRole(['lab_admin'], 'verify')).toBeUndefined();
     expect(
-      resolveGrantingRole(['lab_admin'], 'manage_patients'),
+      resolveGrantingRole(['lab_admin'], 'manage_workflow'),
     ).toBeUndefined();
+    expect(
+      resolveGrantingRole(['lab_admin'], 'manage_report_templates'),
+    ).toBeUndefined();
+    expect(resolveGrantingRole(['lab_admin'], 'resolve_qc')).toBeUndefined();
   });
 
   it('denies manage_users to every role except lab_admin', () => {

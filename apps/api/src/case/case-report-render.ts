@@ -15,6 +15,17 @@ import type { AssembledCaseReportContent } from './case-report-content-assembler
 export interface CaseReportRenderInput {
   caseAccessionNumber: string;
   caseStatus: string;
+  /** Pilot-readiness audit fix (P0): live patient/order context, resolved
+   * via `loadCaseReportPatientContext` -- see that function's own header
+   * comment for why this isn't part of the signed `content` snapshot. */
+  patient: {
+    name: string;
+    mrn: string;
+    dateOfBirth: string | null;
+    sex: string;
+  };
+  referringFacilityName: string | null;
+  orderingProviderName: string | null;
   content: AssembledCaseReportContent;
   version: {
     versionNumber: number;
@@ -41,6 +52,32 @@ function drawCaseReport(
     .font('Helvetica-Bold')
     .fontSize(18)
     .text('Anatomic Pathology Report', { align: 'center' });
+  doc.moveDown(1);
+
+  // Mirrors report-render.ts's own "Patient / Specimen" header exactly
+  // (same field set/format) -- see loadCaseReportPatientContext's header
+  // comment for why this was missing before.
+  doc.font('Helvetica-Bold').fontSize(11).text('Patient');
+  doc.font('Helvetica').fontSize(10);
+  doc.text(
+    `Patient: ${input.patient.name}    MRN: ${input.patient.mrn}    DOB: ${
+      input.patient.dateOfBirth ?? 'Unknown'
+    }${input.patient.sex ? `    Sex: ${input.patient.sex}` : ''}`,
+  );
+  if (input.referringFacilityName || input.orderingProviderName) {
+    doc.text(
+      [
+        input.referringFacilityName
+          ? `Referring facility: ${input.referringFacilityName}`
+          : null,
+        input.orderingProviderName
+          ? `Requesting doctor: ${input.orderingProviderName}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join('    '),
+    );
+  }
   doc.moveDown(1);
 
   doc.font('Helvetica-Bold').fontSize(11).text('Case');

@@ -126,6 +126,12 @@ export const invoiceListQuerySchema = z.object({
   // with createdFrom/createdTo (already existed) rather than a new
   // date-range-specific route.
   referringFacilityId: z.uuid().optional(),
+  // Pilot-readiness audit fix (P0, duplicate-invoice bug): lets the order
+  // detail page ask "does this order already have an invoice?" before
+  // rendering a "Generate invoice" action -- the actual UI-side fix for a
+  // user landing back on the order page (back button, re-navigation, a
+  // second tab) after already generating one, not just the same-click race.
+  orderId: z.uuid().optional(),
 });
 export type InvoiceListQuery = z.infer<typeof invoiceListQuerySchema>;
 

@@ -1,7 +1,12 @@
 # Implementation Proposal: Patient demographic editing
 
-Status: DRAFT — awaiting human approval before implementation.
+Status: APPROVED
 Tracks: #747 (pilot-readiness audit follow-up, part of #697)
+
+**Approved 2026-08-25** via the native options-prompt (accepted as drafted — all
+3 §10 open questions accepted at their recommended defaults: yes to writing a
+`patient.update` audit event, no reason-required field, no field-level locking
+for this first pass).
 
 ## Problem
 

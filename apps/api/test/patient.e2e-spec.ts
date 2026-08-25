@@ -18,6 +18,7 @@ describe('Patient API (e2e)', () => {
   let app: INestApplication<App>;
   let tokenA: string;
   let tokenB: string;
+  let qaToken: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -27,9 +28,12 @@ describe('Patient API (e2e)', () => {
     app = moduleFixture.createNestApplication();
     await app.init();
 
-    [tokenA, tokenB] = await Promise.all([
+    // test-user-5 = qa (TENANT_A) -- no manage_patients (capabilities.ts),
+    // used to prove PUT /v1/patients/:id's RBAC gate for real.
+    [tokenA, tokenB, qaToken] = await Promise.all([
       getKeycloakToken('test-user', 'test-password'),
       getKeycloakToken('test-user-2', 'test-password-2'),
+      getKeycloakToken('test-user-5', 'test-password-5'),
     ]);
   });
 
@@ -359,5 +363,132 @@ describe('Patient API (e2e)', () => {
         `expected the q result set capped at 50 (51 rows seeded), got ${results.length}`,
       );
     }
+  });
+
+  /**
+   * Issue #747 (docs/plans/task-747-patient-demographic-editing.md): the
+   * only correction path for a mistyped registration.
+   */
+  describe('PUT /v1/patients/:id (issue #747)', () => {
+    async function createPatient() {
+      const created = await request(app.getHttpServer())
+        .post('/v1/patients')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          firstName: 'Before',
+          lastName: 'Edit',
+          sex: 'F',
+          phone: '0700000000',
+        })
+        .expect(201);
+      return (created.body as { resourceId: string }).resourceId;
+    }
+
+    it('updates only the fields sent, leaving omitted fields untouched, with exactly one new audit_event row', async () => {
+      const id = await createPatient();
+      const before = await auditCount(tokenA);
+
+      const res = await request(app.getHttpServer())
+        .put(`/v1/patients/${id}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ lastName: 'EditCorrected' })
+        .expect(200);
+      const body = res.body as {
+        after: { firstName: string; lastName: string; phone: string | null };
+      };
+      if (
+        body.after.lastName !== 'EditCorrected' ||
+        body.after.firstName !== 'Before'
+      ) {
+        throw new Error(`unexpected response body ${JSON.stringify(res.body)}`);
+      }
+      if (body.after.phone !== '0700000000') {
+        throw new Error(
+          `expected the omitted phone field to stay unchanged, got ${JSON.stringify(res.body)}`,
+        );
+      }
+
+      const after = await auditCount(tokenA);
+      if (after !== before + 1) {
+        throw new Error(
+          `expected exactly one new audit_event row, before=${before} after=${after}`,
+        );
+      }
+    });
+
+    it('clears a nullable field when the caller explicitly sends null', async () => {
+      const id = await createPatient();
+      const res = await request(app.getHttpServer())
+        .put(`/v1/patients/${id}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ phone: null })
+        .expect(200);
+      const body = res.body as { after: { phone: string | null } };
+      if (body.after.phone !== null) {
+        throw new Error(
+          `expected phone cleared to null, got ${JSON.stringify(res.body)}`,
+        );
+      }
+    });
+
+    it('rejects a role without manage_patients with 403', async () => {
+      const id = await createPatient();
+      await request(app.getHttpServer())
+        .put(`/v1/patients/${id}`)
+        .set('Authorization', `Bearer ${qaToken}`)
+        .send({ lastName: 'ShouldNotApply' })
+        .expect(403);
+    });
+
+    it('returns 404 for a patient created under a different tenant', async () => {
+      const id = await createPatient();
+      await request(app.getHttpServer())
+        .put(`/v1/patients/${id}`)
+        .set('Authorization', `Bearer ${tokenB}`)
+        .send({ lastName: 'ShouldNotApply' })
+        .expect(404);
+    });
+
+    it('rejects a duplicate nationalId for the same tenant with 409, leaving the row unchanged', async () => {
+      const nationalId = randomUUID();
+      await request(app.getHttpServer())
+        .post('/v1/patients')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          firstName: 'Holds',
+          lastName: 'NationalId',
+          sex: 'M',
+          nationalId,
+        })
+        .expect(201);
+      const id = await createPatient();
+
+      await request(app.getHttpServer())
+        .put(`/v1/patients/${id}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ nationalId })
+        .expect(409);
+
+      const unchanged = await request(app.getHttpServer())
+        .get(`/v1/patients/${id}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+      if (
+        (unchanged.body as { nationalId: string | null }).nationalId !== null
+      ) {
+        throw new Error(
+          `expected the rejected update to leave nationalId unchanged, got ${JSON.stringify(unchanged.body)}`,
+        );
+      }
+    });
+
+    it('rejects a malformed body with 400, writing nothing', async () => {
+      const id = await createPatient();
+      await request(app.getHttpServer())
+        .put(`/v1/patients/${id}`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ sex: 'not-a-real-value' })
+        .expect(400);
+    });
   });
 });

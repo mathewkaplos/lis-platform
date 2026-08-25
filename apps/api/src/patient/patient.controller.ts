@@ -9,6 +9,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Put,
   Query,
   UseGuards,
   UseInterceptors,
@@ -20,6 +21,7 @@ import {
   patientMergeRequestSchema,
   patientSchema,
   patientSearchQuerySchema,
+  patientUpdateSchema,
   PATIENT_SEARCH_RESULT_LIMIT,
   PATIENT_RECENT_RESULT_LIMIT,
   type CareRelationship,
@@ -58,6 +60,7 @@ class PatientDetailDto extends createZodDto(patientDetailSchema) {}
 class PatientSearchQueryDto extends createZodDto(patientSearchQuerySchema) {}
 class PatientIdParamDto extends createZodDto(patientIdParamSchema) {}
 class PatientMergeRequestDto extends createZodDto(patientMergeRequestSchema) {}
+class PatientUpdateDto extends createZodDto(patientUpdateSchema) {}
 class CareRelationshipCreateDto extends createZodDto(
   careRelationshipCreateSchema,
 ) {}
@@ -364,6 +367,93 @@ export class PatientController {
       ...toPatientDto(row),
       mergedFrom: mergedFromRows.map((r) => r.id),
     };
+  }
+
+  /**
+   * Issue #747 (docs/plans/task-747-patient-demographic-editing.md,
+   * pilot-readiness audit follow-up): the only correction path for a
+   * mistyped registration — no `PUT`/`PATCH` route existed for a patient at
+   * all before this. `manage_patients`-gated, same capability `create()`
+   * above uses (a front-desk-adjacent administrative action, not a clinical
+   * one). Every field uses the `!== undefined ? body.x : before.x`
+   * partial-update convention `org-settings.controller.ts`'s `update()`
+   * already established — an omitted key never clobbers a value the caller
+   * didn't mean to touch, while an explicit `null` clears it. `mrn` and
+   * `tenantId` are absent from `patientUpdateSchema` entirely — not
+   * editable (§10 Q3 of the proposal: no field-level lock beyond that for
+   * this first pass).
+   */
+  @Put(':id')
+  @UseGuards(JwtAuthGuard, CapabilityGuard)
+  @RequireCapability('manage_patients')
+  @UseInterceptors(TenantContextInterceptor, AuditInterceptor)
+  @Audit({ action: 'patient.update', resourceType: 'patient' })
+  async update(
+    @Param(new ZodValidationPipe(patientIdParamSchema))
+    { id }: PatientIdParamDto,
+    @Body(new ZodValidationPipe(patientUpdateSchema)) body: PatientUpdateDto,
+    @DbTx() tx: RequestWithTx['tx'],
+  ) {
+    const [before] = await tx
+      .select()
+      .from(patient)
+      .where(eq(patient.id, id))
+      .limit(1);
+    // RLS makes a cross-tenant row structurally invisible, same "never leak
+    // existence" reasoning as getById() above.
+    if (!before) {
+      throw new NotFoundException('Patient not found');
+    }
+
+    try {
+      const [after] = await tx
+        .update(patient)
+        .set({
+          firstName:
+            body.firstName !== undefined ? body.firstName : before.firstName,
+          middleName:
+            body.middleName !== undefined ? body.middleName : before.middleName,
+          lastName:
+            body.lastName !== undefined ? body.lastName : before.lastName,
+          sex: body.sex !== undefined ? body.sex : before.sex,
+          birthDate:
+            body.birthDate !== undefined
+              ? body.birthDate
+                ? new Date(body.birthDate)
+                : null
+              : before.birthDate,
+          nationalId:
+            body.nationalId !== undefined ? body.nationalId : before.nationalId,
+          phone: body.phone !== undefined ? body.phone : before.phone,
+          email: body.email !== undefined ? body.email : before.email,
+          address: body.address !== undefined ? body.address : before.address,
+          nextOfKinName:
+            body.nextOfKinName !== undefined
+              ? body.nextOfKinName
+              : before.nextOfKinName,
+          nextOfKinPhone:
+            body.nextOfKinPhone !== undefined
+              ? body.nextOfKinPhone
+              : before.nextOfKinPhone,
+        })
+        .where(eq(patient.id, id))
+        .returning();
+      return {
+        resourceId: id,
+        before: toPatientDto(before),
+        after: toPatientDto(after),
+      };
+    } catch (err) {
+      if (
+        pgErrorCode(err) === UNIQUE_VIOLATION &&
+        pgConstraintName(err) === 'ux_patient_tenant_national_id'
+      ) {
+        throw new ConflictException(
+          'A patient with this national ID already exists',
+        );
+      }
+      throw err;
+    }
   }
 
   /**

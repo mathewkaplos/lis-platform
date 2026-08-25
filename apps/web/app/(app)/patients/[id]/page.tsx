@@ -10,12 +10,15 @@ import { CopyChip } from './copy-chip';
  * TASK-041 (FEAT-011): the patient profile screen. Overview content only --
  * no tabs (Timeline/Results/Documents/Billing/Notes all depend on features
  * that don't exist yet: FEAT-014 result entry, billing is unscoped anywhere
- * in the current roadmap), no inline-editable demographics or "Merge"
- * action (no supporting API -- TASK-039 built create/search/get only), no
- * alerts (`patient_alert` has no read API despite existing in the schema
- * since TASK-038). See this feature's own Implementation Proposal
- * (docs/plans/feat-011-patient-management.md, TASK-041 revision §5) for the
- * full reasoning.
+ * in the current roadmap), no "Merge" action, no alerts (`patient_alert` has
+ * no read API despite existing in the schema since TASK-038). See this
+ * feature's own Implementation Proposal (docs/plans/feat-011-patient-
+ * management.md, TASK-041 revision §5) for the full reasoning.
+ *
+ * Issue #747 (docs/plans/task-747-patient-demographic-editing.md): the
+ * "Edit" action below is this screen's own correction path -- previously
+ * absent entirely; `PUT /v1/patients/:id` is the first patient-mutation
+ * route besides create.
  *
  * "New order" (TASK-043, FEAT-012 proposal §2/§5) is this screen's only
  * order-entry affordance -- the order builder itself has no standalone
@@ -57,9 +60,14 @@ export default async function PatientProfilePage({
             {patient.firstName} {patient.lastName}
             <Badge variant="outline">{SEX_LABEL[patient.sex] ?? patient.sex}</Badge>
           </CardTitle>
-          <Button asChild size="sm">
-            <Link href={`/orders/new?patientId=${id}`}>New order</Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/patients/${id}/edit`}>Edit</Link>
+            </Button>
+            <Button asChild size="sm">
+              <Link href={`/orders/new?patientId=${id}`}>New order</Link>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <dl className="grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2">

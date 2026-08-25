@@ -188,7 +188,7 @@ export interface paths {
             cookie?: never;
         };
         get: operations["PatientController_getById"];
-        put?: never;
+        put: operations["PatientController_update"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1735,6 +1735,21 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
             mergedFrom: string[];
+        };
+        PatientUpdateDto: {
+            firstName?: string;
+            middleName?: string | null;
+            lastName?: string;
+            /** @enum {string} */
+            sex?: "M" | "F" | "U";
+            /** Format: date */
+            birthDate?: string | null;
+            nationalId?: string | null;
+            phone?: string | null;
+            email?: string | null;
+            address?: string | null;
+            nextOfKinName?: string | null;
+            nextOfKinPhone?: string | null;
         };
         CareRelationshipCreateDto: {
             /** Format: uuid */
@@ -3349,6 +3364,29 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PatientDetailDto_Output"];
                 };
+            };
+        };
+    };
+    PatientController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatientUpdateDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

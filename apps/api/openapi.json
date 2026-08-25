@@ -284,6 +284,39 @@
         "tags": [
           "Patient"
         ]
+      },
+      "put": {
+        "operationId": "PatientController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatientUpdateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Patient"
+        ]
       }
     },
     "/v1/patients/{id}/care-relationships": {
@@ -3996,6 +4029,68 @@
           "mergedFrom"
         ],
         "additionalProperties": false
+      },
+      "PatientUpdateDto": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "middleName": {
+            "type": "string",
+            "minLength": 1,
+            "nullable": true
+          },
+          "lastName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sex": {
+            "type": "string",
+            "enum": [
+              "M",
+              "F",
+              "U"
+            ]
+          },
+          "birthDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "nullable": true
+          },
+          "nationalId": {
+            "type": "string",
+            "minLength": 1,
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "minLength": 1,
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "minLength": 1,
+            "nullable": true
+          },
+          "address": {
+            "type": "string",
+            "minLength": 1,
+            "nullable": true
+          },
+          "nextOfKinName": {
+            "type": "string",
+            "minLength": 1,
+            "nullable": true
+          },
+          "nextOfKinPhone": {
+            "type": "string",
+            "minLength": 1,
+            "nullable": true
+          }
+        }
       },
       "CareRelationshipCreateDto": {
         "type": "object",

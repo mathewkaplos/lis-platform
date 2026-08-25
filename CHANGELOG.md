@@ -533,3 +533,18 @@ frontmatter declaration (this entry's own commit).
 - **Change:** item 10 now also loads AGENTS.md's "Rules of engagement" section, same
   non-negotiable tier as the Constitution, instead of assuming it's already known.
 - **Files:** `~/work/lis-engineering/playbooks/session-start/CHECKLIST.md`
+
+## 2026-08-25
+
+- **Friction:** verifying issue #747's patient-editing feature with a real-browser Playwright
+  spec, `apps/web`'s `next dev --webpack` got stuck in a near-endless recompile loop -- webpack
+  repeatedly warned "multiple modules with names that only differ in casing" for the same file
+  resolved via two different paths, `D:\lis\lis-platform\...` and `D:\LIS\lis-platform\...`, both
+  genuinely reachable on this machine. Burned over an hour before falling back to CI (which passed
+  cleanly, including the same `web-e2e` spec, on Linux runners with no case-duplicate-path issue).
+- **Area:** existing-skill:engineering/windows-native-dev
+- **Change:** added entry #9 documenting the symptom/root cause and the workaround (stick to one
+  canonical casing for the whole session, confirmed via `pwd`/`git rev-parse --show-toplevel`
+  rather than assumed, for every path referenced) -- no structural fix (e.g. blocking one of the
+  two casings at the OS level) attempted yet.
+- **Files:** `~/work/lis-engineering/skills/engineering/windows-native-dev/SKILL.md`

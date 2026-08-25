@@ -1,6 +1,10 @@
 # Implementation Proposal: Standardize permission-denied (403) error handling across `apps/web`
-Status: DRAFT
+Status: APPROVED
 ADR: none    Date: 2026-08-25    Backlog ID: issue #751 (lis-platform, part of #697)
+
+**Approved 2026-08-25** via the native options-prompt (accepted as drafted — all 3 §10 questions
+accepted at their recommended defaults: leave `admin/users`' inline-render pattern as-is, no
+shared `<PermissionErrorBoundary>` component yet, and leave a scope-correction comment on #751).
 
 ## 1. Goal
 

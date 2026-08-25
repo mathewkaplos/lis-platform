@@ -18,6 +18,18 @@ export default async function PortalResultsPage() {
   const client = createLisApiClient(accessToken);
 
   const { data, response } = await client.GET('/v1/portal/results');
+  // Issue #751: a thrown Error's message is redacted by Next.js in a real
+  // production build (confirmed live via CI, not assumed) -- return early
+  // instead, matching admin/users/page.tsx's own proven pattern.
+  if (response.status === 403) {
+    return (
+      <div className="flex h-64 flex-col items-center justify-center gap-1 rounded-md border border-border bg-surface text-center">
+        <p role="alert" className="text-sm text-text-secondary">
+          You do not have permission to view results.
+        </p>
+      </div>
+    );
+  }
   if (!response.ok || !data) {
     throw new Error('Something went wrong loading your results. Please try again.');
   }

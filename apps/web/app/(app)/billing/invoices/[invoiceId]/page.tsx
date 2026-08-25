@@ -30,8 +30,17 @@ export default async function InvoiceDetailPage({
   if (response.status === 404) {
     notFound();
   }
+  // Issue #751: a thrown Error's message is redacted by Next.js in a real
+  // production build (confirmed live via CI, not assumed) -- return early
+  // instead, matching admin/users/page.tsx's own proven pattern.
   if (response.status === 403) {
-    throw new Error('You do not have permission to view this invoice.');
+    return (
+      <div className="flex flex-1 flex-col gap-4 p-6">
+        <p role="alert" className="text-sm text-text-secondary">
+          You do not have permission to view this invoice.
+        </p>
+      </div>
+    );
   }
   if (!response.ok || !invoice) {
     throw new Error('Something went wrong loading this invoice. Please try again.');

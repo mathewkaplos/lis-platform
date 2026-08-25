@@ -31,8 +31,19 @@ export default async function SynopticProtocolPage({
   if (!accessToken) {
     throw new Error('Your session has expired — please log in again.');
   }
+  // Issue #751: a thrown Error's message is redacted by Next.js in a real
+  // production build (confirmed live via CI, not assumed) -- return early
+  // instead, matching admin/users/page.tsx's own proven pattern. This is a
+  // client-side role check, not an API 403, but the redaction applies
+  // identically to any throw during a Server Component's render.
   if (!hasSpecimenManagementRole(session)) {
-    throw new Error('You do not have permission to record a synoptic protocol on this case.');
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <p role="alert" className="text-sm text-text-secondary">
+          You do not have permission to record a synoptic protocol on this case.
+        </p>
+      </div>
+    );
   }
   const client = createLisApiClient(accessToken);
 

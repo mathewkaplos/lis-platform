@@ -51,8 +51,20 @@ export default async function SlideViewerPage({
   const wsiRes = await client.GET('/v1/whole-slide-images/{id}', {
     params: { path: { id: slide.wholeSlideImage.id } },
   });
+  // Issue #751: a thrown Error's message is redacted by Next.js in a real
+  // production build (confirmed live via CI, not assumed) -- return early
+  // instead, matching admin/users/page.tsx's own proven pattern. (The
+  // response.status === 403 check above on the case fetch, unlike this
+  // one, is unreachable today -- GET /v1/cases/:id carries no capability
+  // gate -- left untouched, out of this task's scope.)
   if (wsiRes.response.status === 403) {
-    throw new Error('You do not have permission to view this whole-slide image.');
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <p role="alert" className="text-sm text-text-secondary">
+          You do not have permission to view this whole-slide image.
+        </p>
+      </div>
+    );
   }
   if (!wsiRes.response.ok || !wsiRes.data?.dziObjectKey) {
     throw new Error('Something went wrong loading this whole-slide image. Please try again.');

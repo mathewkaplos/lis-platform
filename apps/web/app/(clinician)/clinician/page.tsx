@@ -30,8 +30,17 @@ export default async function ClinicianDashboardPage() {
     }),
   ]);
 
+  // Issue #751: a thrown Error's message is redacted by Next.js in a real
+  // production build (confirmed live via CI, not assumed) -- return early
+  // instead, matching admin/users/page.tsx's own proven pattern.
   if (patientsResponse.status === 403) {
-    throw new Error('You do not have permission to view your patients.');
+    return (
+      <div className="flex flex-1 flex-col gap-4 p-6">
+        <p role="alert" className="text-sm text-text-secondary">
+          You do not have permission to view your patients.
+        </p>
+      </div>
+    );
   }
   if (!patientsResponse.ok || !patients) {
     throw new Error('Something went wrong loading your patients. Please try again.');

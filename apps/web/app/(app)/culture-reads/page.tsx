@@ -20,8 +20,21 @@ export default async function CultureReadsPage() {
   const client = createLisApiClient(accessToken);
 
   const { data: cultureReads, response } = await client.GET('/v1/culture-reads');
+  // Issue #751: a thrown Error's message is redacted by Next.js in a real
+  // production build (confirmed live via CI, not assumed) -- an inline
+  // return, not a throw+error.tsx boundary, is the only shape that
+  // survives, matching admin/users/page.tsx's own proven pattern.
   if (response.status === 403) {
-    throw new Error('You do not have permission to view cultures due for reading.');
+    return (
+      <div className="flex flex-1 flex-col gap-4 p-6">
+        <div>
+          <h1 className="text-xl font-semibold text-foreground">Cultures due for reading</h1>
+        </div>
+        <p role="alert" className="text-sm text-text-secondary">
+          You do not have permission to view cultures due for reading.
+        </p>
+      </div>
+    );
   }
   if (!response.ok || !cultureReads) {
     throw new Error('Something went wrong loading cultures due for reading. Please try again.');

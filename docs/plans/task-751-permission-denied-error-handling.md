@@ -1,6 +1,11 @@
 # Implementation Proposal: Standardize permission-denied (403) error handling across `apps/web`
-Status: DRAFT — REVISED, awaiting re-approval (a real production bug was found mid-implementation)
+Status: APPROVED
 ADR: none    Date: 2026-08-25    Backlog ID: issue #751 (lis-platform, part of #697)
+
+**Approved 2026-08-25 (revision)** via the native options-prompt (accepted as revised — all 4 §12
+questions accepted at their recommended defaults: fix the 10 listed instances now, amend PR #757
+in place, add a `frontend-design` Skill entry, file a separate issue for the codebase-wide
+session-expired/redaction problem).
 
 **Revision history:**
 - 2026-08-25 (original): approved and partially implemented (PR #757, 4 pages fixed:

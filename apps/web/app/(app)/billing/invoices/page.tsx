@@ -48,8 +48,23 @@ export default async function InvoicesPage({
   const { data, response } = await client.GET('/v1/invoices', {
     params: { query: { status: normalizedStatus } },
   });
+  // Issue #751: a thrown Error's message is redacted by Next.js in a real
+  // production build (confirmed live via CI, not assumed) -- return early
+  // instead, matching admin/users/page.tsx's own proven pattern. This was
+  // this codebase's own original "reference implementation" for the
+  // throw+error.tsx shape (see billing/invoices/error.tsx's own header
+  // comment) -- confirmed broken in production by this same task.
   if (response.status === 403) {
-    throw new Error('You do not have permission to view invoices.');
+    return (
+      <div className="flex flex-1 flex-col gap-4 p-6">
+        <div>
+          <h1 className="text-xl font-semibold text-foreground">Invoices</h1>
+        </div>
+        <p role="alert" className="text-sm text-text-secondary">
+          You do not have permission to view invoices.
+        </p>
+      </div>
+    );
   }
   if (!response.ok || !data) {
     throw new Error('Something went wrong loading invoices. Please try again.');

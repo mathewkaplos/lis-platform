@@ -43,8 +43,17 @@ export default async function NewCasePage({
   // a user reaching this page directly by URL without manage_specimens
   // should be blocked here, not just have the order-detail page's own
   // entry link hidden.
+  // Issue #751: a thrown Error's message is redacted by Next.js in a real
+  // production build (confirmed live via CI, not assumed) -- return early
+  // instead, matching admin/users/page.tsx's own proven pattern.
   if (!hasSpecimenManagementRole(session)) {
-    throw new Error('You do not have permission to accession a new case.');
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <p role="alert" className="text-sm text-text-secondary">
+          You do not have permission to accession a new case.
+        </p>
+      </div>
+    );
   }
   const client = createLisApiClient(accessToken);
 

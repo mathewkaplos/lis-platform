@@ -69,8 +69,23 @@ export default async function FacilityStatementPage({
         },
       })
     : { data: undefined, response: undefined };
+  // Issue #751: a thrown Error's message is redacted by Next.js in a real
+  // production build (confirmed live via CI, not assumed) -- return early
+  // instead, matching admin/users/page.tsx's own proven pattern. Renders
+  // after the filter form (still shown) rather than replacing the whole
+  // page, since the form itself needs no permission this route doesn't
+  // already gate.
   if (hasFilter && invoiceResponse?.status === 403) {
-    throw new Error('You do not have permission to view billing statements.');
+    return (
+      <div className="flex flex-1 flex-col gap-4 p-6 print:p-0">
+        <div>
+          <h1 className="text-xl font-semibold text-foreground">Facility statement</h1>
+        </div>
+        <p role="alert" className="text-sm text-text-secondary">
+          You do not have permission to view billing statements.
+        </p>
+      </div>
+    );
   }
   if (hasFilter && (!invoiceResponse?.ok || !invoiceData)) {
     throw new Error('Something went wrong loading this statement. Please try again.');

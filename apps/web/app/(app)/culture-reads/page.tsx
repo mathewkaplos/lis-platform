@@ -20,6 +20,9 @@ export default async function CultureReadsPage() {
   const client = createLisApiClient(accessToken);
 
   const { data: cultureReads, response } = await client.GET('/v1/culture-reads');
+  if (response.status === 403) {
+    throw new Error('You do not have permission to view cultures due for reading.');
+  }
   if (!response.ok || !cultureReads) {
     throw new Error('Something went wrong loading cultures due for reading. Please try again.');
   }

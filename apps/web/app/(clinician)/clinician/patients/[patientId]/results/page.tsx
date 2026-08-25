@@ -40,6 +40,9 @@ export default async function ClinicianPatientResultsPage({
   if (!patientResponse.ok || !patient) {
     throw new Error('Something went wrong loading this patient. Please try again.');
   }
+  if (response.status === 403) {
+    throw new Error('You do not have permission to view this patient’s results.');
+  }
   if (!response.ok || !data) {
     throw new Error('Something went wrong loading results. Please try again.');
   }

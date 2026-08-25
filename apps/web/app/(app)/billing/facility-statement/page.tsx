@@ -69,6 +69,9 @@ export default async function FacilityStatementPage({
         },
       })
     : { data: undefined, response: undefined };
+  if (hasFilter && invoiceResponse?.status === 403) {
+    throw new Error('You do not have permission to view billing statements.');
+  }
   if (hasFilter && (!invoiceResponse?.ok || !invoiceData)) {
     throw new Error('Something went wrong loading this statement. Please try again.');
   }

@@ -30,6 +30,9 @@ export default async function ClinicianDashboardPage() {
     }),
   ]);
 
+  if (patientsResponse.status === 403) {
+    throw new Error('You do not have permission to view your patients.');
+  }
   if (!patientsResponse.ok || !patients) {
     throw new Error('Something went wrong loading your patients. Please try again.');
   }

@@ -28,6 +28,31 @@ export const patientCreateSchema = z.object({
 });
 export type PatientCreateInput = z.infer<typeof patientCreateSchema>;
 
+/**
+ * `PUT /v1/patients/:id` body (issue #747, docs/plans/task-747-patient-
+ * demographic-editing.md). Every field optional (an omitted key leaves the
+ * existing value untouched, matching org-settings.controller.ts's own
+ * `!== undefined` partial-update convention) — `mrn`/`tenantId` are
+ * deliberately absent (system-issued at registration, not editable). Unlike
+ * `patientCreateSchema`, the nullable-in-the-DB fields here also accept an
+ * explicit `null` so a caller can clear a previously-set value, not just
+ * replace it.
+ */
+export const patientUpdateSchema = z.object({
+  firstName: z.string().min(1).optional(),
+  middleName: z.string().min(1).nullable().optional(),
+  lastName: z.string().min(1).optional(),
+  sex: patientSexSchema.optional(),
+  birthDate: z.iso.date().nullable().optional(),
+  nationalId: z.string().min(1).nullable().optional(),
+  phone: z.string().min(1).nullable().optional(),
+  email: z.string().min(1).nullable().optional(),
+  address: z.string().min(1).nullable().optional(),
+  nextOfKinName: z.string().min(1).nullable().optional(),
+  nextOfKinPhone: z.string().min(1).nullable().optional(),
+});
+export type PatientUpdateInput = z.infer<typeof patientUpdateSchema>;
+
 export const patientSchema = z.object({
   id: z.uuid(),
   tenantId: z.uuid(),

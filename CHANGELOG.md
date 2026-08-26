@@ -548,3 +548,26 @@ frontmatter declaration (this entry's own commit).
   rather than assumed, for every path referenced) -- no structural fix (e.g. blocking one of the
   two casings at the OS level) attempted yet.
 - **Files:** `~/work/lis-engineering/skills/engineering/windows-native-dev/SKILL.md`
+
+## 2026-08-26
+
+- **Friction:** writing `apps/web/e2e/session-expired.spec.ts` for issue #758 took 4 failed CI
+  round-trips before landing. Root cause: `proxy.ts` (Next.js middleware) runs the identical
+  `verifySession()` check as every page and redirects to Keycloak before any page component ever
+  renders, so a page's own "session expired" branch is only reachable via the genuine race between
+  proxy's check passing and the page's own token refresh then failing -- not by simply clearing or
+  tampering a cookie. Three naive simulations were each tried and failed live in CI:
+  `context.clearCookies({name: 'lis_session'})` left the session fully authenticated; a real `GET
+  /api/auth/logout` round trip landed on Keycloak's own login page instead of completing its
+  redirect back within the test's wait; directly overwriting the cookie via `context.addCookies()`
+  with a garbage value also left it fully authenticated, root-caused afterward to Chromium's rule
+  that a non-`Secure` cookie can't overwrite an existing `Secure`-flagged cookie (the real cookie is
+  set with `secure: true` in this production build). The working approach: temporarily shorten the
+  realm's `accessTokenLifespan` via Keycloak's own Admin REST API (`admin`/`admin` bootstrap
+  credentials) below `REFRESH_BUFFER_SECONDS`, then revoke the user's Keycloak session outright, so
+  the very next request's token refresh genuinely fails -- reproducing the real race deterministically.
+- **Area:** existing-skill:engineering/frontend-design
+- **Change:** added entry #13 documenting `proxy.ts`'s pre-emption of the page-level check and the
+  working Keycloak-admin-API technique for reaching this branch in an e2e test; renumbered the
+  trailing "Not (yet) covered here" section from #13 to #14.
+- **Files:** `~/work/lis-engineering/skills/engineering/frontend-design/SKILL.md`

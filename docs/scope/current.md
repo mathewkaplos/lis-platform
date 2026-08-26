@@ -1,9 +1,60 @@
-# Status — 2026-08-25 (session 45)
+# Status — 2026-08-26 (session 46)
 
-Last commit on main: `e3aa144` (`lis-platform`, PR #754 — logged the session's own `/retro`
-changelog entry). Session 44 closed with `5242234` (PR #744); this pointer had drifted 6
-commits/5 PRs stale (#745–#754) — caught by `/close`'s own Pre-Close Report at the start of this
-refresh, not carried forward silently.
+Last commit on main: `5af2abc` (`lis-platform`, PR #760 — logged this session's own `/retro`
+changelog entry). This pointer had drifted 4 commits/2 undocumented PRs (#756, #757 — issue #751,
+permission-denied error handling, merged before this session started but never given a breadcrumb
+entry of their own) on top of session 45's own last-recorded state (`e3aa144`) — caught by
+`/close`'s own Pre-Close Report at the start of this refresh, not carried forward silently.
+
+## Session 46 — issue #758 (Server Component error-message redaction sweep), a real e2e-harness
+## finding `/retro`'d, breadcrumb refresh
+
+`/orient` found `main` already 3 commits ahead of the last-recorded breadcrumb state (PR #756/#757,
+issue #751's permission-denied fix — merged, but never documented here) plus a fresh, still-open
+issue #758 filed directly by #751's own revision history: every *other* thrown Server Component
+error message (most notably the near-universal "Your session has expired..." throw, ~34 pages) is
+equally redacted by Next.js in a real production build — the exact same root cause #751 already
+found and fixed for its own 10 permission-denied instances. Picked as the session's highest-priority
+task over the epic's other open items (#748/#749/#750 search/pagination gaps, #711 email delivery,
+#719 the exit gate) since it directly continues #751's own just-landed work with the root cause and
+fix pattern already proven, and isn't blocked on any external decision.
+
+Implementation Proposal `docs/plans/task-758-server-component-error-redaction.md` (APPROVED, both
+§10 questions accepted at their recommended defaults: fix both the session-expired throw and every
+generic-failure throw in one pass, not split into a second follow-up issue; `admin/users/page.tsx`'s
+own session-expired throw included despite its 403 branch already being correct).
+
+**PR #759 — all 88 remaining redacted throws (34 pages) converted to the same inline-conditional-
+return shape #751 already proved survives production.** The 4 pre-existing dead-code
+permission-denied throws #751 deliberately left alone (unreachable via an ungated route) stayed
+untouched. `pnpm --filter web typecheck`/`lint` both clean; `git status --short` after lint
+confirmed zero scope-bleed into files this task didn't touch.
+
+**Real, hard-won finding while proving this in e2e, not shipped and found later:** the new
+`e2e/session-expired.spec.ts` took 4 failed CI round-trips before landing. Root cause:
+`apps/web/proxy.ts` (Next.js middleware) runs the identical `verifySession()` check as every page
+and redirects to Keycloak before any page component ever renders — so a page's own
+"session expired" branch is only reachable via the genuine race between proxy's check passing and
+the page's own token refresh then failing, not by clearing/tampering a cookie in a test. Three
+naive simulations were each tried and failed live in CI (`context.clearCookies()`, a real
+`GET /api/auth/logout` round trip, and directly overwriting the cookie — the last blocked by
+Chromium's rule that a non-`Secure` cookie can't overwrite an existing `Secure`-flagged one) before
+landing on the real fix: temporarily shortening the realm's `accessTokenLifespan` via Keycloak's
+own Admin REST API, then revoking the user's session outright, to reproduce the actual
+refresh-failure race deterministically.
+
+**`/retro`'d immediately, PR #760 + a direct `lis-engineering` commit.** New `frontend-design`
+Skill entry #13 (`lis-engineering` commit `152f4f1`) documenting `proxy.ts`'s pre-emption and the
+working Keycloak-admin-API technique; matching `CHANGELOG.md` entry via PR #760, merged.
+
+**`/close` this session — Pre-Close Report found one further real thing, fixed in place.**
+`engineering-radar`'s own item 2 (documentation-drift check) assumed a WSL environment
+(`ls /mnt/d/LIS/research`) that silently can't apply on this native-Windows session — confirmed and
+fixed (`lis-engineering` commit `c1497e2`), adding the native-Windows equivalent alongside the WSL
+form. This breadcrumb refresh is the other approved pending item from that same report; its third
+item (a human manually checking the converted pages in a real browser) is still pending — this
+machine's own known casing-duplication issue (`windows-native-dev` Skill entry #9) still blocks a
+reliable local check.
 
 ## Session 45 — issue #747 (patient demographic editing), a local dev-environment blocker found
 ## and `/retro`'d, breadcrumb refresh

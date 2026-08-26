@@ -13,32 +13,38 @@ import { loginAsTechnologist } from './auth';
  * against CI's real `web-e2e` production build (`playwright.config.ts`),
  * not `pnpm dev`, actually proves this.
  *
- * Simulated by deleting the `lis_session` cookie after a real login --
- * `getSession()` (apps/web/auth/get-session.ts) returns `undefined` with no
- * cookie present, which `getValidAccessToken()` propagates as `undefined`,
- * the same "no session at all" path a genuinely expired/revoked session
- * takes.
+ * Simulated via a real logout (`GET /api/auth/logout`), not a Playwright-API
+ * cookie manipulation -- `context.clearCookies()` (both name-filtered and
+ * unfiltered) was tried first and confirmed unreliable against this app in a
+ * real CI run: the page still rendered fully authenticated afterward. The
+ * real logout route deletes the `lis_session` cookie server-side (in the
+ * same response that redirects to Keycloak's end-session endpoint), which is
+ * the same server-side deletion path `getValidAccessToken()`'s own refresh-
+ * failure branch takes -- a more faithful "no session at all" simulation
+ * than reaching into the browser's cookie jar directly, and consistent with
+ * this repo's own no-shortcuts testing convention (`auth.ts`'s own header
+ * comment).
  */
 test.describe('Session-expired error handling', () => {
-  test('a user whose session cookie is gone sees the specific session-expired message on the dashboard, not a generic error', async ({
+  test('a logged-out user sees the specific session-expired message on the dashboard, not a generic error', async ({
     page,
-    context,
   }) => {
     await loginAsTechnologist(page);
-    await context.clearCookies({ name: 'lis_session' });
-    await page.goto('/');
+    await page.goto('/api/auth/logout');
+    await page.waitForLoadState('networkidle');
 
     await expect(
       page.getByText('Your session has expired — please log in again.'),
     ).toBeVisible();
   });
 
-  test('a user whose session cookie is gone sees the specific session-expired message on /orders, not a generic error', async ({
+  test('a logged-out user sees the specific session-expired message on /orders, not a generic error', async ({
     page,
-    context,
   }) => {
     await loginAsTechnologist(page);
-    await context.clearCookies({ name: 'lis_session' });
+    await page.goto('/api/auth/logout');
+    await page.waitForLoadState('networkidle');
+
     await page.goto('/orders');
 
     await expect(

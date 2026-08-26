@@ -23,7 +23,15 @@ export default async function SlideViewerPage({
   const { caseId, slideId } = await params;
   const accessToken = await getValidAccessToken();
   if (!accessToken) {
-    throw new Error('Your session has expired — please log in again.');
+    // Issue #758: a thrown Error's message is redacted by Next.js in a real production
+    // build (see `frontend-design` Skill entry #12) -- return inline instead.
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <p role="alert" className="text-sm text-text-secondary">
+          Your session has expired — please log in again.
+        </p>
+      </div>
+    );
   }
   const client = createLisApiClient(accessToken);
 
@@ -37,7 +45,13 @@ export default async function SlideViewerPage({
     throw new Error('You do not have permission to view this case.');
   }
   if (!response.ok || !caseData) {
-    throw new Error('Something went wrong loading this case. Please try again.');
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <p role="alert" className="text-sm text-text-secondary">
+          Something went wrong loading this case. Please try again.
+        </p>
+      </div>
+    );
   }
 
   const slide = caseData.parts
@@ -67,7 +81,13 @@ export default async function SlideViewerPage({
     );
   }
   if (!wsiRes.response.ok || !wsiRes.data?.dziObjectKey) {
-    throw new Error('Something went wrong loading this whole-slide image. Please try again.');
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <p role="alert" className="text-sm text-text-secondary">
+          Something went wrong loading this whole-slide image. Please try again.
+        </p>
+      </div>
+    );
   }
   const dziRelativePath = wsiRes.data.dziObjectKey.slice(
     wsiRes.data.tileObjectPrefix.length,

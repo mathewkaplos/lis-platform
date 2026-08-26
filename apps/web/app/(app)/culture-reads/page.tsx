@@ -15,7 +15,15 @@ import { CultureReadsTable, type CultureReadRow } from './culture-reads-table';
 export default async function CultureReadsPage() {
   const accessToken = await getValidAccessToken();
   if (!accessToken) {
-    throw new Error('Your session has expired — please log in again.');
+    // Issue #758: a thrown Error's message is redacted by Next.js in a real production
+    // build (see `frontend-design` Skill entry #12) -- return inline instead.
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <p role="alert" className="text-sm text-text-secondary">
+          Your session has expired — please log in again.
+        </p>
+      </div>
+    );
   }
   const client = createLisApiClient(accessToken);
 
@@ -37,7 +45,13 @@ export default async function CultureReadsPage() {
     );
   }
   if (!response.ok || !cultureReads) {
-    throw new Error('Something went wrong loading cultures due for reading. Please try again.');
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <p role="alert" className="text-sm text-text-secondary">
+          Something went wrong loading cultures due for reading. Please try again.
+        </p>
+      </div>
+    );
   }
 
   const rows: CultureReadRow[] = cultureReads.map((row) => ({

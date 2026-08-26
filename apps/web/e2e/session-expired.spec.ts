@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type BrowserContext } from '@playwright/test';
 import { loginAsTechnologist } from './auth';
 
 /**
@@ -13,38 +13,49 @@ import { loginAsTechnologist } from './auth';
  * against CI's real `web-e2e` production build (`playwright.config.ts`),
  * not `pnpm dev`, actually proves this.
  *
- * Simulated via a real logout (`GET /api/auth/logout`), not a Playwright-API
- * cookie manipulation -- `context.clearCookies()` (both name-filtered and
- * unfiltered) was tried first and confirmed unreliable against this app in a
- * real CI run: the page still rendered fully authenticated afterward. The
- * real logout route deletes the `lis_session` cookie server-side (in the
- * same response that redirects to Keycloak's end-session endpoint), which is
- * the same server-side deletion path `getValidAccessToken()`'s own refresh-
- * failure branch takes -- a more faithful "no session at all" simulation
- * than reaching into the browser's cookie jar directly, and consistent with
- * this repo's own no-shortcuts testing convention (`auth.ts`'s own header
- * comment).
+ * Simulated by overwriting the `lis_session` cookie with a value that fails
+ * `verifySession()` (apps/web/auth/session.ts's own JWT-verify, which
+ * catches any parse/signature failure and returns `undefined`) -- the same
+ * "no session at all" path a genuinely expired/revoked session takes.
+ * `context.clearCookies()` (both name-filtered and unfiltered) and a real
+ * `GET /api/auth/logout` round trip were both tried first and confirmed
+ * unreliable in real CI runs -- the former left the session fully
+ * authenticated, the latter landed on Keycloak's own login page rather than
+ * completing its redirect back to the app within the test's wait. Directly
+ * overwriting the cookie's value is deterministic: no cookie-jar filter
+ * semantics and no dependency on Keycloak's own RP-initiated-logout flow.
  */
+async function corruptSessionCookie(context: BrowserContext): Promise<void> {
+  await context.addCookies([
+    {
+      name: 'lis_session',
+      value: 'not-a-valid-session-jwt',
+      domain: 'localhost',
+      path: '/',
+    },
+  ]);
+}
+
 test.describe('Session-expired error handling', () => {
-  test('a logged-out user sees the specific session-expired message on the dashboard, not a generic error', async ({
+  test('a user with an invalid session cookie sees the specific session-expired message on the dashboard, not a generic error', async ({
     page,
+    context,
   }) => {
     await loginAsTechnologist(page);
-    await page.goto('/api/auth/logout');
-    await page.waitForLoadState('networkidle');
+    await corruptSessionCookie(context);
+    await page.goto('/');
 
     await expect(
       page.getByText('Your session has expired — please log in again.'),
     ).toBeVisible();
   });
 
-  test('a logged-out user sees the specific session-expired message on /orders, not a generic error', async ({
+  test('a user with an invalid session cookie sees the specific session-expired message on /orders, not a generic error', async ({
     page,
+    context,
   }) => {
     await loginAsTechnologist(page);
-    await page.goto('/api/auth/logout');
-    await page.waitForLoadState('networkidle');
-
+    await corruptSessionCookie(context);
     await page.goto('/orders');
 
     await expect(

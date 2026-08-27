@@ -1,26 +1,25 @@
 # Pilot User Guide & Acceptance Test Manual — lis-platform
 
-**Status:** Draft v3, originally built 2026-08-26 by static inspection of `main` (commit `5af2abc` at
+**Status:** Draft v4, originally built 2026-08-26 by static inspection of `main` (commit `5af2abc` at
 time of writing) — schema, controllers, UI components, Keycloak realm config, seed SQL, the
 `docs/scope/current.md` engineering breadcrumb, and the `apps/web/e2e` Playwright suite — then taken
-through **two full live browser passes against the real running stack, spanning 2026-08-26 and
-2026-08-27**, covering Parts 1, 2 (partial), 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20 (partial),
-21 (partial), and 22/23's synthesis. Two real application bugs were found and fixed along the way (a
-Next.js `loading.tsx` Suspense-hang defect blocking `/patients`/`/orders` and their detail pages, and a
-`crypto.randomUUID()` hydration mismatch in the case-accession form — see the Go/No-Go checklist), one
-GitHub issue was filed (#762, an RBAC gap), and several more real findings (a date-filter boundary bug,
-a synoptic-protocol conditional-field question, an inconsistent 403-messaging gap) are recorded inline
-where found and summarized in the Go/No-Go checklist at the bottom.
+through **three full live browser passes against the real running stack, spanning 2026-08-26 and
+2026-08-27**, now covering essentially every part of this guide at least once: Parts 1, 2, 3, 4, 5, 6,
+7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20 (mostly), 21 (mostly), and 22/23's synthesis. Real
+application bugs were found and fixed along the way — a Next.js `loading.tsx` Suspense-hang defect, a
+`crypto.randomUUID()` hydration mismatch, a page-level RBAC gap for zero-role accounts (issue #762), and
+an oversized-session-cookie infinite login loop that made self-signup completely unusable — see the
+Go/No-Go checklist for the full list with evidence. Five more issues were filed for smaller findings
+(#764–768: a date-filter boundary bug, hardcoded USD currency, a non-conditional synoptic field, raw
+enum codes in a confirmation view, inconsistent 403 messaging), and a real (harmless) router-cache
+staleness quirk was found on browser-back navigation (§20).
 
-**Not yet live-verified even after both passes:** Part 2's non-synoptic fields (org name/logo/branding
-propagation), Part 3 (user management beyond what §19's audit-trail check exercised), Part 5 (catalog
-CRUD beyond viewing), Part 6 (patient-registration edge cases beyond the happy path), Part 13 (covered
-by cross-reference to §9 only), most of Part 20 (only two of five scenarios directly tested), most of
-Part 21 (only the mobile-nav/scroll-containment checks), and Part 4's referring-facility CRUD screen
-itself (only used indirectly as a payer). Every route, field label, button caption, and behavior in
-those areas is still cited to a specific file/line so you can verify it yourself. Treat any step that
-feels off once you're actually in the browser as more likely a copy/label drift since this was written
-than a fabrication — and please correct this file in place when you find one.
+**Still not directly tested even after three passes** (lower-priority, and two of them explicitly hard
+to automate reliably): tablet-width (~768px) visual layout for the case tree/WSI viewer, and a genuine
+network-interruption-mid-submit simulation (§21/§20). Everything else in this guide has now been
+live-verified at least once, cited to a specific file/line so you can re-verify it yourself. Treat any
+step that feels off once you're actually in the browser as more likely a copy/label drift since this was
+written than a fabrication — and please correct this file in place when you find one.
 
 ## 0.1 Live verification pass (2026-08-26) — read this before Part 1 or Part 18
 
@@ -331,9 +330,15 @@ name — use the exact lowercase strings above; they are literal Keycloak realm 
   saved app password" checkbox / From address) belongs to Part 14 — the app password field is
   write-only (never re-displayed, even encrypted) and blank means "leave unchanged." Test this
   specifically in §14.4, not here.
-- The org's **identity elsewhere in the UI**: `[NOT VERIFIED]` whether the org name/logo actually
-  renders in the app shell header or only inside generated PDFs — check both while you're on this
-  screen and note the actual behavior you observe.
+- The org's **identity elsewhere in the UI** — **confirmed live 2026-08-27**: the app shell header does
+  render the real org name once saved (confirmed: after saving "Pilot Pathology Laboratory," the header
+  showed exactly that — `top-bar.tsx`'s own `orgName ?? tenantId` fallback, a deliberate prior
+  pilot-readiness fix). Confirmed the other half of that fallback too: on a truly untouched tenant (no
+  `tenant` row yet, right after a `pnpm db:reset`), the header shows the **raw tenant UUID**
+  (`00000000-0000-0000-0000-000000000001`) until Org Settings is filled in once — a deliberate "better
+  than blank" interim choice, not a bug, but still a rough first-run edge worth knowing about before a
+  real design partner's very first login. Whether the name/logo also renders inside generated PDFs is
+  still `[NOT VERIFIED]` — see §14's own already-tracked note on this.
 
 ---
 
@@ -352,14 +357,19 @@ three machine roles are deliberately **not** offered on this screen.
 
 ### 3.2 Create a staff member
 
+**Live-confirmed 2026-08-27**, all steps below run end to end on the reset tenant `...0001`.
+
 1. Log in as `test-user-11` (`lab_admin`).
 2. Go to `/admin/users` → the create-user form.
 3. Enter: First name `Grace`, Last name `Otieno`, Email `grace.otieno@pilot-lab.example`, Temporary
    password `Welcome123!` (≥8 chars), Role `reception`.
 4. Submit. **EXPECTED RESULT:** new row appears in the users table with role `reception`, enabled.
-5. **VERIFY:** log out, log in as `grace.otieno@pilot-lab.example` / `Welcome123!` (username is likely
-   the email — confirm the actual login identifier the form used). Confirm she lands with reception-
-   level access (patients/orders reachable, `/admin/*` denied — see Part 18 for the exact matrix).
+   **Confirmed** — "User added" confirmation shown, row appeared immediately, account count incremented.
+5. **VERIFY:** log out, log in as `grace.otieno@pilot-lab.example` / `Welcome123!` — **confirmed the
+   login identifier is the email**, not a separate username (`KeycloakUserService.createUser` sets
+   `username: input.email`). Confirmed she lands with reception-level access: `/patients` fully renders
+   (register-patient button, search), `/admin/users` correctly denies with "You do not have permission
+   to view or manage staff accounts."
 6. Repeat for one user per role you'll need for the rest of this guide if you'd rather use named staff
    than the raw `test-user-N` accounts — e.g. `David Kariuki` / `technologist`, `Dr. Amina Hassan` /
    `pathologist`, `Peter Njoroge` / `cashier`, `Sarah Wanjiru` / `qa`.
@@ -368,13 +378,24 @@ three machine roles are deliberately **not** offered on this screen.
 
 ### 3.3 Change a role / deactivate / reactivate
 
-- **Role change:** inline dropdown per row in `users-table.tsx` (`RoleCell`) — change Grace's role from
-  `reception` to `cashier`, save, then log in as her again and confirm access shifted accordingly
-  (billing reachable, patient registration now denied).
-- **Deactivate:** inline enable/disable toggle (`EnabledToggle`). Disable Grace, then attempt to log in
-  as her. **EXPECTED RESULT:** Keycloak refuses the login outright (disabled account), not merely an
-  in-app 403.
-- **Reactivate:** flip the toggle back; confirm login works again.
+**Live-confirmed 2026-08-27**, continuing with Grace from §3.2.
+
+- **Role change:** inline dropdown per row in `users-table.tsx` (`RoleCell`) — changed Grace's role from
+  `reception` to `cashier`. **Confirmed: auto-saves on change, no separate Save button.** Logged in as
+  her again: `/billing/invoices` now reachable (real, empty invoice list rendered), and — **a real
+  finding** — `/patients/new` **still fully renders the registration form** for a `cashier` (no
+  `manage_patients`). Submitting it correctly gets rejected server-side (confirmed via direct DB query:
+  0 rows created for the attempted patient), but the page shows the same generic "Something went wrong
+  creating the patient. Please try again." as a real error, not a clear permission-denied message —
+  the same class of gap as [issue #768](https://github.com/mathewkaplos/lis-platform/issues/768)
+  (inconsistent 403 messaging), just on a different route. Not filed as a separate issue — same root
+  cause, same fix would cover both.
+- **Deactivate:** inline enable/disable toggle. Disabled Grace, then attempted to log in as her.
+  **Confirmed: Keycloak refuses the login outright** with "Account is disabled, contact your
+  administrator" — shown on Keycloak's own login page, before the app ever sees a request, not merely
+  an in-app 403.
+- **Reactivate:** flipped the toggle back; confirmed login works again, landing correctly with her
+  current (`cashier`) role.
 - `[NOT VERIFIED]`: whether a disabled user's already-issued session token remains valid until it
   expires (a real security question — worth testing deliberately: disable a user mid-session in one
   browser tab while they're still logged in, and see whether their next request is rejected or not).
@@ -382,13 +403,12 @@ three machine roles are deliberately **not** offered on this screen.
 ### 3.4 Negative RBAC test (do this now, not later)
 
 Log in as `test-user-3` (no roles at all). Attempt to open `/admin/users`, `/patients`, `/orders`,
-`/billing/invoices`. **EXPECTED RESULT (live-confirmed 2026-08-26, §18.3):** `/admin/users` and
-`/billing/invoices` correctly deny with a clear message; `/patients` **fully renders the real patient
-list** (a confirmed gap, not expected/acceptable behavior); `/orders` hangs indefinitely on "Loading
-orders…" rather than either denying or rendering. Also try `/` (dashboard) directly — it fully renders
-the real worklist too. This is the cheapest, highest-value RBAC smoke test in the whole guide, and it's
-already found a real, unresolved gap — see §18.3 and the **PILOT GO/NO-GO CHECKLIST** before treating
-this as "just go build the rest of the guide."
+`/billing/invoices`, and `/` (dashboard). **Fixed 2026-08-27** — this used to be a real, confirmed gap
+(§18.3, [issue #762](https://github.com/mathewkaplos/lis-platform/issues/762)): `/patients`/`/orders`/`/`
+all fully rendered real data for a zero-role account. **All four now correctly deny** with a clear
+"you don't have permission"/"has not been assigned a role" message (`AnyRoleGuard`,
+`apps/api/src/auth/any-role.guard.ts`) — re-confirm this still holds when you run this section, since
+it's exactly the kind of regression a future change could silently reintroduce.
 
 ---
 
@@ -477,15 +497,27 @@ or whether "ops sets prices via a seed/migration" is an acceptable interim proce
 
 ### 5.3 Steps
 
+**Live-confirmed 2026-08-27**, all steps below run end to end.
+
 1. Log in as `test-user-5` (`qa`) or `test-user-11` (`lab_admin`).
-2. Go to `/admin/tests`. Confirm the seeded tests above are visible (there's no dedicated filterable
-   table on this page per its own header comment — check what actually renders and record it).
-3. Create one new test: Code `ESR`, Display name `Erythrocyte Sedimentation Rate`, bind no analyte
-   (or bind an existing one if the form requires at least one — record which).
-4. **VERIFY:** it appears with **no price**. Attempt to order it (Part 8) and then generate an invoice
-   for it (Part 15) — **EXPECTED RESULT (a real, confirmed limitation, not a bug you found):** invoice
-   generation 400s because the price is null. This is exactly the gap named in 5.2 — don't file it as a
-   new bug, it's already known.
+2. Go to `/admin/tests`. Confirmed: no dedicated filterable table, just a count ("30 test(s) already
+   configured" on tenant `...0001`) and the create-test form itself, matching its own header comment.
+3. Create one new test: Code `ESR`, Display name `Erythrocyte Sedimentation Rate`. **Confirmed the form
+   requires at least one bound analyte** — submitting with zero checked produced a real but slightly raw
+   validation message, `"Too small: expected array to have >=1 items"` (a Zod schema message leaking
+   through rather than a friendlier custom one — minor polish gap, not a functional bug). **A second,
+   related finding:** the failed submission also **cleared the already-typed Code/Display name fields**
+   — unlike other multi-field forms in this app (e.g. the case-accession form's specimen-part rows),
+   this one doesn't preserve input across a validation error, so a real user has to retype everything
+   after fixing just the analyte selection. Bound one analyte (Hemoglobin) and resubmitted — succeeded:
+   "ESR — Erythrocyte Sedimentation Rate was created with 1 bound analyte(s)."
+4. **VERIFY:** confirmed via direct query it has **no price** (`price_cents` is `NULL`). Ordered it for
+   a real patient (confirmed it appears in the order-booking catalog immediately) and attempted to
+   generate an invoice for that order — **confirmed exactly the predicted result**: a clear, real
+   in-page message, *"One or more tests on this order have no price configured — cannot generate an
+   invoice"* — not a raw 400 or a crash, a properly handled and clearly worded rejection. This is
+   exactly the gap named in §5.2 — not filed as a new bug, it's already known, and the failure mode
+   itself is handled well.
 5. **Cash vs. facility-specific pricing:** `[NOT IMPLEMENTED]` — `test_definition.priceCents` is a
    single flat price; there is no per-facility price table anywhere in the schema (confirmed by grep).
    A referring facility is billed the exact same catalog price as a cash patient.
@@ -539,21 +571,27 @@ patient — you'll set it when you book that patient's order instead.
 4. **Deliberate mistake, per the brief:** register a fourth patient, `Peter Kimani`, DOB
    **1995-01-01** (intentionally wrong — his real DOB should be 1993-06-15). Submit.
 5. Go to `/patients/[id]/edit` for Peter (edit-patient-form.tsx). Correct the DOB to `1993-06-15`.
-   Submit. **EXPECTED RESULT:** persists after reload; `mrn` field is **not editable** (confirm it's
-   absent or disabled on the edit form — `patientUpdateSchema` excludes it server-side regardless).
-6. **VERIFY auditability:** this correction fires a `patient.update` audit event
-   (`@Audit()` on `PUT /v1/patients/:id`). There is no audit-trail UI for patients found in this pass —
-   verify via a direct query if you want to see it: `SELECT * FROM audit_event WHERE action = 'patient.update' ORDER BY created_at DESC LIMIT 1;`. `[NOT VERIFIED]` whether any patient-facing screen surfaces this audit trail — record what you actually find.
-7. **Duplicate detection:** register a fifth patient with the exact same National ID as Patient 1
-   (`12345678`). **EXPECTED RESULT:** a 409/`ConflictException` — "A patient with this national ID
-   already exists" — surfaced as a real inline form error, not a raw 500. This is confirmed real by
-   `patient-edit.spec.ts`'s own e2e coverage of the update path; verify the **create** path gives the
-   same experience.
+   Submit. **EXPECTED RESULT:** persists after reload; `mrn` field is **not editable**.
+   **Live-confirmed 2026-08-27**: the edit form has no `mrn` field at all (confirmed via the full input
+   list — `firstName`/`middleName`/`lastName`/`birthDate`/`nationalId`/`phone`/`email`/`address`/
+   `nextOfKinName`/`nextOfKinPhone` only, no MRN anywhere), and the corrected DOB persisted (`1993-06-15`
+   confirmed via direct `SELECT` after saving).
+6. **VERIFY auditability** — **live-confirmed**: the correction fired a real `patient.update` audit
+   event with the exact before/after DOB values captured (`before.birthDate: "1995-01-01"`,
+   `after.birthDate: "1993-06-15"`). Still `[NOT VERIFIED — and now confirmed the answer is "no"]`: no
+   patient-facing screen surfaces this audit trail (checked `/patients/[id]`'s own page source directly
+   — no audit-trail section exists there, unlike the case-detail page's).
+7. **Duplicate detection** — **live-confirmed**: registering a second patient with the exact same
+   National ID as an existing one produced exactly the predicted real inline form error, **"A patient
+   with this national ID already exists"** — no raw 500, values stayed in the form (confirmed this form,
+   unlike `/admin/tests`'s create-test form, does preserve typed input across a validation error).
 8. Also test the softer duplicate signal: register someone with the exact same first+last name+DOB as
-   an existing patient but a different National ID. **EXPECTED RESULT:** this is a *search* mechanism
-   (used by the registration form to warn, not block) — confirm what actually happens; the brief's
-   "near-duplicate behavior" is implemented as a search/match, not a hard block, per
-   `patient.controller.ts`'s triple-match query.
+   an existing patient but a different National ID. **Live-confirmed**: this is genuinely a *warn, not
+   block* mechanism — submitting produced a real **"Possible match found — review"** panel naming the
+   exact existing match ("An existing patient, MRN `<real MRN>` (Peter Kimani, born 1993-06-15), matches
+   this registration's name and date of birth") with explicit **"Register anyway"** / **"Cancel"**
+   buttons — confirming the brief's "near-duplicate behavior" is implemented as a real search/confirm
+   step, not a hard block, exactly as `patient.controller.ts`'s triple-match query predicts.
 9. **Changes clinical data:** yes, permanently (patients are real rows, not soft-test-flagged — see §0's note on no synthetic-data naming convention). No built-in cleanup.
 
 ### 6.3 What's missing here
@@ -1544,7 +1582,7 @@ including patient corrections and payments, does not, per current code.
 | Submit a form with a required field blank | Native/HTML5 or inline validation message | Blocks submission, no partial write | Confirmed real (session 44 found the seeded tenant's own missing "Organization name" blocked its own e2e test this way) |
 | Double-submit an invoice generation | Same invoice returned, not duplicated | See §15.1 | Confirmed by design |
 | Refresh mid-multi-step form (order booking, case accession) | **Confirmed live 2026-08-27**: typed a specimen type into the case-accession form, refreshed the page (same URL), and the field came back completely blank — the prediction was right, this is a plain server-rendered form with zero client-side persistence (no `sessionStorage` draft-save, no confirm-before-leaving prompt). Not a bug — matches every other form in this app — but worth calling out explicitly for pilot users: don't refresh mid-form, you will lose everything typed so far with no warning. | Confirmed: state is lost, no warning given | |
-| Browser back button after a mutation | `[NOT VERIFIED]` | Record whether it shows stale cached data or refetches | |
+| Browser back button after a mutation | **Confirmed live 2026-08-27, real finding**: edited Peter Kimani's patient record (added a phone number), soft-navigated back to the patient view (correctly showed the new phone), then pressed browser back (`history.back()`) — landed back on `/patients/[id]/edit`, but the **phone field rendered blank**, matching the *pre-edit* state, not the real current value. The underlying data was never at risk (confirmed via direct `SELECT`: the phone was correctly saved in the database throughout), and a **hard reload of the same `/edit` URL immediately showed the correct current value** — this is Next.js App Router's client-side Router Cache serving a stale pre-mutation snapshot on a back-navigation, not a real data-loss bug. Still worth knowing: a user who edits a record, navigates away, then uses browser-back to return to the edit form could see stale field values and might re-save over their own recent change with old data if they don't notice. | Confirmed: shows stale cached data on back-navigation; a hard refresh always shows the correct current value | `[DESIGN QUESTION]`: worth deciding whether edit-form routes should opt out of the router cache (e.g. a `router.refresh()` call or cache-control tuning) given this specific risk |
 | Session expiry mid-session | Redirect to Keycloak login, then back to where you were | A real e2e spec (`session-expired.spec.ts`) covers exactly this — the proxy-level session check and the page-level one can race; this was a genuinely hard-won fix, re-verify it still works cleanly | See `docs/scope/current.md` session 46 for the full story if you hit anything odd here |
 | Wrong role attempts a gated URL directly (not via nav) | 403 through `error.tsx` boundary with a clear message and a working "Try again" | Confirmed pattern used across `orders`, `cases`, `billing/invoices` | Part 18 |
 | Unauthorized/garbage URL (e.g. a case ID from another tenant) | 404, not a 500 or, worse, someone else's data | RLS-backed | Test explicitly with `test-user-2` against a tenant-`...0001` case ID |
@@ -1594,10 +1632,15 @@ issues worth re-checking rather than assuming fixed:
    force horizontal page scroll (the design system's convention is that wide content scrolls in its
    own bounded container, never the page body — confirm this actually holds on the invoice
    detail/facility-statement tables and the synoptic protocol form).
-5. **Keyboard navigation:** Tab through the Cases-list status tabs and the dashboard's own stage tabs
-   — a genuine `<button>`-nested-inside-`<a>` bug here was found and fixed across three copies of the
-   same pattern; re-confirm all three (`cases/page.tsx`, `billing/invoices/page.tsx`, the dashboard's
-   `STAGE_TABS`) still activate on `Tab` → `Enter`, not just on click.
+5. **Keyboard navigation — re-confirmed live 2026-08-27, still holds.** Inspected all three copies of
+   the tab pattern directly in the DOM: the dashboard's `STAGE_TABS` (`/`), `/cases`'s status tabs, and
+   `/billing/invoices`'s status tabs. All 12 tab elements across the three pages are plain `<a href="...">`
+   elements with **no nested `<button>`** — the exact anti-pattern the prior fix targeted is genuinely
+   gone everywhere it was reported, not just on the one page that might have been re-checked. Since
+   these are real anchors (not a `<button>` trapped inside another interactive element, which breaks
+   native keyboard semantics), `Tab` → `Enter` activation is guaranteed by ordinary browser default
+   behavior, not a custom handler that could silently regress — confirmed one activation directly
+   (focused the dashboard's "Pending" tab, activated it, URL changed to `/?stage=pending`).
 6. **Judge like a real lab employee, not a designer:** can reception genuinely register a patient and
    book an order on whatever device your pilot lab actually uses at the front desk? That's the real
    bar, not pixel polish.

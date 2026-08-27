@@ -108,25 +108,59 @@ Read this before you touch anything.
   UUID; there is no per-tenant seeding mechanism). No row exists in the `tenant` table for it by
   default — the org profile itself is blank until someone fills in Org Settings.
 - The platform also has a genuine **self-service signup** at `/signup` (`apps/api/src/onboarding/`)
-  that creates a **brand-new, empty tenant** with its own `lab_admin` user. This is real and works, but
-  a tenant created this way starts with **zero catalog tests, zero synoptic protocols, zero referring
-  facilities** — none of the seed SQL above ever runs against it. `[DESIGN DECISION REQUIRED]`: there is
-  no onboarding wizard or "clone the standard catalog" action, so a truly fresh org today cannot
-  complete the AP/synoptic/billing parts of this guide until someone hand-builds a catalog for it via
-  the admin UI — and the test-catalog admin UI itself doesn't even expose a price field (§5), so a
-  fresh org can create a test but not bill for it yet.
+  that creates a **brand-new tenant** with its own `lab_admin` user.
 
-**Practical consequence — this guide runs the pilot in two tracks, not one:**
+**Corrected 2026-08-27 — the "zero catalog" claim above was stale, checked live.** `onboarding.service.ts`
+already calls `seedStarterCatalog()` (`packages/db/src/tenant-catalog-seed.ts`) on every signup, which
+re-runs `chemistry-catalog.sql`/`haematology-catalog.sql`/`anatomic-pathology-catalog.sql` (with the
+fixed dev-tenant literal substituted for the new tenant's real id) — **a fresh signup tenant already
+gets 27 real, priced test definitions and 55 reference ranges**, confirmed live via a real `/signup` run
+followed by `/admin/tests` showing "27 test(s) already configured." All seven synoptic protocols are
+**also already available to a fresh tenant** — `synoptic_protocol` and its supporting tables are
+confirmed (by schema inspection) to be genuinely **global reference data, no `tenant_id` column, no
+RLS** — so once seeded anywhere in the database (which `db-reset.sh` already does), every tenant sees
+them, fresh signups included. The two real, concrete gaps this pass actually found and fixed:
+
+- `sla_target` and `report_template` are genuinely **tenant-scoped** (RLS-enabled) and were **not**
+  included in `seedStarterCatalog`'s file list — a fresh tenant had no SLA targets (the worklist's TAT/
+  SLA-status column had nothing to compare against) and no report templates (a signed-out case had
+  nothing to render a PDF from). **Fixed**: added `sla-targets.sql` and `default-report-templates.sql`
+  to the seed list; confirmed live via `pnpm --filter @lis/db tenant-catalog-seed-check` and a second
+  real `/signup` run.
+- The test-catalog admin UI (`/admin/tests`) still doesn't expose a price field (§5) — unchanged, still
+  a real design gap worth a decision, just not the blocking one the original "zero catalog" framing
+  implied.
+
+**A far more severe bug was found investigating this, unrelated to the catalog itself: self-signup was
+completely unusable.** Logging in immediately after a real `/signup` reproducibly hit an infinite
+redirect loop (`ERR_TOO_MANY_REDIRECTS`) — confirmed via a byte-for-byte cookie capture that the session
+cookie the callback route set was **4204 bytes**, over the ~4096-byte per-cookie limit browsers silently
+enforce (no error anywhere — the cookie is simply never stored, so the very next request looks
+unauthenticated, bounces to `/api/auth/login`, and Keycloak's still-active SSO session silently re-issues
+a fresh code with no form shown — looping forever). Root cause: a fresh self-signup `lab_admin` carries
+the `default-roles-lis` composite role (`offline_access` + `uma_authorization`, on top of `lab_admin`
+itself) that this realm's own hand-seeded test accounts don't carry, pushing the combined
+id/access/refresh-token payload just over the limit. **Fixed**: split the session across two cookies
+(`apps/web/auth/session.ts`) instead of one — `lis_session` keeps the small, frequently-read claims,
+`lis_session_tokens` holds the three real Keycloak tokens — each individually well under the limit.
+Confirmed live end to end (real `/signup` → immediate login → real dashboard, no loop) and via a new
+regression test (`apps/web/auth/session.spec.ts`) that specifically re-derives the failing payload size.
+**This means Track B below is now safe to actually chain the rest of the guide onto** — it dead-ends far
+less than previously documented, though the price-field gap (§5) and the referring-facilities/org-
+settings blank-slate state are still real and still worth walking through once.
+
+**Practical consequence — this guide still recommends two tracks, for a narrower reason than before:**
 
 - **Track A (recommended primary path, "the seeded lab"):** log in as the pre-seeded users under tenant
   `...0001` (`test-user`, `test-user-4`, `test-user-5`, `test-user-9`, `test-user-10`, `test-user-11`,
-  etc. — see §1.4). This tenant has real catalog pricing, real EUCAST microbiology breakpoints, and all
-  seven synoptic protocols, so it's the only place you can currently exercise Parts 5, 8–16 end to end.
-  Org Settings/Users/Facilities are genuinely blank on this tenant too, so Parts 2–4 are still fully
-  real, fresh-state tests here — you're just skipping the separate signup step.
-- **Track B (isolated acceptance test, "true fresh org"):** exercise `/signup` on its own (§1.5) to
-  prove the self-service org-creation path itself works, understanding it dead-ends before Part 5
-  today. Do this once, separately, and don't try to chain the rest of the guide onto it.
+  etc. — see §1.4). This tenant already has every account/role you need pre-provisioned, so it's still
+  the fastest path through Parts 5, 8–16 without needing to create a second staff account first.
+- **Track B (isolated acceptance test, "true fresh org"):** exercise `/signup` on its own (§1.5) to prove
+  the self-service org-creation path itself works. Now genuinely reaches a billable, synoptic-capable
+  lab (catalog + pricing + SLA targets + report templates + global synoptic protocols all present) — the
+  main remaining friction is needing a second staff account for anything outside `lab_admin`'s own
+  capabilities (see §18's grant table), and the still-missing price-field UI if you want to add a test
+  beyond the seeded 27.
 
 This finding should also be surfaced to the team as a real pilot-readiness gap before a design partner
 signs up for real — see the **PILOT GO/NO-GO CHECKLIST** at the end.
@@ -1719,6 +1753,34 @@ brutally honest, not a wish list:
       pre-existing, unrelated failures caused by this tenant's own accumulated fixture-row volume
       exceeding `WORKLIST_RESULT_LIMIT` — confirmed by reproducing the identical failure with this
       session's `worklist.controller.ts` change reverted; not something this fix touched.)
+- [x] **Fixed 2026-08-27: self-signup was completely unusable — an oversized session cookie caused an
+      infinite login redirect loop.** Found while investigating the fresh-org catalog gap (§0), not
+      something the original guide anticipated. A brand-new self-signup `lab_admin` account (real
+      Keycloak account, real password, no typos) could sign up successfully but then **could never
+      actually log in** — the login page → Keycloak → callback → dashboard round trip looped forever,
+      ending in the browser's own `ERR_TOO_MANY_REDIRECTS`. Root-caused via a byte-for-byte captured
+      cookie: the session cookie the callback route sets embeds the real Keycloak id/access/refresh
+      tokens as one signed JWT, and for this specific account (carrying the `default-roles-lis` composite
+      role — `offline_access` + `uma_authorization` — on top of `lab_admin`, unlike this realm's
+      hand-seeded test accounts) that JWT totaled **4204 bytes**, over the ~4096-byte per-cookie limit
+      browsers silently enforce (RFC 6265's recommended minimum; Chrome doesn't error, it just never
+      stores the cookie). Every login attempt "succeeded" server-side and set a cookie the browser then
+      silently discarded, so the very next request looked unauthenticated and bounced back to login,
+      where Keycloak's still-active SSO session immediately re-issued a fresh code with no form shown —
+      a real infinite loop, a different authorization code every time, confirmed reproducing identically
+      in a brand-new tab with zero prior state. **Fix**: split the session across two cookies
+      (`apps/web/auth/session.ts`) — `lis_session` keeps the small claims (sub/tenantId/roles/expiry),
+      `lis_session_tokens` holds the three real tokens — each individually far under the limit even with
+      headroom for more composite roles later. Updated every call site (`callback`/`logout` route
+      handlers, `access-token.ts`'s refresh path, `get-session.ts`, `proxy.ts`). **Verified**: a new
+      `session.spec.ts` (9 tests, including one that reproduces the exact failing payload size as a
+      regression check) plus a real end-to-end re-run — fresh `/signup` → immediate login → real
+      dashboard, no loop — confirmed live in the browser. `pnpm typecheck` clean; existing
+      `onboarding.e2e-spec.ts` (3 tests) and `tenant-tier-routing.e2e-spec.ts` (2 tests) pass unchanged.
+      This is a second, independent instance of the exact failure class `secret.ts`'s own header comment
+      already documents from 2026-08-03 (a different root cause that time — a build-time-vs-runtime env
+      substitution bug — but the identical infinite-login-loop symptom) — worth flagging to the team as a
+      recurring risk area, not just two unrelated one-off bugs.
 - [x] **Fixed 2026-08-26: the Patients/Orders list + order-booking client-side hang from §7/§8.**
       `/patients`, `/orders`, and `/orders/new` were hanging indefinitely on their `loading.tsx`
       fallback for every account, surviving a full clean restart of both `apps/web` and `apps/api` — a
@@ -1746,10 +1808,17 @@ brutally honest, not a wish list:
       inline above (e.g. `260826-000194`) no longer exist. Re-run `pnpm db:reset` again immediately
       before the actual design-partner session, since this pass's own testing (creating throwaway
       patients/staff accounts) will have left new fixture rows behind by then.
-- [ ] **Resolve the fresh-org catalog gap (§0)** — decide and communicate whether the design partner
-      will pilot on a hand-seeded tenant (like `...0001`) or whether a real onboarding path (clone a
-      starter catalog, or at minimum let `/admin/tests` set a price) ships first. Today, `/signup`
-      alone cannot reach a billable, synoptic-capable lab.
+- [x] **Fixed 2026-08-27: the fresh-org catalog gap (§0).** The original claim ("`/signup` alone cannot
+      reach a billable, synoptic-capable lab") turned out to be partly stale (catalog pricing and all
+      seven synoptic protocols were already correctly available to a fresh tenant — the catalog via
+      `seedStarterCatalog()`, the synoptic protocols because they're genuinely global reference data, not
+      tenant-scoped) and partly a real, now-fixed gap: `sla_target`/`report_template` are real
+      tenant-scoped tables that weren't being seeded on signup, now added to
+      `packages/db/src/tenant-catalog-seed.ts`'s file list and confirmed live. **A much bigger, unrelated
+      bug was found and fixed in the same investigation**: self-signup was completely unusable due to an
+      oversized session cookie causing an infinite login redirect loop — see §0's own write-up and the
+      dedicated entry below for the full story. `/admin/tests` still has no price field for a *new* test
+      beyond the seeded 27 — that one design decision remains open, see the next item.
 - [ ] **Add a price/billing-code field to the `/admin/tests` UI**, or explicitly commit to
       ops-sets-prices-via-migration as the real interim process and tell the partner that up front.
 - [ ] **Confirm the RBAC matrix in §18** matches the partner's real org chart — in particular, that

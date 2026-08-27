@@ -1588,7 +1588,7 @@ including patient corrections and payments, does not, per current code.
 | Unauthorized/garbage URL (e.g. a case ID from another tenant) | 404, not a 500 or, worse, someone else's data | RLS-backed | Test explicitly with `test-user-2` against a tenant-`...0001` case ID |
 | Sign-out attempted on an incomplete case | Plain, verbatim rejection message from `assertCompleteLineage` | No crash, no silent partial sign-out | §9.5 |
 | Overpayment | Explicit 400, no silent acceptance | §15.2 | |
-| Network interruption mid-submit | `[NOT VERIFIED]` | Hard to simulate cleanly without dev tools throttling; note if you try it | |
+| Network interruption mid-submit | **Confirmed live 2026-08-27, real finding.** Simulated by killing the `apps/api` process itself right before submitting the patient-registration form (functionally identical to a network drop from the browser's perspective — the in-flight request simply gets no response). **Result: a raw, ungraceful crash screen** — "This page couldn't load / A server error occurred. Reload to try again." with a bare numeric error digest, not a friendly in-app message or a retry affordance built into the form itself. Clicking the page's own "Reload" button did recover cleanly (back to a normal, blank registration form), and — the important part — **no partial data was ever written** (confirmed via direct query: 0 rows for the attempted patient). Re-submitting the identical data once the API was back up succeeded normally. | Confirmed: no partial/corrupt writes, but the failure surface is a generic Next.js error boundary, not a purpose-built "connection lost, please retry" message | `[DESIGN QUESTION]`: worth deciding whether form-submission routes should catch a downstream-unreachable error and show a clearer message, or whether the generic Next.js error boundary is an acceptable interim UX for this failure class |
 
 ---
 
@@ -1612,10 +1612,23 @@ actually looking at it, but still real signal, not a guess:
   body does not scroll horizontally**, only the table's own bounded container does. This is exactly the
   convention this section describes, confirmed live on at least this one table.
 - **Not re-checked this pass**: the invoice-detail/facility-statement tables and the synoptic protocol
-  form specifically (item 4 below), the tablet-width case tree/WSI viewer (item 3), and the keyboard-nav
-  `<button>`-in-`<a>` fix (item 5) — still worth a real visual pass by a human with working screenshot
+  form specifically (item 4 below) — still worth a real visual pass by a human with working screenshot
   tooling, since DOM assertions alone can't catch everything a screenshot would (overlapping elements,
   actually-illegible text, etc.).
+- The keyboard-nav `<button>`-in-`<a>` fix (item 5) **was** re-confirmed this pass — see its own updated
+  entry below.
+- **Tablet width (item 3, case tree/WSI viewer) — attempted 2026-08-27, genuinely blocked by tooling,
+  not by the app.** Set up a real case with a block/slide and a successfully-uploaded WSI (`status:
+  ready`) specifically to test this. `resize_window` itself has regressed since the mobile-width check
+  above: three separate attempts (including on brand-new tabs) either left the tab reporting a
+  permanently-stuck `0×0` viewport or silently no-op'd (`window.innerWidth`/`matchMedia` both kept
+  reflecting the pre-resize width, despite the tool call itself reporting success). This is a different,
+  new failure mode from the mobile-width check earlier in this pass, where `matchMedia` at least tracked
+  the real breakpoint even though `innerWidth` didn't — here neither signal changed at all. Combined with
+  the screenshot tool's own already-known `params.clip.scale` failure, there is currently **no working
+  path in this environment** to verify tablet-width layout, visually or via DOM measurement. This is a
+  tooling gap, not an app finding — a human with a real browser (or a working automated environment)
+  still needs to do this check.
 
 No dedicated responsive/mobile Playwright coverage exists; prior manual passes found real, specific
 issues worth re-checking rather than assuming fixed:
@@ -1737,12 +1750,14 @@ Rift Valley Medical Centre.
 **Tests used** (all pre-seeded, tenant `...0001`): Glucose, Creatinine, CBC, Peripheral Blood Smear,
 the seeded AP procedure (check `/admin/tests` for its exact current code/name).
 
-**AP cases** (§9): one `tissue` breast case (full narrative + Breast + Breast Biomarker synoptic +
-sign-out + 2 amendments), one `cervical_cytology` case (full screen → return → re-screen → sign-out
-chain, plus WSI upload/rejection testing per §12), two `colorectal` cases live-created 2026-08-27 for
-§10.3 — accession `260826-000194` (picker shown, CAP protocol filled in full) and `260826-000195`
-(picker correctly auto-skipped after setting the org default to CAP), plus one throwaway `tissue` case
-(accession `260826-000196`) created solely to test the refresh-mid-form data-loss scenario in §20.
+**AP cases** (§9): the specific cases and accession numbers described in earlier revisions of this
+section (breast/colorectal/cytology chains from 2026-08-26/27) **no longer exist** — `pnpm db:reset`
+was run partway through this guide's own live-verification work (§0's checklist), which wipes all
+case/patient/order data. Post-reset, one `tissue` case (accession `260827-000001`) was created solely to
+test the tablet-width WSI-viewer check (§21) — has one block, one slide, and a real `status: ready`
+WSI upload (`test-dzi.zip`). Every workflow described earlier in this guide (breast/colorectal synoptic
+disambiguation, cytology screening chain, etc.) has been confirmed to work at least once against real
+data — re-run the relevant part's own steps to recreate a specific scenario if you need one again.
 
 **Organization:** Pilot Pathology Laboratory, 123 Laboratory Road, Nairobi, +254 700 000 000,
 pilot@example.com, KES.

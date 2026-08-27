@@ -1437,6 +1437,32 @@ exact grants, not the brief's example role names.
 
 ### 18.1 Allow/deny matrix to run (log in as each account, attempt each action)
 
+**Status 2026-08-27: every row below is now confirmed by a real, automated, permanent test** —
+`apps/api/test/rbac-matrix.e2e-spec.ts` ([PR #785](https://github.com/mathewkaplos/lis-platform/pull/785)),
+hitting the live app with real Keycloak tokens for each exact seeded account named here, not a mock. This
+was originally written as a manual browser sweep; a Chrome-extension browser-automation connectivity
+issue blocked live UI verification for the remainder of this session (confirmed live: `curl` reached the
+real dev server fine at the exact same moment the extension's own frame showed a connection error), so
+the matrix was verified at the API level instead — every `CapabilityGuard`-decorated route the table
+below names, called directly, asserting the real 200/201/403. Three rows (`test-user`/`test-user-3`
+sign-out-deny, `test-user-4` sign-out-allow) were already covered this way by
+`case-sign-out.e2e-spec.ts`'s own AC #1/#2, so `rbac-matrix.e2e-spec.ts` doesn't duplicate them. This is
+authorization-logic proof, not a UI/UX check — whether each denial actually renders a clear message and
+each hidden action is actually absent from the page still wants a live browser pass (§18.2/§18.3's own
+under-gating findings are exactly the class of thing only a live UI pass catches); do that once the
+extension issue clears.
+
+**A real bug was found and fixed building this coverage**: `UserManagementController` (`GET/POST/PATCH
+/v1/users`) 500'd under the test runner with `Cannot read properties of undefined (reading 'listUsers')`
+— its constructor used implicit type-based dependency injection, the only controller in the codebase
+doing so (every other controller already used explicit `@Inject(...)`, for the exact reason
+`capability.guard.ts`'s own header comment documents: this repo's vitest configs use esbuild, which never
+emits the `design:paramtypes` metadata Nest's DI needs, so it silently resolves to `undefined` instead of
+throwing). Worked fine against the real ts-node/webpack dev server the whole time — this was invisible to
+CI because no e2e spec had ever exercised `/v1/users` at the HTTP layer before now. Fixed with an explicit
+`@Inject(UserManagementService)`. Filed and fixed as
+[issue #784](https://github.com/mathewkaplos/lis-platform/issues/784).
+
 | Account | Action | Expected |
 |---|---|---|
 | `test-user-9` (reception) | Register patient | ✅ allowed |
@@ -1713,7 +1739,7 @@ Fill this in as you run the guide. Legend: 🟢 PASS · 🟡 PASS WITH OBSERVATI
 | Reporting | PDF fields complete; email via MailHog | | PDF generation and email delivery confirmed live in an earlier pass (§14); org branding in the PDF specifically still `[NOT VERIFIED]` | 🟡 | |
 | Billing (cash) | Invoice idempotency, partial/full pay, overpay rejection | | Confirmed via real audit rows (`invoice.generate`/`payment.record`, incl. partial-then-full payment sequences) and §15's existing live pass | 🟢 | |
 | Billing (facility) | Consolidated statement, date filter, print | | Confirmed live in §16's earlier pass | 🟢 | |
-| RBAC | Full allow/deny matrix (§18.1) | | Core capability grants match `capabilities.ts` exactly; §18.2/18.3's read-path under-gating (cases, WSI, dashboard, org-settings, patients, orders all readable with no capability check) is a real, known, accepted gap — not a fresh fail, but keeps this from a clean 🟢 | 🟡 | issue on record per §18.2 |
+| RBAC | Full allow/deny matrix (§18.1) | | **Completed 2026-08-27 at the API level** — every row now proven by a real automated e2e test (`rbac-matrix.e2e-spec.ts`, PR #785), which also caught and fixed a real DI bug (issue #784). §18.2/18.3's read-path under-gating (cases, WSI, dashboard, org-settings, patients, orders all readable with no capability check) is a real, known, accepted gap, unchanged this pass; the live-browser UI/UX pass (error messages, hidden controls) is still blocked by the Chrome extension issue — keeps this from a clean 🟢 | 🟡 | issue on record per §18.2 |
 | Auditability | Every action in §19's table confirmed | | **Fully resolved this pass** — every row in §19's table now has a confirmed real audit action name; only "specimen/block/slide changes get their own dedicated action" remains genuinely unconfirmed | 🟢 | |
 | Search/worklists | §17's table fully filled in | | Fully filled in this pass; found one real bug (`/orders` `createdTo` date-filter boundary excludes same-day results — see §17) and confirmed `/cases`/`/billing/invoices` have no search box by design | 🟡 | [#764](https://github.com/mathewkaplos/lis-platform/issues/764) |
 | UX/responsiveness | §21's 6 checks | | Mobile nav drawer and horizontal-scroll containment confirmed live via DOM assertions (screenshot tooling broken all session); tablet-width case tree/WSI viewer, keyboard nav, and the invoice/synoptic-form scroll checks not re-verified this pass | 🟡 | |
@@ -1892,17 +1918,26 @@ brutally honest, not a wish list:
       cashier-only grant by default) is an acceptable model, not a surprise discovered mid-pilot.
 - [ ] **Decide on a real synthetic-data convention** (§6.3) before the partner starts entering data —
       there's currently no way to tell pilot/test rows apart from real ones once entered.
-- [ ] **Run the full RBAC allow/deny matrix (§18.1) and re-confirm §18.2's known under-gating** — don't
-      let a design partner's first real login be the first time these are checked. **Not completed this
-      pass**: a Chrome-extension browser-automation connectivity issue blocked live UI verification for
-      the remainder of this session (confirmed live 2026-08-27 — `curl` reaches the real dev server fine
-      at the exact same moment the extension's own frame shows a connection error, so this is a tooling
-      problem, not an app regression). Partial progress before the blocker: `test-user-9`/reception
-      confirmed for register-patient-allow, org-settings-deny, billing-deny, and
-      case-mutation-controls-hidden. The remaining rows (technologist sign-out-deny/payment-allow,
-      pathologist sign-out-allow/manage-users-deny, cashier payment-allow/narrative-edit-deny, lab_admin
-      resolve-QC-deny, qa manage-users-deny, no-role write-attempt-deny) still need a live pass once this
-      tooling issue clears.
+- [x] **Completed 2026-08-27 (API level): the full RBAC allow/deny matrix (§18.1).** A Chrome-extension
+      browser-automation connectivity issue blocked live UI verification for the remainder of this
+      session (confirmed live — `curl` reaches the real dev server fine at the exact same moment the
+      extension's own frame shows a connection error, a tooling problem, not an app regression), so every
+      row was instead verified with a new, permanent, automated API-level test —
+      `apps/api/test/rbac-matrix.e2e-spec.ts`
+      ([PR #785](https://github.com/mathewkaplos/lis-platform/pull/785)) — real Keycloak tokens for each
+      exact seeded account, hitting the live `CapabilityGuard`-decorated routes directly. This closed six
+      role/route combinations that had **zero** e2e coverage anywhere in the repo before this session
+      (`test-user-9`/reception, `test-user-10`/cashier, `test-user-11`/lab_admin, and `/v1/users` for
+      every role), and surfaced a real bug in the process: `UserManagementController` used implicit-type
+      dependency injection (the only controller in the codebase doing so), which silently resolved to
+      `undefined` under the test runner — invisible to CI since `/v1/users` had never been exercised at
+      the HTTP layer before now. Fixed. Filed and fixed as
+      [issue #784](https://github.com/mathewkaplos/lis-platform/issues/784). **What's still open**: this
+      proves the authorization *logic* end to end, not the UI/UX around it — whether each denial renders
+      a clear message and each disallowed action/control is actually hidden from the page (exactly the
+      class of thing §18.2/§18.3's own under-gating findings caught) still needs a live browser pass once
+      the extension issue clears; §18.2's known read-path under-gating itself is unchanged/unre-confirmed
+      this pass.
 - [ ] **Decide on the invoice overpayment/refund gap (§15.2)** — there is no refund/credit mechanism at
       all today; confirm this is acceptable for the pilot's real financial flows or scope it in first.
 - [x] **Completed 2026-08-27: the currency-symbol gap found live 2026-08-26 (§15/§16).** The invoice,

@@ -1,10 +1,113 @@
-# Status — 2026-08-26 (session 46)
+# Status — 2026-08-27 (session 47)
 
-Last commit on main: `5af2abc` (`lis-platform`, PR #760 — logged this session's own `/retro`
-changelog entry). This pointer had drifted 4 commits/2 undocumented PRs (#756, #757 — issue #751,
-permission-denied error handling, merged before this session started but never given a breadcrumb
-entry of their own) on top of session 45's own last-recorded state (`e3aa144`) — caught by
-`/close`'s own Pre-Close Report at the start of this refresh, not carried forward silently.
+Last commit on main: `4c0647d` (`lis-platform`, PR #786 — RBAC allow/deny matrix checklist update).
+This pointer had drifted 30 commits/16 merged PRs (#763 through #786) from session 46's own
+last-recorded state (`5af2abc`) — caught by `/close`'s own Pre-Close Report at the start of this
+refresh, not carried forward silently. Spans both a prior, compacted portion of this same overall
+session and everything detailed below.
+
+## Session 47 — pilot-readiness audit continuation: pilot user guide + live acceptance pass,
+## self-signup infinite-login-loop fix, 5 code fixes (#765–768/#781), API-level RBAC matrix
+## coverage + a real DI bug (#784), a persistent browser-automation tooling blocker
+
+Continuation of the EPIC #697 pilot-readiness audit thread. **Earlier portion of this same session
+(compacted before this breadcrumb's own detailed knowledge of it — PRs #763–776, summarized at the
+level of confidence the compaction record supports, not fabricated detail):** built
+`docs/pilot/PILOT-USER-GUIDE.md`, a 23-part pilot acceptance test manual, alongside a fix for a real
+P0 (`loading.tsx`'s Suspense-hang bug plus a case-accession hydration mismatch, PR #763); found and
+fixed a self-signup-breaking infinite login redirect loop caused by an oversized session cookie
+exceeding the browser's ~4096-byte limit, splitting it into two cookies (PR #772, alongside a
+tenant-catalog-seeding gap — `sla_target`/`report_template` never seeded on signup); closed a
+page-level RBAC gap for zero-role accounts (issue #762, PR #770); live-walked most of the guide's own
+23 parts against the running app (Parts 2/3/5/6/20/21, tablet-width and network-interruption checks),
+filing real findings as issues #764–768 and #775 along the way (a `createdTo` date-filter boundary
+bug, the hardcoded-USD-currency gap, the `closest_margin_site` non-conditional field, raw enum codes
+in the synoptic confirmation view, inconsistent 403 messaging, and a network-interruption error-
+boundary gap respectively).
+
+**Detailed portion, directly executed and verified within this session's own visible continuation —
+the standing instruction was to implement all 5 already-scoped fixable checklist findings, then run
+the full §18.1 RBAC allow/deny matrix; live-browser verification for the matrix was blocked the
+entire remainder of the session by a Chrome extension connectivity failure, confirmed repeatedly
+(including at session close) — `curl` reaches the real dev server fine at the exact moment the
+extension's own frame shows a connection error, a tooling problem, not an app regression, never
+resolved despite several retries spaced across the session:**
+
+**PR #777 — issue #767, synoptic confirmation view showed raw enum codes instead of human-readable
+labels.** New `formatResultValue()`, deliberately split into its own module
+(`format-result-value.ts`) rather than defined inline in `protocol-form.tsx`, since that file imports
+a co-located `'use server'` actions file whose import chain wasn't resolvable in the vitest test
+environment for a route this deeply nested — the split makes the pure formatting logic trivially
+unit-testable without pulling in that chain. 5 new unit tests.
+
+**PR #778 — issue #766, `closest_margin_site` on the CAP Colon/Rectum protocol was required even
+when margin status was negative.** Its `visibilityCondition` compared `!= 'not_applicable'`, which
+also matched `all_margins_negative` — corrected to `== 'invasive_carcinoma_at_margin'`, matching the
+protocol's other two conditional fields' own pattern. Added an idempotent `UPDATE` alongside the
+seed's `INSERT ... ON CONFLICT DO NOTHING` so an already-seeded database picks up the fix without a
+full reset. Updated/added `synoptic-protocol.e2e-spec.ts` coverage for both the now-hidden
+negative-margin case and the still-required positive-margin case.
+
+**PR #779 — issue #768, ~12 gated write actions showed a generic "Something went wrong..." message
+on a 403 instead of a real permission-denied one.** Added the `response.status === 403` branch
+already established by `/admin/org-settings` and a few other screens to every Server Action that was
+missing it (order placement incl. clinician portal, patient create/edit, case accessioning, specimen
+receipt/label printing, invoice payment, critical-notification acknowledgement). New Playwright
+coverage (`permission-denied.spec.ts`): a `cashier` (holds only `manage_billing`) submitting patient
+registration now sees the real message.
+
+**PR #780 — issue #765, invoice/payment/facility-statement/catalog UI hardcoded a `$`/USD symbol
+regardless of the tenant's own `currency` setting.** New `formatMoneyCents()`
+(`apps/web/lib/format-currency.ts`, `Intl.NumberFormat` keyed off the tenant's currency code, falling
+back to a plain `"<code> <amount>"` rendering for an invalid ISO 4217 code since currency is free
+text, not a constrained enum) wired into every affected screen, each now reading `GET
+/v1/org-settings` (gated only by `AnyRoleGuard`, no new permission requirement). Unit-tested
+(`format-currency.spec.ts`) and live-verified via `billing.spec.ts`'s existing generate-invoice/
+record-payment e2e test, extended with a real currency assertion. CI caught the first version's own
+bug in a same-PR follow-up commit: the test assumed a seeded `KES` currency that doesn't exist on a
+fresh CI database — this session's local dev tenant only had it from earlier live manual testing —
+fixed by explicitly setting the currency through the real org-settings form before the billing flow.
+
+**PR #782 — issue #781 (filed this session — the checklist named this gap with no issue number
+yet), `/admin/tests` exposed no price/billing-code field despite the schema already supporting
+both.** `test_definition.billingCode`/`priceCents` predate this fix (FEAT-046/ADR-0041) but
+`POST /v1/test-definitions` never accepted either, so every test created through this screen came out
+unbillable. Both fields optional, matching the schema's own nullable columns; the price field is a
+major-currency-unit input converted client-side to integer cents, mirroring the take-payment form's
+own pattern. New `catalog-admin.e2e-spec.ts` coverage (priced + unpriced creation). CI's own
+generated-artifact-drift check caught a missed `openapi.json`/SDK regen in a same-PR follow-up
+commit.
+
+**PR #785 — API-level RBAC allow/deny matrix coverage (the pilot guide's own §18.1, since the
+planned live-browser sweep stayed blocked all session), which surfaced and fixed a real bug.** New
+`rbac-matrix.e2e-spec.ts` — real Keycloak tokens for every seeded account the guide's matrix names,
+hitting the live `CapabilityGuard`-decorated routes directly. Closed six role/route combinations with
+**zero** e2e coverage anywhere in the repo before this (`test-user-9`/reception,
+`test-user-10`/cashier, `test-user-11`/lab_admin, and `GET /v1/users` for every role) — confirmed via
+a repo-wide grep before writing it. Building this surfaced issue #784: `UserManagementController`
+used implicit type-based dependency injection, the only controller in the codebase doing so (every
+other controller already used explicit `@Inject(...)`) — silently resolves to `undefined` under this
+repo's vitest e2e runner (esbuild strips the `design:paramtypes` metadata Nest's DI needs), the exact
+class of bug `capability.guard.ts`'s own header comment already flagged as a repo-wide risk pattern.
+Worked fine against the real ts-node/webpack dev server the whole time (confirmed via a direct
+`curl`) — invisible to CI since `/v1/users` had never been exercised at the HTTP layer before now.
+Fixed with an explicit `@Inject(UserManagementService)`. 17/17 new tests passing.
+
+**PRs #783/#786 — pilot guide Go/No-Go checklist updated to reflect all of the above**, including an
+honest note that the RBAC matrix's authorization *logic* is now proven correct end-to-end, but its
+UI/UX (denial messages actually rendering, disallowed controls actually hidden) still needs a live
+browser pass once the Chrome extension issue clears — not claimed as fully closed.
+
+**`/close` this session — Pre-Close Report + Final Close Report both produced**
+(`~/work/lis-engineering/session-close-reports/2026-08-27-2002-pre.md` /
+`2026-08-27-2025-final.md`), the Final Report recording all three of the Pre-Close Report's own
+pending items as STILL OUTSTANDING (no intervening human response between the two invocations).
+Addressed directly afterward, this same pass: this breadcrumb refresh (item 1, previously
+outstanding). Items 2/3 (the Manual Verification Checklist; the Chrome extension issue itself) could
+not be resolved from within the session — the extension was retried live once more at this point and
+confirmed still broken (same `curl`-succeeds/extension-frame-errors symptom as every earlier retry
+this session) — both explicitly deferred to the human/a future session with the browser working, not
+silently dropped.
 
 ## Session 46 — issue #758 (Server Component error-message redaction sweep), a real e2e-harness
 ## finding `/retro`'d, breadcrumb refresh

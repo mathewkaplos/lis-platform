@@ -2,13 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as client from 'openid-client';
 import { getOidcConfig } from '@/auth/oidc-config';
 import { getPublicOrigin } from '@/auth/public-origin';
-import { SESSION_COOKIE_NAME, verifySession } from '@/auth/session';
+import {
+  clearSessionCookies,
+  SESSION_COOKIE_NAME,
+  SESSION_TOKENS_COOKIE_NAME,
+  verifySession,
+} from '@/auth/session';
 
 export async function GET(request: NextRequest) {
-  const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
-  const session = sessionCookie
-    ? await verifySession(sessionCookie)
-    : undefined;
+  const session = await verifySession(
+    request.cookies.get(SESSION_COOKIE_NAME)?.value,
+    request.cookies.get(SESSION_TOKENS_COOKIE_NAME)?.value,
+  );
 
   if (!session?.idToken) {
     // No session (or no id_token to hint the IdP with) -- nothing to end at
@@ -16,7 +21,7 @@ export async function GET(request: NextRequest) {
     const response = NextResponse.redirect(
       new URL('/api/auth/login', getPublicOrigin(request)),
     );
-    response.cookies.delete({ name: SESSION_COOKIE_NAME, path: '/' });
+    clearSessionCookies(response.cookies);
     return response;
   }
 
@@ -31,6 +36,6 @@ export async function GET(request: NextRequest) {
   });
 
   const response = NextResponse.redirect(endSessionUrl);
-  response.cookies.delete({ name: SESSION_COOKIE_NAME, path: '/' });
+  clearSessionCookies(response.cookies);
   return response;
 }

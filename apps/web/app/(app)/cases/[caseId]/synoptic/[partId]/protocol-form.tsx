@@ -10,6 +10,7 @@ import {
 } from '@lis/domain';
 import { Button, FormField } from '@lis/ui';
 import { recordSynopticResponse } from './actions';
+import { formatResultValue } from './format-result-value';
 import { recordSynopticResponseInitialState } from './types';
 
 type ResponseValue = string | number | string[];
@@ -397,7 +398,7 @@ export function ProtocolForm({
         <ul className="flex flex-col gap-1 text-sm text-text-secondary">
           {state.result.results.map((entry) => (
             <li key={entry.observationId}>
-              {entry.elementLabel}: {Array.isArray(entry.value) ? entry.value.join(', ') : entry.value}
+              {entry.elementLabel}: {formatResultValue(entry, elementByKey)}
             </li>
           ))}
         </ul>

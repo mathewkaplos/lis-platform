@@ -30,6 +30,11 @@ export default async function AdminTestsPage() {
   }
   const client = createLisApiClient(accessToken);
 
+  // Issue #765: the tenant's own currency setting, not a hardcoded USD --
+  // GET /v1/org-settings is gated only by AnyRoleGuard (any authenticated
+  // role), so this never adds a new permission requirement to this page.
+  const { data: orgSettings } = await client.GET('/v1/org-settings');
+
   const { data: catalog, response } = await client.GET('/v1/catalog');
   if (!response.ok || !catalog) {
     return (
@@ -57,7 +62,7 @@ export default async function AdminTestsPage() {
         </p>
       </div>
       {canManageCatalog ? (
-        <CreateTestForm analyteOptions={analyteOptions} />
+        <CreateTestForm analyteOptions={analyteOptions} currency={orgSettings?.currency ?? null} />
       ) : (
         <p role="alert" className="text-sm text-text-secondary">
           You do not have permission to add tests.

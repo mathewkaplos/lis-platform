@@ -210,6 +210,56 @@ describe('Catalog admin (e2e)', () => {
       const catalogBody = catalogRes.body as { tests: { code: string }[] };
       expect(catalogBody.tests.some((t) => t.code === 'FEAT035-T4')).toBe(true);
     });
+
+    // Issue #781 (pilot-readiness audit): billingCode/priceCents already
+    // existed on the test_definition schema (FEAT-046/ADR-0041) but this
+    // route never accepted either, so every test created through the admin
+    // UI came out unbillable -- confirmed live.
+    it('accepts and persists billingCode/priceCents, both optional', async () => {
+      const priced = await request(app.getHttpServer())
+        .post('/v1/test-definitions')
+        .set('Authorization', `Bearer ${qaToken}`)
+        .send({
+          code: 'FEAT035-T5-PRICED',
+          displayName: 'FEAT-035 Test 5 (priced)',
+          analyteIds: [analyteAId],
+          billingCode: 'CPT 12345',
+          priceCents: 1500,
+        })
+        .expect(201);
+      const pricedBody = priced.body as {
+        resourceId: string;
+        after: { billingCode: string | null; priceCents: number | null };
+      };
+      expect(pricedBody.after.billingCode).toBe('CPT 12345');
+      expect(pricedBody.after.priceCents).toBe(1500);
+
+      const [pricedRow] = await db
+        .select({
+          billingCode: testDefinition.billingCode,
+          priceCents: testDefinition.priceCents,
+        })
+        .from(testDefinition)
+        .where(eq(testDefinition.id, pricedBody.resourceId))
+        .limit(1);
+      expect(pricedRow.billingCode).toBe('CPT 12345');
+      expect(pricedRow.priceCents).toBe(1500);
+
+      const unpriced = await request(app.getHttpServer())
+        .post('/v1/test-definitions')
+        .set('Authorization', `Bearer ${qaToken}`)
+        .send({
+          code: 'FEAT035-T6-UNPRICED',
+          displayName: 'FEAT-035 Test 6 (unpriced)',
+          analyteIds: [analyteAId],
+        })
+        .expect(201);
+      const unpricedBody = unpriced.body as {
+        after: { billingCode: string | null; priceCents: number | null };
+      };
+      expect(unpricedBody.after.billingCode).toBeNull();
+      expect(unpricedBody.after.priceCents).toBeNull();
+    });
   });
 
   describe('POST/GET /v1/reference-ranges', () => {

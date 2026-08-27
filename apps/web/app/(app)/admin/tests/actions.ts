@@ -6,10 +6,20 @@ import { createLisApiClient } from '@/lib/api-client';
 import type { CreateTestState } from './types';
 
 function rawFormValues(formData: FormData) {
+  const priceCents = formData.get('priceCents');
   return {
     code: formData.get('code') || undefined,
     displayName: formData.get('displayName') || undefined,
     analyteIds: formData.getAll('analyteIds').filter(Boolean),
+    billingCode: formData.get('billingCode') || undefined,
+    // Issue #781: the form's own visible field is a major-currency-unit
+    // input (`priceAmount`, e.g. "12.50") converted client-side to an
+    // integer cents value in this hidden sibling field -- same "dollars
+    // shown, cents submitted" pattern `invoice-view.tsx`'s take-payment
+    // form already established. Omitted (not "0") when left blank so an
+    // unpriced test still comes through as `priceCents: undefined`, not a
+    // real $0.00 price.
+    priceCents: priceCents ? Number(priceCents) : undefined,
   };
 }
 

@@ -75,6 +75,8 @@ export class TestDefinitionController {
         tenantId: user.tenantId,
         code: body.code,
         displayName: body.displayName,
+        billingCode: body.billingCode ?? null,
+        priceCents: body.priceCents ?? null,
       })
       .returning();
 
@@ -91,6 +93,8 @@ export class TestDefinitionController {
       code: testDefinitionRow.code,
       displayName: testDefinitionRow.displayName,
       analyteIds: body.analyteIds,
+      billingCode: testDefinitionRow.billingCode,
+      priceCents: testDefinitionRow.priceCents,
     };
     return { resourceId: testDefinitionRow.id, before: null, after };
   }

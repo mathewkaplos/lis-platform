@@ -50,6 +50,13 @@ test.describe('Billing: generate invoice -> record payment (real server actions)
     // already accounts for.
     await expect(page.getByText('unpaid', { exact: true }).first()).toBeVisible();
 
+    // Issue #765 (pilot-readiness audit): TENANT_A's own currency is seeded
+    // as KES (db/seed's tenant fixture, confirmed live 2026-08-26) -- proves
+    // the invoice/payment UI now reads the tenant's real currency instead of
+    // a hardcoded "$"/"USD".
+    await expect(page.getByLabel(/Amount \(KES\)/i)).toBeVisible();
+    await expect(page.getByText('$', { exact: false })).toHaveCount(0);
+
     // -- Record full payment (real server action: recordPayment) --------
     // The amount field already defaults to the invoice's own full balance
     // due (invoice-view.tsx) -- no need to type a value, just submit.

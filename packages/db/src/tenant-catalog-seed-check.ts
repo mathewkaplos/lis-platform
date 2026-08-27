@@ -50,6 +50,30 @@ async function main() {
     console.log(`PASS: new tenant seeded with ${rangeCount} reference_range rows.`);
   }
 
+  // Pilot-readiness audit follow-up: sla_target/report_template added to
+  // SEED_FILES -- both genuinely tenant-scoped (RLS-enabled), both real
+  // gaps a fresh self-signup tenant had before this (docs/pilot/
+  // PILOT-USER-GUIDE.md §0).
+  const slaTargets = await db.execute<{ count: string }>(
+    sql`SELECT count(*)::text AS count FROM sla_target WHERE tenant_id = ${newTenant}`,
+  );
+  const slaTargetCount = Number(slaTargets.rows[0]?.count ?? 0);
+  if (slaTargetCount === 0) {
+    failures.push("new tenant has 0 sla_target rows after seeding — expected routine + stat targets");
+  } else {
+    console.log(`PASS: new tenant seeded with ${slaTargetCount} sla_target rows.`);
+  }
+
+  const reportTemplates = await db.execute<{ count: string }>(
+    sql`SELECT count(*)::text AS count FROM report_template WHERE tenant_id = ${newTenant}`,
+  );
+  const reportTemplateCount = Number(reportTemplates.rows[0]?.count ?? 0);
+  if (reportTemplateCount === 0) {
+    failures.push("new tenant has 0 report_template rows after seeding — expected one per seeded test with analytes");
+  } else {
+    console.log(`PASS: new tenant seeded with ${reportTemplateCount} report_template rows.`);
+  }
+
   // Global tables (ADR-0004) must be untouched by a second tenant's seed —
   // their own ON CONFLICT DO NOTHING should make this idempotent, proven
   // here rather than assumed.

@@ -3,11 +3,7 @@ import * as client from 'openid-client';
 import { getOidcConfig } from '@/auth/oidc-config';
 import { PKCE_COOKIE_NAME, verifyPkceState } from '@/auth/pkce-store';
 import { getPublicOrigin } from '@/auth/public-origin';
-import {
-  SESSION_COOKIE_NAME,
-  SESSION_MAX_AGE_SECONDS,
-  signSession,
-} from '@/auth/session';
+import { setSessionCookies, signSession } from '@/auth/session';
 
 interface LisIdTokenClaims {
   sub: string;
@@ -87,7 +83,7 @@ export async function GET(request: NextRequest) {
     ? (claims.realm_access.roles as string[])
     : [];
 
-  const sessionCookie = await signSession({
+  const signedSession = await signSession({
     sub: claims.sub,
     tenantId: claims.tenant_id,
     roles,
@@ -104,13 +100,7 @@ export async function GET(request: NextRequest) {
   const response = NextResponse.redirect(
     new URL(pkceState.redirectTo, getPublicOrigin(request)),
   );
-  response.cookies.set(SESSION_COOKIE_NAME, sessionCookie, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: SESSION_MAX_AGE_SECONDS,
-  });
+  setSessionCookies(response.cookies, signedSession);
   response.cookies.delete({ name: PKCE_COOKIE_NAME, path: '/api/auth' });
   return response;
 }

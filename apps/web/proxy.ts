@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { SESSION_COOKIE_NAME, verifySession } from '@/auth/session';
+import {
+  SESSION_COOKIE_NAME,
+  SESSION_TOKENS_COOKIE_NAME,
+  verifySession,
+} from '@/auth/session';
 
 export const config = {
   // Excludes /api/auth/* (login/callback/logout must be reachable while
@@ -15,10 +19,10 @@ export const config = {
 };
 
 export async function proxy(request: NextRequest) {
-  const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
-  const session = sessionCookie
-    ? await verifySession(sessionCookie)
-    : undefined;
+  const session = await verifySession(
+    request.cookies.get(SESSION_COOKIE_NAME)?.value,
+    request.cookies.get(SESSION_TOKENS_COOKIE_NAME)?.value,
+  );
 
   if (session) {
     return NextResponse.next();

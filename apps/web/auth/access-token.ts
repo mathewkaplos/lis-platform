@@ -3,8 +3,8 @@ import * as client from 'openid-client';
 import { getOidcConfig } from './oidc-config';
 import { getSession } from './get-session';
 import {
-  SESSION_COOKIE_NAME,
-  SESSION_MAX_AGE_SECONDS,
+  clearSessionCookies,
+  setSessionCookies,
   signSession,
   type SessionPayload,
 } from './session';
@@ -93,15 +93,9 @@ export async function getValidAccessToken(): Promise<string | undefined> {
     }
 
     try {
-      const sessionCookie = await signSession({ ...session, ...refreshed });
+      const signedSession = await signSession({ ...session, ...refreshed });
       const cookieStore = await cookies();
-      cookieStore.set(SESSION_COOKIE_NAME, sessionCookie, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: SESSION_MAX_AGE_SECONDS,
-      });
+      setSessionCookies(cookieStore, signedSession);
     } catch {
       // Called from a plain Server Component render -- no response left to
       // attach a Set-Cookie header to. The refreshed token below is still
@@ -114,7 +108,7 @@ export async function getValidAccessToken(): Promise<string | undefined> {
     // never retry indefinitely or return a stale/invalid token.
     try {
       const cookieStore = await cookies();
-      cookieStore.delete(SESSION_COOKIE_NAME);
+      clearSessionCookies(cookieStore);
     } catch {
       // Same plain-render restriction as above -- nothing to delete from
       // this request's own response either; the next Server Action/Route

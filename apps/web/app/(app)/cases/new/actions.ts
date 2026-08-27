@@ -50,6 +50,15 @@ export async function createCase(
 
   const { data, error, response } = await client.POST('/v1/cases', { body: parsed.data });
   if (!response.ok) {
+    // Issue #768: a capability-guard denial's `detail` is a technical
+    // message (CapabilityGuard's own "No role grants the '...' capability"),
+    // not something to show a user -- checked before falling back to it.
+    if (response.status === 403) {
+      return {
+        status: 'error',
+        formError: 'You do not have permission to accession cases.',
+      };
+    }
     // openapi-fetch already parses the response body into `error` for a
     // non-ok response (ProblemDetailsFilter's `application/problem+json`
     // content-type parses the same as plain JSON) -- reading `response`

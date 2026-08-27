@@ -35,6 +35,12 @@ export async function cancelOrder(orderId: string): Promise<CancelOrderResult> {
         formError: 'No tests on this order are eligible for cancellation.',
       };
     }
+    if (response.status === 403) {
+      return {
+        status: 'error',
+        formError: 'You do not have permission to cancel orders.',
+      };
+    }
     return {
       status: 'error',
       formError: 'Something went wrong cancelling this order. Please try again.',
@@ -89,6 +95,12 @@ export async function generateInvoice(
         status: 'error',
         formError:
           'One or more tests on this order have no price configured — cannot generate an invoice.',
+      };
+    }
+    if (response.status === 403) {
+      return {
+        status: 'error',
+        formError: 'You do not have permission to generate invoices.',
       };
     }
     return {

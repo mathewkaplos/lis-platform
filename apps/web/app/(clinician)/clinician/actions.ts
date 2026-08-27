@@ -42,6 +42,12 @@ export async function acknowledgeCritical(
     { params: { path: { id } }, body: parsed.data },
   );
   if (!response.ok) {
+    if (response.status === 403) {
+      return {
+        status: 'error',
+        formError: 'You do not have permission to acknowledge this critical.',
+      };
+    }
     return {
       status: 'error',
       formError: 'Something went wrong acknowledging this critical. Please try again.',

@@ -65,6 +65,12 @@ export async function recordPayment(
           detail ?? 'This invoice is already fully paid, or the amount is invalid.',
       };
     }
+    if (response.status === 403) {
+      return {
+        status: 'error',
+        formError: 'You do not have permission to record payments.',
+      };
+    }
     return {
       status: 'error',
       formError: 'Something went wrong recording this payment. Please try again.',

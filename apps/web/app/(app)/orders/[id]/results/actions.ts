@@ -101,6 +101,10 @@ function writeErrorMessage(httpStatus: number): string {
   if (httpStatus === 400) {
     return 'Invalid value for this analyte.';
   }
+  // Issue #768.
+  if (httpStatus === 403) {
+    return 'You do not have permission to record results.';
+  }
   return 'Something went wrong saving this value. Please try again.';
 }
 

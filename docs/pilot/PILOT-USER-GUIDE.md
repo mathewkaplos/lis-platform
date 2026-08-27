@@ -1736,10 +1736,16 @@ brutally honest, not a wish list:
       `next build && next start` or Turbopack — not checked, worth confirming before ever re-adding a
       `loading.tsx` to either route (each `page.tsx` now has a comment explaining why and what to check
       first).
-- [ ] **Reset the tenant before the design partner's first login (§0.1).** Tenant `...0001` currently
-      carries ~272 leftover e2e/manual-test fixture rows on its dashboard. Run `pnpm db:reset` (§1.1)
-      immediately before the real pilot session — do not let a design partner's first impression of the
-      product be a worklist full of rows named "SignOut Fixture" and "Billing Fixture."
+- [x] **Done 2026-08-27: reset the tenant.** Ran `pnpm db:reset` — confirmed clean afterward via direct
+      query (`patient`/`order`/`case`/`audit_event` all `0` rows) and live in the browser (dashboard
+      worklist shows "Nothing in this view." with all three counts at 0, no leftover "SignOut Fixture"/
+      "Billing Fixture" rows). Catalog and all 7 synoptic protocols re-seeded correctly. **Note for
+      whoever runs the next pilot session:** this also wipes every patient/order/case created during
+      this guide's own live-verification passes (§7-§19) — the guide's own step-by-step instructions
+      remain valid to re-run against a clean tenant, but any specific record ids/accession numbers cited
+      inline above (e.g. `260826-000194`) no longer exist. Re-run `pnpm db:reset` again immediately
+      before the actual design-partner session, since this pass's own testing (creating throwaway
+      patients/staff accounts) will have left new fixture rows behind by then.
 - [ ] **Resolve the fresh-org catalog gap (§0)** — decide and communicate whether the design partner
       will pilot on a hand-seeded tenant (like `...0001`) or whether a real onboarding path (clone a
       starter catalog, or at minimum let `/admin/tests` set a price) ships first. Today, `/signup`

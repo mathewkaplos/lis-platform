@@ -2061,9 +2061,9 @@ describe('Synoptic Protocol API (e2e)', () => {
         { elementKey: 'lymphovascular_invasion', value: 'not_identified' },
         { elementKey: 'perineural_invasion', value: 'not_identified' },
         { elementKey: 'margin_status_invasive', value: 'all_margins_negative' },
-        // closest_margin_site is 'conditional' on margin_status_invasive !=
-        // 'not_applicable' -- visible (and required) here.
-        { elementKey: 'closest_margin_site', value: 'proximal' },
+        // closest_margin_site (issue #766) is 'conditional' on
+        // margin_status_invasive == 'invasive_carcinoma_at_margin' -- hidden
+        // (and not required) here since margins are negative.
         { elementKey: 'pn_category', value: 'pN0' },
         { elementKey: 'pm_category', value: 'not_applicable' },
       ];
@@ -2124,6 +2124,63 @@ describe('Synoptic Protocol API (e2e)', () => {
           `expected the CAP colon/rectum response independently readable, got ${JSON.stringify(responses)}`,
         );
       }
+    });
+
+    it('requires closest_margin_site only when margin_status_invasive is positive (issue #766)', async () => {
+      const { versionId } = await resolveCapColonRectum();
+      const { caseId, orderedTestId, specimenId } =
+        await createCaseWithOrderedTest();
+
+      const baseResponses = [
+        { elementKey: 'operative_procedure', value: 'right_hemicolectomy' },
+        { elementKey: 'tumor_site', value: ['ascending_colon'] },
+        { elementKey: 'histologic_type', value: 'adenocarcinoma_nos' },
+        { elementKey: 'histologic_grade', value: 'g2' },
+        { elementKey: 'tumor_size_mm', value: 35 },
+        { elementKey: 'pt_category', value: 'pT2' },
+        {
+          elementKey: 'macroscopic_tumor_perforation',
+          value: 'not_identified',
+        },
+        { elementKey: 'lymphovascular_invasion', value: 'not_identified' },
+        { elementKey: 'perineural_invasion', value: 'not_identified' },
+        {
+          elementKey: 'margin_status_invasive',
+          value: 'invasive_carcinoma_at_margin',
+        },
+        { elementKey: 'pn_category', value: 'pN0' },
+        { elementKey: 'pm_category', value: 'not_applicable' },
+      ];
+
+      const rejected = await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          specimenId,
+          synopticProtocolVersionId: versionId,
+          responses: baseResponses,
+          // closest_margin_site omitted -- required once margin is positive.
+        })
+        .expect(400);
+      if (!JSON.stringify(rejected.body).includes('closest_margin_site')) {
+        throw new Error(
+          `expected closest_margin_site to be named as missing when margin is positive, got ${JSON.stringify(rejected.body)}`,
+        );
+      }
+
+      await request(app.getHttpServer())
+        .post(`/v1/cases/${caseId}/synoptic-responses`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          orderedTestId,
+          specimenId,
+          synopticProtocolVersionId: versionId,
+          responses: baseResponses.concat([
+            { elementKey: 'closest_margin_site', value: 'radial' },
+          ]),
+        })
+        .expect(201);
     });
   });
 

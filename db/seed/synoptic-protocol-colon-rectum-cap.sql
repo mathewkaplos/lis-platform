@@ -98,7 +98,7 @@ FROM (VALUES
   ('treatment_effect', 'Treatment effect', 'coded', 'recommended', 14, NULL),
   ('margin_status_invasive', 'Margin status for invasive carcinoma', 'coded', 'required', 15, NULL),
   ('closest_margin_site', 'Closest margin site', 'coded', 'conditional', 16,
-    '{"field":"margin_status_invasive","op":"neq","value":"not_applicable"}'),
+    '{"field":"margin_status_invasive","op":"eq","value":"invasive_carcinoma_at_margin"}'),
   ('pn_category', 'Regional lymph nodes (pN) category', 'coded', 'required', 17, NULL),
   ('number_of_lymph_nodes_with_tumor', 'Number of lymph nodes with tumor', 'quantity', 'conditional', 18,
     '{"field":"pn_category","op":"neq","value":"pN0"}'),
@@ -271,6 +271,22 @@ WHERE csv.system = 'UCUM' AND csv.code = 'mm' AND csv.version = '2.2'
   AND se.synoptic_protocol_version_id = spv.id
   AND se.key = 'tumor_size_mm'
   AND se.unit_id IS NULL;
+
+-- Issue #766 (pilot-readiness audit, found live 2026-08-27). Original
+-- condition was `neq not_applicable`, which also matched
+-- `all_margins_negative` (no positive margin exists to name a site for) and
+-- `cannot_be_determined` -- only `invasive_carcinoma_at_margin` should
+-- trigger this field, matching the protocol's other two conditionals
+-- (mesorectal_excision_quality, rectal_tumor_location), which key off their
+-- own actual trigger answers rather than "answered at all". Corrects rows
+-- from a prior seed run so this fix applies without a full db reset.
+UPDATE synoptic_element se
+SET visibility_condition = '{"field":"margin_status_invasive","op":"eq","value":"invasive_carcinoma_at_margin"}'::jsonb
+FROM synoptic_protocol_version spv
+JOIN synoptic_protocol sp ON sp.id = spv.synoptic_protocol_id
+WHERE se.synoptic_protocol_version_id = spv.id
+  AND sp.name = 'Colon and Rectum (Resection)' AND sp.source_standard = 'CAP' AND spv.version = 1
+  AND se.key = 'closest_margin_site';
 
 -- Publish, last -- matches every other synoptic-protocol seed's own
 -- draft-then-publish precedent.

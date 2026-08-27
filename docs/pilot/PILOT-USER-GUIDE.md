@@ -1877,22 +1877,47 @@ brutally honest, not a wish list:
       oversized session cookie causing an infinite login redirect loop — see §0's own write-up and the
       dedicated entry below for the full story. `/admin/tests` still has no price field for a *new* test
       beyond the seeded 27 — that one design decision remains open, see the next item.
-- [ ] **Add a price/billing-code field to the `/admin/tests` UI**, or explicitly commit to
-      ops-sets-prices-via-migration as the real interim process and tell the partner that up front.
+- [x] **Completed 2026-08-27: added a price/billing-code field to the `/admin/tests` UI.**
+      `test_definition.billingCode`/`priceCents` already existed on the schema (FEAT-046/ADR-0041) but
+      `POST /v1/test-definitions` never accepted either, so a test created through this screen came out
+      unbillable. Both fields are optional (a lab may still price a test later via the existing
+      ops-migration path); the price field is a major-currency-unit input labeled with the tenant's real
+      currency (see the currency-symbol fix below), converted client-side to integer cents. New e2e
+      coverage: `catalog-admin.e2e-spec.ts` (priced + unpriced creation, both persisted correctly) and
+      `admin-crud.spec.ts` (existing create-test flow, updated for the new field). Filed and closed as
+      [issue #781](https://github.com/mathewkaplos/lis-platform/issues/781),
+      [PR #782](https://github.com/mathewkaplos/lis-platform/pull/782).
 - [ ] **Confirm the RBAC matrix in §18** matches the partner's real org chart — in particular, that
       `technologist`/`pathologist` both carrying `manage_billing` (front-desk-adjacent, not a dedicated
       cashier-only grant by default) is an acceptable model, not a surprise discovered mid-pilot.
 - [ ] **Decide on a real synthetic-data convention** (§6.3) before the partner starts entering data —
       there's currently no way to tell pilot/test rows apart from real ones once entered.
 - [ ] **Run the full RBAC allow/deny matrix (§18.1) and re-confirm §18.2's known under-gating** — don't
-      let a design partner's first real login be the first time these are checked.
+      let a design partner's first real login be the first time these are checked. **Not completed this
+      pass**: a Chrome-extension browser-automation connectivity issue blocked live UI verification for
+      the remainder of this session (confirmed live 2026-08-27 — `curl` reaches the real dev server fine
+      at the exact same moment the extension's own frame shows a connection error, so this is a tooling
+      problem, not an app regression). Partial progress before the blocker: `test-user-9`/reception
+      confirmed for register-patient-allow, org-settings-deny, billing-deny, and
+      case-mutation-controls-hidden. The remaining rows (technologist sign-out-deny/payment-allow,
+      pathologist sign-out-allow/manage-users-deny, cashier payment-allow/narrative-edit-deny, lab_admin
+      resolve-QC-deny, qa manage-users-deny, no-role write-attempt-deny) still need a live pass once this
+      tooling issue clears.
 - [ ] **Decide on the invoice overpayment/refund gap (§15.2)** — there is no refund/credit mechanism at
       all today; confirm this is acceptable for the pilot's real financial flows or scope it in first.
-- [ ] **Decide on the currency-symbol gap found live 2026-08-26 (§15/§16).** The invoice, payment, and
-      facility-statement UI hardcode a `$` (USD) symbol and "Amount (USD)" label regardless of the
-      tenant's own `currency` setting (Part 2) — confirmed live with the tenant set to `KES`. If the
-      design partner doesn't bill in USD, every invoice and receipt will show the wrong currency symbol
-      on day one. **Filed as [issue #765](https://github.com/mathewkaplos/lis-platform/issues/765).**
+- [x] **Completed 2026-08-27: the currency-symbol gap found live 2026-08-26 (§15/§16).** The invoice,
+      payment, and facility-statement UI hardcoded a `$` (USD) symbol and "Amount (USD)" label regardless
+      of the tenant's own `currency` setting — confirmed live with the tenant set to `KES`. Fixed via a
+      new `formatMoneyCents()` helper (`apps/web/lib/format-currency.ts`, `Intl.NumberFormat` with the
+      tenant's currency code, falling back to a plain `"<code> <amount>"` rendering for an invalid ISO
+      4217 code since currency is free text) wired into the invoice detail, invoice list,
+      facility-statement, and `/admin/tests` price-field screens, each now reading `GET /v1/org-settings`
+      for the currency (gated only by `AnyRoleGuard`, no new permission requirement). Unit-tested
+      (`format-currency.spec.ts`) and confirmed live end to end via `billing.spec.ts`'s existing
+      generate-invoice/record-payment e2e test, extended to assert the real `KES` currency renders and no
+      `$` appears anywhere on the page. Filed and closed as
+      [issue #765](https://github.com/mathewkaplos/lis-platform/issues/765),
+      [PR #780](https://github.com/mathewkaplos/lis-platform/pull/780).
 - [x] **Completed 2026-08-27: the `[NOT VERIFIED]` cells in Parts 17 and 19.** Every audit-trail row in
       §19 now has a confirmed real action name (`invoice.generate`, `payment.record`, `user.create`,
       `user.role_change`, `user.set_enabled`, `patient.create`, `patient.update` all triggered live and
@@ -1913,19 +1938,41 @@ brutally honest, not a wish list:
       touches either area.
 - [ ] **Fix or explicitly accept the referring-facility no-edit-no-delete gap (§4)** — a real facility's
       contact details will eventually need correcting.
-- [ ] **Decide whether `closest_margin_site` on the Colon/Rectum (CAP) synoptic protocol should be
-      conditional on margin status (found live 2026-08-27, §10.3).** It's currently required even when
-      margin status is "All margins negative for invasive carcinoma," where there is no positive margin
+- [x] **Completed 2026-08-27: `closest_margin_site` on the Colon/Rectum (CAP) synoptic protocol is now
+      conditional on margin status (found live 2026-08-27, §10.3).** It was previously required even when
+      margin status was "All margins negative for invasive carcinoma," where there is no positive margin
       to name a site for — unlike the protocol's other two conditional fields (mesorectal excision
-      quality, rectal tumor location), which correctly key off their own trigger answers.
-      **Filed as [issue #766](https://github.com/mathewkaplos/lis-platform/issues/766).**
-- [ ] **Decide whether the synoptic "recorded" confirmation view should show human-readable labels
-      instead of raw enum codes (found live 2026-08-27, §10.3).** E.g. it currently shows
-      `Operative procedure: low_anterior_resection` instead of "Low anterior resection" — the form
-      itself shows proper labels, only the post-save confirmation view doesn't.
-      **Filed as [issue #767](https://github.com/mathewkaplos/lis-platform/issues/767).**
-- [ ] **Make 403 responses on gated write actions (e.g. `lab_admin` attempting to place an order,
-      found live 2026-08-27, §10.3) show a real "you don't have permission" message**, the way
-      `/admin/org-settings` already does, instead of the generic "Something went wrong placing the
-      order" `/orders/new` currently shows — a user in the wrong role currently can't tell "I'm not
-      allowed" from "the app is broken." **Filed as [issue #768](https://github.com/mathewkaplos/lis-platform/issues/768).**
+      quality, rectal tumor location), which correctly key off their own trigger answers. Fixed by
+      correcting the seeded `visibilityCondition` from `margin_status_invasive != 'not_applicable'` to
+      `margin_status_invasive == 'invasive_carcinoma_at_margin'`, with an idempotent `UPDATE` alongside
+      the seed's `INSERT ... ON CONFLICT DO NOTHING` so an already-seeded database picks up the fix
+      without a full reset. `synoptic-protocol.e2e-spec.ts` updated (negative-margin happy path no longer
+      submits the now-hidden field) plus a new test confirming the field is required and enforced only
+      when margin status is positive. Filed and closed as
+      [issue #766](https://github.com/mathewkaplos/lis-platform/issues/766),
+      [PR #778](https://github.com/mathewkaplos/lis-platform/pull/778).
+- [x] **Completed 2026-08-27: the synoptic "recorded" confirmation view now shows human-readable labels
+      instead of raw enum codes (found live 2026-08-27, §10.3).** It previously showed
+      `Operative procedure: low_anterior_resection` instead of "Low anterior resection" — the form itself
+      showed proper labels, only the post-save confirmation view didn't. Fixed via a new
+      `formatResultValue()` helper (`format-result-value.ts`, kept as its own module rather than inline
+      in `protocol-form.tsx` so it's unit-testable without pulling in that file's co-located `'use
+      server'` actions import chain), resolving each `coded`/`coded_multi` value through the element's
+      own `responseOptions`, handling repeatable-element composite keys, and falling back to the raw
+      value for quantity/text elements. Unit-tested (`protocol-form.spec.ts`, 5 cases). Filed and closed
+      as [issue #767](https://github.com/mathewkaplos/lis-platform/issues/767),
+      [PR #777](https://github.com/mathewkaplos/lis-platform/pull/777).
+- [x] **Completed 2026-08-27: 403 responses on gated write actions now show a real "you don't have
+      permission" message (e.g. `lab_admin` attempting to place an order, found live 2026-08-27, §10.3)**,
+      the way `/admin/org-settings` already did, instead of the generic "Something went wrong placing the
+      order" `/orders/new` and a dozen other gated write actions previously showed — a user in the wrong
+      role couldn't tell "I'm not allowed" from "the app is broken." Added a `response.status === 403`
+      branch (matching the exact convention `/admin/org-settings` and several admin screens already used)
+      to every Server Action that was missing it: order placement (both staff and clinician portal),
+      patient create/edit, case accessioning, specimen receipt/label printing, invoice payment, and
+      critical-notification acknowledgement. New Playwright e2e coverage in `permission-denied.spec.ts`
+      (a `cashier`, who holds only `manage_billing`, submitting patient registration now sees "You do not
+      have permission to register patients." instead of the generic message) — run live against the real
+      dev stack, passing. Filed and closed as
+      [issue #768](https://github.com/mathewkaplos/lis-platform/issues/768),
+      [PR #779](https://github.com/mathewkaplos/lis-platform/pull/779).

@@ -1625,7 +1625,7 @@ Fill this in as you run the guide. Legend: 🟢 PASS · 🟡 PASS WITH OBSERVATI
 | Billing (facility) | Consolidated statement, date filter, print | | Confirmed live in §16's earlier pass | 🟢 | |
 | RBAC | Full allow/deny matrix (§18.1) | | Core capability grants match `capabilities.ts` exactly; §18.2/18.3's read-path under-gating (cases, WSI, dashboard, org-settings, patients, orders all readable with no capability check) is a real, known, accepted gap — not a fresh fail, but keeps this from a clean 🟢 | 🟡 | issue on record per §18.2 |
 | Auditability | Every action in §19's table confirmed | | **Fully resolved this pass** — every row in §19's table now has a confirmed real audit action name; only "specimen/block/slide changes get their own dedicated action" remains genuinely unconfirmed | 🟢 | |
-| Search/worklists | §17's table fully filled in | | Fully filled in this pass; found one real bug (`/orders` `createdTo` date-filter boundary excludes same-day results — see §17) and confirmed `/cases`/`/billing/invoices` have no search box by design | 🟡 | date-filter bug not yet filed |
+| Search/worklists | §17's table fully filled in | | Fully filled in this pass; found one real bug (`/orders` `createdTo` date-filter boundary excludes same-day results — see §17) and confirmed `/cases`/`/billing/invoices` have no search box by design | 🟡 | [#764](https://github.com/mathewkaplos/lis-platform/issues/764) |
 | UX/responsiveness | §21's 6 checks | | Mobile nav drawer and horizontal-scroll containment confirmed live via DOM assertions (screenshot tooling broken all session); tablet-width case tree/WSI viewer, keyboard nav, and the invoice/synoptic-form scroll checks not re-verified this pass | 🟡 | |
 
 ---
@@ -1717,10 +1717,13 @@ brutally honest, not a wish list:
       `next dev --webpack` streaming defect, not app logic. **Fix applied:** deleted both `loading.tsx`
       files (`apps/web/app/(app)/{patients,orders}/loading.tsx`); both routes confirmed rendering
       correctly afterward, including a full `/orders/new` booking-form render with real catalog data.
-      **Still worth doing:** file/reopen issue #708 with this root-cause evidence (blocked by this
-      session's own tooling, needs a human) and confirm whether the underlying Next.js/webpack defect
-      also reproduces on `next build && next start` or Turbopack before ever re-adding a `loading.tsx`
-      to either route (each `page.tsx` now has a comment explaining why and what to check first).
+      Fix merged in [PR #763](https://github.com/mathewkaplos/lis-platform/pull/763). Root-cause
+      evidence [posted as a comment on issue #708](https://github.com/mathewkaplos/lis-platform/issues/708#issuecomment-5434133301)
+      (left closed, since the fix landed — the comment records the confirmed mechanism for anyone who
+      hits it again). **Still open:** whether the underlying Next.js/webpack defect also reproduces on
+      `next build && next start` or Turbopack — not checked, worth confirming before ever re-adding a
+      `loading.tsx` to either route (each `page.tsx` now has a comment explaining why and what to check
+      first).
 - [ ] **Reset the tenant before the design partner's first login (§0.1).** Tenant `...0001` currently
       carries ~272 leftover e2e/manual-test fixture rows on its dashboard. Run `pnpm db:reset` (§1.1)
       immediately before the real pilot session — do not let a design partner's first impression of the
@@ -1744,7 +1747,7 @@ brutally honest, not a wish list:
       facility-statement UI hardcode a `$` (USD) symbol and "Amount (USD)" label regardless of the
       tenant's own `currency` setting (Part 2) — confirmed live with the tenant set to `KES`. If the
       design partner doesn't bill in USD, every invoice and receipt will show the wrong currency symbol
-      on day one.
+      on day one. **Filed as [issue #765](https://github.com/mathewkaplos/lis-platform/issues/765).**
 - [x] **Completed 2026-08-27: the `[NOT VERIFIED]` cells in Parts 17 and 19.** Every audit-trail row in
       §19 now has a confirmed real action name (`invoice.generate`, `payment.record`, `user.create`,
       `user.role_change`, `user.set_enabled`, `patient.create`, `patient.update` all triggered live and
@@ -1752,7 +1755,7 @@ brutally honest, not a wish list:
       filled in for every screen. **Two new, real findings surfaced doing this:**
       1. **`/orders`'s `createdTo` date-range filter has a real off-by-one bug** — a same-day upper
          bound (`createdTo=2026-08-27`) is compared as midnight-start-of-day, silently excluding nearly
-         every order actually placed that day. Not yet filed as an issue.
+         every order actually placed that day. **Filed as [issue #764](https://github.com/mathewkaplos/lis-platform/issues/764).**
       2. **`/admin/users`'s role-change and deactivate controls use native `window.confirm()` dialogs**
          — fine for a human, but a real trap for any future browser-automation/e2e coverage of this
          page (a stuck dialog freezes the whole page until dismissed by navigating away or stubbing
@@ -1770,12 +1773,14 @@ brutally honest, not a wish list:
       margin status is "All margins negative for invasive carcinoma," where there is no positive margin
       to name a site for — unlike the protocol's other two conditional fields (mesorectal excision
       quality, rectal tumor location), which correctly key off their own trigger answers.
+      **Filed as [issue #766](https://github.com/mathewkaplos/lis-platform/issues/766).**
 - [ ] **Decide whether the synoptic "recorded" confirmation view should show human-readable labels
       instead of raw enum codes (found live 2026-08-27, §10.3).** E.g. it currently shows
       `Operative procedure: low_anterior_resection` instead of "Low anterior resection" — the form
       itself shows proper labels, only the post-save confirmation view doesn't.
+      **Filed as [issue #767](https://github.com/mathewkaplos/lis-platform/issues/767).**
 - [ ] **Make 403 responses on gated write actions (e.g. `lab_admin` attempting to place an order,
       found live 2026-08-27, §10.3) show a real "you don't have permission" message**, the way
       `/admin/org-settings` already does, instead of the generic "Something went wrong placing the
       order" `/orders/new` currently shows — a user in the wrong role currently can't tell "I'm not
-      allowed" from "the app is broken."
+      allowed" from "the app is broken." **Filed as [issue #768](https://github.com/mathewkaplos/lis-platform/issues/768).**

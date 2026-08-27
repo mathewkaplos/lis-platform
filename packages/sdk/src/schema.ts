@@ -1836,6 +1836,8 @@ export interface components {
             code: string;
             displayName: string;
             analyteIds: string[];
+            billingCode?: string;
+            priceCents?: number;
         };
         ReferenceRangeCreateDto: {
             /** Format: uuid */

@@ -3,6 +3,7 @@ import {
   ConflictException,
   Controller,
   Get,
+  Inject,
   NotFoundException,
   Param,
   Patch,
@@ -62,7 +63,23 @@ class UserListResponseDto extends createZodDto(userListResponseSchema) {}
  */
 @Controller('v1/users')
 export class UserManagementController {
-  constructor(private readonly userManagement: UserManagementService) {}
+  // Issue found via the pilot-readiness audit's RBAC-matrix e2e coverage
+  // (rbac-matrix.e2e-spec.ts, first HTTP-level test of this route). Explicit
+  // `@Inject`, not implicit type-inferred, for the exact reason
+  // `capability.guard.ts`'s own header comment already documents for
+  // `Reflector`: this repo's vitest configs use Vite's default esbuild
+  // transform, which strips decorators but never emits `design:paramtypes`
+  // reflection metadata, so Nest's DI silently resolves an implicitly-typed
+  // constructor param to `undefined` at runtime instead of throwing --
+  // confirmed live, this exact route 500'd under vitest's e2e runner
+  // (`Cannot read properties of undefined (reading 'listUsers')`) while
+  // working fine under the real ts-node/webpack dev server, which does emit
+  // that metadata. Silently invisible to CI until now: no e2e spec had ever
+  // exercised this route at the HTTP layer before this fix.
+  constructor(
+    @Inject(UserManagementService)
+    private readonly userManagement: UserManagementService,
+  ) {}
 
   @Get()
   @UseGuards(JwtAuthGuard, CapabilityGuard)

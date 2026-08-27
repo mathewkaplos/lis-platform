@@ -66,6 +66,12 @@ export async function createOrder(
 
   const { data, response } = await client.POST('/v1/orders', { body: parsed.data });
   if (!response.ok) {
+    if (response.status === 403) {
+      return {
+        status: 'error',
+        formError: 'You do not have permission to place orders.',
+      };
+    }
     return {
       status: 'error',
       formError: 'Something went wrong placing the order. Please try again.',

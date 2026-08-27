@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { loginAsQa } from './auth';
+import { loginAsCashier, loginAsQa } from './auth';
 
 /**
  * Issue #751 (docs/plans/task-751-permission-denied-error-handling.md):
@@ -36,5 +36,30 @@ test.describe('Permission-denied error handling', () => {
     await page.goto('/billing/invoices');
 
     await expect(page.getByText('You do not have permission to view invoices.')).toBeVisible();
+  });
+
+  /**
+   * Issue #768 (pilot-readiness audit, found live 2026-08-27). The registration
+   * *page* itself has no read-time capability gate (a cashier can legitimately
+   * navigate there), so this is a write-time 403 from the Server Action on
+   * submit, not a page-load throw like the two tests above -- proves
+   * `registerPatient()`'s new 403 branch (patients/new/actions.ts) actually
+   * renders, instead of the generic "Something went wrong creating the
+   * patient" every other non-2xx/409 response fell back to before this fix.
+   */
+  test('a cashier-roled user submitting patient registration sees a specific permission message, not a generic error', async ({
+    page,
+  }) => {
+    await loginAsCashier(page);
+    await page.goto('/patients/new');
+
+    await page.fill('#firstName', 'Permission');
+    await page.fill('#lastName', 'DeniedCheck');
+    await page.selectOption('#sex', 'F');
+    await page.getByRole('button', { name: 'Save & register' }).click();
+
+    await expect(
+      page.getByText('You do not have permission to register patients.'),
+    ).toBeVisible();
   });
 });

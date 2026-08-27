@@ -87,6 +87,13 @@ export async function updatePatient(
         submittedValues,
       };
     }
+    if (response.status === 403) {
+      return {
+        status: 'error',
+        formError: 'You do not have permission to edit patients.',
+        submittedValues,
+      };
+    }
     return {
       status: 'error',
       formError: 'Something went wrong saving these changes. Please try again.',

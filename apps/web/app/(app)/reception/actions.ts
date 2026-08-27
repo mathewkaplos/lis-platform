@@ -60,6 +60,12 @@ export async function receiveSpecimen(
 
   const { data, response } = await client.POST('/v1/specimens', { body: parsed.data });
   if (!response.ok) {
+    if (response.status === 403) {
+      return {
+        status: 'error',
+        formError: 'You do not have permission to receive specimens.',
+      };
+    }
     return {
       status: 'error',
       formError:

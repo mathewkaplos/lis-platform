@@ -114,6 +114,13 @@ export async function registerPatient(
         submittedValues,
       };
     }
+    if (response.status === 403) {
+      return {
+        status: 'error',
+        formError: 'You do not have permission to register patients.',
+        submittedValues,
+      };
+    }
     return {
       status: 'error',
       formError: 'Something went wrong creating the patient. Please try again.',

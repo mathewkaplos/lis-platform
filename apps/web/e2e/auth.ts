@@ -67,3 +67,9 @@ export async function loginAsPathologist(page: Page): Promise<void> {
 export async function loginAsQa(page: Page): Promise<void> {
   await login(page, 'test-user-5', 'test-password-5');
 }
+
+// test-user-10: seeded `cashier` role, TENANT_A -- holds only manage_billing
+// (apps/api/src/auth/capabilities.ts), lacking manage_patients/manage_orders.
+export async function loginAsCashier(page: Page): Promise<void> {
+  await login(page, 'test-user-10', 'test-password-10');
+}

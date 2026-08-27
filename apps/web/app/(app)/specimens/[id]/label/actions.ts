@@ -30,6 +30,12 @@ export async function printSpecimenLabel(specimenId: string): Promise<PrintLabel
     params: { path: { id: specimenId } },
   });
   if (!response.ok) {
+    if (response.status === 403) {
+      return {
+        status: 'error',
+        formError: 'You do not have permission to print specimen labels.',
+      };
+    }
     return {
       status: 'error',
       formError: 'Something went wrong recording this print. Please try again.',

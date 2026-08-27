@@ -40,6 +40,18 @@ function newRow(): PartRow {
  * genuinely imposes no constraint on it (proposal §5), so a curated list
  * here would be inventing a business rule that doesn't exist anywhere else
  * in this codebase.
+ *
+ * DOM `id` attributes below key off the row's array `index`, not `row.id`.
+ * `row.id` comes from `newRow()`'s `crypto.randomUUID()`, which runs during
+ * both the server render and the client's pre-hydration render and produces
+ * a *different* UUID each time -- baking it into an `id` attribute is a
+ * real, confirmed hydration mismatch (`rejection-reason-<server-uuid>` vs.
+ * `rejection-reason-<client-uuid>`), live-reproduced 2026-08-26 during the
+ * pilot-readiness audit: it made this form's inputs unreliable (typed values
+ * intermittently reset) because React discards and remounts the mismatched
+ * subtree instead of patching it. `row.id` itself is fine to keep using as
+ * the React `key` (never rendered to the DOM, so a value that only needs to
+ * be stable within one render tree, not equal across server/client).
  */
 export function CaseAccessionForm({ orderId }: { orderId: string }) {
   const [state, formAction, pending] = useActionState(createCase, createCaseInitialState);
@@ -111,7 +123,7 @@ export function CaseAccessionForm({ orderId }: { orderId: string }) {
             <div key={row.id} className="flex flex-col gap-2 rounded-md border border-border p-3">
               <div className="flex items-end gap-2">
                 <FormField
-                  id={`specimen-type-${row.id}`}
+                  id={`specimen-type-${index}`}
                   label={`Part ${index + 1} specimen type`}
                   className="flex-1"
                 >
@@ -133,7 +145,7 @@ export function CaseAccessionForm({ orderId }: { orderId: string }) {
                   </Button>
                 ) : null}
               </div>
-              <FormField id={`rejection-reason-${row.id}`} label="Rejection reason (optional)">
+              <FormField id={`rejection-reason-${index}`} label="Rejection reason (optional)">
                 <select
                   value={row.rejectionReason}
                   onChange={(e) => updateRow(row.id, { rejectionReason: e.target.value })}

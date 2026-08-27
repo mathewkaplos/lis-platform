@@ -23,8 +23,23 @@ import { PATIENT_SEARCH_RESULT_LIMIT } from '@lis/domain';
  * box -- a default view, not a replacement for search.
  *
  * A plain GET form (no client JS) drives the search -- `q` lives in the URL
- * `searchParams`, so this stays a Server Component; `loading.tsx` covers the
- * loading state during navigation, `error.tsx` covers a failed API call.
+ * `searchParams`, so this stays a Server Component; `error.tsx` covers a
+ * failed API call.
+ *
+ * Deliberately no `loading.tsx` here (this route used to have one).
+ * Confirmed live 2026-08-26 (pilot-readiness audit): with `next dev
+ * --webpack` on Next 16.2.12, a route-level `loading.tsx` Suspense boundary
+ * here reproducibly never resolves on the client -- the server completes the
+ * request and streams the real RSC payload (confirmed via direct
+ * `fetch()`/`__next_f` inspection: full data present, no JS error, no CSP
+ * violation), but the DOM stays stuck on the `loading.tsx` fallback forever.
+ * Removing the file was the only thing that unblocked this route (also
+ * reproduced and fixed the same way on `/orders`); root cause is presumed to
+ * be in Next's webpack-mode streaming/Suspense-resolution path itself, not
+ * this app's code. Re-add a `loading.tsx` here only after confirming this
+ * reproduces (or doesn't) on a `next build && next start` (or a Turbopack)
+ * run -- see `docs/pilot/PILOT-USER-GUIDE.md` §7/§8 for the full
+ * investigation.
  */
 export default async function PatientsPage({
   searchParams,

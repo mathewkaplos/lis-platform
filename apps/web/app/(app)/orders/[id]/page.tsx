@@ -19,6 +19,15 @@ import { GenerateInvoiceButton } from './generate-invoice-button';
  * A cross-tenant or nonexistent id surfaces the API's real 404 via
  * `notFound()`, matching `patients/[id]/page.tsx`'s own convention
  * (`engineering/api-design` entry #7).
+ *
+ * Deliberately no `loading.tsx` in this route. Confirmed live 2026-08-26
+ * (pilot-readiness audit): with `next dev --webpack` on Next 16.2.12, a
+ * route-level `loading.tsx` Suspense boundary here reproducibly never
+ * resolves on the client -- same defect already found and fixed on
+ * `/patients`, `/orders`, and `/patients/[id]` (see those routes' own
+ * `page.tsx` comments and `docs/pilot/PILOT-USER-GUIDE.md` §7/§8/§9). Re-add
+ * one only after confirming this reproduces (or doesn't) on
+ * `next build && next start` or Turbopack.
  */
 export default async function OrderDetailPage({
   params,

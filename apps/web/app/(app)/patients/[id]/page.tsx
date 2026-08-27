@@ -29,6 +29,16 @@ import { CopyChip } from './copy-chip';
  * `notFound()`, matching `engineering/api-design` Skill entry #7 (RLS makes
  * the row structurally invisible -- a genuinely nonexistent id and a real
  * id belonging to another tenant are indistinguishable here, by design).
+ *
+ * Deliberately no `loading.tsx` in this route (nor its `/edit` child, which
+ * shares this segment's Suspense boundary). Confirmed live 2026-08-26
+ * (pilot-readiness audit): with `next dev --webpack` on Next 16.2.12, a
+ * route-level `loading.tsx` Suspense boundary here reproducibly never
+ * resolves on the client -- same defect already found and fixed on
+ * `/patients` and `/orders` (see those routes' `page.tsx` comments and
+ * `docs/pilot/PILOT-USER-GUIDE.md` §7/§8/§9). Re-add one only after
+ * confirming this reproduces (or doesn't) on `next build && next start` or
+ * Turbopack.
  */
 export default async function PatientProfilePage({
   params,

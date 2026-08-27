@@ -45,6 +45,17 @@ export default async function RootLayout({
       lang={locale}
       data-theme={dataTheme}
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      // Browser extensions (session recorders, password managers, dark-mode
+      // toggles) commonly inject attributes onto <html> before React
+      // hydrates. A mismatch here is otherwise a root-level hydration error
+      // React "won't patch up" -- which can permanently strand a nested
+      // route's `loading.tsx` Suspense boundary on its fallback even though
+      // the server already sent the fully resolved page (confirmed live,
+      // 2026-08-26: /patients and /orders -- the only two routes with a
+      // loading.tsx -- hung indefinitely under a `data-scribe-recorder-ready`
+      // extension attribute, while extension-free routes like `/` and
+      // `/cases` were unaffected by the same mismatch).
+      suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
         <NextIntlClientProvider>{children}</NextIntlClientProvider>

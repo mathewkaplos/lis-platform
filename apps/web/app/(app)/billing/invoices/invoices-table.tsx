@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { Badge, DataTable } from '@lis/ui';
+import { formatMoneyCents } from '@/lib/format-currency';
 
 export interface InvoiceRow {
   id: string;
@@ -22,17 +23,19 @@ const STATUS_VARIANT: Record<string, 'outline' | 'secondary' | 'destructive'> = 
   paid: 'outline',
 };
 
-function formatDollars(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
-
 /**
  * Issue #489 (§17.1 only, docs/plans/task-489-invoice-list.md). Thin client
  * island around the shared `DataTable` primitive -- exists only to own
  * row-click navigation, same reasoning `cases-table.tsx`'s own header
  * comment already establishes.
  */
-export function InvoicesTable({ rows }: { rows: InvoiceRow[] }) {
+export function InvoicesTable({
+  rows,
+  currency,
+}: {
+  rows: InvoiceRow[];
+  currency: string | null;
+}) {
   const router = useRouter();
 
   return (
@@ -65,18 +68,18 @@ export function InvoicesTable({ rows }: { rows: InvoiceRow[] }) {
         {
           id: 'totalCents',
           header: 'Total',
-          cell: (row) => formatDollars(row.totalCents),
+          cell: (row) => formatMoneyCents(row.totalCents, currency),
           sortable: true,
         },
         {
           id: 'amountPaidCents',
           header: 'Paid',
-          cell: (row) => formatDollars(row.amountPaidCents),
+          cell: (row) => formatMoneyCents(row.amountPaidCents, currency),
         },
         {
           id: 'balanceDueCents',
           header: 'Balance due',
-          cell: (row) => formatDollars(row.balanceDueCents),
+          cell: (row) => formatMoneyCents(row.balanceDueCents, currency),
         },
         {
           id: 'createdAt',

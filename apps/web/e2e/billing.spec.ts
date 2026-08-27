@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { loginAsTechnologist } from './auth';
+import { loginAsQa, loginAsTechnologist } from './auth';
 
 /**
  * Real money moving through the system: generateInvoice -> recordPayment,
@@ -15,7 +15,27 @@ import { loginAsTechnologist } from './auth';
  * clinical-workflow.spec.ts's own header comment for why.
  */
 test.describe('Billing: generate invoice -> record payment (real server actions)', () => {
-  test('generating an invoice and recording full payment marks it paid', async ({ page }) => {
+  test('generating an invoice and recording full payment marks it paid', async ({
+    page,
+    browser,
+  }) => {
+    // Issue #765 (pilot-readiness audit): explicitly set the tenant's own
+    // currency to a non-USD code first, in a separate browser context (qa
+    // holds manage_org_settings, technologist does not) -- proves the
+    // invoice/payment UI reads this real setting rather than a hardcoded
+    // "$"/"USD", without depending on whatever a fresh seed happens to
+    // default `tenant.currency` to (confirmed live: it's blank/NULL on a
+    // freshly seeded db, unlike this session's own manually-configured local
+    // dev tenant, which is not a checked-in fixture).
+    const qaContext = await browser.newContext();
+    const qaPage = await qaContext.newPage();
+    await loginAsQa(qaPage);
+    await qaPage.goto('/admin/org-settings');
+    await qaPage.getByLabel(/Currency/i).fill('KES');
+    await qaPage.getByRole('button', { name: /^save$/i }).click();
+    await expect(qaPage.getByText('Saved.')).toBeVisible();
+    await qaContext.close();
+
     await loginAsTechnologist(page);
 
     await page.goto('/patients/new');
@@ -49,6 +69,9 @@ test.describe('Billing: generate invoice -> record payment (real server actions)
     // legitimate-double-render class the final "paid" assertion below
     // already accounts for.
     await expect(page.getByText('unpaid', { exact: true }).first()).toBeVisible();
+
+    await expect(page.getByLabel(/Amount \(KES\)/i)).toBeVisible();
+    await expect(page.getByText('$', { exact: false })).toHaveCount(0);
 
     // -- Record full payment (real server action: recordPayment) --------
     // The amount field already defaults to the invoice's own full balance

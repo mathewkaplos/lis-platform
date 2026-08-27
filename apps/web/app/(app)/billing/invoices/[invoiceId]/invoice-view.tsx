@@ -13,12 +13,9 @@ import {
   Input,
 } from '@lis/ui';
 import type { Invoice } from '@lis/domain';
+import { formatMoneyCents } from '@/lib/format-currency';
 import { recordPayment } from './actions';
 import { paymentInitialState } from './types';
-
-function formatCents(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 const STATUS_VARIANT: Record<Invoice['status'], 'outline' | 'secondary' | 'default'> = {
   unpaid: 'outline',
@@ -33,7 +30,13 @@ const STATUS_VARIANT: Record<Invoice['status'], 'outline' | 'secondary' | 'defau
  * invoice, take a payment, see confirmation) rather than three separate
  * page loads, which nothing in the approved proposal's own scope required.
  */
-export function InvoiceView({ invoice }: { invoice: Invoice }) {
+export function InvoiceView({
+  invoice,
+  currency,
+}: {
+  invoice: Invoice;
+  currency: string | null;
+}) {
   const router = useRouter();
   const boundRecordPayment = recordPayment.bind(null, invoice.id);
   const [state, formAction, pending] = useActionState(
@@ -94,7 +97,7 @@ export function InvoiceView({ invoice }: { invoice: Invoice }) {
                   </td>
                   <td className="py-2 text-foreground">{item.quantity}</td>
                   <td className="py-2 text-right text-foreground">
-                    {formatCents(item.amountCents)}
+                    {formatMoneyCents(item.amountCents, currency)}
                   </td>
                 </tr>
               ))}
@@ -105,7 +108,7 @@ export function InvoiceView({ invoice }: { invoice: Invoice }) {
                   Total
                 </td>
                 <td className="pt-3 text-right font-medium text-foreground">
-                  {formatCents(invoice.totalCents)}
+                  {formatMoneyCents(invoice.totalCents, currency)}
                 </td>
               </tr>
             </tfoot>
@@ -136,7 +139,11 @@ export function InvoiceView({ invoice }: { invoice: Invoice }) {
                   <option value="mobile_money">Mobile money</option>
                 </select>
               </FormField>
-              <FormField id="amountCentsDollars" label="Amount (USD)" required>
+              <FormField
+                id="amountCentsDollars"
+                label={`Amount (${currency?.trim().toUpperCase() || 'USD'})`}
+                required
+              >
                 <Input
                   type="number"
                   name="amountCentsDollars"
@@ -192,7 +199,7 @@ export function InvoiceView({ invoice }: { invoice: Invoice }) {
             </span>
           </p>
           <p className="text-text-secondary">
-            Total: <span className="text-foreground">{formatCents(invoice.totalCents)}</span>
+            Total: <span className="text-foreground">{formatMoneyCents(invoice.totalCents, currency)}</span>
           </p>
           <p className="text-text-secondary">
             Status: <span className="text-foreground">{invoice.status}</span>

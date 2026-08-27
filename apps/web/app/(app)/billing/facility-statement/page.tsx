@@ -2,11 +2,8 @@ import Link from 'next/link';
 import { Button, Card, CardContent, CardHeader, CardTitle, FormField, Input } from '@lis/ui';
 import { getValidAccessToken } from '@/auth/access-token';
 import { createLisApiClient } from '@/lib/api-client';
+import { formatMoneyCents } from '@/lib/format-currency';
 import { PrintButton } from './print-button';
-
-function formatDollars(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 /**
  * Issue #704 (EPIC #697). The design partner's own stated real-world
@@ -51,6 +48,11 @@ export default async function FacilityStatementPage({
     );
   }
   const client = createLisApiClient(accessToken);
+
+  // Issue #765: the tenant's own currency setting, not a hardcoded USD --
+  // GET /v1/org-settings is gated only by AnyRoleGuard (any authenticated
+  // role), so this never adds a new permission requirement to this page.
+  const { data: orgSettings } = await client.GET('/v1/org-settings');
 
   const { data: facilities, response: facilitiesResponse } = await client.GET(
     '/v1/referring-facilities',
@@ -210,10 +212,10 @@ export default async function FacilityStatementPage({
                         <td className="py-2 text-foreground">{item.patientName}</td>
                         <td className="py-2 text-foreground">{item.status}</td>
                         <td className="py-2 text-right text-foreground">
-                          {formatDollars(item.totalCents)}
+                          {formatMoneyCents(item.totalCents, orgSettings?.currency ?? null)}
                         </td>
                         <td className="py-2 text-right text-foreground">
-                          {formatDollars(item.balanceDueCents)}
+                          {formatMoneyCents(item.balanceDueCents, orgSettings?.currency ?? null)}
                         </td>
                       </tr>
                     ))}
@@ -224,10 +226,10 @@ export default async function FacilityStatementPage({
                         Facility total ({items.length} {items.length === 1 ? 'patient' : 'patients'})
                       </td>
                       <td className="pt-3 text-right font-medium text-foreground">
-                        {formatDollars(grandTotalCents)}
+                        {formatMoneyCents(grandTotalCents, orgSettings?.currency ?? null)}
                       </td>
                       <td className="pt-3 text-right font-medium text-foreground">
-                        {formatDollars(grandBalanceDueCents)}
+                        {formatMoneyCents(grandBalanceDueCents, orgSettings?.currency ?? null)}
                       </td>
                     </tr>
                   </tfoot>

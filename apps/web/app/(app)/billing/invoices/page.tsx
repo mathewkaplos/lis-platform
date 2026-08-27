@@ -53,6 +53,11 @@ export default async function InvoicesPage({
   }
   const client = createLisApiClient(accessToken);
 
+  // Issue #765: the tenant's own currency setting, not a hardcoded USD --
+  // GET /v1/org-settings is gated only by AnyRoleGuard (any authenticated
+  // role), so this never adds a new permission requirement to this page.
+  const { data: orgSettings } = await client.GET('/v1/org-settings');
+
   const { data, response } = await client.GET('/v1/invoices', {
     params: { query: { status: normalizedStatus } },
   });
@@ -112,7 +117,7 @@ export default async function InvoicesPage({
           </Button>
         ))}
       </div>
-      <InvoicesTable rows={data.items} />
+      <InvoicesTable rows={data.items} currency={orgSettings?.currency ?? null} />
     </div>
   );
 }

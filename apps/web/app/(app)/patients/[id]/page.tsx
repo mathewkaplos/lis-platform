@@ -66,6 +66,16 @@ export default async function PatientProfilePage({
   if (response.status === 404) {
     notFound();
   }
+  if (response.status === 403) {
+    // Issue #762: AnyRoleGuard now rejects a zero-role account here.
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <p role="alert" className="text-sm text-text-secondary">
+          You do not have permission to view this patient.
+        </p>
+      </div>
+    );
+  }
   if (!response.ok || !patient) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">

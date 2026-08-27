@@ -27,6 +27,7 @@ import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { Audit } from '../auth/audit.decorator';
 import { AuditInterceptor } from '../auth/audit.interceptor';
+import { AnyRoleGuard } from '../auth/any-role.guard';
 import { CapabilityGuard } from '../auth/capability.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { DbTx } from '../auth/db-tx.decorator';
@@ -170,9 +171,15 @@ export class OrderController {
    * search mode — FEAT-012's own AC names status/priority/date range only.
    * Fixed-cap result set, no cursor pagination (`engineering/api-design`
    * entry #4, still deferred).
+   *
+   * Issue #762: `AnyRoleGuard`, not a specific `@RequireCapability` — read
+   * access here spans several roles with no one capability common to all of
+   * them (unlike `create()`'s `manage_orders` gate above). A live
+   * pilot-readiness pass found a real zero-role Keycloak account could still
+   * read the full order list; `AnyRoleGuard` closes exactly that gap.
    */
   @Get()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AnyRoleGuard)
   @UseInterceptors(TenantContextInterceptor)
   @ZodResponse({ type: [OrderDto], status: 200 })
   async search(
@@ -248,7 +255,7 @@ export class OrderController {
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AnyRoleGuard)
   @UseInterceptors(TenantContextInterceptor)
   @ZodResponse({ type: OrderDto, status: 200 })
   async getById(

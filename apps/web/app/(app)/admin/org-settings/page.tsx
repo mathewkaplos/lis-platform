@@ -8,11 +8,18 @@ import { OrgSettingsForm } from './org-settings-form';
  * had only a `name` column, set once at signup and never editable
  * (confirmed via the pilot-readiness audit and a `find` for any
  * "organization"/"org-settings" page turning up nothing). `GET
- * /v1/org-settings` needs no capability gate (reading one's own org's
- * settings is informational, matching the controller's own precedent) --
- * every staff session can view this page; the form's save action is
- * `manage_org_settings`-gated server-side and returns a friendly 403
- * message rather than hiding the whole page for a non-`qa` viewer.
+ * /v1/org-settings` needs no *specific* capability gate (reading one's own
+ * org's settings is informational, matching the controller's own
+ * precedent) -- every real staff session can view this page; the form's
+ * save action is `manage_org_settings`-gated server-side and returns a
+ * friendly 403 message rather than hiding the whole page for a non-`qa`/
+ * `lab_admin` viewer.
+ *
+ * Issue #762: `GET /v1/org-settings` now additionally rejects a zero-role
+ * account (`AnyRoleGuard`) -- a live pilot-readiness pass found a real
+ * Keycloak account with no assigned role could still read the full org
+ * profile here. That 403 is handled below the same way the save action's
+ * already was, rather than falling into the generic error branch.
  */
 export default async function OrgSettingsPage() {
   const accessToken = await getValidAccessToken();
@@ -30,6 +37,15 @@ export default async function OrgSettingsPage() {
   const client = createLisApiClient(accessToken);
 
   const { data: settings, response } = await client.GET('/v1/org-settings');
+  if (response.status === 403) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <p role="alert" className="text-sm text-text-secondary">
+          You do not have permission to view organization settings.
+        </p>
+      </div>
+    );
+  }
   if (!response.ok || !settings) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">

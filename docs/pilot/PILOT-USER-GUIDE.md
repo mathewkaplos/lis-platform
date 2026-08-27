@@ -1698,15 +1698,27 @@ pilot@example.com, KES.
 Minimum conditions before inviting a real design partner, based on what this pass actually found —
 brutally honest, not a wish list:
 
-- [ ] **Fix the page-level RBAC gap confirmed live in §18.3 — treat this as a blocker, not an
-      observation.** A zero-role Keycloak account can currently read the full clinical worklist, the
-      organization's settings, and the patient list/registration screen. This is more severe than
-      §18.2's already-accepted API-only gap because it's reachable from the dashboard itself, no API
-      tooling required. Before any real patient or facility data goes into this system, either add the
-      missing capability checks to `/`, `/admin/org-settings`, and `/patients` (matching the pattern
-      already correctly used on `/admin/users` and `/billing/invoices`), or make certain no account can
-      ever exist with zero roles for longer than the moment between creation and role assignment.
-      **Tracked as [issue #762](https://github.com/mathewkaplos/lis-platform/issues/762).**
+- [x] **Fixed 2026-08-27: the page-level RBAC gap confirmed live in §18.3 ([issue
+      #762](https://github.com/mathewkaplos/lis-platform/issues/762)).** A zero-role Keycloak account
+      could read the full clinical worklist, the organization's settings, and the patient/order
+      list/detail screens. Rather than gate each route on one specific `@RequireCapability` (several of
+      these routes are legitimately read by multiple roles — e.g. `/patients` by
+      technologist/pathologist/reception/lab_admin *and* a scoped `clinician`, with no single capability
+      common to all of them — a narrower gate would have regressed one of them), added a new
+      `AnyRoleGuard` (`apps/api/src/auth/any-role.guard.ts`) that denies (403) only a caller with **zero**
+      Keycloak realm roles, and applied it to `GET /v1/worklist`, `GET /v1/org-settings`, `GET
+      /v1/patients`, `GET /v1/patients/:id`, `GET /v1/orders`, and `GET /v1/orders/:id`. Each affected
+      web page (`/`, `/admin/org-settings`, `/patients`, `/patients/[id]`, `/orders`, `/orders/[id]`) now
+      shows a clear "you don't have permission" message on a 403 instead of falling through to a generic
+      error. **Verified live as `test-user-3`** (the seeded zero-role fixture account): all six pages now
+      show the denial message instead of real data. **Verified no regression** as `test-user`
+      (technologist): `/`, `/patients`, `/patients/[id]`, `/orders`, `/orders/[id]` all still render
+      normally. Backend test suite: `any-role.guard.spec.ts` (new, 2 tests) plus the full
+      `patient.e2e-spec.ts` (17), `order.e2e-spec.ts` (15), `org-settings.e2e-spec.ts` (7), and
+      `capability-check.e2e-spec.ts` (10) suites all pass unchanged. (`worklist.e2e-spec.ts` has 2
+      pre-existing, unrelated failures caused by this tenant's own accumulated fixture-row volume
+      exceeding `WORKLIST_RESULT_LIMIT` — confirmed by reproducing the identical failure with this
+      session's `worklist.controller.ts` change reverted; not something this fix touched.)
 - [x] **Fixed 2026-08-26: the Patients/Orders list + order-booking client-side hang from §7/§8.**
       `/patients`, `/orders`, and `/orders/new` were hanging indefinitely on their `loading.tsx`
       fallback for every account, surviving a full clean restart of both `apps/web` and `apps/api` — a

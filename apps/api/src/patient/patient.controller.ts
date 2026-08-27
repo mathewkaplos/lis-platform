@@ -42,6 +42,7 @@ import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { Audit } from '../auth/audit.decorator';
 import { AuditInterceptor } from '../auth/audit.interceptor';
+import { AnyRoleGuard } from '../auth/any-role.guard';
 import { CapabilityGuard } from '../auth/capability.guard';
 import { isClinicianOnly, relatedPatientIds } from '../auth/clinician-scope';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -226,6 +227,15 @@ export class PatientController {
    * no `tenantId` filter added in application code, matching every existing
    * read route in this repo (e.g. `order-count`'s plain unfiltered SELECT).
    *
+   * Issue #762: gated on `AnyRoleGuard`, not a specific `@RequireCapability`
+   * — this route is legitimately read by several different roles
+   * (technologist/pathologist/reception/lab_admin, plus a scoped
+   * `clinician`, per `isClinicianOnly` below) with no single capability
+   * common to all of them, so a narrower gate would regress one of them. A
+   * live pilot-readiness pass found a real Keycloak account with **zero**
+   * roles could still read this route in full — `AnyRoleGuard` closes
+   * exactly that gap without touching who among the real roles can read it.
+   *
    * FEAT-040 (proposal §10 Q1/Q2): a `clinician`-only principal (no
    * `technologist`/`verifier`/`qa` role also held) is additionally scoped to
    * patients with a real `care_relationship` row — every other role's
@@ -234,7 +244,7 @@ export class PatientController {
    * clinician.
    */
   @Get()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AnyRoleGuard)
   @UseInterceptors(TenantContextInterceptor)
   @ZodResponse({ type: [PatientDto], status: 200 })
   async search(
@@ -328,7 +338,7 @@ export class PatientController {
    * access, applied here to "no relationship" too.
    */
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AnyRoleGuard)
   @UseInterceptors(TenantContextInterceptor)
   @ZodResponse({ type: PatientDetailDto, status: 200 })
   async getById(

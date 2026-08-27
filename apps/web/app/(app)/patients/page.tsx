@@ -67,6 +67,18 @@ export default async function PatientsPage({
   const { data, response } = await client.GET('/v1/patients', {
     params: { query: isSearch ? { q: trimmedQ } : { recent: 'true' } },
   });
+  if (response.status === 403) {
+    // Issue #762: the API now rejects a zero-role account here (AnyRoleGuard) --
+    // surface that plainly, matching admin/users/page.tsx's own convention,
+    // instead of falling into the generic "something went wrong" branch below.
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <p role="alert" className="text-sm text-text-secondary">
+          You do not have permission to view patients.
+        </p>
+      </div>
+    );
+  }
   if (!response.ok) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">

@@ -71,6 +71,16 @@ export default async function OrderDetailPage({
   if (orderResponse.status === 404) {
     notFound();
   }
+  if (orderResponse.status === 403) {
+    // Issue #762: AnyRoleGuard now rejects a zero-role account here.
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <p role="alert" className="text-sm text-text-secondary">
+          You do not have permission to view this order.
+        </p>
+      </div>
+    );
+  }
   if (!orderResponse.ok || !order) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">

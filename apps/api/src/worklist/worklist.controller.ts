@@ -34,6 +34,7 @@ import {
 } from '@lis/db';
 import { and, asc, count, eq, gte, inArray, lte, type SQL } from 'drizzle-orm';
 import { ZodResponse, ZodValidationPipe, createZodDto } from 'nestjs-zod';
+import { AnyRoleGuard } from '../auth/any-role.guard';
 import {
   CapabilityGuard,
   type RequestWithGrantingRole,
@@ -72,10 +73,18 @@ const PENDING_STATUSES = ['ordered', 'received'] as const;
 /**
  * TASK-061 (FEAT-017 proposal, docs/plans/feat-017-minimal-worklist.md):
  * a live query over `ordered_test`, not a stored worklist/task record (KB-26's
- * "worklist" half only). Read-only, no capability gate — matches
+ * "worklist" half only). Read-only, no specific capability gate — matches
  * OrderController.search()'s/CatalogController's own gate-free read
  * precedent. Not audited, per the same reasoning (`engineering/api-design`
  * entry #6).
+ *
+ * Issue #762: `list()` below additionally requires `AnyRoleGuard` — a live
+ * pilot-readiness pass found a real Keycloak account with **zero** assigned
+ * roles could read this route in full (the real worklist, real patient/test
+ * names), which is the dashboard landing page every user sees immediately
+ * after login. `AnyRoleGuard` closes that without narrowing which real
+ * staff role can read it, same reasoning as the identical fix on
+ * `PatientController`/`OrgSettingsController`/`OrderController`.
  */
 @Controller('v1/worklist')
 export class WorklistController {
@@ -87,7 +96,7 @@ export class WorklistController {
    * narrowed by whatever query params happened to be passed for the list.
    */
   @Get()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AnyRoleGuard)
   @UseInterceptors(TenantContextInterceptor)
   @ZodResponse({ type: WorklistResponseDto, status: 200 })
   async list(

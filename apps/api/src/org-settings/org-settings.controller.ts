@@ -16,6 +16,7 @@ import { eq } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { Audit } from '../auth/audit.decorator';
 import { AuditInterceptor } from '../auth/audit.interceptor';
+import { AnyRoleGuard } from '../auth/any-role.guard';
 import { CapabilityGuard } from '../auth/capability.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { db } from '../auth/db';
@@ -49,10 +50,13 @@ interface TenantRow {
  * no `tenant_id` column, no RLS policy -- so every query here filters
  * manually by `eq(tenant.id, user.tenantId)` rather than relying on RLS
  * (matching TenantCheckController's own documented "unbound" precedent for
- * this exact class of table). GET needs no capability gate (reading one's
- * own org's preference is informational, matching
- * MicrobiologyCatalogController's own precedent); PUT is
- * `manage_org_settings`-gated (`qa` only) and `@Audit()`'d, using
+ * this exact class of table). GET needs no *specific* capability gate
+ * (reading one's own org's identity is informational, matching
+ * MicrobiologyCatalogController's own precedent) -- but issue #762 (a live
+ * pilot-readiness pass) found this let a real Keycloak account with **zero**
+ * assigned roles read the org's full profile too; `AnyRoleGuard` closes that
+ * specific gap without narrowing which real staff role can read it. PUT is
+ * `manage_org_settings`-gated (`qa`/`lab_admin`) and `@Audit()`'d, using
  * `TenantContextInterceptor`'s transaction (`tx`) only so `AuditInterceptor`
  * has a transaction to write the audit_event row through -- not because
  * `tenant` itself is RLS-scoped.
@@ -91,6 +95,7 @@ interface TenantRow {
 @UseGuards(JwtAuthGuard)
 export class OrgSettingsController {
   @Get()
+  @UseGuards(AnyRoleGuard)
   @ZodResponse({ type: OrgSettingsDto, status: 200 })
   async get(@CurrentUser() user: RequestContext): Promise<OrgSettings> {
     return toOrgSettings(await getTenantRow(db, user.tenantId));

@@ -73,6 +73,18 @@ export default async function Home({
       },
     },
   });
+  if (response.status === 403) {
+    // Issue #762: AnyRoleGuard now rejects a zero-role account here —
+    // this is the first page every user lands on after login, so it's the
+    // most visible instance of the gap this guard closes.
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <p role="alert" className="text-sm text-text-secondary">
+          Your account has not been assigned a role yet — contact your administrator.
+        </p>
+      </div>
+    );
+  }
   if (!response.ok || !data) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">

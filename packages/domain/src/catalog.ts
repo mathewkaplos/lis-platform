@@ -75,10 +75,22 @@ export const CATALOG_RESULT_LIMIT = 500;
  * produce a report (`report-assembly.ts`'s own existing guard), so this is
  * rejected at creation time, not left for a downstream consumer to catch.
  */
+/**
+ * Issue #781 (pilot-readiness audit): `test_definition.billingCode`/
+ * `priceCents` already existed on the schema (FEAT-046/ADR-0041's own
+ * "billing codes as catalog metadata" decision) but this create route never
+ * accepted either -- every test created through this UI came out
+ * unbillable (`billing.service.ts` rejects generating an invoice for an
+ * order containing a test with no `priceCents`), confirmed live. Both stay
+ * optional: a lab may legitimately want to set pricing later via the same
+ * ops-migration path the seeded starter catalog already uses.
+ */
 export const testDefinitionCreateSchema = z.object({
   code: z.string().min(1),
   displayName: z.string().min(1),
   analyteIds: z.array(z.uuid()).min(1),
+  billingCode: z.string().min(1).optional(),
+  priceCents: z.number().int().nonnegative().optional(),
 });
 export type TestDefinitionCreateInput = z.infer<
   typeof testDefinitionCreateSchema
@@ -89,6 +101,8 @@ export const testDefinitionResultSchema = z.object({
   code: z.string(),
   displayName: z.string(),
   analyteIds: z.array(z.uuid()),
+  billingCode: z.string().nullable(),
+  priceCents: z.number().int().nullable(),
 });
 export type TestDefinitionResult = z.infer<typeof testDefinitionResultSchema>;
 

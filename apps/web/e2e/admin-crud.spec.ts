@@ -51,11 +51,14 @@ test.describe('Admin CRUD (real server actions)', () => {
     // test_definition.code is unique per tenant, not per analyte, so a
     // second test can validly bind to the same analyte again.
     const uniqueCode = `E2E-${Date.now()}`;
-    // Not anchored (^$) -- unlike "Low"/"High" below, "Code" is a required
-    // field (create-test-form.tsx passes `required`), so its <label> text
-    // is "Code *" (see clinical-workflow.spec.ts's own header comment on
-    // why exact/anchored matches can never hit a required field's label).
-    await page.getByLabel(/Code/i).fill(uniqueCode);
+    // By id, not getByLabel -- issue #781 added a "Billing code (optional)"
+    // field to this same form, which any Code-matching regex (anchored or
+    // not) also resolves against (confirmed live: both an unanchored
+    // /Code/i strict-mode violation, and an anchored /^Code$/i timeout with
+    // no clear cause). FormField clones its own `id` onto this input
+    // (`packages/ui`'s own `form-field.tsx`), so `#code` is exact and
+    // unambiguous.
+    await page.locator('#code').fill(uniqueCode);
     await page.getByLabel(/Display name/i).fill('E2E Admin Test');
     // Implicit label association (a plain <label> wrapping the Checkbox,
     // no htmlFor/id -- create-test-form.tsx's own shape), not FormField's

@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react';
 import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, FormField, Input, Label } from '@lis/ui';
+import { formatMoneyCents } from '@/lib/format-currency';
 import { createTest } from './actions';
 import { createTestInitialState } from './types';
 
@@ -18,7 +19,13 @@ export interface AnalyteOption {
  * primitive (proposal §5 — no stated reason yet to build one for a single
  * screen).
  */
-export function CreateTestForm({ analyteOptions }: { analyteOptions: AnalyteOption[] }) {
+export function CreateTestForm({
+  analyteOptions,
+  currency,
+}: {
+  analyteOptions: AnalyteOption[];
+  currency: string | null;
+}) {
   const [state, formAction, pending] = useActionState(createTest, createTestInitialState);
 
   if (state.status === 'created' && state.createdTest) {
@@ -32,6 +39,11 @@ export function CreateTestForm({ analyteOptions }: { analyteOptions: AnalyteOpti
             <span className="font-mono text-foreground">{state.createdTest.code}</span> —{' '}
             {state.createdTest.displayName} was created with{' '}
             {state.createdTest.analyteIds.length} bound analyte(s).
+            {state.createdTest.priceCents != null ? (
+              <> Price: {formatMoneyCents(state.createdTest.priceCents, currency)}.</>
+            ) : (
+              ' No price set -- orders containing this test cannot be invoiced until one is added.'
+            )}
           </p>
         </CardContent>
       </Card>
@@ -61,6 +73,41 @@ export function CreateTestForm({ analyteOptions }: { analyteOptions: AnalyteOpti
           >
             <Input name="displayName" required placeholder="e.g. Comprehensive Metabolic Panel" />
           </FormField>
+          <FormField
+            id="billingCode"
+            label="Billing code (optional)"
+            errorText={state.fieldErrors?.billingCode?.[0]}
+          >
+            <Input name="billingCode" placeholder="e.g. CPT 80053" />
+          </FormField>
+          <FormField
+            id="priceAmount"
+            label={`Price (${currency?.trim().toUpperCase() || 'USD'}, optional)`}
+            errorText={state.fieldErrors?.priceCents?.[0]}
+          >
+            <Input
+              type="number"
+              name="priceAmount"
+              step="0.01"
+              min="0"
+              placeholder="e.g. 15.00"
+              // An order containing this test can't be invoiced until a
+              // price is set (billing.service.ts) -- left blank, this test
+              // is created with no price, same "explicitly unpriced, not a
+              // silent $0" gap the seeded starter catalog already documents.
+              onChange={(e) => {
+                const hidden = e.currentTarget.form?.elements.namedItem(
+                  'priceCents',
+                ) as HTMLInputElement | null;
+                if (hidden) {
+                  hidden.value = e.currentTarget.value
+                    ? String(Math.round(Number(e.currentTarget.value) * 100))
+                    : '';
+                }
+              }}
+            />
+          </FormField>
+          <input type="hidden" name="priceCents" />
           <div className="flex flex-col gap-1.5">
             <Label id="analyteIds-label">
               Analytes <span className="text-danger">*</span>

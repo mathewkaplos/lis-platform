@@ -44,14 +44,22 @@ export async function recordPayment(
   }
   const client = createLisApiClient(accessToken);
 
-  const { response, error } = await client.POST('/v1/invoices/{id}/payments', {
-    params: { path: { id: invoiceId } },
-    body: {
-      method: parsed.data.method as PaymentMethod,
-      amountCents: parsed.data.amountCents,
-      reference: parsed.data.reference,
-    },
-  });
+  let response, error;
+  try {
+    ({ response, error } = await client.POST('/v1/invoices/{id}/payments', {
+      params: { path: { id: invoiceId } },
+      body: {
+        method: parsed.data.method as PaymentMethod,
+        amountCents: parsed.data.amountCents,
+        reference: parsed.data.reference,
+      },
+    }));
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server — your payment was not recorded, please try again.',
+    };
+  }
   if (!response.ok) {
     if (response.status === 400) {
       // `ProblemDetailsFilter` (apps/api/src/common/problem-details.filter.ts)
@@ -106,13 +114,21 @@ export async function sendInvoiceEmail(
   }
   const client = createLisApiClient(accessToken);
 
-  const { data, response, error } = await client.POST(
-    '/v1/invoices/{id}/send-email',
-    {
-      params: { path: { id: invoiceId } },
-      body: { to: to || undefined },
-    },
-  );
+  let data, response, error;
+  try {
+    ({ data, response, error } = await client.POST(
+      '/v1/invoices/{id}/send-email',
+      {
+        params: { path: { id: invoiceId } },
+        body: { to: to || undefined },
+      },
+    ));
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server. Please try again.',
+    };
+  }
 
   if (!response.ok) {
     if (response.status === 400) {

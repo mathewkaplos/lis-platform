@@ -64,7 +64,15 @@ export async function createOrder(
   }
   const client = createLisApiClient(accessToken);
 
-  const { data, response } = await client.POST('/v1/orders', { body: parsed.data });
+  let data, response;
+  try {
+    ({ data, response } = await client.POST('/v1/orders', { body: parsed.data }));
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server — your data was not saved, please try again.',
+    };
+  }
   if (!response.ok) {
     if (response.status === 403) {
       return {

@@ -48,7 +48,15 @@ export async function createCase(
   }
   const client = createLisApiClient(accessToken);
 
-  const { data, error, response } = await client.POST('/v1/cases', { body: parsed.data });
+  let data, error, response;
+  try {
+    ({ data, error, response } = await client.POST('/v1/cases', { body: parsed.data }));
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server — your data was not saved, please try again.',
+    };
+  }
   if (!response.ok) {
     // Issue #768: a capability-guard denial's `detail` is a technical
     // message (CapabilityGuard's own "No role grants the '...' capability"),

@@ -129,10 +129,19 @@ export async function draftResult(
   }
   const client = createLisApiClient(accessToken);
 
-  const { data, response } = await client.PUT('/v1/ordered-tests/{id}/results/{analyteId}', {
-    params: { path: { id: orderedTestId, analyteId } },
-    body: { dataType: 'quantity', valueNum },
-  });
+  let data, response;
+  try {
+    ({ data, response } = await client.PUT('/v1/ordered-tests/{id}/results/{analyteId}', {
+      params: { path: { id: orderedTestId, analyteId } },
+      body: { dataType: 'quantity', valueNum },
+    }));
+  } catch {
+    return {
+      status: 'error',
+      error: 'Something went wrong reaching the server. Please try again.',
+      ...FAILURE,
+    };
+  }
   if (!response.ok || !data) {
     return { status: 'error', error: writeErrorMessage(response.status), ...FAILURE };
   }
@@ -168,10 +177,19 @@ export async function draftMorphologyResult(
   }
   const client = createLisApiClient(accessToken);
 
-  const { data, response } = await client.PUT('/v1/ordered-tests/{id}/results/{analyteId}', {
-    params: { path: { id: orderedTestId, analyteId } },
-    body: { dataType: 'ordinal', valueCode, notes, notesAiOriginated, notesAiDisposition },
-  });
+  let data, response;
+  try {
+    ({ data, response } = await client.PUT('/v1/ordered-tests/{id}/results/{analyteId}', {
+      params: { path: { id: orderedTestId, analyteId } },
+      body: { dataType: 'ordinal', valueCode, notes, notesAiOriginated, notesAiDisposition },
+    }));
+  } catch {
+    return {
+      status: 'error',
+      error: 'Something went wrong reaching the server. Please try again.',
+      ...FAILURE,
+    };
+  }
   if (!response.ok || !data) {
     return { status: 'error', error: writeErrorMessage(response.status), ...FAILURE };
   }
@@ -209,10 +227,15 @@ export async function draftNarrative(
   // Not run through @ZodResponse (same gap finalize()'s own comment above
   // documents -- observation.controller.ts's draftNarrative() returns a
   // plain object, no OpenAPI response schema, hence the manual cast).
-  const { data, response } = await client.POST(
-    '/v1/ordered-tests/{id}/results/{analyteId}/draft-narrative',
-    { params: { path: { id: orderedTestId, analyteId } } },
-  );
+  let data, response;
+  try {
+    ({ data, response } = await client.POST(
+      '/v1/ordered-tests/{id}/results/{analyteId}/draft-narrative',
+      { params: { path: { id: orderedTestId, analyteId } } },
+    ));
+  } catch {
+    return { status: 'error', error: 'Something went wrong reaching the server. Please try again.' };
+  }
   if (!response.ok || !data) {
     if (response.status === 409) {
       return { status: 'error', error: 'Select a morphology grade before drafting a narrative.' };
@@ -234,10 +257,19 @@ export async function finalizeResult(
   }
   const client = createLisApiClient(accessToken);
 
-  const { data, error, response } = await client.POST('/v1/ordered-tests/{id}/results/{analyteId}/finalize', {
-    params: { path: { id: orderedTestId, analyteId } },
-    body: { dataType: 'quantity', valueNum },
-  });
+  let data, error, response;
+  try {
+    ({ data, error, response } = await client.POST('/v1/ordered-tests/{id}/results/{analyteId}/finalize', {
+      params: { path: { id: orderedTestId, analyteId } },
+      body: { dataType: 'quantity', valueNum },
+    }));
+  } catch {
+    return {
+      status: 'error',
+      error: 'Something went wrong reaching the server. Please try again.',
+      ...FAILURE,
+    };
+  }
   if (!response.ok || !data) {
     // ADR-0021 / issue #400: distinguish "the write committed, the panel is
     // just held" from every other 409/failure -- openapi-fetch already
@@ -337,10 +369,19 @@ export async function finalizeMorphologyResult(
   }
   const client = createLisApiClient(accessToken);
 
-  const { data, error, response } = await client.POST('/v1/ordered-tests/{id}/results/{analyteId}/finalize', {
-    params: { path: { id: orderedTestId, analyteId } },
-    body: { dataType: 'ordinal', valueCode, notes, notesAiOriginated, notesAiDisposition },
-  });
+  let data, error, response;
+  try {
+    ({ data, error, response } = await client.POST('/v1/ordered-tests/{id}/results/{analyteId}/finalize', {
+      params: { path: { id: orderedTestId, analyteId } },
+      body: { dataType: 'ordinal', valueCode, notes, notesAiOriginated, notesAiDisposition },
+    }));
+  } catch {
+    return {
+      status: 'error',
+      error: 'Something went wrong reaching the server. Please try again.',
+      ...FAILURE,
+    };
+  }
   if (!response.ok || !data) {
     const problem = error as PanelHoldProblem | undefined;
     if (response.status === 409 && problem?.code === 'panel_hold') {
@@ -410,9 +451,18 @@ export async function verifyResult(
   }
   const client = createLisApiClient(accessToken);
 
-  const { data, response } = await client.POST('/v1/ordered-tests/{id}/results/{analyteId}/verify', {
-    params: { path: { id: orderedTestId, analyteId } },
-  });
+  let data, response;
+  try {
+    ({ data, response } = await client.POST('/v1/ordered-tests/{id}/results/{analyteId}/verify', {
+      params: { path: { id: orderedTestId, analyteId } },
+    }));
+  } catch {
+    return {
+      status: 'error',
+      error: 'Something went wrong reaching the server. Please try again.',
+      ...FAILURE,
+    };
+  }
   if (!response.ok || !data) {
     return { status: 'error', error: writeErrorMessage(response.status), ...FAILURE };
   }

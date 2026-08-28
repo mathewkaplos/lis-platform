@@ -75,10 +75,19 @@ export async function updatePatient(
   }
   const client = createLisApiClient(accessToken);
 
-  const { response } = await client.PUT('/v1/patients/{id}', {
-    params: { path: { id: patientId } },
-    body: parsed.data,
-  });
+  let response;
+  try {
+    ({ response } = await client.PUT('/v1/patients/{id}', {
+      params: { path: { id: patientId } },
+      body: parsed.data,
+    }));
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server — your data was not saved, please try again.',
+      submittedValues,
+    };
+  }
   if (!response.ok) {
     if (response.status === 409) {
       return {

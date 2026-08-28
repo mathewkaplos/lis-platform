@@ -26,10 +26,15 @@ export async function recordCultureRead(
   }
   const client = createLisApiClient(accessToken);
 
-  const { response } = await client.POST('/v1/culture-reads/{id}/record', {
-    params: { path: { id: cultureReadId } },
-    body: { result },
-  });
+  let response;
+  try {
+    ({ response } = await client.POST('/v1/culture-reads/{id}/record', {
+      params: { path: { id: cultureReadId } },
+      body: { result },
+    }));
+  } catch {
+    return { status: 'error', error: 'Something went wrong reaching the server. Please try again.' };
+  }
   if (!response.ok) {
     if (response.status === 400) {
       return { status: 'error', error: 'This culture read was already recorded.' };

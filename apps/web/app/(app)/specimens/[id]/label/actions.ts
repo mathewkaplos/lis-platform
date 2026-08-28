@@ -26,9 +26,17 @@ export async function printSpecimenLabel(specimenId: string): Promise<PrintLabel
   }
   const client = createLisApiClient(accessToken);
 
-  const { response } = await client.POST('/v1/specimens/{id}/print', {
-    params: { path: { id: specimenId } },
-  });
+  let response;
+  try {
+    ({ response } = await client.POST('/v1/specimens/{id}/print', {
+      params: { path: { id: specimenId } },
+    }));
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server. Please try again.',
+    };
+  }
   if (!response.ok) {
     if (response.status === 403) {
       return {

@@ -44,11 +44,19 @@ export async function uploadWholeSlideImage(
   const uploadBody = new FormData();
   uploadBody.set('file', file);
 
-  const res = await fetch(`${baseUrl}/v1/whole-slide-images/slides/${slideId}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}` },
-    body: uploadBody,
-  });
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/v1/whole-slide-images/slides/${slideId}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: uploadBody,
+    });
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server — your file was not uploaded, please try again.',
+    };
+  }
 
   if (!res.ok) {
     if (res.status === 403) {
@@ -105,14 +113,22 @@ export async function amendCase(
   }
 
   const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
-  const res = await fetch(`${baseUrl}/v1/cases/${caseId}/amend`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ reason }),
-  });
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/v1/cases/${caseId}/amend`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ reason }),
+    });
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server — your amendment was not saved, please try again.',
+    };
+  }
 
   if (!res.ok) {
     if (res.status === 403) {
@@ -158,10 +174,18 @@ export async function signOutCase(
   }
 
   const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
-  const res = await fetch(`${baseUrl}/v1/cases/${caseId}/finalize`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/v1/cases/${caseId}/finalize`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server. Please try again.',
+    };
+  }
 
   if (!res.ok) {
     if (res.status === 403) {
@@ -207,10 +231,18 @@ export async function screenCase(
   }
 
   const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
-  const res = await fetch(`${baseUrl}/v1/cases/${caseId}/screen`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/v1/cases/${caseId}/screen`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server. Please try again.',
+    };
+  }
 
   if (!res.ok) {
     if (res.status === 403) {
@@ -252,14 +284,22 @@ export async function addBlock(
   }
 
   const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
-  const res = await fetch(`${baseUrl}/v1/cases/${caseId}/blocks`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ specimenId }),
-  });
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/v1/cases/${caseId}/blocks`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ specimenId }),
+    });
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server — your data was not saved, please try again.',
+    };
+  }
 
   if (!res.ok) {
     if (res.status === 403) {
@@ -301,10 +341,18 @@ export async function addSlide(
   }
 
   const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
-  const res = await fetch(`${baseUrl}/v1/blocks/${blockId}/slides`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/v1/blocks/${blockId}/slides`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server — your data was not saved, please try again.',
+    };
+  }
 
   if (!res.ok) {
     if (res.status === 403) {
@@ -350,14 +398,22 @@ export async function addOrderedTest(
   }
 
   const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
-  const res = await fetch(`${baseUrl}/v1/blocks/${blockId}/ordered-tests`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ testDefinitionId }),
-  });
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/v1/blocks/${blockId}/ordered-tests`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ testDefinitionId }),
+    });
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server — your data was not saved, please try again.',
+    };
+  }
 
   if (!res.ok) {
     if (res.status === 403) {
@@ -411,14 +467,22 @@ export async function updateNarrative(
   }
 
   const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
-  const res = await fetch(`${baseUrl}/v1/cases/${caseId}/narrative`, {
-    method: 'PUT',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/v1/cases/${caseId}/narrative`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server — your changes were not saved, please try again.',
+    };
+  }
 
   if (!res.ok) {
     if (res.status === 403) {
@@ -460,14 +524,22 @@ export async function returnToScreening(
   }
 
   const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
-  const res = await fetch(`${baseUrl}/v1/cases/${caseId}/return-to-screening`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ reason }),
-  });
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/v1/cases/${caseId}/return-to-screening`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ reason }),
+    });
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server. Please try again.',
+    };
+  }
 
   if (!res.ok) {
     if (res.status === 403) {
@@ -522,17 +594,25 @@ export async function sendReportEmail(
   }
 
   const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
-  const res = await fetch(
-    `${baseUrl}/v1/cases/${caseId}/report-versions/${versionId}/send-email`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
+  let res;
+  try {
+    res = await fetch(
+      `${baseUrl}/v1/cases/${caseId}/report-versions/${versionId}/send-email`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ to: to || undefined }),
       },
-      body: JSON.stringify({ to: to || undefined }),
-    },
-  );
+    );
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server. Please try again.',
+    };
+  }
 
   if (!res.ok) {
     if (res.status === 403) {

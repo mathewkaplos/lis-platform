@@ -26,9 +26,14 @@ export async function resolveQcRuleViolation(
   }
   const client = createLisApiClient(accessToken);
 
-  const { response } = await client.POST('/v1/qc-rule-violations/{id}/resolve', {
-    params: { path: { id: violationId } },
-  });
+  let response;
+  try {
+    ({ response } = await client.POST('/v1/qc-rule-violations/{id}/resolve', {
+      params: { path: { id: violationId } },
+    }));
+  } catch {
+    return { status: 'error', error: 'Something went wrong reaching the server. Please try again.' };
+  }
   if (!response.ok) {
     if (response.status === 409) {
       return { status: 'error', error: 'This violation was already resolved.' };

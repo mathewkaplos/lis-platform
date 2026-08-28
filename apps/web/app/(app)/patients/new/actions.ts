@@ -78,15 +78,24 @@ export async function registerPatient(
 
   const confirmedDuplicate = formData.get('confirmDuplicate') === 'true';
   if (!confirmedDuplicate && parsed.data.birthDate) {
-    const { data: matches } = await client.GET('/v1/patients', {
-      params: {
-        query: {
-          firstName: parsed.data.firstName,
-          lastName: parsed.data.lastName,
-          birthDate: parsed.data.birthDate,
+    let matches;
+    try {
+      ({ data: matches } = await client.GET('/v1/patients', {
+        params: {
+          query: {
+            firstName: parsed.data.firstName,
+            lastName: parsed.data.lastName,
+            birthDate: parsed.data.birthDate,
+          },
         },
-      },
-    });
+      }));
+    } catch {
+      return {
+        status: 'error',
+        formError: 'Something went wrong reaching the server — your data was not saved, please try again.',
+        submittedValues,
+      };
+    }
     if (matches && matches.length > 0) {
       const match = matches[0];
       return {
@@ -103,9 +112,18 @@ export async function registerPatient(
     }
   }
 
-  const { data, response } = await client.POST('/v1/patients', {
-    body: parsed.data,
-  });
+  let data, response;
+  try {
+    ({ data, response } = await client.POST('/v1/patients', {
+      body: parsed.data,
+    }));
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server — your data was not saved, please try again.',
+      submittedValues,
+    };
+  }
   if (!response.ok) {
     if (response.status === 409) {
       return {

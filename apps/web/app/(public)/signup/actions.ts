@@ -44,11 +44,20 @@ export async function signUp(
   }
 
   const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
-  const response = await fetch(`${apiBaseUrl}/onboarding/signup`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(parsed.data),
-  });
+  let response;
+  try {
+    response = await fetch(`${apiBaseUrl}/onboarding/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(parsed.data),
+    });
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server — your data was not saved, please try again.',
+      submittedValues,
+    };
+  }
 
   if (!response.ok) {
     if (response.status === 409) {

@@ -53,10 +53,18 @@ export async function saveReportTemplate(
         formError: 'The template canvas is invalid — check every section and field before saving.',
       };
     }
-    const { data, response } = await client.POST('/v1/report-templates/{id}/versions', {
-      params: { path: { id: templateId } },
-      body: parsed.data,
-    });
+    let data, response;
+    try {
+      ({ data, response } = await client.POST('/v1/report-templates/{id}/versions', {
+        params: { path: { id: templateId } },
+        body: parsed.data,
+      }));
+    } catch {
+      return {
+        status: 'error',
+        formError: 'Something went wrong reaching the server — your changes were not saved, please try again.',
+      };
+    }
     if (!response.ok || !data) {
       if (response.status === 403) {
         return { status: 'error', formError: 'You do not have permission to edit report templates.' };
@@ -76,7 +84,15 @@ export async function saveReportTemplate(
       formError: 'The template canvas is invalid — check every section and field before saving.',
     };
   }
-  const { data, response } = await client.POST('/v1/report-templates', { body: parsed.data });
+  let data, response;
+  try {
+    ({ data, response } = await client.POST('/v1/report-templates', { body: parsed.data }));
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server — your changes were not saved, please try again.',
+    };
+  }
   if (!response.ok || !data) {
     if (response.status === 403) {
       return { status: 'error', formError: 'You do not have permission to create report templates.' };
@@ -119,10 +135,18 @@ export async function publishReportTemplateVersion(
   }
   const client = createLisApiClient(accessToken);
 
-  const { data, response } = await client.POST(
-    '/v1/report-templates/{id}/versions/{versionId}/publish',
-    { params: { path: { id: templateId, versionId } } },
-  );
+  let data, response;
+  try {
+    ({ data, response } = await client.POST(
+      '/v1/report-templates/{id}/versions/{versionId}/publish',
+      { params: { path: { id: templateId, versionId } } },
+    ));
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server. Please try again.',
+    };
+  }
   if (!response.ok || !data) {
     if (response.status === 403) {
       return { status: 'error', formError: 'You do not have permission to publish report templates.' };

@@ -37,19 +37,27 @@ export async function recordSynopticResponse(
   }
 
   const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:4000';
-  const res = await fetch(`${baseUrl}/v1/cases/${payload.caseId}/synoptic-responses`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      orderedTestId: payload.orderedTestId,
-      specimenId: payload.specimenId,
-      synopticProtocolVersionId: payload.synopticProtocolVersionId,
-      responses: payload.responses,
-    }),
-  });
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/v1/cases/${payload.caseId}/synoptic-responses`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        orderedTestId: payload.orderedTestId,
+        specimenId: payload.specimenId,
+        synopticProtocolVersionId: payload.synopticProtocolVersionId,
+        responses: payload.responses,
+      }),
+    });
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server — your response was not saved, please try again.',
+    };
+  }
 
   if (!res.ok) {
     if (res.status === 403) {

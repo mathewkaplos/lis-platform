@@ -25,9 +25,17 @@ export async function cancelOrder(orderId: string): Promise<CancelOrderResult> {
   }
   const client = createLisApiClient(accessToken);
 
-  const { response } = await client.POST('/v1/orders/{id}/cancel', {
-    params: { path: { id: orderId } },
-  });
+  let response;
+  try {
+    ({ response } = await client.POST('/v1/orders/{id}/cancel', {
+      params: { path: { id: orderId } },
+    }));
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server. Please try again.',
+    };
+  }
   if (!response.ok) {
     if (response.status === 409) {
       return {
@@ -83,12 +91,20 @@ export async function generateInvoice(
   }
   const client = createLisApiClient(accessToken);
 
-  const { data, response } = await client.POST('/v1/orders/{id}/invoice', {
-    params: { path: { id: orderId } },
-    body: referringFacilityId
-      ? { payerType: 'corporate', referringFacilityId }
-      : {},
-  });
+  let data, response;
+  try {
+    ({ data, response } = await client.POST('/v1/orders/{id}/invoice', {
+      params: { path: { id: orderId } },
+      body: referringFacilityId
+        ? { payerType: 'corporate', referringFacilityId }
+        : {},
+    }));
+  } catch {
+    return {
+      status: 'error',
+      formError: 'Something went wrong reaching the server. Please try again.',
+    };
+  }
   if (!response.ok) {
     if (response.status === 400) {
       return {

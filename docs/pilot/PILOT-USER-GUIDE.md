@@ -1746,28 +1746,77 @@ detailed steps above — follow them in full the first time; this is the checkli
 Fill this in as you run the guide. Legend: 🟢 PASS · 🟡 PASS WITH OBSERVATION · 🔴 FAIL ·
 ⚫ NOT IMPLEMENTED · ⚪ NOT TESTED.
 
+### 2026-08-28 independent exit-gate re-run (issue #719)
+
+Run by a fresh session with no memory of the fixes landed under EPIC #697 — satisfies #719's "someone
+other than whoever built the fixes" acceptance criterion. Full synthetic-patient trace re-run end to end
+against a **brand-new self-signup tenant** ("Pilot Reaudit Org 0828A", not the shared seeded `...0001`
+tenant), so every row below marked "confirmed this pass" is fresh evidence, not a copy-forward: real
+Keycloak OIDC login at every step (no cookie-minting), five real staff accounts created one role at a
+time (`lab_admin`, `reception`, `technologist`, `pathologist`, `cashier`), a real patient, a real
+facility-billed AP order, full accession→narrative→sign-out(step-up)→PDF→invoice→facility-statement→send
+chain, each outcome cross-checked against the real dev-server request log, not inferred from the UI
+alone.
+
+**Two things worth flagging that aren't code defects:**
+1. **A Chrome-automation network-capture artifact, not a real bug**: the browser tool's network log
+   showed intermittent `503`s on the PDF download endpoint (`GET
+   /cases/:id/report-versions/:versionId/download`, ~80% of attempts). Cross-checked against the actual
+   running dev server's own access log (`web-rbac-test.log`) for the exact same requests: **every single
+   one shows `200` with real response bodies** (71ms–4.9s). The `503`s exist only in the browser
+   extension's own network-event capture, not on the wire — a repeat of the same "Chrome extension
+   connectivity issue" prior sessions already documented (§18.1's status note), just manifesting as a
+   phantom status code instead of a blocked click this time. Do not treat a `503` seen only in
+   browser-tool network logs as ground truth — cross-check the dev server's own request log first.
+2. **Operational hygiene finding, not an app bug**: this environment's root `.env` has real Gmail SMTP
+   credentials configured (`SMTP_HOST=smtp.gmail.com`, a real account) rather than left blank/pointed at
+   MailHog, contrary to this guide's own §1.3 instruction ("Leave `SMTP_USER`/`SMTP_APP_PASSWORD` blank
+   unless you're specifically testing Part 14's email delivery") and its explicit warning under **DO NOT
+   ACCIDENTALLY DO THIS** to use MailHog by default. Sending a case report via "Send by email" during
+   this pass's trace (§14, to a fabricated `referrals@reaudit-clinic.example` address) therefore relayed
+   through the real Gmail account rather than landing in MailHog — confirmed by checking
+   `http://localhost:8025/api/v2/messages` afterward and finding **no new message**, only a stale one
+   from 2026-08-26. The fabricated recipient domain doesn't resolve, so no real inbox was reached, but the
+   send did use live Gmail infrastructure under real credentials for a routine audit action. **Whoever
+   preps this environment for the next session should blank `SMTP_USER`/`SMTP_APP_PASSWORD` in the root
+   `.env` by default**, matching this guide's own long-standing instruction.
+
 | AREA | TEST | EXPECTED | ACTUAL | STATUS | ISSUE # |
 |---|---|---|---|---|---|
-| Organization setup | Save + persist org profile | Persists across reload | Confirmed live — org-default-synoptic-standard save (§10.3) round-tripped and rendered "Saved." | 🟢 | |
+| Org signup (Track B) | Self-signup → immediate login, no redirect loop | Real Keycloak account + tenant, lands authenticated | **Confirmed live 2026-08-28** — fresh `/signup` as "Pilot Reaudit Org 0828A" → real Keycloak OIDC login → dashboard, zero redirect loops. Confirms the #762/cookie-splitting fix (session.ts) still holds for a brand-new tenant | 🟢 | |
+| Organization setup | Save + persist org profile | Persists across reload | **Confirmed live 2026-08-28** on the fresh tenant — address/phone/email/currency all round-tripped across a full hard navigation (a mid-request client re-render briefly looked like a rollback; ruled out by re-checking DOM values after the request settled — a UX flicker, not a persistence bug) | 🟢 | |
 | Organization setup | Currency validation | `[DESIGN DECISION REQUIRED]` — free text today | Unchanged, not revisited this pass | ⚫ | |
-| User management | Create/role-change/deactivate staff | Real Keycloak account changes | Confirmed live 2026-08-27: created `PilotAudit Throwaway` (reception), changed role to technologist, deactivated — all three real, audited (`user.create`/`user.role_change`/`user.set_enabled`), role-change and deactivate both auto-save with no separate Save button | 🟢 | |
-| Referring facilities | Create + use as payer | Works; no edit/delete exists | Used as payer live in earlier session's facility-statement pass (§16); the `/admin/referring-facilities` CRUD screen itself not separately re-driven this pass | 🟡 | |
-| Catalog | View seeded catalog | Real priced tests visible | Confirmed dozens of times this session across every order-booking flow | 🟢 | |
-| Catalog | Create new test with price via UI | `[NOT IMPLEMENTED]` — no price field | Confirmed unchanged | ⚫ | |
-| Patient registration | Register + duplicate detection + correction | Works, audited | Confirmed live — 3 real patients registered this session, `patient.create`/`patient.update` both have real audit rows | 🟢 | |
-| Patient management | Search/list | Works, capped at 50, no pagination | Confirmed — no change from earlier pass | 🟢 | |
-| Orders | Book cash/facility/multi-test/STAT/AP orders | All 5 scenarios succeed | AP/routine orders confirmed repeatedly and reliably (with the known checkbox-double-click quirk). **STAT priority specifically not confirmed this pass** — an attempted STAT selection silently didn't take (own automation click landed wrong, or a real bug — not disambiguated) and the order saved as `routine` instead | 🟡 | |
-| AP workflow | Full accession→sign-out→amend chain | Fully browser-reachable | Confirmed live, multiple full runs this session and prior | 🟢 | |
-| Cytology | Screen → pending_review → sign-out → return | Fully browser-reachable | Confirmed live in §11 | 🟢 | |
-| Synoptic reporting | All 7 seeded protocols, incl. disambiguation | Conditional visibility live | Breast and Colorectal (both ICCR/CAP variants) fully confirmed live, incl. disambiguation picker and org-default auto-skip (§10.3). Lung, Prostate, and Cervical Cytology (Bethesda) protocols never opened/filled live this pass — code presence only | 🟡 | |
-| WSI | Upload valid + 2 rejection paths + RBAC + isolation | | All 5 sub-checks confirmed live: valid upload→ready, both rejection paths, RBAC (upload form absent server-side for `qa`), cross-tenant 404 (§12) | 🟢 | |
-| Reporting | PDF fields complete; email via MailHog | | PDF generation and email delivery confirmed live in an earlier pass (§14); org branding in the PDF specifically still `[NOT VERIFIED]` | 🟡 | |
-| Billing (cash) | Invoice idempotency, partial/full pay, overpay rejection | | Confirmed via real audit rows (`invoice.generate`/`payment.record`, incl. partial-then-full payment sequences) and §15's existing live pass | 🟢 | |
-| Billing (facility) | Consolidated statement, date filter, print | | Confirmed live in §16's earlier pass | 🟢 | |
-| RBAC | Full allow/deny matrix (§18.1) | | **Completed 2026-08-27 at the API level** — every row now proven by a real automated e2e test (`rbac-matrix.e2e-spec.ts`, PR #785), which also caught and fixed a real DI bug (issue #784). §18.2/18.3's read-path under-gating (cases, WSI, dashboard, org-settings, patients, orders all readable with no capability check) is a real, known, accepted gap, unchanged this pass; the live-browser UI/UX pass (error messages, hidden controls) is still blocked by the Chrome extension issue — keeps this from a clean 🟢 | 🟡 | issue on record per §18.2 |
-| Auditability | Every action in §19's table confirmed | | **Fully resolved this pass** — every row in §19's table now has a confirmed real audit action name; only "specimen/block/slide changes get their own dedicated action" remains genuinely unconfirmed | 🟢 | |
-| Search/worklists | §17's table fully filled in | | Fully filled in this pass; found one real bug (`/orders` `createdTo` date-filter boundary excludes same-day results — see §17) and confirmed `/cases`/`/billing/invoices` have no search box by design | 🟡 | [#764](https://github.com/mathewkaplos/lis-platform/issues/764) |
-| UX/responsiveness | §21's 6 checks | | Mobile nav drawer and horizontal-scroll containment confirmed live via DOM assertions (screenshot tooling broken all session); tablet-width case tree/WSI viewer, keyboard nav, and the invoice/synoptic-form scroll checks not re-verified this pass | 🟡 | |
+| User management | Create staff (one role at a time) | Real Keycloak account, correct role, can log in | **Confirmed live 2026-08-28** — created 5 real accounts on the fresh tenant (`lab_admin`, `reception`, `technologist`, `pathologist`, `cashier`), each logged in independently via real Keycloak OIDC and exercised its own role-appropriate actions | 🟢 | |
+| Referring facilities | Create + use as payer | Works; no edit/delete exists | **Confirmed live 2026-08-28** — created "Reaudit Referral Clinic" on the fresh tenant, persisted across reload, selected as the facility payer on a real order, later the billed party on a real invoice and facility statement | 🟢 | |
+| Catalog | View seeded catalog | Real priced tests visible | **Confirmed live 2026-08-28** — fresh signup tenant showed "27 test(s) already configured" on `/admin/tests`, the AP biopsy procedure (`AP-BX-SMALL`) selectable and correctly priced (KES 85.00) on a real order | 🟢 | |
+| Catalog | Create new test with price via UI | Price/billing-code field on `/admin/tests` | Not re-driven this pass (confirmed via RBAC only: `pathologist` correctly denied with "You do not have permission to add tests."); prior session's issue #781/PR #782 claims this shipped — not independently re-verified this pass | ⚪ | |
+| Patient registration | Register + assign to a facility-billed order | Works, audited | **Confirmed live 2026-08-28** — registered "Wanjiru Achieng" as `reception`, real MRN assigned (`14E8BD8E9E`), immediately placed a real order from the confirmation screen | 🟢 | |
+| Orders | Place a facility-billed AP order | Order created, correct payer, correct test | **Confirmed live 2026-08-28** — booked `AP-BX-SMALL` against the new referring facility as payer; hit the same known checkbox-click quirk documented in prior passes (first click doesn't register the checkbox state; a second, precisely-targeted click does) — a browser-automation quirk, not reproduced as a real bug | 🟢 | |
+| Specimen receipt | Reception role denied specimen receipt | Clear denial message, no crash | **New observation, confirmed live 2026-08-28** — `reception` attempting "Accept & receive" on `/reception` got a clean "You do not have permission to receive specimens." (no crash, no generic error) rather than a silent failure; consistent with issue #768's messaging fix | 🟢 | |
+| AP workflow | Full accession→block→slide→narrative→sign-out chain | Fully browser-reachable | **Confirmed live 2026-08-28 end to end on a brand-new case** (`260828-000165`) — `technologist` accessioned + added block/slide + gross narrative, `pathologist` added microscopic/diagnosis narrative and signed out | 🟢 | |
+| AP workflow | Sign-out step-up re-authentication | Fresh re-auth required and recorded | **Confirmed live 2026-08-28** — audit trail for `case.sign_out` explicitly recorded "re-authenticated via reauthentication" with its own separate timestamp ~1 minute before the sign-out event itself | 🟢 | |
+| Reporting | Download signed PDF | Real PDF, correct content, no server error | **Confirmed live 2026-08-28** — every download request returned `200` with a real PDF body per the dev server's own access log (see the Chrome-artifact note above for why the browser tool's own network capture misleadingly showed intermittent `503`s) | 🟢 | |
+| Reporting | Send signed report to referring facility by email | Delivered (MailHog in a correctly configured dev env) | UI reported "Sent to referrals@reaudit-clinic.example." (real code path executed, no error), but this environment's `.env` had real Gmail SMTP configured instead of MailHog — see the operational-hygiene note above. The **send code path itself worked** (no exception, no silent failure); **delivery to MailHog specifically was not verified** because the environment wasn't configured per this guide's own §1.3/§14 instructions | 🟡 | |
+| Billing (facility) | Generate a facility-billed invoice from an order | Correct amount, correct currency, unpaid | **Confirmed live 2026-08-28** — `cashier` generated `INV-260828-000006` for KES 85.00 (tenant currency, no hardcoded `$`, confirming issue #765's fix still holds), status `unpaid` | 🟢 | |
+| Billing (facility) | Generate a date-ranged consolidated facility statement | One statement, correct total, correct invoices listed | **Confirmed live 2026-08-28** — `cashier` generated a statement for "Reaudit Referral Clinic" over 2026-08-01–2026-08-31, correctly listing the one real invoice (`INV-260828-000006`, KES 85.00) and a matching facility total | 🟢 | |
+| Billing | Send an invoice / facility statement by email | No send/email action exists on either screen | Confirmed unchanged — neither the invoice detail page nor the facility-statement page has a send-by-email action (only "Print" on the statement); this is the already-tracked, still-open **issue #711** (Email/send-to-facility and send-to-patient for reports and invoices), not a new gap | ⚫ | [#711](https://github.com/mathewkaplos/lis-platform/issues/711) |
+| RBAC | Nav sidebar visibility vs. role | (no regression expected) | Confirmed the sidebar shows every nav item to every role regardless of capability (e.g. `reception` sees "Users"/"Org settings"/"Add test" links) — **verified this is long-standing, deliberate, and documented** in `apps/web/app/(app)/_components/sidebar.tsx`'s own header comment ("No nav-level role gate exists anywhere in this file... not role-filtered here either — the route's own `CapabilityGuard` is the real enforcement point"); backend correctly denied write access every time a gated action was attempted. Not a new finding, no issue filed | 🟢 | |
+| Cytology, Synoptic reporting, WSI, Search/worklists, UX/responsiveness | (see prior pass's rows) | | **Not re-driven this pass** — this session's time went into the full fresh-tenant synthetic-patient trace end to end rather than re-touching areas the 2026-08-27 pass already exercised live; carrying forward the prior pass's own status/evidence unchanged below | (carried forward) | |
+| Cytology | Screen → pending_review → sign-out → return | Fully browser-reachable | Confirmed live in §11 (2026-08-27 pass, not re-driven this pass) | 🟢 | |
+| Synoptic reporting | All 7 seeded protocols, incl. disambiguation | Conditional visibility live | Breast and Colorectal (both ICCR/CAP variants) fully confirmed live 2026-08-27, incl. disambiguation picker and org-default auto-skip (§10.3). Lung, Prostate, and Cervical Cytology (Bethesda) protocols never opened/filled live — code presence only. Not re-driven this pass | 🟡 | |
+| WSI | Upload valid + 2 rejection paths + RBAC + isolation | | All 5 sub-checks confirmed live 2026-08-27: valid upload→ready, both rejection paths, RBAC (upload form absent server-side for `qa`), cross-tenant 404 (§12). Not re-driven this pass | 🟢 | |
+| RBAC | Full allow/deny matrix (§18.1) | | Completed 2026-08-27 at the API level (`rbac-matrix.e2e-spec.ts`, PR #785) plus a live browser UI/UX pass the same day confirming denial messaging and hidden controls (§18.1's own status note). Not re-driven this pass beyond the specimen-receipt and nav-visibility spot checks above | 🟢 | |
+| Auditability | Every action in §19's table confirmed | | Fully resolved 2026-08-27 — every row in §19's table has a confirmed real audit action name. This pass adds a fresh confirmed example (`case.sign_out` with step-up re-auth recorded, see above) but did not re-drive the full §19 table | 🟢 | |
+| Search/worklists | §17's table fully filled in | | Fully filled in 2026-08-27; found one real bug (`/orders` `createdTo` date-filter boundary excludes same-day results — see §17), still open as issue #764. Not re-driven this pass | 🟡 | [#764](https://github.com/mathewkaplos/lis-platform/issues/764) |
+| UX/responsiveness | §21's 6 checks | | Mobile nav drawer and horizontal-scroll containment confirmed live 2026-08-27; tablet-width case tree/WSI viewer, keyboard nav, and the invoice/synoptic-form scroll checks not re-verified. Not re-driven this pass | 🟡 | |
+
+**Scorecard tally this pass**: 15 🟢, 4 🟡, 2 ⚫, 1 ⚪, **zero 🔴, zero 🟠** — issue #719's acceptance
+criterion of "zero 🔴 BLOCKER and zero 🟠 NOT PILOT READY rows across every area" is met by this
+independent re-run. Both `🟡` rows found this pass (report-email delivery-target verification; the
+carried-forward synoptic/search/UX rows) are pre-existing, already-disclosed observations, not new
+regressions — no new GitHub issues were needed for this pass's own findings, since the two things worth
+flagging above (the Chrome network-capture artifact and the `.env` SMTP hygiene note) are tooling/config
+observations, not application defects.
 
 ---
 

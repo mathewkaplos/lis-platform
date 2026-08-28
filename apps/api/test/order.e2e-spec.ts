@@ -490,6 +490,77 @@ describe('Order API (e2e)', () => {
     }
   });
 
+  it('issue #748: GET /v1/orders `q` searches by patient name and MRN, combinable with status', async () => {
+    // A fresh, uniquely-named patient -- not the shared `patientId` fixture
+    // every other test in this file also uses. `search()` has no explicit
+    // `orderBy` and the tenant's own fixture volume already exceeds
+    // `ORDER_SEARCH_RESULT_LIMIT` (208 orders at last count) -- reusing the
+    // shared patient risked this test's own order landing outside the
+    // capped result set for reasons having nothing to do with `q` itself.
+    // A unique surname makes the matched set exactly one row regardless.
+    const uniqueLastName = `Q748-${Date.now()}`;
+    const qPatientRes = await request(app.getHttpServer())
+      .post('/v1/patients')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ firstName: 'Order', lastName: uniqueLastName, sex: 'U' })
+      .expect(201);
+    const qPatient = qPatientRes.body as { resourceId: string; after: { mrn: string } };
+
+    const created = await request(app.getHttpServer())
+      .post('/v1/orders')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ patientId: qPatient.resourceId, testDefinitionIds: [glucoseId] })
+      .expect(201);
+    const orderId = (created.body as { resourceId: string }).resourceId;
+
+    const byName = await request(app.getHttpServer())
+      .get('/v1/orders')
+      .query({ q: uniqueLastName })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const byNameIds = (byName.body as { id: string }[]).map((o) => o.id);
+    if (!byNameIds.includes(orderId)) {
+      throw new Error(
+        `expected q='${uniqueLastName}' to match the patient's last name, got ${JSON.stringify(byName.body)}`,
+      );
+    }
+
+    const byMrn = await request(app.getHttpServer())
+      .get('/v1/orders')
+      .query({ q: qPatient.after.mrn })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const byMrnIds = (byMrn.body as { id: string }[]).map((o) => o.id);
+    if (!byMrnIds.includes(orderId)) {
+      throw new Error(
+        `expected q='${qPatient.after.mrn}' to match the patient's MRN, got ${JSON.stringify(byMrn.body)}`,
+      );
+    }
+
+    const combined = await request(app.getHttpServer())
+      .get('/v1/orders')
+      .query({ q: uniqueLastName, status: 'cancelled' })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const combinedIds = (combined.body as { id: string }[]).map((o) => o.id);
+    if (combinedIds.includes(orderId)) {
+      throw new Error(
+        `expected q + status=cancelled to exclude an 'ordered' order, got ${JSON.stringify(combined.body)}`,
+      );
+    }
+
+    const noMatch = await request(app.getHttpServer())
+      .get('/v1/orders')
+      .query({ q: 'NoSuchPatientNameXYZ' })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    if ((noMatch.body as unknown[]).length !== 0) {
+      throw new Error(
+        `expected an unmatched q to return an empty list, not an error, got ${JSON.stringify(noMatch.body)}`,
+      );
+    }
+  });
+
   it('returns 404 for an order created under a different tenant (RLS at the API layer, not just the DB layer)', async () => {
     const created = await request(app.getHttpServer())
       .post('/v1/orders')

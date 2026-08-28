@@ -22,7 +22,7 @@ import {
   type OrderedTest,
 } from '@lis/domain';
 import { order, orderedTest, patient } from '@lis/db';
-import { and, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, eq, gte, ilike, inArray, lte, or } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
 import { Audit } from '../auth/audit.decorator';
@@ -167,9 +167,9 @@ export class OrderController {
   }
 
   /**
-   * All filters optional, combine with AND (proposal §5). No free-text
-   * search mode — FEAT-012's own AC names status/priority/date range only.
-   * Fixed-cap result set, no cursor pagination (`engineering/api-design`
+   * All filters optional, combine with AND (proposal §5). Issue #748 (EPIC
+   * #697): `q` free-text search added, combinable with every other filter
+   * here. Fixed-cap result set, no cursor pagination (`engineering/api-design`
    * entry #4, still deferred).
    *
    * Issue #762: `AnyRoleGuard`, not a specific `@RequireCapability` — read
@@ -187,6 +187,29 @@ export class OrderController {
     query: OrderSearchQueryDto,
     @DbTx() tx: RequestWithTx['tx'],
   ): Promise<Order[]> {
+    // Issue #748: `q` matches the same fields (and matching style -- substring
+    // on name, prefix on MRN) `patient.controller.ts`'s own `q` search
+    // already uses. Resolved as a separate matching-patient-ids lookup, then
+    // folded into `order`'s own `where` via `inArray` -- avoids restructuring
+    // this query into a join for every caller, most of whom pass no `q` at
+    // all. An empty match set means "no orders match," not "ignore this
+    // filter" -- `inArray(..., [])` is a real, always-false condition.
+    let matchingPatientIds: string[] | undefined;
+    if (query.q !== undefined) {
+      const term = query.q;
+      const matches = await tx
+        .select({ id: patient.id })
+        .from(patient)
+        .where(
+          or(
+            ilike(patient.firstName, `%${term}%`),
+            ilike(patient.lastName, `%${term}%`),
+            ilike(patient.mrn, `${term}%`),
+          ),
+        );
+      matchingPatientIds = matches.map((row) => row.id);
+    }
+
     const conditions = [
       query.patientId !== undefined
         ? eq(order.patientId, query.patientId)
@@ -200,6 +223,9 @@ export class OrderController {
         : undefined,
       query.createdTo !== undefined
         ? lte(order.createdAt, new Date(query.createdTo))
+        : undefined,
+      matchingPatientIds !== undefined
+        ? inArray(order.patientId, matchingPatientIds)
         : undefined,
     ].filter((c): c is NonNullable<typeof c> => c !== undefined);
 

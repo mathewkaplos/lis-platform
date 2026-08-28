@@ -45,6 +45,8 @@
     "stat": "STAT",
     "from": "Du",
     "to": "Au",
+    "search": "Rechercher",
+    "searchPlaceholder": "Nom du patient ou NDM",
     "apply": "Appliquer",
     "showingFirst": "Affichage des {limit} premières commandes. Affinez vos filtres pour des résultats plus précis.",
     "columnPatient": "Patient",

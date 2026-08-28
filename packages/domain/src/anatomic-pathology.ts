@@ -243,12 +243,33 @@ export type CaseReportSendEmailRequestInput = z.infer<
  * field on `Case` is already worklist-relevant (id, accessionNumber, status,
  * createdAt).
  */
+/** Issue #749 (EPIC #697): `q` free-text search, same `ilike` shape
+ * `patient.controller.ts`'s own `q` search already established, resolved
+ * through the case's own order's patient. */
 export const caseListQuerySchema = z.object({
   status: caseStatusSchema.optional(),
+  q: z.string().min(1).optional(),
 });
 export type CaseListQuery = z.infer<typeof caseListQuerySchema>;
 
+/** Issue #749: list rows are thinner-than/extend the detail (`caseSchema`)
+ * shape by joining in patient identity — same "list rows are thinner than
+ * detail rows" precedent `invoiceListItemSchema` (billing.ts) already
+ * established, adapted here to *extend* rather than narrow, since every
+ * `caseSchema` field is still useful on the list row. */
+export const caseListItemSchema = caseSchema.extend({
+  patientId: z.uuid(),
+  patientName: z.string(),
+});
+export type CaseListItem = z.infer<typeof caseListItemSchema>;
+
 export const caseListResponseSchema = z.object({
-  items: z.array(caseSchema),
+  items: z.array(caseListItemSchema),
 });
 export type CaseListResponse = z.infer<typeof caseListResponseSchema>;
+
+/** engineering/api-design entry #4 / ADR-0013 §Decision 4: fixed-cap result
+ * set, no cursor pagination — same rationale/value as
+ * `ORDER_SEARCH_RESULT_LIMIT` (order.ts). Issue #749: this list route had no
+ * cap at all before this fix, unlike every other list route in this repo. */
+export const CASE_LIST_RESULT_LIMIT = 100;

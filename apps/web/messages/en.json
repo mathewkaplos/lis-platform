@@ -45,6 +45,8 @@
     "stat": "STAT",
     "from": "From",
     "to": "To",
+    "search": "Search",
+    "searchPlaceholder": "Patient name or MRN",
     "apply": "Apply",
     "showingFirst": "Showing the first {limit} orders. Narrow your filters for more specific results.",
     "columnPatient": "Patient",

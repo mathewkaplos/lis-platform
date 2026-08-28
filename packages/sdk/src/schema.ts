@@ -2742,6 +2742,9 @@ export interface components {
                 status: "accessioned" | "in_process" | "pending_review" | "signed_out" | "amended";
                 /** Format: date-time */
                 createdAt: string;
+                /** Format: uuid */
+                patientId: string;
+                patientName: string;
             }[];
         };
         CaseLineageDto_Output: {
@@ -3466,6 +3469,7 @@ export interface operations {
                 priority?: "routine" | "stat";
                 createdFrom?: string;
                 createdTo?: string;
+                q?: string;
             };
             header?: never;
             path?: never;
@@ -4912,6 +4916,7 @@ export interface operations {
         parameters: {
             query?: {
                 status?: "accessioned" | "in_process" | "pending_review" | "signed_out" | "amended";
+                q?: string;
             };
             header?: never;
             path?: never;

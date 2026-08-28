@@ -28,12 +28,14 @@ import {
   caseReportSendEmailRequestSchema,
   caseReportVersionListResponseSchema,
   caseSynopticResponseListSchema,
+  CASE_LIST_RESULT_LIMIT,
   type Block,
   type Case,
   type CaseAuditEvent,
   type CaseAuditTrailResponse,
   type CaseLineage,
   type CaseLineageSlide,
+  type CaseListItem,
   type CaseListResponse,
   type CaseNarrative,
   type CaseReportVersion,
@@ -82,6 +84,7 @@ import {
   count,
   desc,
   eq,
+  ilike,
   inArray,
   isNull,
   notInArray,
@@ -733,6 +736,14 @@ export class CaseController {
    * `status` filter excludes terminal states (`signed_out`/`amended`) by
    * default, matching `worklist.controller.ts`'s own `ACTIVE_STATUSES`
    * precedent -- read-only, no capability gate, same as `getById` below.
+   *
+   * Issue #749 (EPIC #697): joins `case` -> `order` -> `patient` to surface
+   * `patientName` on each row (same two-hop shape `billing.controller.ts`'s
+   * own `list()` already established for invoices), a `q` free-text search
+   * against that same patient (matching `patient.controller.ts`'s own `q`
+   * style -- substring on name, prefix on MRN), and `CASE_LIST_RESULT_LIMIT`
+   * -- this route had no result cap at all before this fix, unlike every
+   * other list route in this repo (`engineering/api-design` entry #4).
    */
   @Get('v1/cases')
   @UseGuards(JwtAuthGuard)
@@ -742,17 +753,51 @@ export class CaseController {
     @Query(new ZodValidationPipe(caseListQuerySchema)) query: CaseListQueryDto,
     @DbTx() tx: RequestWithTx['tx'],
   ): Promise<CaseListResponse> {
-    const rows = await tx
-      .select()
-      .from(caseTable)
-      .where(
-        query.status
-          ? eq(caseTable.status, query.status)
-          : notInArray(caseTable.status, ['signed_out', 'amended']),
-      )
-      .orderBy(desc(caseTable.createdAt));
+    let matchingPatientIds: string[] | undefined;
+    if (query.q !== undefined) {
+      const term = query.q;
+      const matches = await tx
+        .select({ id: patient.id })
+        .from(patient)
+        .where(
+          or(
+            ilike(patient.firstName, `%${term}%`),
+            ilike(patient.lastName, `%${term}%`),
+            ilike(patient.mrn, `${term}%`),
+          ),
+        );
+      matchingPatientIds = matches.map((row) => row.id);
+    }
 
-    return { items: rows.map(toCaseDto) };
+    const rows = await tx
+      .select({
+        caseRow: caseTable,
+        patientId: order.patientId,
+        patientFirstName: patient.firstName,
+        patientLastName: patient.lastName,
+      })
+      .from(caseTable)
+      .innerJoin(order, eq(caseTable.orderId, order.id))
+      .innerJoin(patient, eq(order.patientId, patient.id))
+      .where(
+        and(
+          query.status
+            ? eq(caseTable.status, query.status)
+            : notInArray(caseTable.status, ['signed_out', 'amended']),
+          matchingPatientIds !== undefined
+            ? inArray(order.patientId, matchingPatientIds)
+            : undefined,
+        ),
+      )
+      .orderBy(desc(caseTable.createdAt))
+      .limit(CASE_LIST_RESULT_LIMIT);
+
+    const items: CaseListItem[] = rows.map((row) => ({
+      ...toCaseDto(row.caseRow),
+      patientId: row.patientId,
+      patientName: `${row.patientFirstName} ${row.patientLastName}`,
+    }));
+    return { items };
   }
 
   /** Full case → part → block → slide lineage in one response (AC #2). */
@@ -884,15 +929,16 @@ export class CaseController {
    * gate, same as `getById`/`list` above -- viewing a case's own history is
    * informational, not a write action.
    *
-   * Two `resourceType`s merged: the case's own directly-audited actions
-   * (`resourceType: 'case'`, resourceId = this case's id -- accession,
-   * add_block, add_slide, record_narrative, screen, return_to_screening)
-   * and its report-version lifecycle events (`resourceType:
-   * 'case_report_version'`, resourceId = one of this case's own report
-   * version ids -- sign_out, amend). Not every child entity's own
-   * individually-audited row (a block's `resourceType: 'block'` carries the
-   * *block's* id, not the case's) -- this is the case-lifecycle trail the
-   * issue itself names, not a full recursive audit of every descendant.
+   * Issue #750: generalized from the original two `resourceType`s (`case`
+   * directly, and `case_report_version` via this case's own report version
+   * ids) to every child-resource type this controller's own `@Audit()`
+   * decorators actually use: `case_narrative` (record_narrative),
+   * `block`/`slide` (add_block/add_slide), and `ordered_test`
+   * (add_block_ordered_test) -- confirmed live by direct SQL query that
+   * these rows already exist and were simply never matched by this
+   * endpoint's own `where`. Lineage resolved the same way `getById` above
+   * already does (specimen -> block -> slide, block -> blockFulfillment ->
+   * ordered_test) -- reused, not reinvented.
    */
   @Get('v1/cases/:id/audit-trail')
   @UseGuards(JwtAuthGuard)
@@ -917,6 +963,45 @@ export class CaseController {
       .where(eq(caseReportVersion.caseId, id));
     const reportVersionIds = reportVersionRows.map((row) => row.id);
 
+    const [narrativeRow] = await tx
+      .select({ id: caseNarrative.id })
+      .from(caseNarrative)
+      .where(eq(caseNarrative.caseId, id))
+      .limit(1);
+
+    const specimenRows = await tx
+      .select({ id: specimen.id })
+      .from(specimen)
+      .where(eq(specimen.caseId, id));
+    const specimenIds = specimenRows.map((row) => row.id);
+
+    const blockRows =
+      specimenIds.length > 0
+        ? await tx
+            .select({ id: block.id })
+            .from(block)
+            .where(inArray(block.specimenId, specimenIds))
+        : [];
+    const blockIds = blockRows.map((row) => row.id);
+
+    const slideRows =
+      blockIds.length > 0
+        ? await tx
+            .select({ id: slide.id })
+            .from(slide)
+            .where(inArray(slide.blockId, blockIds))
+        : [];
+    const slideIds = slideRows.map((row) => row.id);
+
+    const fulfillmentRows =
+      blockIds.length > 0
+        ? await tx
+            .select({ orderedTestId: blockFulfillment.orderedTestId })
+            .from(blockFulfillment)
+            .where(inArray(blockFulfillment.blockId, blockIds))
+        : [];
+    const orderedTestIds = fulfillmentRows.map((row) => row.orderedTestId);
+
     const rows = await tx
       .select()
       .from(auditEvent)
@@ -930,6 +1015,30 @@ export class CaseController {
             ? and(
                 eq(auditEvent.resourceType, 'case_report_version'),
                 inArray(auditEvent.resourceId, reportVersionIds),
+              )
+            : undefined,
+          narrativeRow
+            ? and(
+                eq(auditEvent.resourceType, 'case_narrative'),
+                eq(auditEvent.resourceId, narrativeRow.id),
+              )
+            : undefined,
+          blockIds.length > 0
+            ? and(
+                eq(auditEvent.resourceType, 'block'),
+                inArray(auditEvent.resourceId, blockIds),
+              )
+            : undefined,
+          slideIds.length > 0
+            ? and(
+                eq(auditEvent.resourceType, 'slide'),
+                inArray(auditEvent.resourceId, slideIds),
+              )
+            : undefined,
+          orderedTestIds.length > 0
+            ? and(
+                eq(auditEvent.resourceType, 'ordered_test'),
+                inArray(auditEvent.resourceId, orderedTestIds),
               )
             : undefined,
         ),

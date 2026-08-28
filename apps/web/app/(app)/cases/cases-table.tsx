@@ -9,6 +9,7 @@ export interface CaseRow {
   accessionNumber: string;
   status: string;
   createdAt: string;
+  patientName: string;
 }
 
 /**
@@ -27,6 +28,12 @@ export function CasesTable({ rows }: { rows: CaseRow[] }) {
           id: 'accessionNumber',
           header: 'Accession number',
           cell: (row) => <span className="font-mono">{row.accessionNumber}</span>,
+          sortable: true,
+        },
+        {
+          id: 'patientName',
+          header: 'Patient',
+          cell: (row) => row.patientName,
           sortable: true,
         },
         {

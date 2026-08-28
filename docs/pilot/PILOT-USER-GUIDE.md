@@ -1441,16 +1441,41 @@ exact grants, not the brief's example role names.
 `apps/api/test/rbac-matrix.e2e-spec.ts` ([PR #785](https://github.com/mathewkaplos/lis-platform/pull/785)),
 hitting the live app with real Keycloak tokens for each exact seeded account named here, not a mock. This
 was originally written as a manual browser sweep; a Chrome-extension browser-automation connectivity
-issue blocked live UI verification for the remainder of this session (confirmed live: `curl` reached the
+issue blocked live UI verification for the remainder of that session (confirmed live: `curl` reached the
 real dev server fine at the exact same moment the extension's own frame showed a connection error), so
 the matrix was verified at the API level instead — every `CapabilityGuard`-decorated route the table
 below names, called directly, asserting the real 200/201/403. Three rows (`test-user`/`test-user-3`
 sign-out-deny, `test-user-4` sign-out-allow) were already covered this way by
-`case-sign-out.e2e-spec.ts`'s own AC #1/#2, so `rbac-matrix.e2e-spec.ts` doesn't duplicate them. This is
-authorization-logic proof, not a UI/UX check — whether each denial actually renders a clear message and
-each hidden action is actually absent from the page still wants a live browser pass (§18.2/§18.3's own
-under-gating findings are exactly the class of thing only a live UI pass catches); do that once the
-extension issue clears.
+`case-sign-out.e2e-spec.ts`'s own AC #1/#2, so `rbac-matrix.e2e-spec.ts` doesn't duplicate them.
+
+**UI/UX pass completed live 2026-08-28**, once the Chrome extension connectivity issue cleared (confirmed
+working this session — a plain navigate+read-page round trip succeeded cleanly for the first time across
+sessions 45–47). Logged in as each of `test-user-9` (reception), `test-user-4` (pathologist), `test-user-10`
+(cashier), `test-user-11` (lab_admin), and `test-user-3` (no role) via the real Keycloak login screen and
+exercised the matrix directly in the browser:
+
+- **Every denial renders a clear, specific inline message** — "You do not have permission to edit
+  organization settings.", "...to view invoices.", "...to view or manage staff accounts." — never a raw
+  crash or a generic error.
+- **Role-gated controls are correctly absent from the page, not shown-then-blocked**: reception and cashier
+  see no "Sign out"/narrative/synoptic-protocol controls at all on a case detail page; the pathologist
+  account sees the full set (narrative entry, "Screen this case", "Sign out this case" with its
+  step-up-reauth notice) on the identical page. This is the better of the two possible UI/UX shapes for a
+  denial and wasn't guaranteed by the API-level proof alone.
+- `test-user-11` (lab_admin) → `/admin/users`: real CRUD table, allowed as expected.
+- **`resolve_qc` (lab_admin deny row) could not be exercised live this pass** — no unresolved QC violation
+  existed in the seeded data to attempt against; the API-level test already covers this row, not re-flagged
+  as a gap.
+
+**Bonus finding, not a new problem — a confirmation that a prior fix landed:** re-ran §18.3's own
+zero-role-account check (`test-user-3`) against all four previously-🔴 pages. **All four are now correctly
+denied** — `/` (dashboard), `/admin/org-settings`, `/patients`, and `/orders` each show a clear
+permission-denied message instead of the previously-documented full-data render. This is issue #762's own
+fix (PR #770, merged 2026-08-27) confirmed working end-to-end in a real browser, not just by code review.
+**`/cases` remains the one page still under-gated** (154 real cases fully listed for a zero-role account) —
+this is the same accepted gap §18.2 already documents (`GET /v1/cases` has no capability check, human
+decision on record: "leave as defensive code"), unchanged by PR #770 since that fix targeted the four pages
+named in #762's own title, not this one.
 
 **A real bug was found and fixed building this coverage**: `UserManagementController` (`GET/POST/PATCH
 /v1/users`) 500'd under the test runner with `Cannot read properties of undefined (reading 'listUsers')`
@@ -1932,12 +1957,17 @@ brutally honest, not a wish list:
       dependency injection (the only controller in the codebase doing so), which silently resolved to
       `undefined` under the test runner — invisible to CI since `/v1/users` had never been exercised at
       the HTTP layer before now. Fixed. Filed and fixed as
-      [issue #784](https://github.com/mathewkaplos/lis-platform/issues/784). **What's still open**: this
-      proves the authorization *logic* end to end, not the UI/UX around it — whether each denial renders
-      a clear message and each disallowed action/control is actually hidden from the page (exactly the
-      class of thing §18.2/§18.3's own under-gating findings caught) still needs a live browser pass once
-      the extension issue clears; §18.2's known read-path under-gating itself is unchanged/unre-confirmed
-      this pass.
+      [issue #784](https://github.com/mathewkaplos/lis-platform/issues/784).
+- [x] **Completed 2026-08-28: the live browser UI/UX pass on the RBAC matrix (§18.1), once the Chrome
+      extension issue cleared.** Every denial renders a clear, specific inline message (never a raw crash
+      or generic error); role-gated controls (narrative entry, synoptic protocol, sign-out) are correctly
+      absent from the page for a role that lacks them, not shown-then-blocked. `resolve_qc`'s deny row
+      couldn't be exercised live (no unresolved QC violation existed in seeded data), but is already
+      covered at the API level. Full detail in §18.1's own updated status note. **Bonus confirmation, not
+      a new finding:** re-ran §18.3's zero-role-account check — issue #762's fix (PR #770) is confirmed
+      working live for all four pages it targeted (`/`, `/admin/org-settings`, `/patients`, `/orders`),
+      each now correctly denied. `/cases` remains the one still-under-gated page, unchanged — the same
+      accepted gap §18.2 already documents, not touched by #762/PR #770's scope.
 - [ ] **Decide on the invoice overpayment/refund gap (§15.2)** — there is no refund/credit mechanism at
       all today; confirm this is acceptable for the pilot's real financial flows or scope it in first.
 - [x] **Completed 2026-08-27: the currency-symbol gap found live 2026-08-26 (§15/§16).** The invoice,

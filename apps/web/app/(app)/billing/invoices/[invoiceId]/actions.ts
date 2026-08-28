@@ -3,7 +3,7 @@
 import { paymentRequestSchema, type PaymentMethod } from '@lis/domain';
 import { getValidAccessToken } from '@/auth/access-token';
 import { createLisApiClient } from '@/lib/api-client';
-import type { PaymentState } from './types';
+import type { PaymentState, SendInvoiceEmailState } from './types';
 
 function rawFormValues(formData: FormData) {
   return {
@@ -77,4 +77,63 @@ export async function recordPayment(
     };
   }
   return { status: 'succeeded' };
+}
+
+/**
+ * Issue #711 (docs/plans/task-711-invoice-email-delivery.md). Same typed-
+ * client + `as unknown as {...}` cast `generateInvoice()` (orders/[id]/
+ * actions.ts) already uses for this controller's un-`@ZodResponse`'d
+ * audited responses -- not raw `fetch`, matching this directory's own
+ * established convention (unlike `cases/[caseId]/actions.ts`, which uses
+ * raw fetch throughout for the same underlying reason). An empty `to`
+ * field is sent as `undefined`, not an empty string -- the server resolves
+ * the patient's own on-file email in that case; an empty string would
+ * instead fail `z.email()` validation as a real 400.
+ */
+export async function sendInvoiceEmail(
+  invoiceId: string,
+  _prevState: SendInvoiceEmailState,
+  formData: FormData,
+): Promise<SendInvoiceEmailState> {
+  const to = String(formData.get('to') ?? '').trim();
+
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    return {
+      status: 'error',
+      formError: 'Your session has expired — please log in again.',
+    };
+  }
+  const client = createLisApiClient(accessToken);
+
+  const { data, response, error } = await client.POST(
+    '/v1/invoices/{id}/send-email',
+    {
+      params: { path: { id: invoiceId } },
+      body: { to: to || undefined },
+    },
+  );
+
+  if (!response.ok) {
+    if (response.status === 400) {
+      const detail = (error as { detail?: string } | undefined)?.detail;
+      return {
+        status: 'error',
+        formError: detail ?? 'This invoice could not be emailed right now.',
+      };
+    }
+    if (response.status === 403) {
+      return {
+        status: 'error',
+        formError: 'You do not have permission to email this invoice.',
+      };
+    }
+    return {
+      status: 'error',
+      formError: 'Something went wrong sending this email. Please try again.',
+    };
+  }
+
+  const sent = data as unknown as { after: { sentTo: string } };
+  return { status: 'done', sentTo: sent.after.sentTo };
 }

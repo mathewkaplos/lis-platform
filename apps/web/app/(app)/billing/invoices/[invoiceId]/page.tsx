@@ -65,9 +65,29 @@ export default async function InvoiceDetailPage({
     );
   }
 
+  // Issue #711: fetched purely to prefill SendInvoiceEmailForm's own
+  // quick-fill buttons -- sendInvoiceEmail() itself doesn't need either of
+  // these, it resolves the same patient.email server-side when the field is
+  // submitted empty (facilityEmail is UI-only, always requires an explicit
+  // `to` since the server has no "prefer the facility" default of its own).
+  // Same two-hop shape `cases/[caseId]/page.tsx` already established.
+  const [{ data: patientData }, { data: facilityData }] = await Promise.all([
+    client.GET('/v1/patients/{id}', { params: { path: { id: invoice.patientId } } }),
+    invoice.payerType === 'corporate' && invoice.referringFacilityId
+      ? client.GET('/v1/referring-facilities/{id}', {
+          params: { path: { id: invoice.referringFacilityId } },
+        })
+      : Promise.resolve({ data: undefined }),
+  ]);
+
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
-      <InvoiceView invoice={invoice} currency={orgSettings?.currency ?? null} />
+      <InvoiceView
+        invoice={invoice}
+        currency={orgSettings?.currency ?? null}
+        patientEmail={patientData?.email ?? null}
+        facilityEmail={facilityData?.email ?? null}
+      />
     </div>
   );
 }

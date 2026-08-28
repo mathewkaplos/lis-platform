@@ -8,7 +8,7 @@ import {
   referringFacility,
   testDefinition,
 } from '@lis/db';
-import type { InvoicePayerType } from '@lis/domain';
+import type { Invoice, InvoicePayerType } from '@lis/domain';
 import type { RequestWithTx } from '../auth/tenant-context.interceptor';
 
 type Tx = RequestWithTx['tx'];
@@ -26,6 +26,31 @@ export interface GenerateInvoiceInput {
 
 interface InvoiceableLine {
   priceCents: number | null;
+}
+
+/** Issue #711 (approved proposal §10 Q1): plain-text summary only, no PDF
+ * -- reused verbatim from the already-rendered invoice DTO, same content
+ * the "Receipt" screen already shows on-screen (line items, total,
+ * status). Pure, unit-testable in isolation from any DB/SMTP round trip. A
+ * plain cents-to-major-unit division (not `Intl.NumberFormat`, which lives
+ * only in `apps/web`'s `format-currency.ts` today) -- good enough for a
+ * plain-text email body, not a currency-formatting subsystem this route
+ * needs of its own. */
+export function buildInvoiceEmailBody(invoiceDto: Invoice): string {
+  const lines = invoiceDto.lineItems.map(
+    (item) =>
+      `  ${item.billingCode ?? '—'}  x${item.quantity}  ${(item.amountCents / 100).toFixed(2)}`,
+  );
+  return [
+    `Invoice ${invoiceDto.invoiceNumber ?? invoiceDto.id}`,
+    `Status: ${invoiceDto.status}`,
+    '',
+    'Line items:',
+    ...lines,
+    '',
+    `Total: ${(invoiceDto.totalCents / 100).toFixed(2)}`,
+    `Balance due: ${(invoiceDto.balanceDueCents / 100).toFixed(2)}`,
+  ].join('\n');
 }
 
 /** Pure, unit-testable in isolation from the DB round trip -- see

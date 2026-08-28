@@ -102,10 +102,11 @@ export const orderSchema = z.object({
 export type Order = z.infer<typeof orderSchema>;
 
 /**
- * All filters are optional and combine with AND. No free-text search mode
- * (unlike patient's `q`) — FEAT-012's own AC only names status/priority/date
- * range, not name-based search; that's worklist-level (FEAT-017+), not built
- * ahead of a real need.
+ * All filters are optional and combine with AND. Issue #748 (EPIC #697 pilot-
+ * readiness follow-up): `q` free-text search added — same `ilike` shape
+ * `patient.controller.ts`'s own `q` branch already established (substring on
+ * name, prefix on MRN) — combinable with every other filter here, not a
+ * separate search mode.
  */
 export const orderSearchQuerySchema = z.object({
   patientId: z.uuid().optional(),
@@ -113,6 +114,7 @@ export const orderSearchQuerySchema = z.object({
   priority: orderPrioritySchema.optional(),
   createdFrom: z.iso.datetime().optional(),
   createdTo: z.iso.datetime().optional(),
+  q: z.string().min(1).optional(),
 });
 export type OrderSearchQuery = z.infer<typeof orderSearchQuerySchema>;
 

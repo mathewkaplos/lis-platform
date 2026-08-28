@@ -34,9 +34,11 @@ export default async function OrdersPage({
     priority?: string;
     createdFrom?: string;
     createdTo?: string;
+    q?: string;
   }>;
 }) {
-  const { status, priority, createdFrom, createdTo } = await searchParams;
+  const { status, priority, createdFrom, createdTo, q } = await searchParams;
+  const trimmedQ = q?.trim() || undefined;
   const t = await getTranslations('Orders');
   // The filter form's <select>/<input type="date"> submit an empty string
   // when left at "Any"/blank, not an absent key -- the API's Zod schema
@@ -70,6 +72,7 @@ export default async function OrdersPage({
             priority: normalizedPriority,
             createdFrom: createdFrom ? `${createdFrom}T00:00:00.000Z` : undefined,
             createdTo: createdTo ? `${createdTo}T23:59:59.999Z` : undefined,
+            q: trimmedQ,
           },
         },
       }),
@@ -116,6 +119,17 @@ export default async function OrdersPage({
         </CardHeader>
         <CardContent>
           <form className="flex flex-wrap items-end gap-3" action="/orders">
+            <label className="flex flex-col gap-1 text-sm">
+              {t('search')}
+              <input
+                type="search"
+                name="q"
+                defaultValue={q}
+                placeholder={t('searchPlaceholder')}
+                aria-label={t('search')}
+                className="h-9 rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              />
+            </label>
             <label className="flex flex-col gap-1 text-sm">
               {t('status')}
               <select

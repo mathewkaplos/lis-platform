@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { Button } from '@lis/ui';
+import { Button, Input } from '@lis/ui';
+import { CASE_LIST_RESULT_LIMIT } from '@lis/domain';
 import { getValidAccessToken } from '@/auth/access-token';
 import { createLisApiClient } from '@/lib/api-client';
 import { STATUS_TABS } from './case-status';
@@ -17,12 +18,13 @@ import { CasesTable } from './cases-table';
 export default async function CasesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; q?: string }>;
 }) {
-  const { status } = await searchParams;
+  const { status, q } = await searchParams;
   const normalizedStatus = status
     ? (status as 'accessioned' | 'in_process' | 'pending_review' | 'signed_out' | 'amended')
     : undefined;
+  const trimmedQ = q?.trim() || undefined;
 
   const accessToken = await getValidAccessToken();
   if (!accessToken) {
@@ -39,10 +41,20 @@ export default async function CasesPage({
   const client = createLisApiClient(accessToken);
 
   const { data, response } = await client.GET('/v1/cases', {
-    params: { query: { status: normalizedStatus } },
+    params: { query: { status: normalizedStatus, q: trimmedQ } },
   });
   if (response.status === 403) {
-    throw new Error('You do not have permission to view cases.');
+    // Issue #750 cleanup, same fix issue #758 already applied to 88 other
+    // instances of this exact redacted-in-production shape (`frontend-design`
+    // Skill entry #12) -- found live while touching this file for the
+    // patient-name/search change, not a separate unrelated pass.
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <p role="alert" className="text-sm text-text-secondary">
+          You do not have permission to view cases.
+        </p>
+      </div>
+    );
   }
   if (!response.ok || !data) {
     return (
@@ -55,7 +67,11 @@ export default async function CasesPage({
   }
 
   function filterHref(tabStatus: string | undefined): string {
-    return tabStatus ? `/cases?status=${tabStatus}` : '/cases';
+    const params = new URLSearchParams();
+    if (tabStatus) params.set('status', tabStatus);
+    if (trimmedQ) params.set('q', trimmedQ);
+    const qs = params.toString();
+    return qs ? `/cases?${qs}` : '/cases';
   }
 
   return (
@@ -63,6 +79,25 @@ export default async function CasesPage({
       <div>
         <h1 className="text-xl font-semibold text-foreground">Cases</h1>
         <p className="mt-1 text-sm text-text-secondary">{data.items.length} case(s).</p>
+        {/* Issue #749 (EPIC #697): plain GET form, same pattern
+            patients/page.tsx and orders/page.tsx already use -- `q` lives in
+            the URL's searchParams, keeping this a Server Component. Combines
+            with the status tabs below (both submit to the same route). */}
+        <form className="mt-2 flex max-w-sm gap-2" action="/cases">
+          {normalizedStatus ? (
+            <input type="hidden" name="status" value={normalizedStatus} />
+          ) : null}
+          <Input
+            type="search"
+            name="q"
+            defaultValue={q}
+            placeholder="Search by patient name or MRN"
+            aria-label="Search cases"
+          />
+          <Button type="submit" variant="outline">
+            Search
+          </Button>
+        </form>
         {/* Issue #707 (EPIC #697): AP case creation is deliberately reachable
             only from an order's own detail page (cases/new/page.tsx's own
             header comment) -- nothing pointed a first-time user there.
@@ -95,6 +130,12 @@ export default async function CasesPage({
         ))}
       </div>
       <CasesTable rows={data.items} />
+      {data.items.length === CASE_LIST_RESULT_LIMIT ? (
+        <p className="text-xs text-text-secondary">
+          Showing the first {CASE_LIST_RESULT_LIMIT} cases. Narrow your search for more
+          specific results.
+        </p>
+      ) : null}
     </div>
   );
 }

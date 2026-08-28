@@ -7,3 +7,13 @@ export interface PaymentState {
 }
 
 export const paymentInitialState: PaymentState = { status: 'idle' };
+
+export interface SendInvoiceEmailState {
+  status: 'idle' | 'submitting' | 'done' | 'error';
+  formError?: string;
+  sentTo?: string;
+}
+
+export const sendInvoiceEmailInitialState: SendInvoiceEmailState = {
+  status: 'idle',
+};

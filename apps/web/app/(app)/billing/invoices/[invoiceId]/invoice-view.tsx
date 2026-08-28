@@ -16,6 +16,7 @@ import type { Invoice } from '@lis/domain';
 import { formatMoneyCents } from '@/lib/format-currency';
 import { recordPayment } from './actions';
 import { paymentInitialState } from './types';
+import { SendInvoiceEmailForm } from './send-invoice-email-form';
 
 const STATUS_VARIANT: Record<Invoice['status'], 'outline' | 'secondary' | 'default'> = {
   unpaid: 'outline',
@@ -33,9 +34,13 @@ const STATUS_VARIANT: Record<Invoice['status'], 'outline' | 'secondary' | 'defau
 export function InvoiceView({
   invoice,
   currency,
+  patientEmail,
+  facilityEmail,
 }: {
   invoice: Invoice;
   currency: string | null;
+  patientEmail?: string | null;
+  facilityEmail?: string | null;
 }) {
   const router = useRouter();
   const boundRecordPayment = recordPayment.bind(null, invoice.id);
@@ -212,6 +217,13 @@ export function InvoiceView({
           >
             Print receipt
           </Button>
+          <div className="mt-2 print:hidden">
+            <SendInvoiceEmailForm
+              invoiceId={invoice.id}
+              defaultTo={patientEmail}
+              facilityEmail={facilityEmail}
+            />
+          </div>
         </CardContent>
       </Card>
     </div>

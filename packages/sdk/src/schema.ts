@@ -1124,6 +1124,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/invoices/{id}/send-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["BillingController_sendInvoiceEmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ordered-tests/{orderedTestId}/culture-reads": {
         parameters: {
             query?: never;
@@ -2602,6 +2618,10 @@ export interface components {
             method: "cash" | "mobile_money";
             amountCents: number;
             reference?: string;
+        };
+        InvoiceSendEmailRequestDto: {
+            /** Format: email */
+            to?: string;
         };
         ScheduleCultureReadDto: {
             /** Format: date-time */
@@ -4749,6 +4769,29 @@ export interface operations {
         };
         responses: {
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BillingController_sendInvoiceEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoiceSendEmailRequestDto"];
+            };
+        };
+        responses: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

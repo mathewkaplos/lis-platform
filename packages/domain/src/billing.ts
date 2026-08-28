@@ -160,3 +160,18 @@ export const invoiceListResponseSchema = z.object({
   items: z.array(invoiceListItemSchema),
 });
 export type InvoiceListResponse = z.infer<typeof invoiceListResponseSchema>;
+
+/**
+ * Issue #711 (docs/plans/task-711-invoice-email-delivery.md): same exact
+ * shape as `caseReportSendEmailRequestSchema` (anatomic-pathology.ts) --
+ * `to` optional, resolved server-side to the invoice's own patient's
+ * on-file email when omitted. Plain-text/HTML body only (proposal §10 Q1,
+ * approved) -- no PDF attachment, since no invoice PDF generator exists in
+ * this repo.
+ */
+export const invoiceSendEmailRequestSchema = z.object({
+  to: z.email().optional(),
+});
+export type InvoiceSendEmailRequestInput = z.infer<
+  typeof invoiceSendEmailRequestSchema
+>;

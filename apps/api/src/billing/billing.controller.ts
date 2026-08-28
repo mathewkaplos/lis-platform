@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Controller,
   Get,
+  HttpCode,
   Inject,
   NotFoundException,
   Param,
@@ -16,6 +17,7 @@ import {
   invoiceListQuerySchema,
   invoiceListResponseSchema,
   invoiceSchema,
+  invoiceSendEmailRequestSchema,
   paymentRequestSchema,
   type Invoice,
   type InvoiceListResponse,
@@ -32,7 +34,9 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RequireCapability } from '../auth/require-capability.decorator';
 import type { RequestWithTx } from '../auth/tenant-context.interceptor';
 import { TenantContextInterceptor } from '../auth/tenant-context.interceptor';
-import { BillingService } from './billing.service';
+import { sendEmail } from '../email/email.client';
+import { getTenantSmtpConfig } from '../org-settings/org-settings.controller';
+import { BillingService, buildInvoiceEmailBody } from './billing.service';
 import { getPaidCents, PaymentService } from './payment.service';
 
 const orderIdParamSchema = z.object({ id: z.uuid() });
@@ -57,6 +61,9 @@ class PaymentRequestDto extends createZodDto(paymentRequestSchema) {}
 class InvoiceDto extends createZodDto(invoiceSchema) {}
 class GenerateInvoiceRequestDto extends createZodDto(
   generateInvoiceRequestSchema,
+) {}
+class InvoiceSendEmailRequestDto extends createZodDto(
+  invoiceSendEmailRequestSchema,
 ) {}
 
 // `createdAt` converted to an ISO string, same as `toCareRelationshipDto`'s
@@ -317,5 +324,83 @@ export class BillingController {
     });
 
     return { resourceId: paymentRow.id, after: toPaymentDto(paymentRow) };
+  }
+
+  /**
+   * Issue #711 (docs/plans/task-711-invoice-email-delivery.md, approved
+   * proposal §10 Q1): plain-text/HTML body only, no PDF attachment -- no
+   * invoice PDF generator exists anywhere in this repo (the "Receipt" is
+   * an on-screen `window.print()` view, not a generated document). Mirrors
+   * `case.controller.ts`'s `sendReportVersionEmail` exactly otherwise:
+   * `manage_billing` (this controller's existing gate for every other
+   * invoice route, not a new one -- distributing an already-visible
+   * invoice externally isn't a new attestation), `to` optional and
+   * resolved server-side to the invoice's own patient's on-file email when
+   * omitted, a real 400 when neither exists, per-tenant SMTP config reused
+   * unchanged.
+   */
+  @Post('v1/invoices/:id/send-email')
+  @HttpCode(200) // an action on an existing resource, not a creation
+  @UseGuards(JwtAuthGuard, CapabilityGuard)
+  @RequireCapability('manage_billing')
+  @UseInterceptors(TenantContextInterceptor, AuditInterceptor)
+  @Audit({ action: 'invoice.emailed', resourceType: 'invoice' })
+  async sendInvoiceEmail(
+    @Param(new ZodValidationPipe(invoiceIdParamSchema))
+    { id }: InvoiceIdParamDto,
+    @Body(new ZodValidationPipe(invoiceSendEmailRequestSchema))
+    body: InvoiceSendEmailRequestDto,
+    @DbTx() tx: RequestWithTx['tx'],
+  ) {
+    const [invoiceRow] = await tx
+      .select()
+      .from(invoice)
+      .where(eq(invoice.id, id))
+      .limit(1);
+    if (!invoiceRow) {
+      throw new NotFoundException('Invoice not found');
+    }
+
+    let recipient = body.to;
+    if (!recipient) {
+      const [patientRow] = await tx
+        .select()
+        .from(patient)
+        .where(eq(patient.id, invoiceRow.patientId))
+        .limit(1);
+      recipient = patientRow?.email ?? undefined;
+    }
+    if (!recipient) {
+      throw new BadRequestException(
+        'This patient has no email on file — enter a recipient address.',
+      );
+    }
+
+    const lineItems = await tx
+      .select()
+      .from(invoiceLineItem)
+      .where(eq(invoiceLineItem.invoiceId, id));
+    const paidCents = await getPaidCents(tx, id);
+    const invoiceDto = toInvoiceDto(invoiceRow, lineItems, paidCents);
+
+    const tenantSmtp = await getTenantSmtpConfig(tx, invoiceRow.tenantId);
+
+    await sendEmail({
+      to: recipient,
+      subject: `Invoice ${invoiceDto.invoiceNumber ?? invoiceDto.id}`,
+      text: buildInvoiceEmailBody(invoiceDto),
+      from: tenantSmtp
+        ? {
+            user: tenantSmtp.user,
+            appPassword: tenantSmtp.appPassword,
+            displayFrom: tenantSmtp.from,
+          }
+        : undefined,
+    });
+
+    return {
+      resourceId: invoiceRow.id,
+      after: { sentTo: recipient },
+    };
   }
 }

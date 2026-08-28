@@ -1,6 +1,7 @@
 # Status — 2026-08-28 (session 48)
 
-Last commit on main before this session's own PR: `28673ec` (docs/breadcrumb-refresh-session47 merge).
+Last commit on main: `d27a8563` (`lis-platform`, PR #791 — orders/cases search + case audit-trail
+completeness). M14 — Pilot Readiness (AP Design Partner) is now **28/28 closed, fully done.**
 
 ## Session 48 — independent exit-gate re-run of the pilot-readiness audit (issue #719)
 
@@ -35,6 +36,58 @@ issues were filed — no new red/orange application defect was found this pass.
    The fabricated test recipient domain doesn't resolve, so no real inbox was reached, but real
    credentials were used for a routine audit action. **Whoever preps this environment for the next
    session should blank `SMTP_USER`/`SMTP_APP_PASSWORD` in the root `.env` by default.**
+
+## Session 48 (continued) — RBAC UI/UX live verification, EPIC #697 closed, invoice email (#711),
+## orders/cases search + audit-trail completeness (#748/#749/#750) — M14 fully closed
+
+Continuation of the same session, after the independent #719 exit-gate re-run above. `/orient` found
+the Chrome extension's connectivity issue (blocking live UI/UX verification for three straight sessions,
+45–47) had cleared — confirmed directly (a real navigate + page-read round trip) before relying on it.
+
+**RBAC matrix UI/UX pass, deferred since session 45, finally run live.** Walked reception, pathologist,
+cashier, and lab_admin through the browser against the pilot guide's §18.1 matrix: every denial rendered
+a clear, specific message; every role-gated control (narrative entry, synoptic protocol, sign-out) was
+genuinely absent from the page for a role that lacks it, not shown-then-blocked. Bonus re-check: issue
+#762's fix (PR #770, session 47) confirmed working live for all four pages it targeted — `/cases` remains
+the one still-accepted under-gated page, unchanged, out of that fix's scope. Documented in
+`docs/pilot/PILOT-USER-GUIDE.md`, merged via PR #788.
+
+**EPIC #697 closed.** Updated its own stale checklist (both #711 and #719 were still shown unchecked
+despite being closed), added an explicit "deferred, non-blocking follow-ups" section naming #748/#749/#750
+so they read as a tracked decision rather than a silently dropped scope, posted a closing comment with
+the real score arc (31 → 84/100 same-session/non-independent → clean independent re-run), and closed with
+`state_reason: completed`. First retrospective written since M0:
+`lis-engineering/retrospectives/M14-retrospective.md` — 9 root causes, 7 process lessons, a 10-step
+runbook, and 6 new entries added to the cumulative standing-rules list.
+
+**Issue #711 — invoice email delivery, PR #790.** #711's title covered both reports and invoices; report
+email already shipped session 44. Scoped down to the real remaining gap (invoice email only), approved via
+`docs/plans/task-711-invoice-email-delivery.md` (plain-text body, no PDF — no invoice PDF generator exists
+in this repo; "send to patient" means the on-file email address, no patient portal exists). New
+`POST /v1/invoices/:id/send-email`, mirroring the report-email pattern exactly. Live verification caught a
+real environment issue, not a code bug: the running API dev server was a ~23-hour-old stale process that
+had stopped picking up file changes, producing a 404 that initially looked like a real bug — restarting it
+fixed it immediately.
+
+**Issues #748/#749/#750 — orders/cases search + case audit-trail completeness, PR #791 (bundled, one
+proposal: `docs/plans/task-748-749-750-list-search-and-audit-trail.md`).** #748: `q` search added to
+`/orders` (pagination was already capped at 100, contrary to the issue's own framing). #749: `/cases` now
+joins through to the patient and shows their name, gained `q` search, and got its first-ever result cap
+(100 rows — this route had none before, unlike every other list route in the repo); also fixed a
+redacted-in-production `throw new Error(...)` in the 403 branch, the same class of bug issue #758 already
+swept 88 other instances of, found live while editing this exact file. #750: the case audit-trail panel
+was silently missing narrative/block/slide/ordered-test events — the rows existed correctly in
+`audit_event`, the query just never matched three of the five resource types this controller's own
+`@Audit()` decorators use; generalized to all five, reusing `getById()`'s own existing lineage queries.
+New `case-list-and-audit-trail.e2e-spec.ts` (neither route had any e2e coverage anywhere in this repo
+before this PR). Live-verified in the browser: `/orders?q=Synoptic` and `/cases?q=CaseListAudit` both
+filtered correctly against real data.
+
+**M14 — Pilot Readiness (AP Design Partner) is now 28/28 issues closed.** The entire milestone this
+epic existed to track is done.
+
+**Not yet done this session:** the environment-hygiene fix flagged above (blank `SMTP_USER`/
+`SMTP_APP_PASSWORD` in the root `.env`) — still outstanding, not applied.
 
 ---
 

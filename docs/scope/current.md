@@ -1,3 +1,43 @@
+# Status — 2026-08-28 (session 48)
+
+Last commit on main before this session's own PR: `28673ec` (docs/breadcrumb-refresh-session47 merge).
+
+## Session 48 — independent exit-gate re-run of the pilot-readiness audit (issue #719)
+
+Ran issue #719 — EPIC #697's own explicitly-independent exit gate — from a fresh session with no
+memory of any prior fix work, satisfying its "run by someone other than whoever built the fixes"
+acceptance criterion. Re-ran the full synthetic-patient trace end to end against a **brand-new
+self-signup tenant** ("Pilot Reaudit Org 0828A"), not the shared seeded `...0001` tenant: real Keycloak
+OIDC login at every step, 5 real staff accounts created one role at a time, a real patient, a real
+facility-billed AP order, full accession→narrative→sign-out(step-up)→PDF→invoice→facility-statement→
+send chain. Every outcome cross-checked against the real dev-server request log, not inferred from the
+UI. Full row-by-row detail in `docs/pilot/PILOT-USER-GUIDE.md` Part 23's own "2026-08-28 independent
+exit-gate re-run" section.
+
+**Result: 15 🟢, 4 🟡 (all pre-existing, already-disclosed), 2 ⚫, 1 ⚪, zero 🔴, zero 🟠.** Issue #719's
+acceptance criterion of "zero BLOCKER/NOT-PILOT-READY rows across every area" is met. No new GitHub
+issues were filed — no new red/orange application defect was found this pass.
+
+**Two things worth flagging that are NOT application bugs, so no issue was filed for either:**
+1. **A Chrome-automation network-capture artifact.** The browser tool's own network log showed
+   intermittent `503`s on the case-report PDF download endpoint (~80% of attempts). Cross-checked
+   against the actual dev server's own access log for the identical requests: every one was a real
+   `200` with a real PDF body. The `503`s exist only in the extension's own event capture, not on the
+   wire — the same class of "Chrome extension connectivity issue" session 47 already documented,
+   manifesting as a phantom status this time instead of a blocked click. **Lesson for the next session
+   using browser automation here: cross-check the dev server's own request log before trusting a
+   browser-tool-reported error status.**
+2. **Operational hygiene: this environment's root `.env` has real Gmail SMTP credentials configured**
+   (`SMTP_HOST=smtp.gmail.com`, a real account) instead of being left blank or pointed at MailHog, contra
+   the pilot guide's own §1.3 instruction and its explicit "use MailHog by default" warning. Sending a
+   case report by email during this pass's trace therefore relayed through real Gmail infrastructure
+   rather than landing in MailHog (confirmed via MailHog's own API showing no new message afterward).
+   The fabricated test recipient domain doesn't resolve, so no real inbox was reached, but real
+   credentials were used for a routine audit action. **Whoever preps this environment for the next
+   session should blank `SMTP_USER`/`SMTP_APP_PASSWORD` in the root `.env` by default.**
+
+---
+
 # Status — 2026-08-27 (session 47)
 
 Last commit on main: `4c0647d` (`lis-platform`, PR #786 — RBAC allow/deny matrix checklist update).

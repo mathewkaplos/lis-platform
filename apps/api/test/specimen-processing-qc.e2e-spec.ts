@@ -102,8 +102,9 @@ describe('Specimen processing batch QC (e2e)', () => {
     await app.close();
   });
 
-  it('a pathologist can record a batch covering one or more cases', async () => {
-    const patientId = await createPatient(`Record-${Date.now()}`);
+  it('a pathologist can record a batch covering one or more cases, with accessionNumber resolved in the create response itself', async () => {
+    const uniqueLastName = `Record-${Date.now()}`;
+    const patientId = await createPatient(uniqueLastName);
     const orderId = await createOrder(patientId);
     const caseId = await createCase(orderId);
 
@@ -115,7 +116,14 @@ describe('Specimen processing batch QC (e2e)', () => {
 
     const body = res.body as {
       resourceId: string;
-      after: { cases: { caseId: string; slideCount: number }[] };
+      after: {
+        cases: {
+          caseId: string;
+          slideCount: number;
+          accessionNumber?: string;
+          patientLastName?: string;
+        }[];
+      };
     };
     if (!body.resourceId) {
       throw new Error(`expected a resourceId, got ${JSON.stringify(body)}`);
@@ -124,6 +132,20 @@ describe('Specimen processing batch QC (e2e)', () => {
     if (!recordedCase || recordedCase.slideCount !== 3) {
       throw new Error(
         `expected the case row to round-trip, got ${JSON.stringify(body.after)}`,
+      );
+    }
+    // Found live (Claude-in-Chrome walkthrough, 2026-09-05): a first version
+    // of create() returned only {id, caseId, slideCount, pathologistRemarks}
+    // per case, unlike list()/getById()'s own case rows -- the new batch's
+    // own optimistic apps/web row showed the raw case UUID instead of its
+    // accession number until the next page load. This assertion is the fix,
+    // not a description of intent.
+    if (
+      !recordedCase.accessionNumber ||
+      !recordedCase.patientLastName?.includes(uniqueLastName)
+    ) {
+      throw new Error(
+        `expected accessionNumber/patientLastName resolved in the create() response itself, got ${JSON.stringify(recordedCase)}`,
       );
     }
   });

@@ -1,9 +1,51 @@
-# Status — 2026-08-28 (session 49)
+# Status — 2026-09-05 (session 50)
 
-Last commit on main: `f0f05f3` (`lis-platform`, PR #793 — network-unreachable error handling
-across all Server Actions). M14 remains **28/28 closed, fully done** — this session closed out
-the last two loose findings from the pilot-readiness audit thread, both from session 47/48's own
-exit-gate re-run.
+Last commit on main: `aaaf5f4` (`lis-platform`, PR #797 — resolve accessionNumber/patientName in
+specimen-processing-batch create() response). New EPIC-013 (Quality Management) filed and its v1
+slice shipped this session — the first work against a real, currently-paper-only design-partner
+QC form, not another pilot-readiness follow-up.
+
+## Session 50 — EPIC-013 decision + v1 (specimen-processing batch QC), a live-found bug, PRs
+## #794/#796/#797
+
+`/orient` found M14 fully done and M13's own remaining 9 issues still all gated on unmet
+design-partner/business-process decisions, unchanged. Asked "what's next, easiest first" —
+resolved issue #673's own standing decision question (grossing/processing/staining QC tracking:
+in scope or not) rather than starting speculative work.
+
+**Decision: in scope, as a new cross-cutting quality-management epic.** Filed
+**EPIC-013 (#795)**, closed #673 in its favor (its own text: "exists purely to carry the evidence
+and force the decision"). Drafted and approved
+`docs/plans/feat-068-specimen-processing-batch-qc.md` — v1 deliberately scoped to the one real
+evidenced document (`TRACKING SHEET (1).docx`, tissue processing/microtomy/H&E staining), not a
+generic cross-discipline engine, matching ADR-0050's own "generalize only after real evidence"
+precedent for the synoptic-protocol engine.
+
+**PR #796 — FEAT-068 v1, EPIC-013's first slice.** New `specimen_processing_batch`/
+`specimen_processing_batch_case` tables (batch-level evaluation, per-case manifest rows — matching
+the real form's own structure exactly), a new `record_processing_qc` capability
+(`pathologist`-only), `POST/GET /v1/specimen-processing-batches` routes, and a new
+`/specimen-processing-qc` recording form + list screen. CI's own `rls-isolation-check` caught a
+real gap on the first push (zero fixture rows for the two new tables — fixed same session).
+Deliberately narrower at the UI layer than the API: the form records one case per submission even
+though the API accepts N, a disclosed scope cut, not a backend limitation.
+
+**Live-verified in a real browser as the seeded pathologist account — and a real bug found by
+doing so, not just running tests.** The list and RBAC-gated "Record batch" control both rendered
+correctly; submitting a batch worked, but the just-created row showed the raw case UUID instead of
+its accession number until the next reload. Root cause: `create()`'s own case-existence check only
+selected `{id}`, never joining through to `order`/`patient` the way `list()`/`getById()` already
+do — so the audited response `apps/web`'s optimistic UI reads directly had nothing to resolve.
+Fixed and regression-tested in **PR #797**, live-reverified after the fix.
+
+**`/close` this session — Pre-Close Report only so far**
+(`~/work/lis-engineering/session-close-reports/2026-09-05-1641-pre.md`). This breadcrumb refresh
+is one of its three pending items. The other two: a drafted AGENTS.md safety note (a real fix was
+briefly committed directly onto local `main` mid-session, recovered without `reset --hard` per this
+repo's own guard hook — the note documents the safe recovery recipe and a before-`git commit`
+branch check); and a manual visual check of the new recording form's actual layout, since every
+`computer` `screenshot` call against it this session timed out or errored — the form was only ever
+driven via its accessibility tree, never actually seen.
 
 ## Session 49 — issue #764 closed as non-reproducing, issue #775 fixed (network-error handling
 ## swept across all 22 apps/web actions.ts files), PR #793

@@ -549,3 +549,19 @@ re-discovering it via a filesystem search each session. Confirmed 2026-08-18
   loop this over the affected tracked files rather than trying to clear
   the whole index first:
   `git ls-files -- '<pattern>' | while read -r f; do rm -- "$f"; git checkout -- "$f"; done`.
+- **Verify `git branch --show-current` is not `main` before running `git
+  commit` for new work, not just at the start of a multi-step sequence.**
+  Confirmed 2026-09-05: the routine post-merge cleanup (`git checkout main
+  && git pull origin main`) leaves the working tree sitting on `main`
+  between tasks — a real fix written immediately afterward, without a
+  conscious "am I on main right now" check, was `git commit`'d directly
+  onto local `main` instead of a feature branch. **The safe recovery, if
+  this happens before pushing:** `git branch <name>` (capture the commit
+  under a new branch name, still pointing at the same commit `main` is
+  currently at) → `git checkout <name>` (move the working tree off `main`
+  onto that branch — safe, no working-tree change, same commit) → `git
+  branch -f main origin/main` (repoint the now-unchecked-out `main` back to
+  the real remote tip). This never touches the working tree and never needs
+  `reset --hard` (which this project's own guard hook correctly refuses
+  regardless, per the 2026-07-26 data-loss incident above) — push the new
+  branch and open the PR normally from there.

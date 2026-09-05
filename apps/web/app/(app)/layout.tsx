@@ -5,6 +5,7 @@ import { createLisApiClient } from '@/lib/api-client';
 import { THEME_COOKIE_NAME, isTheme } from '@/lib/theme';
 import { DEFAULT_LOCALE, LOCALE_COOKIE_NAME, isLocale } from '@/lib/locale';
 import { MobileTopNav, Sidebar } from './_components/sidebar';
+import { RouteProgressBar } from './_components/route-progress-bar';
 import { TopBar } from './_components/top-bar';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -54,6 +55,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-full flex-1">
+      <RouteProgressBar />
       {/* Issue #717 (EPIC #697): a keyboard-only user otherwise tabs through the
           entire sidebar nav (14 links) plus the mobile-nav trigger and every
           TopBar control before ever reaching page content -- on every single

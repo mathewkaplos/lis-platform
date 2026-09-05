@@ -111,12 +111,25 @@ export class SpecimenProcessingQcController {
     @DbTx() tx: RequestWithTx['tx'],
   ) {
     const caseIds = body.cases.map((c) => c.caseId);
+    // Resolved once here (not just checked for existence) so the create()
+    // response can include the same accessionNumber/patientName every other
+    // read (list()/getById()) already resolves via this identical join --
+    // found live: a first version returned only {id, caseId} here, so a
+    // just-created batch's own optimistic UI update showed the raw case
+    // UUID instead of its accession number until the next page load.
     const visibleCases = await tx
-      .select({ id: caseTable.id })
+      .select({
+        id: caseTable.id,
+        accessionNumber: caseTable.accessionNumber,
+        patientFirstName: patient.firstName,
+        patientLastName: patient.lastName,
+      })
       .from(caseTable)
+      .innerJoin(order, eq(caseTable.orderId, order.id))
+      .innerJoin(patient, eq(order.patientId, patient.id))
       .where(inArray(caseTable.id, caseIds));
-    const visibleIds = new Set(visibleCases.map((row) => row.id));
-    const missing = caseIds.filter((id) => !visibleIds.has(id));
+    const visibleCasesById = new Map(visibleCases.map((row) => [row.id, row]));
+    const missing = caseIds.filter((id) => !visibleCasesById.has(id));
     if (missing.length > 0) {
       throw new BadRequestException(
         `Unknown case id(s): ${missing.join(', ')}`,
@@ -161,12 +174,18 @@ export class SpecimenProcessingQcController {
       before: null,
       after: toBatchDto(
         batchRow,
-        caseRows.map((row) => ({
-          id: row.id,
-          caseId: row.caseId,
-          slideCount: row.slideCount,
-          pathologistRemarks: row.pathologistRemarks ?? undefined,
-        })),
+        caseRows.map((row) => {
+          const caseInfo = visibleCasesById.get(row.caseId);
+          return {
+            id: row.id,
+            caseId: row.caseId,
+            slideCount: row.slideCount,
+            pathologistRemarks: row.pathologistRemarks ?? undefined,
+            accessionNumber: caseInfo?.accessionNumber,
+            patientFirstName: caseInfo?.patientFirstName,
+            patientLastName: caseInfo?.patientLastName,
+          };
+        }),
       ),
     };
   }

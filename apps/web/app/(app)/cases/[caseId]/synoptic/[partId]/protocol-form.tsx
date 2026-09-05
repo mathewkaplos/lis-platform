@@ -11,6 +11,7 @@ import {
 import { Button, FormField } from '@lis/ui';
 import { recordSynopticResponse } from './actions';
 import { formatResultValue } from './format-result-value';
+import { countRequiredProgress } from './progress-count';
 import { recordSynopticResponseInitialState } from './types';
 
 type ResponseValue = string | number | string[];
@@ -311,6 +312,10 @@ export function ProtocolForm({
 
   const context = useMemo(() => values as Record<string, unknown>, [values]);
   const elementByKey = useMemo(() => new Map(elements.map((e) => [e.key, e])), [elements]);
+  // Issue #803: "what's left to fill in" / "what's blocking sign-out" had no
+  // answer on this form beyond scrolling the whole list looking for
+  // asterisks -- this is the smallest fix, a live count above the fields.
+  const progress = useMemo(() => countRequiredProgress(elements, context), [elements, context]);
 
   function handleAddInstance(elementKey: string) {
     setInstances((prev) => ({
@@ -413,6 +418,9 @@ export function ProtocolForm({
           {state.formError}
         </p>
       ) : null}
+      <p className="text-sm text-text-secondary">
+        {progress.answered} of {progress.total} required fields answered
+      </p>
       <ElementGroup
         elements={elements}
         parentId={null}

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { Badge, Card, CardContent, CardHeader, CardTitle } from '@lis/ui';
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@lis/ui';
 import { getValidAccessToken } from '@/auth/access-token';
 import { getSession } from '@/auth/get-session';
 import { hasSpecimenManagementRole, hasPathologistRole } from '@/auth/roles';
@@ -128,6 +128,17 @@ export default async function CaseDetailPage({
         .then(({ data }) => data?.items ?? [])
     : [];
 
+  // Issue #800: every case has exactly one order (`ux_case_tenant_order`,
+  // §9.1 of docs/pilot/PILOT-USER-GUIDE.md) -- fetched unconditionally now
+  // so the header below can show patient identity and a link back to the
+  // order, not only inside the isAmendable branch this call used to live in
+  // (which existed solely to prefill SendReportEmailForm's quick-fill
+  // buttons). `order.patient` is the same firstName/lastName/mrn summary
+  // `/orders/[id]/page.tsx` already renders as its own header.
+  const { data: orderData } = await client.GET('/v1/orders/{id}', {
+    params: { path: { id: caseData.orderId } },
+  });
+
   // Pilot-readiness audit follow-up (email delivery, deliberately deferred
   // at #698, now built): fetches purely to prefill SendReportEmailForm's
   // own quick-fill buttons -- sendReportEmail() itself doesn't need either
@@ -138,26 +149,21 @@ export default async function CaseDetailPage({
   // renders.
   let patientEmail: string | null = null;
   let facilityEmail: string | null = null;
-  if (isAmendable) {
-    const { data: orderData } = await client.GET('/v1/orders/{id}', {
-      params: { path: { id: caseData.orderId } },
-    });
-    if (orderData) {
-      const [{ data: patientData }, { data: facilityData }] = await Promise.all([
-        client.GET('/v1/patients/{id}', { params: { path: { id: orderData.patientId } } }),
-        // Not every order has a referring facility (FEAT-066, order-entry's
-        // own optional field) -- request()'s param typing requires a real
-        // id either way, so this branch skips the call entirely rather
-        // than passing a null id through.
-        orderData.referringFacilityId
-          ? client.GET('/v1/referring-facilities/{id}', {
-              params: { path: { id: orderData.referringFacilityId } },
-            })
-          : Promise.resolve({ data: undefined }),
-      ]);
-      patientEmail = patientData?.email ?? null;
-      facilityEmail = facilityData?.email ?? null;
-    }
+  if (isAmendable && orderData) {
+    const [{ data: patientData }, { data: facilityData }] = await Promise.all([
+      client.GET('/v1/patients/{id}', { params: { path: { id: orderData.patientId } } }),
+      // Not every order has a referring facility (FEAT-066, order-entry's
+      // own optional field) -- request()'s param typing requires a real
+      // id either way, so this branch skips the call entirely rather
+      // than passing a null id through.
+      orderData.referringFacilityId
+        ? client.GET('/v1/referring-facilities/{id}', {
+            params: { path: { id: orderData.referringFacilityId } },
+          })
+        : Promise.resolve({ data: undefined }),
+    ]);
+    patientEmail = patientData?.email ?? null;
+    facilityEmail = facilityData?.email ?? null;
   }
 
   // Issue #714 (EPIC #697): sign-out/amend already record real, structured
@@ -170,11 +176,32 @@ export default async function CaseDetailPage({
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
       <Card className="mx-auto w-full max-w-3xl">
-        <CardHeader className="flex flex-row items-center justify-between gap-4">
-          <CardTitle className="flex items-center gap-2">
-            <span className="font-mono">{caseData.accessionNumber}</span>
-            <Badge variant="outline">{caseData.status}</Badge>
-          </CardTitle>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            {/* Issue #800: this used to be the ONLY identifying content
+                anywhere on the page -- a bare accession number, no patient
+                name/MRN, no way back to the order. `order.patient` mirrors
+                `/orders/[id]/page.tsx`'s own header exactly. */}
+            <CardTitle>
+              {orderData?.patient
+                ? `${orderData.patient.firstName} ${orderData.patient.lastName}`
+                : 'Case'}
+            </CardTitle>
+            {orderData?.patient ? (
+              <p className="mt-1 text-sm text-text-secondary">
+                MRN <span className="font-mono text-foreground">{orderData.patient.mrn}</span>
+              </p>
+            ) : null}
+            <p className="mt-2 flex items-center gap-2 text-sm text-text-secondary">
+              <span className="font-mono">{caseData.accessionNumber}</span>
+              <Badge variant="outline">{caseData.status}</Badge>
+            </p>
+          </div>
+          {orderData ? (
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/orders/${caseData.orderId}`}>View order</Link>
+            </Button>
+          ) : null}
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
           {caseData.parts.length === 0 ? (

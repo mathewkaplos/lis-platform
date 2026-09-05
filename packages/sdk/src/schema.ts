@@ -1684,6 +1684,38 @@ export interface paths {
         patch: operations["UserManagementController_setEnabled"];
         trace?: never;
     };
+    "/v1/specimen-processing-batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SpecimenProcessingQcController_list"];
+        put?: never;
+        post: operations["SpecimenProcessingQcController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/specimen-processing-batches/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SpecimenProcessingQcController_getById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3143,6 +3175,77 @@ export interface components {
         };
         UpdateUserEnabledDto: {
             enabled: boolean;
+        };
+        SpecimenProcessingBatchCreateDto: {
+            histoTechName: string;
+            /** Format: date-time */
+            grossingDate: string;
+            /** Format: date-time */
+            slidesForwardedDate: string;
+            /** @enum {string} */
+            tissueFixation: "adequate" | "inadequate";
+            /** @enum {string} */
+            processing: "optimal" | "suboptimal";
+            /** @enum {string} */
+            sectionThickness: "acceptable" | "unacceptable";
+            /** @enum {string} */
+            tissueFoldsTears: "present" | "absent";
+            /** @enum {string} */
+            stainingQuality: "acceptable" | "unacceptable";
+            /** @enum {string} */
+            coverslipping: "artefacts" | "no_artefacts";
+            /** @enum {string} */
+            tissueOrientation: "satisfactory" | "unsatisfactory";
+            comments?: string;
+            correctiveAction?: string;
+            cases: {
+                /** Format: uuid */
+                caseId: string;
+                slideCount: number;
+                pathologistRemarks?: string;
+            }[];
+        };
+        SpecimenProcessingBatchDto_Output: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenantId: string;
+            /** Format: uuid */
+            grossingPathologistUserId: string;
+            histoTechName: string;
+            /** Format: date-time */
+            grossingDate: string;
+            /** Format: date-time */
+            slidesForwardedDate: string;
+            /** @enum {string} */
+            tissueFixation: "adequate" | "inadequate";
+            /** @enum {string} */
+            processing: "optimal" | "suboptimal";
+            /** @enum {string} */
+            sectionThickness: "acceptable" | "unacceptable";
+            /** @enum {string} */
+            tissueFoldsTears: "present" | "absent";
+            /** @enum {string} */
+            stainingQuality: "acceptable" | "unacceptable";
+            /** @enum {string} */
+            coverslipping: "artefacts" | "no_artefacts";
+            /** @enum {string} */
+            tissueOrientation: "satisfactory" | "unsatisfactory";
+            comments: string | null;
+            correctiveAction: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            cases?: {
+                /** Format: uuid */
+                caseId: string;
+                slideCount: number;
+                pathologistRemarks?: string;
+                /** Format: uuid */
+                id: string;
+                accessionNumber?: string;
+                patientFirstName?: string;
+                patientLastName?: string;
+            }[];
         };
     };
     responses: never;
@@ -5655,6 +5758,70 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    SpecimenProcessingQcController_list: {
+        parameters: {
+            query?: {
+                createdFrom?: string;
+                createdTo?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecimenProcessingBatchDto_Output"][];
+                };
+            };
+        };
+    };
+    SpecimenProcessingQcController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpecimenProcessingBatchCreateDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SpecimenProcessingQcController_getById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecimenProcessingBatchDto_Output"];
+                };
             };
         };
     };

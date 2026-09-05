@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Building2,
   ClipboardList,
+  ClipboardCheck,
   FlaskConical,
   Layers,
   LayoutDashboard,
@@ -78,6 +79,13 @@ import { MobileNavTrigger } from './mobile-nav-trigger';
 // pilot-readiness audit's #2 finding. Same standing as the other admin
 // entries -- not role-filtered here either; `GET /v1/users`'s own
 // `manage_users` `CapabilityGuard` is the real enforcement point.
+// FEAT-068 (EPIC-013, issue #795): "Processing QC" added -- the first real
+// screen for the design partner's own tissue-processing batch QC tracking
+// sheet. Same standing as the other list+create admin/QC entries -- not
+// role-filtered here either; `POST /v1/specimen-processing-batches`'s own
+// `record_processing_qc` `CapabilityGuard` is the real enforcement point,
+// `hasPathologistRole()` inside the page only decides whether the "Record
+// batch" control renders.
 const NAV_ITEMS = [
   { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
   { href: '/patients', labelKey: 'patients', icon: Users },
@@ -87,6 +95,7 @@ const NAV_ITEMS = [
   { href: '/collection-queue', labelKey: 'collectionQueue', icon: ListChecks },
   { href: '/qc-violations', labelKey: 'qcViolations', icon: AlertTriangle },
   { href: '/culture-reads', labelKey: 'cultureReads', icon: Microscope },
+  { href: '/specimen-processing-qc', labelKey: 'specimenProcessingQc', icon: ClipboardCheck },
   { href: '/billing/invoices', labelKey: 'invoices', icon: Receipt },
   { href: '/billing/facility-statement', labelKey: 'facilityStatement', icon: FileStack },
   { href: '/admin/reference-ranges', labelKey: 'referenceRanges', icon: Ruler },

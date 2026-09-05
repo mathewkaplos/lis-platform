@@ -32,3 +32,4 @@ export * from "./anatomic-pathology";
 export * from "./synoptic-protocol";
 export * from "./image-attachment";
 export * from "./whole-slide-image";
+export * from "./specimen-processing-qc";

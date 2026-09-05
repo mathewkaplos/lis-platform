@@ -3811,6 +3811,105 @@
           "UserManagement"
         ]
       }
+    },
+    "/v1/specimen-processing-batches": {
+      "post": {
+        "operationId": "SpecimenProcessingQcController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpecimenProcessingBatchCreateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "SpecimenProcessingQc"
+        ]
+      },
+      "get": {
+        "operationId": "SpecimenProcessingQcController_list",
+        "parameters": [
+          {
+            "name": "createdFrom",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdTo",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SpecimenProcessingBatchDto_Output"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "SpecimenProcessingQc"
+        ]
+      }
+    },
+    "/v1/specimen-processing-batches/{id}": {
+      "get": {
+        "operationId": "SpecimenProcessingQcController_getById",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpecimenProcessingBatchDto_Output"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "SpecimenProcessingQc"
+        ]
+      }
     }
   },
   "info": {
@@ -9978,6 +10077,274 @@
         "required": [
           "enabled"
         ]
+      },
+      "SpecimenProcessingBatchCreateDto": {
+        "type": "object",
+        "properties": {
+          "histoTechName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "grossingDate": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
+          "slidesForwardedDate": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
+          "tissueFixation": {
+            "type": "string",
+            "enum": [
+              "adequate",
+              "inadequate"
+            ]
+          },
+          "processing": {
+            "type": "string",
+            "enum": [
+              "optimal",
+              "suboptimal"
+            ]
+          },
+          "sectionThickness": {
+            "type": "string",
+            "enum": [
+              "acceptable",
+              "unacceptable"
+            ]
+          },
+          "tissueFoldsTears": {
+            "type": "string",
+            "enum": [
+              "present",
+              "absent"
+            ]
+          },
+          "stainingQuality": {
+            "type": "string",
+            "enum": [
+              "acceptable",
+              "unacceptable"
+            ]
+          },
+          "coverslipping": {
+            "type": "string",
+            "enum": [
+              "artefacts",
+              "no_artefacts"
+            ]
+          },
+          "tissueOrientation": {
+            "type": "string",
+            "enum": [
+              "satisfactory",
+              "unsatisfactory"
+            ]
+          },
+          "comments": {
+            "type": "string"
+          },
+          "correctiveAction": {
+            "type": "string"
+          },
+          "cases": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "caseId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "slideCount": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "pathologistRemarks": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "caseId",
+                "slideCount"
+              ]
+            }
+          }
+        },
+        "required": [
+          "histoTechName",
+          "grossingDate",
+          "slidesForwardedDate",
+          "tissueFixation",
+          "processing",
+          "sectionThickness",
+          "tissueFoldsTears",
+          "stainingQuality",
+          "coverslipping",
+          "tissueOrientation",
+          "cases"
+        ]
+      },
+      "SpecimenProcessingBatchDto_Output": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "tenantId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "grossingPathologistUserId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "histoTechName": {
+            "type": "string"
+          },
+          "grossingDate": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
+          "slidesForwardedDate": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
+          "tissueFixation": {
+            "type": "string",
+            "enum": [
+              "adequate",
+              "inadequate"
+            ]
+          },
+          "processing": {
+            "type": "string",
+            "enum": [
+              "optimal",
+              "suboptimal"
+            ]
+          },
+          "sectionThickness": {
+            "type": "string",
+            "enum": [
+              "acceptable",
+              "unacceptable"
+            ]
+          },
+          "tissueFoldsTears": {
+            "type": "string",
+            "enum": [
+              "present",
+              "absent"
+            ]
+          },
+          "stainingQuality": {
+            "type": "string",
+            "enum": [
+              "acceptable",
+              "unacceptable"
+            ]
+          },
+          "coverslipping": {
+            "type": "string",
+            "enum": [
+              "artefacts",
+              "no_artefacts"
+            ]
+          },
+          "tissueOrientation": {
+            "type": "string",
+            "enum": [
+              "satisfactory",
+              "unsatisfactory"
+            ]
+          },
+          "comments": {
+            "type": "string",
+            "nullable": true
+          },
+          "correctiveAction": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
+          "cases": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "caseId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "slideCount": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "pathologistRemarks": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "accessionNumber": {
+                  "type": "string"
+                },
+                "patientFirstName": {
+                  "type": "string"
+                },
+                "patientLastName": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "caseId",
+                "slideCount",
+                "id"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "grossingPathologistUserId",
+          "histoTechName",
+          "grossingDate",
+          "slidesForwardedDate",
+          "tissueFixation",
+          "processing",
+          "sectionThickness",
+          "tissueFoldsTears",
+          "stainingQuality",
+          "coverslipping",
+          "tissueOrientation",
+          "comments",
+          "correctiveAction",
+          "createdAt"
+        ],
+        "additionalProperties": false
       }
     }
   }

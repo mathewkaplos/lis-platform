@@ -470,6 +470,13 @@
       "when": 1787586056697,
       "tag": "0066_invoice_order_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1788598655446,
+      "tag": "0067_specimen_processing_batch_qc",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,40 @@
+# Manual, OPT-IN overlay for temporary public-IP pilot/phone testing of the
+# lis-staging droplet. NEVER used by .github/workflows/deploy-staging.yml --
+# apply and remove entirely by hand, always with explicit `-f` flags:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.pilot.yml up -d ...
+#
+# Deliberately NOT named docker-compose.override.yml -- Compose auto-merges
+# a file with that exact name into every bare `docker compose` invocation in
+# the same directory, which would silently contaminate deploy-staging.yml's
+# own automated deploys. This name is inert unless explicitly passed via -f.
+#
+# What it changes vs. the normal staging stack (docker-compose.yml in this
+# same directory on the droplet):
+#   - adds a single nginx entry point on the droplet's public IP, port 80
+#     (see nginx-pilot.conf), fronting apps/web and Keycloak's browser-facing
+#     endpoints only
+#   - flips apps/web's cookies to non-Secure (NODE_ENV drives this in both
+#     apps/web/auth/session.ts and apps/web/app/api/auth/login/route.ts) --
+#     a deliberate, temporary security compromise so the OIDC session/PKCE
+#     cookies survive plain HTTP on a raw IP with no TLS termination. Do not
+#     leave this running longer than the pilot needs.
+#
+# Postgres/Valkey/MinIO/api are untouched by this file -- none of them gain
+# any new exposure. See docs/pilot-remote-access.md for the full runbook,
+# including how to revert (the safest revert is simply letting the next
+# normal CI deploy -- a git push to main -- recreate every container from
+# docker-compose.yml alone, with no trace of this overlay).
+services:
+  web:
+    environment:
+      NODE_ENV: staging
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    mem_limit: 32m
+    ports: ["80:80"]
+    volumes:
+      ["./nginx-pilot.conf:/etc/nginx/conf.d/default.conf:ro"]
+    depends_on: [web, keycloak]

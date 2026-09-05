@@ -59,6 +59,7 @@ import { slaBreach } from "./schema/sla-breach";
 import { workflowDefinition, workflowRuleFiring } from "./schema/workflow-definition";
 import { caseTable, block, slide, blockFulfillment, caseNarrative, caseReportVersion } from "./schema/anatomic-pathology";
 import { wholeSlideImage } from "./schema/whole-slide-image";
+import { specimenProcessingBatch, specimenProcessingBatchCase } from "./schema/specimen-processing-qc";
 import { writeAuditEvent } from "./audit";
 
 type Db = ReturnType<typeof createDb>;
@@ -508,6 +509,35 @@ async function insertFixtures(db: Db) {
     annotatedByUserId: "99999999-9999-9999-9999-999999999999",
   });
 
+  // FEAT-068 (EPIC-013, issue #795): specimen_processing_batch/
+  // specimen_processing_batch_case fixture — two genuinely new tenant
+  // tables this feature introduces, same "own tenant_id + RLS policy, not a
+  // reliance on the parent case table's own policy" reasoning as
+  // block_fulfillment's own fixture above.
+  const [batchRow] = await db
+    .insert(specimenProcessingBatch)
+    .values({
+      tenantId: TENANT_A,
+      grossingPathologistUserId: "99999999-9999-9999-9999-999999999999",
+      histoTechName: "RLS check fixture histotech",
+      grossingDate: new Date(),
+      slidesForwardedDate: new Date(),
+      tissueFixation: "adequate",
+      processing: "optimal",
+      sectionThickness: "acceptable",
+      tissueFoldsTears: "absent",
+      stainingQuality: "acceptable",
+      coverslipping: "no_artefacts",
+      tissueOrientation: "satisfactory",
+    })
+    .returning();
+  await db.insert(specimenProcessingBatchCase).values({
+    tenantId: TENANT_A,
+    batchId: batchRow.id,
+    caseId: caseRow.id,
+    slideCount: 1,
+  });
+
   // audit_event fixture, via the real writer (TASK-025) rather than a
   // direct insert — exercises the same hash-chain path any real caller
   // would use, matching the same "trigger the real path" reasoning as the
@@ -573,7 +603,8 @@ async function main() {
     "Fixtures inserted for patient/patient_alert/referring_facility/order/ordered_test/specimen/specimen_fulfillment/observation/" +
       "result_history/report/culture_read/instrument_analyte_mapping/invoice/invoice_line_item/payment/" +
       "observation_idempotency_key/outbox_event/sla_breach/workflow_definition/workflow_rule_firing/" +
-      "case/block/slide/block_fulfillment/case_narrative/case_report_version/image_attachment/image_annotation/whole_slide_image.\n",
+      "case/block/slide/block_fulfillment/case_narrative/case_report_version/image_attachment/image_annotation/whole_slide_image/" +
+      "specimen_processing_batch/specimen_processing_batch_case.\n",
   );
 
   console.log("--- Live cross-tenant leak check: TENANT_B must see 0 rows of TENANT_A's data ---");

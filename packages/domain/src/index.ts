@@ -32,3 +32,4 @@ export * from "./whole-slide-image";
 export * from "./org-settings";
 export * from "./case-audit-trail";
 export * from "./user-management";
+export * from "./specimen-processing-qc";

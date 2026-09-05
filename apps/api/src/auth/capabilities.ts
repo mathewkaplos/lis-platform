@@ -172,7 +172,8 @@ export type Capability =
   | 'manage_billing'
   | 'manage_org_settings'
   | 'manage_users'
-  | 'platform_analytics';
+  | 'platform_analytics'
+  | 'record_processing_qc';
 
 const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
   technologist: [
@@ -182,6 +183,12 @@ const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
     'manage_specimens',
     'manage_billing',
   ],
+  // `record_processing_qc` (FEAT-068, EPIC-013, issue #795): the design
+  // partner's own real tracking sheet is explicitly the pathologist's own
+  // evaluation of already-processed slides ("Pathologist Slide Evaluation
+  // Criteria"), not a technologist/histotech self-report -- not folded into
+  // `verify` (clinical result sign-out) or `manage_specimens` (specimen
+  // receipt), since a batch QC review is neither of those actions.
   pathologist: [
     'enter_result',
     'verify',
@@ -189,6 +196,7 @@ const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = {
     'manage_orders',
     'manage_specimens',
     'manage_billing',
+    'record_processing_qc',
   ],
   qa: [
     'resolve_qc',

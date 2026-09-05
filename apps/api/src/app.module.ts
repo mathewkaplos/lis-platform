@@ -40,6 +40,7 @@ import { ReferringFacilityModule } from './referring-facility/referring-facility
 import { WholeSlideImageModule } from './whole-slide-image/whole-slide-image.module';
 import { OrgSettingsModule } from './org-settings/org-settings.module';
 import { UserManagementModule } from './user-management/user-management.module';
+import { SpecimenProcessingQcModule } from './specimen-processing-qc/specimen-processing-qc.module';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
 
 @Module({
@@ -87,6 +88,7 @@ import { ProblemDetailsFilter } from './common/problem-details.filter';
     WholeSlideImageModule,
     OrgSettingsModule,
     UserManagementModule,
+    SpecimenProcessingQcModule,
   ],
   controllers: [AppController],
   providers: [

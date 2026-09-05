@@ -1,7 +1,55 @@
-# Status — 2026-08-28 (session 48)
+# Status — 2026-08-28 (session 49)
 
-Last commit on main: `d27a8563` (`lis-platform`, PR #791 — orders/cases search + case audit-trail
-completeness). M14 — Pilot Readiness (AP Design Partner) is now **28/28 closed, fully done.**
+Last commit on main: `f0f05f3` (`lis-platform`, PR #793 — network-unreachable error handling
+across all Server Actions). M14 remains **28/28 closed, fully done** — this session closed out
+the last two loose findings from the pilot-readiness audit thread, both from session 47/48's own
+exit-gate re-run.
+
+## Session 49 — issue #764 closed as non-reproducing, issue #775 fixed (network-error handling
+## swept across all 22 apps/web actions.ts files), PR #793
+
+`/orient` found M14 fully done (0 open issues) and M13's own 9 open issues all still gated on
+design-partner/business-process decisions, unchanged — picked the two concrete, already-diagnosed
+bugs left over from the exit-gate audit (#764, #775) instead, since neither needed a new decision.
+Drafted and approved `docs/plans/task-764-775-orders-date-filter-and-network-error-handling.md`.
+
+**Issue #764 — re-verified live against the real running API before writing any fix (AGENTS.md's
+own "verify, don't guess" rule), and it does not reproduce.** A bare-date `createdTo`/`createdFrom`
+cleanly 400s (not the silent 0-results originally reported); a near-ISO timestamp also cleanly
+400s (not the 500 originally reported); the real `/orders` page has appended correct end-of-day
+timestamps since its original TASK-044 commit, predating this issue — confirmed via `git log`, not
+assumed. Closed with the verification detail posted as an issue comment (`state_reason:
+not_planned`); no code change.
+
+**Issue #775 — PR #793, merged.** Every outbound API call across all 22 `apps/web/**/actions.ts`
+files already handled a non-2xx HTTP response but let a thrown network error (API process
+unreachable) bubble up uncaught to Next.js's generic `error.tsx` crash screen. Wrapped every call
+site in `try/catch`, reusing each function's own existing error-state shape — same sweep shape as
+PR #779's 12-file 403-branch fix, applied to a different, previously-uncaught failure mode.
+`pnpm --filter web typecheck`/`lint` both clean; `git status --short` after lint confirmed no
+scope-bleed beyond the 22 intended files. Full CI (`web-e2e` included) green.
+
+**Disclosed, not silently dropped: live browser verification of the #775 fix itself was attempted
+but inconclusive.** Stopped the local `apps/api` dev server (after asking permission, since it was
+already running and not mine to kill unprompted) and tried to submit the patient-registration form
+via Claude-in-Chrome — the click never produced a captured network request or a visible error
+message even after repeated waits, and a screenshot call once hung for the full 30s CDP timeout.
+Matches this repo's own already-documented Chrome-extension-connectivity flakiness (sessions
+47/48), not a new tooling gap. Restored the environment (`apps/api` restarted, confirmed healthy
+via `/health` returning 200) before finishing. Flagged plainly in PR #793's own description rather
+than claimed as verified.
+
+**Not caught until this session's own later `/orient`: the breadcrumb (this file) was never
+updated after PR #793 merged**, despite `lis-engineering`'s own `/close` skill running a full
+close cycle the same day (`2026-08-28-1827-final.md`, "Session closed: yes") — that close report's
+own "Breadcrumb accuracy" check said "matches," which was true only relative to a stale baseline it
+never re-checked against the just-merged PR. This refresh is that fix, one week later.
+
+## Session 48 — independent exit-gate re-run of the pilot-readiness audit (issue #719)
+
+Last commit on main at the time: `d27a8563` (`lis-platform`, PR #791 — orders/cases search and
+case audit-trail completeness). M14 — Pilot Readiness (AP Design Partner) is now **28/28 closed,
+fully done.**
 
 ## Session 48 — independent exit-gate re-run of the pilot-readiness audit (issue #719)
 

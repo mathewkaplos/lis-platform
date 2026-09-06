@@ -2451,6 +2451,15 @@ export interface components {
             /** Format: uuid */
             acknowledgedByUserId: string | null;
             readBack: string | null;
+            patientFirstName: string | null;
+            patientLastName: string | null;
+            patientMrn: string | null;
+            analyteDisplay: string | null;
+            valueNum: number | null;
+            unit: string | null;
+            flags: string[] | null;
+            /** Format: uuid */
+            orderId: string | null;
         };
         QcRuleViolationListItemDto_Output: {
             /** Format: uuid */

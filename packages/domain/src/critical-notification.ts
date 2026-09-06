@@ -38,6 +38,20 @@ export const criticalNotificationSchema = z
     acknowledgedAt: z.iso.datetime().nullable(),
     acknowledgedByUserId: z.uuid().nullable(),
     readBack: z.string().nullable(),
+    // Issue #809: denormalized display context so the critical-notifications
+    // worklist screen doesn't need a second round-trip per row -- populated
+    // by `list()`'s own joins (observation -> patient/analyte/ordered_test ->
+    // order), left null on the narrower `acknowledge()` response (the
+    // frontend only reads these off the initial list load, never re-renders
+    // them from an acknowledge outcome).
+    patientFirstName: z.string().nullable(),
+    patientLastName: z.string().nullable(),
+    patientMrn: z.string().nullable(),
+    analyteDisplay: z.string().nullable(),
+    valueNum: z.number().nullable(),
+    unit: z.string().nullable(),
+    flags: z.array(z.string()).nullable(),
+    orderId: z.uuid().nullable(),
   })
   .meta({ id: "CriticalNotificationDto" });
 export type CriticalNotificationResult = z.infer<

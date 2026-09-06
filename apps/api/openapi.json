@@ -7110,6 +7110,43 @@
           "readBack": {
             "type": "string",
             "nullable": true
+          },
+          "patientFirstName": {
+            "type": "string",
+            "nullable": true
+          },
+          "patientLastName": {
+            "type": "string",
+            "nullable": true
+          },
+          "patientMrn": {
+            "type": "string",
+            "nullable": true
+          },
+          "analyteDisplay": {
+            "type": "string",
+            "nullable": true
+          },
+          "valueNum": {
+            "type": "number",
+            "nullable": true
+          },
+          "unit": {
+            "type": "string",
+            "nullable": true
+          },
+          "flags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "nullable": true
           }
         },
         "required": [
@@ -7121,7 +7158,15 @@
           "lastEscalatedAt",
           "acknowledgedAt",
           "acknowledgedByUserId",
-          "readBack"
+          "readBack",
+          "patientFirstName",
+          "patientLastName",
+          "patientMrn",
+          "analyteDisplay",
+          "valueNum",
+          "unit",
+          "flags",
+          "orderId"
         ],
         "additionalProperties": false
       },

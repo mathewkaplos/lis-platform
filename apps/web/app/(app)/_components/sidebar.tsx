@@ -14,6 +14,7 @@ import {
   FileStack,
   Ruler,
   Settings,
+  Siren,
   TestTube,
   UserCog,
   Users,
@@ -86,6 +87,13 @@ import { MobileNavTrigger } from './mobile-nav-trigger';
 // `record_processing_qc` `CapabilityGuard` is the real enforcement point,
 // `hasPathologistRole()` inside the page only decides whether the "Record
 // batch" control renders.
+// Issue #809: "Critical notifications" added -- the real, tested
+// notification/escalation/read-back backend (FEAT-021) had no browser UI
+// anywhere before this. Same standing as "QC violations" (an
+// unresolved-only queue, not role-filtered at the nav level either) --
+// `POST /v1/critical-notifications/:id/acknowledge`'s own `verify`
+// `CapabilityGuard` is the real enforcement point, `hasPathologistRole()`
+// inside the page only decides whether the Acknowledge control renders.
 const NAV_ITEMS = [
   { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
   { href: '/patients', labelKey: 'patients', icon: Users },
@@ -94,6 +102,7 @@ const NAV_ITEMS = [
   { href: '/reception', labelKey: 'reception', icon: FlaskConical },
   { href: '/collection-queue', labelKey: 'collectionQueue', icon: ListChecks },
   { href: '/qc-violations', labelKey: 'qcViolations', icon: AlertTriangle },
+  { href: '/critical-notifications', labelKey: 'criticalNotifications', icon: Siren },
   { href: '/culture-reads', labelKey: 'cultureReads', icon: Microscope },
   { href: '/specimen-processing-qc', labelKey: 'specimenProcessingQc', icon: ClipboardCheck },
   { href: '/billing/invoices', labelKey: 'invoices', icon: Receipt },

@@ -16,7 +16,14 @@ import {
   criticalNotificationStatusSchema,
   type CriticalNotificationResult,
 } from '@lis/domain';
-import { criticalNotification, observation } from '@lis/db';
+import {
+  analyte,
+  criticalNotification,
+  observation,
+  order,
+  orderedTest,
+  patient,
+} from '@lis/db';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { createZodDto, ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'zod';
@@ -157,9 +164,32 @@ export class CriticalNotificationController {
       scopeToObservationIds = observationRows.map((r) => r.id);
     }
 
+    // Issue #809: joined so the critical-notifications worklist screen has
+    // enough context (patient identity, analyte, value, a link to the order)
+    // to act on a row without a second round-trip per notification --
+    // `observation.patientId`/`analyteId` are already denormalized onto the
+    // row (ADR-0005), so only `orderedTest`/`order` need an actual join hop.
     const rows = await tx
-      .select()
+      .select({
+        notification: criticalNotification,
+        patientFirstName: patient.firstName,
+        patientLastName: patient.lastName,
+        patientMrn: patient.mrn,
+        analyteDisplay: analyte.display,
+        valueNum: observation.valueNum,
+        unit: observation.unit,
+        flags: observation.flags,
+        orderId: order.id,
+      })
       .from(criticalNotification)
+      .leftJoin(
+        observation,
+        eq(observation.id, criticalNotification.observationId),
+      )
+      .leftJoin(patient, eq(patient.id, observation.patientId))
+      .leftJoin(analyte, eq(analyte.id, observation.analyteId))
+      .leftJoin(orderedTest, eq(orderedTest.id, observation.orderedTestId))
+      .leftJoin(order, eq(order.id, orderedTest.orderId))
       .where(
         and(
           query.status
@@ -172,6 +202,17 @@ export class CriticalNotificationController {
       )
       .orderBy(desc(criticalNotification.createdAt));
 
-    return rows.map(toCriticalNotificationDto);
+    return rows.map((row) =>
+      toCriticalNotificationDto(row.notification, {
+        patientFirstName: row.patientFirstName,
+        patientLastName: row.patientLastName,
+        patientMrn: row.patientMrn,
+        analyteDisplay: row.analyteDisplay,
+        valueNum: row.valueNum === null ? null : Number(row.valueNum),
+        unit: row.unit,
+        flags: row.flags,
+        orderId: row.orderId,
+      }),
+    );
   }
 }

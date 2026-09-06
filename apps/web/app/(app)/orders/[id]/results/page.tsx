@@ -16,6 +16,19 @@ const ENTERABLE_OR_DONE = new Set(['received', 'in_process', 'resulted']);
  * "don't build ahead of a real need" call as `ORDER_SEARCH_RESULT_LIMIT`
  * (proposal §2). `ordered` (not yet received) tests are still rendered,
  * disabled, so the full panel's shape stays visible (proposal §5).
+ *
+ * Issue #808: deliberately no `loading.tsx` here (this route used to have
+ * one). Live-confirmed 2026-09-06: with `next dev --webpack` on Next
+ * 16.2.12, this route's own `loading.tsx` Suspense boundary reproducibly
+ * never resolved on the client -- the server completed the request every
+ * time (`GET .../results 200` in both a 9.4s cold and a 2.7s warm request,
+ * confirmed via the dev server's own access log), but the DOM stayed stuck
+ * on the fallback forever. Identical root-cause signature to the already-
+ * fixed `/patients`/`/orders` hang (issue #708) -- removing the file was
+ * the same, only fix that unblocked it. Re-add a `loading.tsx` here only
+ * after confirming this reproduces (or doesn't) on a `next build && next
+ * start` (or Turbopack) run -- see `docs/pilot/PILOT-USER-GUIDE.md` §7/§8
+ * and `docs/plans/task-808-results-loading-hang.md` for the full history.
  */
 export default async function ResultsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

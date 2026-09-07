@@ -49,6 +49,25 @@ describe('LocalQueueService', () => {
     await expect(queue.remove('does-not-exist')).resolves.toBeUndefined();
   });
 
+  // Issue #820: park() is how ForwarderService.drain() gets past a
+  // non-retryable per-item failure without losing the payload.
+  it('parks an item: moves it out of pending into parked, preserving the payload', async () => {
+    const id1 = await queue.enqueue({ n: 1 });
+    await queue.enqueue({ n: 2 });
+
+    await queue.park(id1);
+
+    expect(await queue.listPending<{ n: number }>().then((i) => i.map((x) => x.payload.n))).toEqual([2]);
+    expect(await queue.size()).toBe(1);
+    const parked = await queue.listParked<{ n: number }>();
+    expect(parked.map((i) => i.payload.n)).toEqual([1]);
+    expect(await queue.parkedSize()).toBe(1);
+  });
+
+  it('parking a non-existent id is a no-op, not an error', async () => {
+    await expect(queue.park('does-not-exist')).resolves.toBeUndefined();
+  });
+
   it('survives a fresh instance reading the same directory (durability across process restart)', async () => {
     await queue.enqueue({ n: 1 });
     await queue.enqueue({ n: 2 });

@@ -454,18 +454,33 @@ from the internal ingest endpoint — including a **permanent** 422 (unmatched s
 just a transient network failure the code comment's own reasoning was written for. Confirmed live:
 posting one result for a nonexistent specimen, followed by one unrelated valid result, left **both**
 permanently stuck in the local queue (`apps/gateway/data/queue/pending/`) — direct file inspection,
-not inference. **Filed as issue #820.** Not fixed in this pass: the correct fix requires a design
-decision (where "permanently unmatched" results get parked separately from retryable failures, and
-what review path KB-29's "park, never drop" principle implies exists for them) — a genuine
-architectural question, not a one-line patch, and outside this decision's approved scope.
+not inference. **Filed as issue #820, then fixed the same day at Mathew's request** (a scoped
+engineering fix, not the broader "who reviews parked items" product decision this section
+originally deferred): `ForwarderService.drain()` now distinguishes retryable failures (network
+error, 401, 403, other 4xx, 5xx — still break the loop, since these may indicate a systemic
+gateway/cloud-core problem, not just one bad item) from the one specific non-retryable case (422 —
+this item's correlation can never succeed on retry) — a 422 now moves the item to a new
+`LocalQueueService.park()` location (`apps/gateway/data/queue/parked/`, never deleted) and drain
+continues past it. Re-ran the same live simulator reproduction after the fix: the unmatched item
+landed in `parked/` with its payload intact, and the previously-stuck duplicate-replay item behind
+it was correctly processed instead of remaining stuck — confirmed by direct file inspection again,
+not just unit tests (2 new unit tests were also added: `local-queue.service.spec.ts`'s park/parked
+coverage, `forwarder.service.spec.ts`'s "parks a 422 item and continues draining the rest of the
+batch"). **Still explicitly not built**: any review UI/API for parked items — KB-29's "park, never
+drop" principle now has a real place items land, but no one is notified and there is no way to
+inspect or resolve a parked item except direct file/DB access. That remains a genuine, separate,
+still-open product-scope question, not resolved by this fix.
 
-**Why this doesn't move the Analyzer integration score, and arguably should move it down a notch if
-anything:** per this document's own governing rule, discovering a real defect is not itself a
-capability improvement — if anything, it is new information that the pipeline is *less* production-
-ready than "Level 3, proven once" suggested, because that one earlier proof never exercised a
-non-retryable failure path at all. §2's Analyzer integration row stays at Level 3/10 (unchanged
-number) but issue #820 is now a named, tracked precondition for ever calling this pipeline
-production-credible, not a hypothetical concern.
+**Why this doesn't move the Analyzer integration score:** finding and fixing one real reliability
+defect in a pipeline that was already, honestly, only "proven once in local dev" doesn't cross into
+Level 4 (environment-proven) or 5 (operationally-proven) — those require evidence from the actual
+deployed environment and repeated real-world use, neither of which changed here. What genuinely
+changed is narrower and real: the pipeline is measurably more robust than it was (a known, live-
+reproduced failure mode is now handled correctly, with a passing regression test guarding it), and
+one specific, previously-invisible risk (silent queue-wide stalling from a single bad result) is
+closed. §2's Analyzer integration row stays at Level 3/10 — this was a correctness fix earned
+through live verification, not a maturity-level jump, and reporting it as unchanged is the honest
+application of this document's own rule against inflating scores for work that was, in fact, real.
 
 **Overall score: unchanged at 5.8.** This update neither adds nor subtracts a system-wide point —
 the simulator work itself was narrow-scope verification (as decided), and the one real finding

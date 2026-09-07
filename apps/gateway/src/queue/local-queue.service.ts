@@ -23,10 +23,16 @@ export interface QueuedItem<T = unknown> {
  */
 @Injectable()
 export class LocalQueueService implements OnModuleInit {
-  private readonly pendingDir = join(
-    process.env.GATEWAY_QUEUE_DIR ?? join(process.cwd(), 'data', 'queue'),
-    'pending',
-  );
+  private readonly baseDir =
+    process.env.GATEWAY_QUEUE_DIR ?? join(process.cwd(), 'data', 'queue');
+  private readonly pendingDir = join(this.baseDir, 'pending');
+  // Issue #820: a non-retryable per-item failure (e.g. a 422 unmatched-
+  // specimen/mapping correlation failure) moves here instead of being
+  // removed -- KB-29's "park, never drop" applied literally: the payload
+  // is preserved for later review, not deleted, and moving it out of
+  // `pending/` is what lets ForwarderService.drain() continue past it
+  // instead of retrying it forever.
+  private readonly parkedDir = join(this.baseDir, 'parked');
 
   // Issue #433: Date.now() alone has only millisecond resolution, so two
   // enqueue() calls landing in the same millisecond (real, reproduced --
@@ -41,6 +47,7 @@ export class LocalQueueService implements OnModuleInit {
 
   async onModuleInit() {
     await mkdir(this.pendingDir, { recursive: true });
+    await mkdir(this.parkedDir, { recursive: true });
   }
 
   async enqueue<T>(payload: T): Promise<string> {
@@ -60,13 +67,21 @@ export class LocalQueueService implements OnModuleInit {
   }
 
   async listPending<T>(): Promise<QueuedItem<T>[]> {
-    await mkdir(this.pendingDir, { recursive: true });
-    const files = (await readdir(this.pendingDir))
+    return this.listDir<T>(this.pendingDir);
+  }
+
+  async listParked<T>(): Promise<QueuedItem<T>[]> {
+    return this.listDir<T>(this.parkedDir);
+  }
+
+  private async listDir<T>(dir: string): Promise<QueuedItem<T>[]> {
+    await mkdir(dir, { recursive: true });
+    const files = (await readdir(dir))
       .filter((f) => f.endsWith('.json'))
       .sort();
     const items: QueuedItem<T>[] = [];
     for (const file of files) {
-      const raw = await readFile(join(this.pendingDir, file), 'utf8');
+      const raw = await readFile(join(dir, file), 'utf8');
       items.push(JSON.parse(raw) as QueuedItem<T>);
     }
     return items;
@@ -76,9 +91,32 @@ export class LocalQueueService implements OnModuleInit {
     await rm(join(this.pendingDir, `${id}.json`), { force: true });
   }
 
+  /** Moves a pending item to `parked/` instead of deleting it (issue #820)
+   * -- a no-op, not an error, if the item is already gone (mirrors
+   * remove()'s force-remove semantics). */
+  async park(id: string): Promise<void> {
+    await mkdir(this.parkedDir, { recursive: true });
+    try {
+      await rename(
+        join(this.pendingDir, `${id}.json`),
+        join(this.parkedDir, `${id}.json`),
+      );
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw err;
+      }
+    }
+  }
+
   async size(): Promise<number> {
     await mkdir(this.pendingDir, { recursive: true });
     return (await readdir(this.pendingDir)).filter((f) => f.endsWith('.json'))
+      .length;
+  }
+
+  async parkedSize(): Promise<number> {
+    await mkdir(this.parkedDir, { recursive: true });
+    return (await readdir(this.parkedDir)).filter((f) => f.endsWith('.json'))
       .length;
   }
 }

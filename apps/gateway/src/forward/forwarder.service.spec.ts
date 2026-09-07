@@ -116,4 +116,46 @@ describe('ForwarderService.drain', () => {
     expect(removed).toEqual([]);
     expect(invalidated).toBe(true);
   });
+
+  // Issue #820: a 422 (non-retryable correlation failure -- unmatched
+  // specimen or mapping) must not permanently block every other item
+  // queued behind it the way a genuine retryable failure correctly does.
+  it('parks a 422 item and continues draining the rest of the batch', async () => {
+    process.env.GATEWAY_FORWARD_AUTOSTART = 'false';
+    const items = [item(1), item(2), item(3)];
+    const removed: string[] = [];
+    const parked: string[] = [];
+    const queue = {
+      listPending: () => Promise.resolve(items),
+      remove: (id: string) => {
+        removed.push(id);
+        return Promise.resolve();
+      },
+      park: (id: string) => {
+        parked.push(id);
+        return Promise.resolve();
+      },
+      size: () => Promise.resolve(items.length - removed.length - parked.length),
+    } as unknown as LocalQueueService;
+    const auth = {
+      getToken: () => Promise.resolve('test-token'),
+      invalidate: () => {},
+    } as unknown as GatewayAuthService;
+
+    global.fetch = (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? '{}')) as {
+        runId?: string;
+      };
+      const status = body.runId === 'RUN-2' ? 422 : 202;
+      return Promise.resolve(new Response(null, { status }));
+    };
+
+    const forwarder = new ForwarderService(queue, auth);
+    const result = await forwarder.drain();
+
+    expect(result.forwarded).toBe(2);
+    expect(result.parked).toBe(1);
+    expect(removed).toEqual(['id-1', 'id-3']);
+    expect(parked).toEqual(['id-2']);
+  });
 });

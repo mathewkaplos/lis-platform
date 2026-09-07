@@ -146,6 +146,19 @@ complete" externally.
 **Recommendation:** Option (a) minimal simulator, explicitly labeled.
 **Blocked until decided:** the specific message types/volume the simulator should exercise.
 
+**Resolved 2026-09-07.** Mathew chose a corrected version of option (a): a JSON simulator against
+the real `apps/gateway` edge, not an HL7 ORU-inbound listener — this problem statement's own
+"gateway-ingest/interop-bridge pipeline" phrasing turned out to be inaccurate on closer code
+inspection (no HL7 ORU-inbound listener exists anywhere; `apps/gateway`'s `/ingest` is JSON-only and
+architecturally unrelated to `interop-bridge`'s HL7 ORU-outbound generation). Built as
+`apps/gateway/scripts/simulate-instrument.sh`, executed live. Result: analyzer integration stays
+Level 3 (repeating a proof doesn't raise its level) but surfaced a real, previously-unknown
+reliability defect — `ForwarderService.drain()` permanently blocks its entire local queue behind
+any one non-retryable (4xx) correlation failure, not just genuinely-transient network failures.
+Filed as issue #820, not fixed here (the correct fix is itself a design decision about where
+permanently-unmatched results get parked). See `world-class-final-assessment-2026-09.md` §23 for
+the full record.
+
 ### Decision 2 — Interoperability live-verification: how much is worth proving now?
 
 **Problem:** HL7/FHIR code exists and is unit-tested but has never been driven live, and there is

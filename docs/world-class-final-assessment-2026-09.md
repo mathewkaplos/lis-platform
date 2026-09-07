@@ -421,3 +421,54 @@ independent third-party security review, real analyzer hardware or a faithful si
 repeatedly, interoperability proven against the deployed environment rather than local dev, the two
 still-untouched synoptic protocols, and an honest resolution of the AI-stub framing all remain
 outstanding, decision-gated, or resource-blocked — none of them closed by this update.
+
+---
+
+## 23. Post-publication update — analyzer simulator investment (roadmap Decision 1)
+
+**Decision made by Mathew:** build a JSON simulator against the real `apps/gateway` edge (not an
+HL7 ORU-inbound listener — confirmed via code inspection that no such listener exists anywhere in
+this codebase; `apps/gateway`'s `/ingest` is a JSON-only protocol by design, unrelated to
+`apps/interop`'s HL7 ORM-inbound/ORU-outbound-generation code, which the roadmap's original
+Decision 1 text had conflated as one pipeline).
+
+**What was built:** `apps/gateway/scripts/simulate-instrument.sh` — a dependency-free bash script
+(psql + curl, deliberately not Node, given this session's memory-constrained environment) that
+seeds real fixtures for three distinct analytes (glucose, sodium, potassium), POSTs realistic raw
+results through the real running `apps/gateway`'s public `/ingest` endpoint (not the internal
+endpoint the existing `gateway-ingest.e2e-spec.ts` already covers), and verifies via direct DB
+query that each landed correctly through the real edge → queue → forward → correlate → write
+pipeline. Executed live against local dev, not left unexecuted.
+
+**Result: analyzer integration remains Level 3 (Integrated) — not upgraded.** The three real,
+varied analytes all correlated and wrote correctly, repeating (not just single-instance-proving)
+the pipeline's happy path. That alone would not have justified a level change even on its own
+(more repetitions of a local-dev-only manual proof doesn't cross into Level 4 environment-proven).
+
+**What actually came out of this that matters more than the happy-path repetition: a genuine,
+previously-unknown reliability defect**, found only because this exercise deliberately included the
+two negative paths (unmatched specimen, duplicate replay) — something a "just prove it works"
+simulator would have skipped. `ForwarderService.drain()` (`apps/gateway/src/forward/
+forwarder.service.ts`) breaks its processing loop entirely on the first item that doesn't get a 2xx
+from the internal ingest endpoint — including a **permanent** 422 (unmatched specimen/mapping), not
+just a transient network failure the code comment's own reasoning was written for. Confirmed live:
+posting one result for a nonexistent specimen, followed by one unrelated valid result, left **both**
+permanently stuck in the local queue (`apps/gateway/data/queue/pending/`) — direct file inspection,
+not inference. **Filed as issue #820.** Not fixed in this pass: the correct fix requires a design
+decision (where "permanently unmatched" results get parked separately from retryable failures, and
+what review path KB-29's "park, never drop" principle implies exists for them) — a genuine
+architectural question, not a one-line patch, and outside this decision's approved scope.
+
+**Why this doesn't move the Analyzer integration score, and arguably should move it down a notch if
+anything:** per this document's own governing rule, discovering a real defect is not itself a
+capability improvement — if anything, it is new information that the pipeline is *less* production-
+ready than "Level 3, proven once" suggested, because that one earlier proof never exercised a
+non-retryable failure path at all. §2's Analyzer integration row stays at Level 3/10 (unchanged
+number) but issue #820 is now a named, tracked precondition for ever calling this pipeline
+production-credible, not a hypothetical concern.
+
+**Overall score: unchanged at 5.8.** This update neither adds nor subtracts a system-wide point —
+the simulator work itself was narrow-scope verification (as decided), and the one real finding
+(#820) is precisely the kind of thing live-verification is supposed to surface, priced in as "a
+newly-named, real gap" rather than as a negative score adjustment for work that was, in fact, done
+correctly and honestly reported.

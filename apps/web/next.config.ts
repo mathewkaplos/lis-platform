@@ -11,6 +11,29 @@ const nextConfig: NextConfig = {
   // package's real source directly, matching shadcn/ui's own documented
   // monorepo pattern.
   transpilePackages: ["@lis/ui"],
+  // world-class-final-assessment-2026-09 §9: baseline HTTP security headers
+  // -- previously nothing set these anywhere in the stack. No
+  // Content-Security-Policy here yet, deliberately: a wrong CSP silently
+  // breaks hydration/inline scripts, and this repo's current low-memory
+  // dev environment can't reliably build+browser-verify one in this pass
+  // (tsc/pnpm have been OOM-crashing) -- landing the safe, low-risk headers
+  // now rather than risk shipping an unverified CSP that breaks the app.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=63072000; includeSubDomains",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 // FEAT-048 (ADR-0043): points at i18n/request.ts, which resolves the locale

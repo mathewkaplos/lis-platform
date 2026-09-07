@@ -75,7 +75,7 @@ an architectural/clinical-safety standard, not a specific competitor's screensho
 | Auditability | 8 | Hash-chained, advisory-lock-serialized per tenant to prevent concurrent-write corruption (ADR-0036) — a genuinely sophisticated, correct pattern. |
 | Multi-tenancy | 7 | RLS is real and CI-gated (a dedicated `rls-isolation-check` job). Schema-isolation tiers exist in code with no live-verified evidence of real use yet. |
 | Data integrity | 7 | DB-level trigger enforcing case-status legality (corrected finding, see header), tenant context bound via parameterized `set_config` not string SQL. Narrative fields are not append-only pre-sign-out (disclosed gap). |
-| Interoperability | 4 | Real HL7 v2 ACL and FHIR R4 façade exist and are unit-tested — with **zero live-browser or live-message verification found anywhere** in this repo's own extensive testing history. Built, not proven. |
+| Interoperability | 5 | Real HL7 v2 ACL and FHIR R4 façade exist, unit-tested, and now live-verified once each against local dev (real MLLP message with correct `AA`/`AR` ACK behavior; real FHIR fetch of a real result). Level 3 (Integrated) on the maturity model — real, not yet environment-proven or repeated. |
 | API architecture | 8 | One schema (Zod) drives validation, docs, and the generated SDK — no hand-authored parallel contract, no drift possible by construction. RFC 9457 problem+json globally. |
 | Frontend architecture | 6 | Consistent Next.js App Router conventions, a real shared `packages/ui`; two independent sessions this week found and fixed a Suspense-boundary class of bug (the third instance of the identical root cause across the app). |
 | UX | 6 | See the dedicated UX audit — genuinely strong AP workflow UX, let down by a real P0 (fixed this week) and known cognitive-load risk in long synoptic forms. |
@@ -296,10 +296,16 @@ is applied deliberately (`/v1` only on genuinely new resource routes, not retrof
 proof-of-concept routes). HL7 v2 (inbound/outbound via an ACL) and a FHIR R4 Observation façade
 both exist as real, unit-tested code.
 
-**The honest gap:** zero live-verification evidence exists anywhere in this repo's own extensive
-testing history for either channel — no session has ever sent a real HL7 message through the
-gateway or viewed a real FHIR resource in a browser against real data. Built and tested at the unit
-level; never field-proven, unlike nearly everything else this report evaluates.
+**Update (this pass):** both channels have now been live-verified once each against local dev. A
+real MLLP client sent a real ORM^O01 message to the real `apps/interop` server: a valid MRN
+produced a real order and an `AA` ACK; an unmatched MRN was correctly rejected with `AR`, not
+silently dropped. A real patient/order/specimen/result chain was created via the API and fetched
+back through `GET /fhir/Observation/:id`, spec-correct. This is Level 3 (Integrated) on the
+maturity model — the real wiring is now confirmed to work, once, in local dev — not Level 4
+(environment-proven, i.e. run against the deployed staging/production environment) or Level 5
+(operationally-proven, i.e. repeated realistic use). The gap that remains is real: no session has
+ever proven either channel against the deployed environment, and each has been exercised exactly
+once.
 
 ---
 
@@ -308,11 +314,14 @@ level; never field-proven, unlike nearly everything else this report evaluates.
 Nothing found suggests an architectural dead end. RLS-based tenancy with an optional
 schema-isolation tier for larger tenants, a transactional outbox for event-driven integration
 points, structured (not free-text) data throughout that supports trending/analytics without a
-later migration. The honest limitation is identical to the interoperability finding: this has never
-been tested under real concurrent load, real multi-site usage, or real high-volume analyzer
-throughput (no analyzer has ever produced a real result — `FEAT-027` remains open). Architecture
-score and proven-at-scale score are two different numbers; this report keeps them separate rather
-than inferring one from the other.
+later migration. The honest limitation is close to the interoperability finding: this has never been tested under
+real concurrent load, real multi-site usage, or real analyzer throughput at volume. One synthetic
+raw result has now been proven end to end through the real queue → forward → correlate → write
+pipeline (Level 3, Integrated — see §10-equivalent correction above) — a genuine improvement from
+zero, but still one manually-seeded result against one manually-seeded mapping row in local dev,
+not a real or simulated analyzer device (`FEAT-027` remains open). Architecture score and
+proven-at-scale score are two different numbers; this report keeps them separate rather than
+inferring one from the other.
 
 ---
 
@@ -356,10 +365,14 @@ any of them yet.
    substance is the single largest credibility risk in the whole project if presented externally.
    Direction: either wire in one real, cheap model, or stop using "AI" in any external framing
    until one exists.
-3. **Interoperability (HL7/FHIR) has never been live-verified.** Same class of gap as #2 — real
-   code, zero field evidence. Direction: one real end-to-end pass before this is presented as done.
-4. **No real analyzer has ever produced a result.** The automation/instrument thesis is
-   architecturally sound and completely unproven against a real device.
+3. **Interoperability (HL7/FHIR) is now live-verified once, in local dev — not environment-proven.**
+   Real messages, real ACKs, real FHIR fetch — genuine progress from zero evidence. What's still
+   missing: proof against the deployed environment and more than a single manual run. Direction:
+   repeat the proof against staging, then let it rest until a real integration partner exists.
+4. **No real or simulated analyzer has ever produced a result through hardware.** One synthetic raw
+   result has been proven through the real pipeline end to end (Level 3, Integrated) — the
+   automation/instrument thesis is no longer purely theoretical, but it remains unproven against
+   any real device or even a standards-compliant simulator (`FEAT-027` still open).
 5. **Tablet/mobile responsive layout has never been visually verified**, three consecutive sessions
    blocked by the same tooling failure. Direction: fix the tooling or get a human on a real device.
 6. **Histology as an operations discipline (processing/embedding/sectioning/stains) is thin**
@@ -474,13 +487,17 @@ named structural gaps (repeating-group UI, deeper concept-block reuse).
 **Stage 3 — Clinical/domain excellence**
 Make narrative fields genuinely append-only pre-sign-out, closing the one real gap between the
 stated clinical-safety philosophy and the implementation. Get real design-partner clinical sign-off
-on the two outstanding golden-dataset/phrasing items (#171, #483). Open and live-fill the three
-seeded-but-never-tested synoptic protocols (Lung, Prostate, Cervical Cytology) with a real
-pathologist.
+on the two outstanding golden-dataset/phrasing items (#171, #483). Have a real pathologist fully
+complete the Lung, Prostate, and Cervical Cytology protocols (this pass opened each and confirmed
+correct rendering/one-field behavior, but did not complete a realistic full form) and open the two
+remaining untouched protocols (Colon-Rectum-CAP, Breast-Biomarker) for the first time.
 
 **Stage 4 — Enterprise maturity**
-One real live HL7/FHIR integration end to end (not more code — one real proof). One real analyzer
-connected. A real security review before any production launch beyond one design partner.
+Repeat the HL7/FHIR proof against the deployed staging environment, not just local dev (a single
+local-dev pass now exists — see corrections above). Connect a real or standards-compliant simulated
+analyzer, building on this pass's proof that the queue → forward → correlate → write pipeline works
+end to end with a manually-seeded result. A real security review before any production launch
+beyond one design partner.
 
 **Stage 5 — Differentiation/category leadership**
 Wire one real model behind the already-well-built AI abstraction layer, with human-reviewed output,
@@ -523,7 +540,8 @@ real analyzer/HL7 proof, which arguably matters more for near-term trust.
 **No other unresolved product decisions identified beyond Decisions 1-2 above and the four already
 surfaced in `docs/project-completeness-audit-2026-09.md`** (chemistry live-verification investment
 — now underway; demo-tenant hygiene automation — data reset already performed manually this
-session; interoperability live-verification timing — unresolved, restated here as Stage 4).
+session; interoperability live-verification — a first local-dev proof is now done, staging-level
+proof restated here as Stage 4).
 
 ---
 

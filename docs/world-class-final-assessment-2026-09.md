@@ -290,9 +290,10 @@ closed by this pass's work:**
 - **The pathologist** would be genuinely pleased by the AP workflow and would ask, reasonably, why
   two of seven seeded protocols have never once been opened, and why the report PDF renderer is a
   separate system from the sophisticated data-capture engine that feeds it.
-- **The security reviewer** would flag the same two items this pass found (missing headers,
-  unguarded docs endpoint) within minutes, and would not consider a single self-conducted spot check
-  a substitute for an actual review.
+- **The security reviewer** would find the headers/Swagger-gate gaps already fixed (see §21) and a
+  wider systematic sweep already done — but would still, correctly, not accept a self-conducted
+  agent review as a substitute for an independent third-party audit or penetration test before any
+  broader production trust.
 - **The software architect** would agree the foundation is genuinely capable of becoming world-class
   — structural tenant isolation, a real structured clinical data model, a real generic protocol
   engine, disciplined audit logging are not common at this project's apparent stage — and would say
@@ -314,3 +315,57 @@ honestly, rather than the 10 the mission asked for, is the final proof this docu
 governing rule seriously.
 
 **The current honest score is 5.7/10. It is not 10/10, and it was not asked to be forced there.**
+
+---
+
+## 21. Post-publication update — systematic security review (roadmap item 2)
+
+This section records real work completed after this document's initial publication, in the same
+pattern as every other correction in this document: dated, evidence-sourced, and not silently
+merged into the sections above.
+
+**Scope:** a systematic, read-only sweep across all ~39 `apps/api/src/**/*.controller.ts`
+controllers, `apps/web`'s Server Actions and Route Handlers, and secrets-at-rest handling — wider
+than §9's original spot check (which covered one controller and the session-cookie module only).
+
+**Confirmed sound, with stronger evidence than §9 had:**
+- **RLS is structurally unbypassable, not just believed to be**: every DB connection in `apps/api`
+  goes through exactly two connection-construction sites (`apps/api/src/auth/db.ts`'s `lis_app`,
+  `apps/api/src/auth/scheduler-db.ts`'s `lis_scheduler`), and both roles are created `NOSUPERUSER
+  NOBYPASSRLS` at the database level (`db/migrations/0002_app_role.sql`,
+  `0018_lis_scheduler_role.sql`) — no request path anywhere can bypass RLS even in principle.
+- The one genuinely cross-tenant read endpoint (network AMR surveillance) is gated to a
+  machine-only capability, applies real per-tenant opt-in, and enforces a minimum-cell-size
+  suppression rule before returning aggregates — a real k-anonymity-style control, not just an
+  access gate.
+- No `sql.raw()` or string-interpolated SQL exists in any production request-handling path.
+- Secrets-at-rest: `packages/db/src/secret-encryption.ts` uses AES-256-GCM correctly (authenticated
+  encryption, fresh random IV per call). No secret is ever returned in an API response, logged, or
+  committed to git, across every secret this pass checked (`SIGNING_SECRET`, `SESSION_SECRET`,
+  `SETTINGS_ENCRYPTION_KEY`-encrypted SMTP passwords, object-storage keys, DB passwords, Keycloak
+  client secrets).
+- CSRF: all state-changing web-app mutations go through Next.js Server Actions, which carry Next's
+  built-in Origin-header check on POST — no override of that default was found. The bearer-token API
+  is not CSRF-exposed at all (no endpoint accepts cookie-based auth for a mutation).
+
+**Two findings, both P3 — nothing above P3 found:**
+1. **WSI tile path validation** (`GET /v1/whole-slide-images/:id/tiles`) built an object-storage key
+   by concatenating the tenant-scoped prefix with a client-supplied `path` validated only as a
+   non-empty string. Not a confirmed exploit — RLS already prevents resolving another tenant's
+   prefix, and object-storage keys don't resolve `..` segments server-side — but rejecting
+   `..`/leading-`/` input is cheap, standard hardening. **Fixed** (PR #816).
+2. **Logout is state-changing on a bare `GET`** (`/api/auth/logout`), forceable via a third-party
+   page. Impact is minimal (idempotent, no data exposure — just force-logs someone out). A real fix
+   means converting the 5 `<a href="/api/auth/logout">` links across the UI to POST forms — real UI
+   surface change for a risk this small. **Deliberately left as-is**, documented rather than
+   silently dropped or over-fixed.
+
+**What this changes:** roadmap item 2 (security review pass) is now done at a systematic-sweep
+depth, closing the gap §9 and §20 both named. **What this does not change:** this remains a
+self-conducted review by the same agent doing the implementation work, not an independent
+third-party audit or penetration test — §20's verdict on that point stands unchanged. The
+Interoperability/Production-readiness/Overall scores in §2 are not revised upward for this pass:
+per this document's own governing rule, a clean security-review outcome confirms an existing
+architectural strength (already priced into the Architecture score) rather than creating new
+capability, and the one thing that would have moved a score downward — a confirmed exploitable
+finding — did not occur.

@@ -9,13 +9,31 @@ import { RawResult, idempotencyKey } from '../ingest/ingest.schema';
 import { LocalQueueService, QueuedItem } from '../queue/local-queue.service';
 import { GatewayAuthService } from './gateway-auth.service';
 
+type ForwardOutcome = 'forwarded' | 'retry' | 'park';
+
 /**
  * Drains the local queue to the cloud core's internal ingestion endpoint.
  * KB-29's reliability model: if the cloud core is unreachable, items stay
  * queued and are retried on the next tick -- a failed forward is never
  * fatal, it just means "try again next interval." Draining stops at the
- * first failure in a tick (rather than skipping ahead) to preserve arrival
- * order and avoid hammering an unreachable core with the rest of the batch.
+ * first *retryable* failure in a tick (rather than skipping ahead) to
+ * preserve arrival order and avoid hammering an unreachable core with the
+ * rest of the batch.
+ *
+ * Issue #820: a *non-retryable* per-item failure (422 -- the internal
+ * endpoint's own correlation logic determined this specific result can
+ * never match a specimen/mapping, and retrying it changes nothing) used to
+ * be treated identically to a retryable one, permanently blocking every
+ * other item queued behind it -- one mislabeled specimen from any
+ * instrument could silently stall an entire lab's worth of other
+ * instruments' results. A 422 now parks that one item (LocalQueueService
+ * .park -- moved to `parked/`, never deleted, per KB-29's "park, never
+ * drop") and the drain continues past it. Every other non-2xx outcome
+ * (network error, 401, 403, other 4xx, 5xx) still breaks the loop --
+ * those genuinely may indicate a problem with the gateway/cloud-core link
+ * itself, not just this one item, and silently parking every subsequent
+ * item in that case would hide a systemic outage as a pile of individually
+ * "resolved" parked files instead of a visibly growing pending queue.
  */
 @Injectable()
 export class ForwarderService implements OnModuleInit, OnModuleDestroy {
@@ -60,18 +78,31 @@ export class ForwarderService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async drain(): Promise<{ forwarded: number; remaining: number }> {
+  async drain(): Promise<{
+    forwarded: number;
+    parked: number;
+    remaining: number;
+  }> {
     if (this.draining) {
-      return { forwarded: 0, remaining: await this.queue.size() };
+      return { forwarded: 0, parked: 0, remaining: await this.queue.size() };
     }
     this.draining = true;
     let forwarded = 0;
+    let parked = 0;
     try {
       const items = await this.queue.listPending<RawResult>();
       for (const item of items) {
-        const ok = await this.forwardOne(item);
-        if (!ok) {
+        const outcome = await this.forwardOne(item);
+        if (outcome === 'retry') {
           break;
+        }
+        if (outcome === 'park') {
+          await this.queue.park(item.id);
+          parked++;
+          this.logger.warn(
+            `parked unmatched result ${item.id} (instrument=${item.payload.instrumentId}, specimen=${item.payload.specimenId}, analyte=${item.payload.analyte}) -- will not be retried automatically`,
+          );
+          continue;
         }
         await this.queue.remove(item.id);
         forwarded++;
@@ -79,10 +110,12 @@ export class ForwarderService implements OnModuleInit, OnModuleDestroy {
     } finally {
       this.draining = false;
     }
-    return { forwarded, remaining: await this.queue.size() };
+    return { forwarded, parked, remaining: await this.queue.size() };
   }
 
-  private async forwardOne(item: QueuedItem<RawResult>): Promise<boolean> {
+  private async forwardOne(
+    item: QueuedItem<RawResult>,
+  ): Promise<ForwardOutcome> {
     try {
       const token = await this.auth.getToken();
       const response = await fetch(this.targetUrl, {
@@ -96,12 +129,15 @@ export class ForwarderService implements OnModuleInit, OnModuleDestroy {
       });
       if (response.status === 401) {
         this.auth.invalidate();
-        return false;
+        return 'retry';
       }
-      return response.ok;
+      if (response.status === 422) {
+        return 'park';
+      }
+      return response.ok ? 'forwarded' : 'retry';
     } catch {
       // Network error (cloud core unreachable) -- leave the item queued.
-      return false;
+      return 'retry';
     }
   }
 }

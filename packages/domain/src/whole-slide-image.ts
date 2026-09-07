@@ -32,7 +32,18 @@ export type WholeSlideImage = z.infer<typeof wholeSlideImageSchema>;
  * engineering/api-design Skill entry #11's own cross-harness routing-syntax
  * risk entirely). */
 export const wholeSlideImageTilePathQuerySchema = z.object({
-  path: z.string().min(1),
+  // world-class-final-assessment-2026-09 security review: `path` is
+  // concatenated onto the tenant-scoped `tileObjectPrefix` to build the
+  // object-storage key (whole-slide-image.controller.ts) -- RLS already
+  // prevents resolving another tenant's prefix, and object-storage keys
+  // don't resolve `..` segments server-side, but rejecting `..` and a
+  // leading `/` here is cheap, standard defense in depth regardless.
+  path: z
+    .string()
+    .min(1)
+    .refine((p) => !p.includes('..') && !p.startsWith('/'), {
+      message: 'path must not contain ".." or start with "/"',
+    }),
 });
 export type WholeSlideImageTilePathQuery = z.infer<typeof wholeSlideImageTilePathQuerySchema>;
 

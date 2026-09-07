@@ -34,12 +34,12 @@ in another engineering session.
 | Engineering quality | 7.5 | 7.5 | 10 | No code changed this pass — verification and documentation work only, correctly does not move this number |
 | LIS/domain maturity | 7.0 | 7.0 | 10 | No clinical/domain code changed this pass |
 | UX | 6.0 | 6.0 | 10 | No UX work this pass (roadmap Stage 1 UX items not yet started) |
-| Production readiness | 4.5 | 5.3 | 10 | Correction, not improvement: a real Level-4 (environment-proven) production environment already existed and was wrongly recorded as absent; net effect is a more accurate — not a better — picture, offset by a newly-found gap (no HTTP security headers, unguarded Swagger endpoint) |
+| Production readiness | 4.5 | 5.6 (see §22) | 10 | Correction, not improvement: a real Level-4 (environment-proven) production environment already existed and was wrongly recorded as absent. §22 update: the two gaps this originally offset against (no HTTP security headers, unguarded Swagger endpoint) are now genuinely fixed in code (PR #815), not just documented — still not public-internet-reachable or third-party-reviewed |
 | Interoperability (HL7/FHIR) | 2.0 (Automated-tested) | 3.0 (Integrated) | 6 (Pilot-proven) | Real MLLP message sent and real FHIR resource fetched against local dev, once each — genuine capability proof, not paperwork |
 | Analyzer integration | 2.0 (Automated-tested) | 3.0 (Integrated) | 6 (Pilot-proven) | Real raw result proven through the real queue→forward→correlate→write pipeline, once, in local dev |
 | Architectural potential | 8.5 | 8.5 | 10 | Unchanged — no architecture work this pass |
 | World-class potential | 8.0 | 8.0 | 10 | Unchanged — the ceiling was never in question; the gap is proof, not design |
-| **Overall** | **5.5** | **5.7** | **10** | Small, deliberately conservative bump: two real (if narrow) capability proofs, one factual self-correction, one new finding — nothing here justifies more than a fraction of a point |
+| **Overall** | **5.5** | **5.8** (see §22) | **10** | Small, deliberately conservative bump: two real (if narrow) capability proofs, one factual self-correction, one new finding — nothing here justifies more than a fraction of a point. §22 update: +0.1 further for the headers/Swagger-gate fix and a genuine README improvement — see §22 for why the security *review* itself, despite real effort, does not add further points |
 
 **On the size of this delta:** 0.2 points across an entire session's work is intentional, not an
 undersell. The mission's own rule is explicit that closing an issue or writing a document earns
@@ -369,3 +369,55 @@ per this document's own governing rule, a clean security-review outcome confirms
 architectural strength (already priced into the Architecture score) rather than creating new
 capability, and the one thing that would have moved a score downward — a confirmed exploitable
 finding — did not occur.
+
+---
+
+## 22. Post-publication update — rating refresh after PRs #815-818
+
+Recorded in the same dated, evidence-sourced pattern as §21. Covers three merged PRs since §21 was
+written: #815 (HTTP security headers + Swagger environment gate), #816/#817 (already covered in
+§21 — restated here only for score attribution), and #818 (README expansion).
+
+**Overall: 5.7 → 5.8.** A further +0.1, on top of §4's original 5.5 → 5.7. Small and deliberate,
+for the same reason every delta in this document has been small: closing a named gap in code is
+real, but narrow, progress — not a step toward the broader unproven claims (public-internet
+production, real analyzer hardware, staging-level interop, full protocol coverage, a real AI
+model) that would justify a larger move.
+
+**What moved, and why:**
+- **Production readiness: 5.3 → 5.6.** PR #815 fixed both gaps §9 and §21 named: `@fastify/helmet`
+  is now registered on the API (X-Content-Type-Options, X-Frame-Options, HSTS), and the Swagger
+  docs endpoint is gated behind `NODE_ENV !== 'production'`. This is a genuine capability change —
+  code that didn't exist now does, closing a specific, previously-flagged gap — not a documentation
+  or process artifact. **Still not moved further**: the web app's CSP was deliberately deferred
+  (§815's own PR description: a wrong CSP silently breaks hydration, and this session's memory-
+  constrained environment couldn't reliably build+browser-verify one), the environment remains
+  Tailscale-only, and no third-party security review has occurred — only a self-conducted one
+  (§21).
+- **Documentation (folded into Overall, not separately tracked in §2's table): materially
+  improved.** The README went from 3 lines to a real getting-started guide, architecture summary,
+  and honest status framing — checked command-by-command against the actual `docker-compose.yml`
+  and `package.json`, not written from assumption. This is the one dimension where this document's
+  own anti-gaming rule requires the most care: "documentation was written" must not, by itself,
+  raise a score. What justifies counting this is narrower — a *specific, previously-named gap*
+  (§"Biggest Weaknesses" in `world-class-assessment-2026-09.md`: "the public-facing README is
+  three lines — a real gap for anyone outside this specific team") is now concretely closed with
+  verified-accurate content, not that documentation exists in general.
+
+**What did not move, and why:**
+- **The security review itself (#816/#817) adds nothing further here** — already addressed in §21.
+  A clean review confirms existing strength; it doesn't create new capability.
+- **Interoperability, analyzer integration, synoptic-protocol coverage, AI status, UX, Engineering
+  quality, LIS/domain maturity — all unchanged.** No work touched them in this update.
+- **Item 3 of the roadmap (tablet/mobile visual verification) remains unattempted-to-completion**:
+  a live attempt this pass hit a frozen, unresponsive browser tab under real memory starvation on
+  the development machine (under 1GB free of 8GB total) — a distinct, compounding blocker on top of
+  the already-known `resize_window` tooling bug from prior sessions. Not a decision gate; a resource
+  constraint. Retrying needs either a healthier machine or a human on a real device.
+
+**The current honest score is 5.8/10.** Still well short of 10, for the same reasons named in §20
+— a public-internet-reachable (or deliberately Tailscale-scoped) production environment with an
+independent third-party security review, real analyzer hardware or a faithful simulator proven
+repeatedly, interoperability proven against the deployed environment rather than local dev, the two
+still-untouched synoptic protocols, and an honest resolution of the AI-stub framing all remain
+outstanding, decision-gated, or resource-blocked — none of them closed by this update.

@@ -135,7 +135,8 @@ describe('ForwarderService.drain', () => {
         parked.push(id);
         return Promise.resolve();
       },
-      size: () => Promise.resolve(items.length - removed.length - parked.length),
+      size: () =>
+        Promise.resolve(items.length - removed.length - parked.length),
     } as unknown as LocalQueueService;
     const auth = {
       getToken: () => Promise.resolve('test-token'),
@@ -143,9 +144,8 @@ describe('ForwarderService.drain', () => {
     } as unknown as GatewayAuthService;
 
     global.fetch = (_input: RequestInfo | URL, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body ?? '{}')) as {
-        runId?: string;
-      };
+      const rawBody = (init?.body as string | undefined) ?? '{}';
+      const body = JSON.parse(rawBody) as { runId?: string };
       const status = body.runId === 'RUN-2' ? 422 : 202;
       return Promise.resolve(new Response(null, { status }));
     };

@@ -57,7 +57,11 @@ describe('LocalQueueService', () => {
 
     await queue.park(id1);
 
-    expect(await queue.listPending<{ n: number }>().then((i) => i.map((x) => x.payload.n))).toEqual([2]);
+    expect(
+      await queue
+        .listPending<{ n: number }>()
+        .then((i) => i.map((x) => x.payload.n)),
+    ).toEqual([2]);
     expect(await queue.size()).toBe(1);
     const parked = await queue.listParked<{ n: number }>();
     expect(parked.map((i) => i.payload.n)).toEqual([1]);

@@ -524,6 +524,15 @@ layer itself is a selling point to a technical buyer.
 **What changes depending on the decision:** engineering priority — wiring a real model becomes a
 near-term task only if the answer is "present it now."
 
+**Resolved 2026-09-08.** Mathew chose to correct the framing now rather than wait: a real,
+user-facing "Draft with AI" button and "AI draft — review before finalizing" badge existed in
+`apps/web/app/(app)/orders/[id]/results/results-grid.tsx`, surfaced to exactly the audience
+(technologists/pathologists) most likely to notice the phrasing never actually varies and lose
+trust over it. Renamed to "Auto-draft narrative" / "Auto-drafted — review before finalizing" —
+honest about what the feature does (automates a lookup/computation) without claiming a model.
+Wiring a real model in remains explicitly deferred, unchanged from this decision's original
+recommendation — a separate, future decision requiring a vendor choice and a real paid credential.
+
 ### Decision 2 — Is unifying the AP report renderer onto the synoptic template engine worth doing now, or after more protocols/report variety justify it?
 
 **Proposal:** Treat this as the single highest-leverage architectural investment for the "Stage 5"

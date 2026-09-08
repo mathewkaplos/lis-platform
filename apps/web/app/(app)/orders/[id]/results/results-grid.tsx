@@ -87,10 +87,19 @@ interface RowState {
   /** FEAT-024 (ADR-0025): only meaningful for an `ordinal` row. */
   valueCode: string | null;
   notes: string;
-  /** FEAT-042: true only while `notes` currently holds an AI-drafted
+  /** FEAT-042: true only while `notes` currently holds an auto-drafted
    * narrative (accepted verbatim or edited) -- reset to false the moment
    * the technologist clears the field or types their own note instead of
-   * ever calling draft-narrative. */
+   * ever calling draft-narrative.
+   *
+   * world-class-final-assessment-2026-09 AI-stub framing decision: this
+   * feature's own provider (see apps/api/src/ai/providers/template-
+   * provider.ts) is a deterministic fixed-sentence lookup, not a real
+   * model -- calling it "AI" anywhere a user sees it overclaims. Renamed
+   * the user-facing label/badge to "auto-draft"/"auto-drafted" below; kept
+   * `notesAiOriginated`/`notesAiDisposition` as internal field names since
+   * they're not user-visible and renaming them is a pure diff-size cost
+   * with no framing benefit. */
   notesAiOriginated: boolean;
   notesAiDisposition: 'accepted' | 'edited' | null;
   /** FEAT-042: true only while a draft-narrative request is in flight for
@@ -612,12 +621,12 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
                       disabled={state.pending || state.narrativePending}
                       onClick={() => handleDraftNarrative(row)}
                     >
-                      {state.narrativePending ? 'Drafting…' : 'Draft with AI'}
+                      {state.narrativePending ? 'Drafting…' : 'Auto-draft narrative'}
                     </Button>
                   ) : null}
                   {state.notesAiOriginated ? (
-                    <Badge variant="secondary" aria-label="AI-drafted narrative, review before finalizing">
-                      {state.notesAiDisposition === 'edited' ? 'AI draft (edited)' : 'AI draft — review before finalizing'}
+                    <Badge variant="secondary" aria-label="Auto-drafted narrative, review before finalizing">
+                      {state.notesAiDisposition === 'edited' ? 'Auto-drafted (edited)' : 'Auto-drafted — review before finalizing'}
                     </Badge>
                   ) : null}
                   <textarea

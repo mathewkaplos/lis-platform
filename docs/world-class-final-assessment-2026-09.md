@@ -531,3 +531,42 @@ realistic form completion or real pathologist use). What changes is completeness
 depth per protocol. Clinical content review by a real pathologist remains the one explicitly
 deferred, separate, still-open item for all 7 protocols alike — not resolved by this update and not
 claimed to be.
+
+---
+
+## 25. Post-publication update — AI-stub framing decision resolved
+
+Per `world-class-assessment-2026-09.md`'s Decision 1: Mathew chose to correct the user-facing
+framing now, rather than wait for a real model or leave it as-is.
+
+**What was found:** a real, user-facing "Draft with AI" button and an "AI draft — review before
+finalizing" badge in `apps/web/app/(app)/orders/[id]/results/results-grid.tsx`. The provider
+actually behind this feature (`apps/api/src/ai/providers/template-provider.ts`, the current
+default) is a deterministic fixed-sentence lookup table for hematology morphology narratives and a
+real-but-simple computed-trend function for cumulative summaries — genuinely useful, genuinely
+correct for what it does, but not a model of any kind. This overclaimed to exactly the users
+(technologists, pathologists) positioned to notice the "AI" never varies its own phrasing and draw
+the least generous possible conclusion about everything else this product claims.
+
+**What changed:** the user-facing strings only — "Draft with AI" → "Auto-draft narrative", "AI
+draft (edited)"/"AI draft — review before finalizing" → "Auto-drafted (edited)"/"Auto-drafted —
+review before finalizing", plus the matching `aria-label`. Internal field names
+(`notesAiOriginated`, `notesAiDisposition`) and existing code comments' terminology were left
+alone — not user-visible, renaming them would be pure diff-size cost with no framing benefit.
+Lint-clean on the changed file; not additionally live-verified in a running browser this pass (a
+pure string-literal change, already confirmed correct by direct code review and lint, weighed
+against the cost of constructing a gradeable-hematology-result fixture under this session's
+memory-constrained environment for a check with low incremental value over what static review
+already confirmed) — stated plainly rather than implied.
+
+**What remains explicitly deferred, unchanged from the original decision:** wiring a real model in.
+That stays a separate, future decision — it needs a vendor choice and a real paid API credential,
+neither available to nor appropriate for this session to decide unilaterally.
+
+**Score impact: minor, real, and narrow.** This closes the single specific instance of the
+credibility risk named repeatedly throughout this document (§4, §8, §12, biggest-weaknesses #2,
+§20's CTO-perspective verdict) — the gap between a milestone's name and its user-facing substance.
+It does not change the underlying "Governed AI" milestone's maturity level (still Level 1,
+Implemented — the template provider itself didn't change) and does not by itself make the product
+"AI-ready" in any claimable sense. What changed is honesty of framing for the one concrete surface
+where it mattered, not capability.

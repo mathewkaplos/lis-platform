@@ -487,3 +487,47 @@ the simulator work itself was narrow-scope verification (as decided), and the on
 (#820) is precisely the kind of thing live-verification is supposed to surface, priced in as "a
 newly-named, real gap" rather than as a negative score adjustment for work that was, in fact, done
 correctly and honestly reported.
+
+---
+
+## 24. Post-publication update — the two remaining untouched synoptic protocols (roadmap Decision 3)
+
+Colon-Rectum-CAP and Breast Biomarker — the last 2 of the 7 seeded protocols never opened by a
+human — are now engine-verified live, closing roadmap Decision 3 for all 7. Two real fixture cases
+were created via the actual API (`specimenType: 'colorectal'` and `specimenType: 'breast'`, both
+tenant `00000000-0000-0000-0000-000000000001`), opened in a real browser, one field filled in each,
+progress indicator confirmed updating correctly in both (Colon-Rectum-CAP: "0 of 13" → "1 of 13";
+Breast Biomarker: "0 of 3" → "1 of 3").
+
+**This also exercised two real protocol-engine mechanisms neither of the earlier 5 protocols
+touched:**
+- **The "Choose reporting standard" disambiguation picker** — Colon-Rectum-CAP shares
+  `specimenType: 'colorectal'` with the existing ICCR colorectal protocol (a deliberate, documented
+  product decision, per `case/[caseId]/synoptic/[partId]/page.tsx`'s own issue #690 comment).
+  Confirmed live: opening the case surfaced a real "Choose reporting standard" page listing both
+  options, and selecting "Colon and Rectum (Resection) (CAP)" correctly routed to that protocol via
+  `?organProtocolId=`.
+- **The "Linked panels" mechanism** — Breast Biomarker is not a standalone protocol but a panel
+  attached to the main Breast (ICCR) organ protocol (`is_panel: true`, `synoptic_protocol_linked_
+  panel`). Confirmed live: opening the Breast case showed the main ICCR protocol with a real
+  "Linked panels" section listing "Record Breast Biomarker Panel (ER/PR/HER2) (CAP)"; following it
+  correctly loaded the 3-field panel with a working "← Back to Invasive Carcinoma of the Breast"
+  link, via `?protocolId=`.
+
+**Also worth recording: this attempt required two tries.** The first attempt hit the same
+browser-freeze failure mode as the earlier blocked attempt at roadmap item 3 (tablet/mobile
+verification) — a CDP screenshot call timed out after this session's development machine dropped to
+377MB free of 8GB. Rather than retry in a loop, the attempt was stopped and reported honestly as
+blocked, matching this session's own established discipline for browser-tooling failures. A retry
+roughly 15 minutes later, with memory recovered to ~1.5GB free, completed cleanly on the first pass.
+This is a real, recurring environmental constraint of this development session, not a code defect —
+worth naming plainly rather than quietly omitting the failed first attempt from the record.
+
+**Score impact: none.** All 7 protocols were already counted as "engine coverage" work in earlier
+sections of this document once opened; this update completes that count (5/7 → 7/7) without
+crossing any maturity-level threshold on its own (each protocol individually reaches Level 3 —
+Integrated — the same level the other 5 reached, not Level 5/6, which would require a full
+realistic form completion or real pathologist use). What changes is completeness of coverage, not
+depth per protocol. Clinical content review by a real pathologist remains the one explicitly
+deferred, separate, still-open item for all 7 protocols alike — not resolved by this update and not
+claimed to be.

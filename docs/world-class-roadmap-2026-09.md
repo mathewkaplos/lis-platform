@@ -195,6 +195,18 @@ separate, still-open item.
 **Blocked until decided:** none — proceeding, since this doesn't require inventing clinical policy,
 just exercising the existing engine with placeholder-but-clearly-synthetic data.
 
+**Resolved 2026-09-08.** All 5 previously-untested protocols are now engine-verified live in a real
+browser (Lung, Prostate, Cervical Cytology/Bethesda in an earlier pass this session; Colon-Rectum-
+CAP and Breast Biomarker in this update). The last two also exercised two real, previously-untested
+mechanisms of the protocol engine itself: the "Choose reporting standard" disambiguation picker
+(Colon-Rectum-CAP shares `specimenType: 'colorectal'` with the existing ICCR protocol — confirmed
+the picker renders both options and routes correctly via `?organProtocolId=`) and the "Linked
+panels" mechanism (Breast Biomarker is attached to the main Breast organ protocol, reachable only
+via its own "Record Breast Biomarker Panel" link, confirmed via `?protocolId=` with the correct
+"← Back to" link rendering). All 7 of 7 seeded protocols now have real, live, one-field-filled
+evidence with a correctly-updating progress indicator. **Explicitly not done, per this decision's
+own scope:** clinical content review by a real pathologist — that remains a separate, open item.
+
 ### Decision 4 — Production TLS approach given "no domain yet" (superseded by correction)
 
 **Problem, as originally framed:** assumed no real production HTTPS existed, so the choice was

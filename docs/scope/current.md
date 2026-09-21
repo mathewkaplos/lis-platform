@@ -1,3 +1,53 @@
+# Status — 2026-09-21 (session 51)
+
+Last commit on main: `d33ed0f` (`lis-platform`, PR #824 — stop labeling template-drafted narratives
+as "AI" to users). This refresh closes a real 20-commit/many-PR gap (`aaaf5f4`..`d33ed0f`, #798-#824)
+that session 50's own breadcrumb never covered — reconstructed from `git log`/PR history/
+`docs/world-class-*-2026-09.md`, not from having lived through that session directly.
+
+## Session 51 — orientation found a stale breadcrumb + a full "world-class roadmap" arc already
+## closed out; picked issue #812 (instrument_analyte_mapping admin UI/API) as the next unblocked
+## task, Implementation Proposal drafted
+
+`/orient` found `main` 20 commits ahead of session 50's last-recorded state, all part of a
+`docs/world-class-assessment-2026-09.md` / `docs/world-class-roadmap-2026-09.md` /
+`docs/world-class-final-assessment-2026-09.md` arc (not documented here until now): a real HL7 ORM
+message sent over MLLP and a real FHIR Observation fetched (Decision 2, both against local dev,
+once each); a JSON analyzer-integration simulator built and run against the real
+`gateway`→queue→forward→correlate→write pipeline (Decision 1, `apps/gateway/scripts/
+simulate-instrument.sh`), which surfaced and fixed issue #820 (a single non-retryable gateway
+result permanently blocked its whole local queue, PR #822) and filed issue #812 (this table has no
+API/UI, SQL-only); the last 2 of 7 seeded synoptic protocols (Colon-Rectum-CAP, Breast Biomarker)
+opened and engine-verified live for the first time (Decision 3, closing it for all 7); a production-
+environment record correction (a real, Tailscale-backed HTTPS droplet already existed and was
+wrongly reported absent, Decision 4, superseded); a security review pass adding HTTP security
+headers and gating Swagger docs in prod (PRs #815/#816/#817); several live-found UX fixes (critical-
+notifications worklist screen #811, a results-page loading hang #810, progress indicators on
+long forms #804/#806, case-detail patient identity #802); and a user-facing honesty fix removing
+"AI" framing from a deterministic template-based narrative-drafting feature (PR #824, per the
+roadmap's own Decision 1 in the *baseline* assessment doc, not to be confused with the
+analyzer-simulator Decision 1 above — two different documents each number their own decisions
+independently). All 4 roadmap decisions are now resolved; the arc reads as complete.
+
+**Engineering Radar run this session:** zero real TODO/FIXME/NOT-YET-IMPLEMENTED markers in code
+(debt tracked as GitHub issues, confirmed); `D:/LIS/research` path check clean; GraphQL quota full
+(5000/5000); SSH-IP/DigitalOcean-token checks skipped (`infra/terraform.tfvars` not present in this
+checkout); no open issue found with a load-bearing decision missing its own ADR.
+
+**Picked issue #812** as the session's task: every M13 open issue (8, all EPIC-012 follow-ups) is
+still gated on unmet design-partner decisions, unchanged; EPIC-013 (#795, Quality Management) has no
+new evidence pushing its v2 scope yet. #812 is concrete, unblocked, has a recommended solution
+already written into its own body, and closes a real path-to-production gap (no way to configure a
+real analyzer's channel→analyte mapping without a hand-written SQL `INSERT`) ahead of any real
+analyzer driver work (#36). Implementation Proposal drafted:
+`docs/plans/task-812-instrument-analyte-mapping-admin-ui.md` (Status: DRAFT) — a
+`POST /v1/instrument-analyte-mappings` route + a minimal admin form mirroring
+`/admin/reference-ranges`'s exact create-then-list shape (closer precedent than `/admin/tests`,
+since this table needs both an analyte **and** a unit picker). Awaiting approval before any code is
+written, per Rule #0.
+
+---
+
 # Status — 2026-09-05 (session 50)
 
 Last commit on main: `aaaf5f4` (`lis-platform`, PR #797 — resolve accessionNumber/patientName in

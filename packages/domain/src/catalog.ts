@@ -169,3 +169,46 @@ export const referenceRangeListSchema = z.object({
   ranges: z.array(referenceRangeResultSchema),
 });
 export type ReferenceRangeList = z.infer<typeof referenceRangeListSchema>;
+
+/**
+ * Issue #812: `instrument_analyte_mapping` (FEAT-027/KB-29) had no
+ * controller/route/UI -- the only way to populate it was a direct SQL
+ * `INSERT`. §10 Q1 (resolved: create-only, published directly): `status` is
+ * optional here so a caller *can* still create a `draft` row via the API,
+ * but the v1 admin form itself only ever submits `'published'`.
+ */
+export const instrumentAnalyteMappingCreateSchema = z.object({
+  instrumentId: z.string().min(1),
+  channelCode: z.string().min(1),
+  analyteId: z.uuid(),
+  unitId: z.uuid(),
+  conversionFactor: z.number().optional(),
+  status: z.enum(['draft', 'published', 'archived']).optional(),
+});
+export type InstrumentAnalyteMappingCreateInput = z.infer<
+  typeof instrumentAnalyteMappingCreateSchema
+>;
+
+export const instrumentAnalyteMappingResultSchema = z.object({
+  id: z.uuid(),
+  instrumentId: z.string(),
+  channelCode: z.string(),
+  analyteId: z.uuid(),
+  analyteDisplay: z.string(),
+  unitId: z.uuid(),
+  unitDisplay: z.string().nullable(),
+  conversionFactor: z.number(),
+  status: z.string(),
+  version: z.number(),
+  createdAt: z.iso.datetime(),
+});
+export type InstrumentAnalyteMappingResult = z.infer<
+  typeof instrumentAnalyteMappingResultSchema
+>;
+
+export const instrumentAnalyteMappingListSchema = z.object({
+  mappings: z.array(instrumentAnalyteMappingResultSchema),
+});
+export type InstrumentAnalyteMappingList = z.infer<
+  typeof instrumentAnalyteMappingListSchema
+>;

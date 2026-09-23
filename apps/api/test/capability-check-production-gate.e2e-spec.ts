@@ -24,7 +24,15 @@ describe('CapabilityCheckController is not registered when NODE_ENV=production (
 
   beforeAll(async () => {
     process.env.NODE_ENV = 'production';
-    const { AppModule } = await import('./../src/app.module');
+
+    // The `.js` extension below (not `.ts`, not extensionless like this
+    // repo's own static imports elsewhere) is required specifically here:
+    // under this tsconfig's `moduleResolution: "nodenext"`, tsc type-checks
+    // a dynamic import() specifier against real Node ESM resolution rules
+    // regardless of the file's actual (CommonJS) emit, unlike a static
+    // `import ... from` of the identical extensionless path, which resolves
+    // fine -- confirmed by direct isolated repro, not guessed.
+    const { AppModule } = await import('./../src/app.module.js');
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();

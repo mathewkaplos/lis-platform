@@ -11,7 +11,15 @@ import { TenantContextInterceptor } from './tenant-context.interceptor';
   controllers: [
     AuthController,
     TenantCheckController,
-    CapabilityCheckController,
+    // Issue #827: CapabilityCheckController exists purely to prove the
+    // audit/capability-guard mechanism for capability-check.e2e-spec.ts --
+    // several of its routes insert real patient/order rows. Gated the same
+    // way main.ts already gates the Swagger docs route (NODE_ENV !==
+    // 'production'), rather than leaving a second, inconsistent pattern for
+    // test-only surface area in this codebase.
+    ...(process.env.NODE_ENV !== 'production'
+      ? [CapabilityCheckController]
+      : []),
   ],
   providers: [
     JwtAuthGuard,

@@ -324,6 +324,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/instrument-analyte-mappings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["InstrumentAnalyteMappingController_list"];
+        put?: never;
+        post: operations["InstrumentAnalyteMappingController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/specimens": {
         parameters: {
             query?: never;
@@ -1938,6 +1954,36 @@ export interface components {
                 effectiveFrom: string;
                 /** Format: date-time */
                 effectiveTo: string | null;
+                /** Format: date-time */
+                createdAt: string;
+            }[];
+        };
+        InstrumentAnalyteMappingCreateDto: {
+            instrumentId: string;
+            channelCode: string;
+            /** Format: uuid */
+            analyteId: string;
+            /** Format: uuid */
+            unitId: string;
+            conversionFactor?: number;
+            /** @enum {string} */
+            status?: "draft" | "published" | "archived";
+        };
+        InstrumentAnalyteMappingListDto_Output: {
+            mappings: {
+                /** Format: uuid */
+                id: string;
+                instrumentId: string;
+                channelCode: string;
+                /** Format: uuid */
+                analyteId: string;
+                analyteDisplay: string;
+                /** Format: uuid */
+                unitId: string;
+                unitDisplay: string | null;
+                conversionFactor: number;
+                status: string;
+                version: number;
                 /** Format: date-time */
                 createdAt: string;
             }[];
@@ -3731,6 +3777,46 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ReferenceRangeCreateDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InstrumentAnalyteMappingController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstrumentAnalyteMappingListDto_Output"];
+                };
+            };
+        };
+    };
+    InstrumentAnalyteMappingController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstrumentAnalyteMappingCreateDto"];
             };
         };
         responses: {

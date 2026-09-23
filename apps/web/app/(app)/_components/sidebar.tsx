@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import {
   AlertTriangle,
   Building2,
+  Cable,
   ClipboardList,
   ClipboardCheck,
   FlaskConical,
@@ -110,6 +111,7 @@ const NAV_ITEMS = [
   { href: '/admin/reference-ranges', labelKey: 'referenceRanges', icon: Ruler },
   { href: '/admin/tests', labelKey: 'addTest', icon: TestTube },
   { href: '/admin/referring-facilities', labelKey: 'referringFacilities', icon: Building2 },
+  { href: '/admin/instrument-mappings', labelKey: 'instrumentMappings', icon: Cable },
   { href: '/admin/org-settings', labelKey: 'orgSettings', icon: Settings },
   { href: '/admin/users', labelKey: 'users', icon: UserCog },
 ] as const;

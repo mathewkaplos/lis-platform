@@ -89,7 +89,7 @@ jobs:
           docker run -d --name minio -p 9000:9000 -p 9001:9001 \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio:latest server /data --console-address :9001
+            quay.io/minio/minio:latest server /data --console-address :9001
       - run: pnpm install --frozen-lockfile
       # TASK-030 (FEAT-008): apps/api is the first-ever consumer of a
       # workspace package's real exports (@lis/db) — packages/domain/@lis/ui
@@ -378,7 +378,7 @@ jobs:
           docker run -d --name minio -p 9000:9000 -p 9001:9001 \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio:latest server /data --console-address :9001
+            quay.io/minio/minio:latest server /data --console-address :9001
       - run: docker run -d --name mailhog -p 1025:1025 -p 8025:8025 mailhog/mailhog:latest
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @lis/db build

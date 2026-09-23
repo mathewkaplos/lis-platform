@@ -3,6 +3,22 @@ packages:
   - "packages/*"
 overrides:
   vite: 6.4.3
+  # world-class-execution-plan-8-2026-09.md Phase 0: apps/api's own explicit
+  # dependency on @nestjs/platform-express was removed (nothing in this
+  # codebase imports anything Express-platform-specific -- every app
+  # bootstraps exclusively via NestFastifyApplication, confirmed by grep),
+  # but @nestjs/core and @nestjs/testing both still list it as an *optional*
+  # peer dependency, and pnpm's default auto-install-peers behavior installs
+  # it regardless -- `peerDependencyRules.ignoreMissing` does not prevent
+  # this, confirmed by direct testing, not assumed. Since the dependency
+  # itself can't be cleanly excluded from the tree without disabling
+  # auto-install-peers workspace-wide (a much broader, riskier change than
+  # this one dead, never-invoked adapter warrants), this override instead
+  # forces the actually-vulnerable package underneath it -- multer, pinned
+  # by @nestjs/platform-express@11.1.28 at exactly 2.2.0 (<2.3.0, the
+  # vulnerable range) -- to a patched version. Zero runtime risk: this
+  # code path is never exercised by any app in this workspace.
+  multer: 2.4.0
 allowBuilds:
   '@parcel/watcher': true
   '@scarf/scarf': false
@@ -12,16 +28,16 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
 minimumReleaseAgeExclude:
-  - '@next/env@16.2.12'
-  - '@next/eslint-plugin-next@16.2.12'
-  - '@next/swc-darwin-arm64@16.2.12'
-  - '@next/swc-darwin-x64@16.2.12'
-  - '@next/swc-linux-arm64-gnu@16.2.12'
-  - '@next/swc-linux-arm64-musl@16.2.12'
-  - '@next/swc-linux-x64-gnu@16.2.12'
-  - '@next/swc-linux-x64-musl@16.2.12'
-  - '@next/swc-win32-arm64-msvc@16.2.12'
-  - '@next/swc-win32-x64-msvc@16.2.12'
-  - eslint-config-next@16.2.12
-  - next@16.2.12
+  - '@next/env@16.3.6'
+  - '@next/eslint-plugin-next@16.3.6'
+  - '@next/swc-darwin-arm64@16.3.6'
+  - '@next/swc-darwin-x64@16.3.6'
+  - '@next/swc-linux-arm64-gnu@16.3.6'
+  - '@next/swc-linux-arm64-musl@16.3.6'
+  - '@next/swc-linux-x64-gnu@16.3.6'
+  - '@next/swc-linux-x64-musl@16.3.6'
+  - '@next/swc-win32-arm64-msvc@16.3.6'
+  - '@next/swc-win32-x64-msvc@16.3.6'
+  - eslint-config-next@16.3.6
+  - next@16.3.6
 injectWorkspacePackages: true

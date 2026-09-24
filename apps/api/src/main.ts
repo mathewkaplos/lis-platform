@@ -27,8 +27,7 @@ async function bootstrap() {
   // HTML to a browser and owns its own CSP separately.
   await app.register(fastifyHelmet, { contentSecurityPolicy: false });
 
-  // FEAT-061: registered as a real Fastify plugin (not Nest middleware) --
-  // same pattern @fastify/static already establishes for this app. No
+  // FEAT-061: registered as a real Fastify plugin (not Nest middleware). No
   // fileSize limit override (proposal §5/§10 Q4: no size cap in this v1
   // scope) -- the plugin's own defaults apply.
   await app.register(fastifyMultipart);

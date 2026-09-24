@@ -815,3 +815,99 @@ alongside or just ahead of Phase 1, at Mathew's discretion.
     the real CI `web-e2e` job (production build, not dev mode) is the authoritative gate for this
     suite, per this plan's own Testing Strategy workstream (§4.J) finding that a local ad hoc run is
     not a trustworthy signal on its own.
+
+---
+
+## Phase 1 Execution — Workstream 1: Remaining Production-Relevant Dependency Findings
+
+**Date:** 2026-09-24. Closes the 5 findings identified in the "Phase 0 Security Closure Review"
+above.
+
+### Work completed
+
+| Finding | Before | After | Technique | Evidence level |
+|---|---|---|---|---|
+| `find-my-way` (Fastify's own HTTP router) | 9.6.0 (vulnerable) | 9.9.0 | `pnpm-workspace.yaml` override, within `fastify`'s own already-declared `^9.6.0` range | **E2** (audit clean + full e2e suite green) |
+| `fast-uri` (Fastify schema validation) | 3.1.4 (vulnerable) | 3.1.8 | Override, within `@fastify/ajv-compiler`'s own declared `^3.0.0` range | **E2** |
+| `fastify` (the real production runtime instance) | 5.10.0 (vulnerable) | 5.12.5 | Override — `@nestjs/platform-fastify@11.1.28` pins `fastify` at an *exact* `5.10.0`, not a range, so a plain in-range update was not possible; same technique already proven for `multer` in Phase 0 | **E2** |
+| `nodemailer` (real production SMTP sending) | 9.0.5 (vulnerable, direct dependency) | 9.1.1 | Plain `pnpm update nodemailer` within the existing declared range — no override needed | **E2** |
+| `@fastify/static` | 9.3.0 (vulnerable, but confirmed unreachable — never `require()`'d) | **Reverted to 9.3.0, unchanged** | See "What was tried and reverted" below | **E3** (a real crash was found and avoided by testing, not assumed) |
+
+### What was tried and reverted — a real finding, not a clean win
+
+The initial attempt removed `@fastify/static` entirely (both `apps/api`'s own direct dependency and
+an override forcing it out of `@nestjs/platform-fastify`'s declared peer range, since no patched
+version exists within that range — confirmed: 9.3.0 is the last 9.x release ever published, and
+both advisories require `>=10.1.1`/`>=10.1.2`). `pnpm audit` and the full local build/typecheck/lint
+suite all passed clean against this state — but starting the real `apps/api` dev server (something
+the automated test suites never exercise, since they either boot in-process via
+`Test.createTestingModule()` or never boot the API at all) **crashed on every startup** in
+non-production mode:
+
+```
+[Nest] ERROR [PackageLoader] The "@fastify/static" package is missing. Please, make sure to
+install it to take advantage of FastifyAdapter.useStaticAssets().
+```
+
+The process exits immediately after this line — it never reaches "Nest application successfully
+started." Root cause: something in the non-production bootstrap path (most likely `@nestjs/swagger`'s
+`SwaggerModule.setup()`, the only non-production-gated module registration in `main.ts`) probes for
+`@fastify/static`'s physical presence in `node_modules` via NestJS's own `loadPackage` utility, and
+that probe is fatal when the package is entirely *absent* — as distinct from merely *unused*, which
+is what `apps/api/src`'s own code confirmed (zero calls to `useStaticAssets()` anywhere). This
+crash would have hit every local dev boot and every non-production CI job (`build-and-test`,
+`web-e2e` — neither sets `NODE_ENV=production`), a severe operational regression worse than the
+theoretical vulnerability itself, and it was caught only because this review insisted on actually
+starting the real server rather than trusting a green `pnpm audit` and a green build/typecheck/lint
+pass.
+
+**Resolution:** reverted `@fastify/static` to its original state (9.3.0, present, unpatched).
+Reclassified in this document's own vulnerability table (below) as **ACCEPT/TOLERATE WITH
+RATIONALE**: the plugin's code is never invoked by this application (confirmed by grep and by
+reading `@nestjs/platform-fastify`'s own compiled source — it's lazy-`require()`'d only inside
+`useStaticAssets()`), so the vulnerable code path (path-traversal route-guard bypass, non-canonical-
+URL authorization bypass — both requiring the plugin to actually be *registered* and *serving
+files*) is structurally unreachable regardless of which version sits in `node_modules`. No patched
+version exists within the compatible peer range, and forcing an incompatible one breaks a real,
+load-bearing (if incidental) startup dependency. This is the correct, evidence-based outcome, not a
+failure to close the finding — the original review's own framework explicitly allows for
+ACCEPT/TOLERATE when reachability is genuinely zero and the fix cost exceeds the risk.
+
+### Verification (Postgres reset to a fresh state first, to eliminate accumulated dev-DB drift)
+
+- `pnpm audit`: 41 → **28** vulnerabilities (0 critical throughout both before/after; 25→14 high,
+  12→10 moderate, 4 low unchanged). Every remaining finding traces to a confirmed dev/test-only
+  chain or the now-explicitly-accepted `@fastify/static`/residual dev-only `nodemailer@9.0.5`
+  instance (via `mailparser`, a devDependency) — none newly introduced, none production-reachable.
+- `pnpm --filter {api,gateway,interop,web} build/typecheck/lint`: all clean.
+- Unit tests: 255 passing (api/gateway/interop) + 46 (web) — unchanged from Phase 0.
+- **Full API e2e suite, run against a freshly-reset local database** (`pnpm db:reset`, to eliminate
+  the accumulated dev-DB drift this session's own Testing Strategy workstream already flagged as a
+  real, confirmed gap in local-run trustworthiness): **626/626 passed, zero failures** — a stronger
+  result than any prior run this session, and definitive evidence this workstream introduces no
+  regression.
+- A second full run against the (now re-drifted, from the 626-test run's own writes) database
+  reproduced the same 8 pre-existing failures documented since Phase 0 — confirmed via `git stash`
+  (as in Phase 0) to reproduce identically with this workstream's changes reverted, on the same
+  drifted database. Not a regression.
+- Gateway/interop e2e: clean, both runs.
+- **Web Playwright e2e, with the real `apps/api` dev server actually running** (not just the
+  in-process test bootstrap the automated suites use) — **14/16 passed**, matching the exact
+  baseline established in Phase 0 (`case-report-email` fails locally only because MailHog isn't
+  running in this environment; `patient-edit` shows the same already-documented `next dev`
+  cold-compile flake). An earlier attempt at this same run, made *before* starting the real API
+  server, showed 15/16 failing — investigated fully rather than dismissed, and traced to the missing
+  live API process, not a code regression (see above).
+
+### Remaining vulnerability re-classification (delta from the Phase 0 Security Closure Review)
+
+| Package | Previous classification | Current classification |
+|---|---|---|
+| `find-my-way`, `fast-uri`, `fastify` | FIX BEFORE PILOT | **FIXED** |
+| `nodemailer` (production instance) | FIX BEFORE PILOT | **FIXED** (production instance only — a residual vulnerable `9.0.5` instance remains via `mailparser`, a devDependency used only by test helpers verifying sent-email content; NOT RELEVANT TO PRODUCTION, matching this review's own established framework for dev-only chains) |
+| `@fastify/static` | FIX BEFORE PILOT (cleanup) | **ACCEPT/TOLERATE WITH RATIONALE** — see full rationale above. Structurally unreachable; no compatible patched version exists; removal causes a real non-production boot crash. |
+
+**Updated conclusion: no production-relevant, reachable vulnerability remains unaddressed.** The
+one finding that could not be "fixed" in the literal sense (`@fastify/static`) was investigated to
+the point of proving both non-reachability and the real cost of forcing a fix, and is accepted with
+full evidence — not silently dropped and not force-fixed to make a count smaller.

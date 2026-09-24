@@ -30,8 +30,15 @@ services:
   # exist" on both a real CI runner and a local machine) -- MinIO's own
   # current publish target is quay.io. Pull the exact same tag from there
   # instead, no other change.
+  # 2026-09-24: quay.io/minio/minio now also refuses anonymous pulls (401 on
+  # CI and via a direct registry probe) -- switched to Chainguard's publicly
+  # pullable MinIO build (entrypoint /usr/bin/minio, so the same `server`
+  # command works). It defaults to a non-root uid (65532); `user: "0"` keeps
+  # existing root-owned miniodata volumes readable/writable, same as the old
+  # image.
   minio:
-    image: quay.io/minio/minio:latest
+    image: cgr.dev/chainguard/minio:latest
+    user: "0"
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: minioadmin

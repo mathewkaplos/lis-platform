@@ -656,7 +656,130 @@ step in this plan substitutes for actually running it.
 
 ---
 
-## Revision history
+## Phase 0 Security Closure Review
+
+**Date:** 2026-09-24. **Scope:** review/verification only, per explicit instruction — no code
+changes were made in producing this section. Every claim below traces to a command run in this
+session against the actual merged `main` (commit `cb380ef`), not inferred from configuration files
+alone.
+
+### Audit snapshot (merged `main`, re-run fresh this session)
+
+```
+$ pnpm audit
+41 vulnerabilities found
+Severity: 4 low | 12 moderate | 25 high | 0 critical
+```
+
+Identical to the count PR #829 reported — confirms the fix landed as described and nothing
+regressed post-merge.
+
+### Remaining vulnerability classification
+
+**High severity (25 findings, 8 distinct packages):**
+
+| Package | Installed | Patched | Direct/transitive | Prod dep of a real app? | Actually reachable at runtime? | Recommended action |
+|---|---|---|---|---|---|---|
+| `find-my-way` | 9.6.0 | 9.6.1+ (9.9.0 latest) | Transitive, via `@nestjs/platform-fastify`'s own `fastify@5.10.0` dependency | **Yes** — this is Fastify's own HTTP router | **Yes — every single request to the real API is routed through this exact code**, in production | **FIX BEFORE PILOT.** DDoS via HTTP2 — genuinely reachable. Patched `9.9.0` is within `fastify`'s own already-declared `^9.6.0` range (confirmed via `npm view fastify@latest dependencies`), so this is a `pnpm-workspace.yaml` override, the identical low-risk technique already proven in Phase 0 for `multer` — not a NestJS/Fastify major bump. |
+| `fast-uri` | 3.1.4 | 3.1.5/3.1.6+ | Transitive, via `@fastify/ajv-compiler` (a real Fastify plugin used by every schema-validated route) | **Yes** | **Yes** — Fastify's own JSON-schema validation path runs on every validated request | **FIX BEFORE PILOT.** Host-confusion/SSRF-class findings. Patched `3.1.6` is within `@fastify/ajv-compiler`'s own declared `^3.0.0` range — same override technique, no major bump needed. |
+| `@fastify/static` | 9.3.0 | 9.3.1+/10.1.1+ | **Direct** dependency of `apps/api` | Declared as one, but — | **No. Confirmed by grep: `@fastify/static`/`fastifyStatic`/`useStaticAssets` appears nowhere in `apps/api/src` or `apps/api/test` except a single comment in `main.ts` referencing it (no actual `import` or `app.register(...)` call exists).** This is the same "declared but genuinely unused" pattern as `@nestjs/platform-express` in Phase 0, except this one is a **direct** dependency, not an optional peer — trivially removable, no override trick needed. | **FIX BEFORE PILOT** (as a cleanup, not urgent as a live exposure since it's dead code) — remove the unused dependency entirely. Not a production security exposure today (unreachable), but a stale, misleading dependency that should not persist into the pilot. |
+| `js-yaml` (3.x and 4.x, 4 findings) | 3.15.0, 4.3.0 | 3.15.1+/3.15.2+, 4.3.1+/4.3.2+ | Transitive, via `@eslint/eslintrc` and `@istanbuljs/load-nyc-config` | No | **No — confirmed via `pnpm why`: both resolve only through `eslint`/`nyc`/Storybook test-tooling `devDependencies` chains**, never through anything `apps/api`, `apps/web`, `apps/gateway`, or `apps/interop` ship at runtime. | **NOT RELEVANT TO PRODUCTION.** Build/lint-time tooling only. Accept as-is; not worth the churn of a targeted override for a devDependency-only DoS finding with zero runtime exposure. |
+| `brace-expansion` (3 findings) | 1.1.16, 2.x, 4.x ranges | Various | Transitive, via `minimatch`, itself only ever reached through `devDependencies` chains (confirmed via `pnpm why`) | No | **No** | **NOT RELEVANT TO PRODUCTION.** |
+| `deepmerge-ts` | 7.1.6 | 8.0.0+ | Transitive, via `mailparser` → `html-to-text` — `mailparser` is a `devDependency` of `apps/api` (used only by test helpers verifying sent-email content, e.g. `case-report-email.e2e-spec.ts`) | No | **No** | **NOT RELEVANT TO PRODUCTION.** |
+| `nanoid` | 3.3.16 | 3.3.18+ | Transitive, via `postcss`, itself a `devDependency` of `apps/web` (Tailwind build tooling) | No | **No — postcss runs at build time only; nothing at runtime imports it** | **NOT RELEVANT TO PRODUCTION.** |
+| `nodemailer` | 9.0.5 | 9.1.0+ | **Direct** dependency of `apps/api` | **Yes — real SMTP email sending** (case-report-email, invoice-email, per existing e2e specs) | **Yes** — this sends real clinical-report and invoice emails in production | **FIX BEFORE PILOT.** Quadratic-time DoS in address parsing on a package that processes real recipient addresses. Patched `9.1.0` is within the already-declared `^9.0.5` range — a plain `pnpm update nodemailer`, no override needed, no code change beyond the version bump. |
+
+**Moderate severity (12 findings) — the ones not already covered above by the same package:**
+
+| Package | Installed | Patched | Reachable? | Action |
+|---|---|---|---|---|
+| `fastify` | 5.10.0 | 5.12.1+ | **Yes** — this is the actual production Fastify instance (confirmed: `@nestjs/platform-fastify@11.1.28` depends on exactly `fastify@5.10.0`) | **FIX BEFORE PILOT.** Schema-validation-bypass and `X-Forwarded-*` spoofing findings, both realistic against a real deployment sitting behind Tailscale's own proxying. `apps/api`'s own declared `fastify` range is only a `devDependency` pin (`^5.10.0`) used for typing/tooling — the *runtime* instance comes transitively via `platform-fastify`, so this needs the same override technique, not a `package.json` edit. `5.12.1` is within `platform-fastify@11.1.28`'s already-declared range. |
+| `@vitest/mocker` / `vitest` | — | 4.1.11+ | No — test framework only | **NOT RELEVANT TO PRODUCTION.** |
+| `esbuild` | ≤0.24.2 | 0.24.3+ | No — dev-server-only finding (a website reading the Vite/esbuild dev server's own responses); never runs in any deployed environment | **NOT RELEVANT TO PRODUCTION.** |
+| `qs` | 6.15.3 | 6.16.0+/6.15.4+ | No — traces through `body-parser` → `express` → `@nestjs/platform-express`, the **same dead code path already confirmed unreachable in Phase 0** (`platform-express` is never imported anywhere) | **NOT RELEVANT TO PRODUCTION.** Will disappear once `@fastify/static`'s removal is paired with re-confirming `platform-express`'s own removal path (see Phase 0 confirmation below — it's still present via the same optional-peer mechanism Phase 0 documented, still unreachable). |
+| `uuid` | 8.3.2 | 11.1.1+ | No — traces only through `@storybook/test-runner`/`nyc`/`jest-*` devDependency chains for `@lis/ui`'s own component tests | **NOT RELEVANT TO PRODUCTION.** |
+| `nodemailer` (3 moderate findings) | 9.0.5 | 9.1.0/9.1.1+ | Same as the high finding above | Covered by the same **FIX BEFORE PILOT** nodemailer bump. |
+
+**Low severity (4 findings):** `joi` (prototype pollution, `object().rename()` issue) and `multer` (file-size-limit bypass via async processing, a *different*, low-severity finding on the already-patched `2.4.0`) — traced to the same already-unreachable `platform-express`/test-tooling chains as the moderate `qs`/`uuid` findings. **NOT RELEVANT TO PRODUCTION.**
+
+### Summary of new findings from this review
+
+Five packages are genuinely production-reachable and not yet fixed: **`find-my-way`, `fast-uri`,
+`fastify`, `nodemailer`, and `@fastify/static`** (the last as a dead-code removal, not a live
+exposure). All five have patched versions already within their existing declaring packages' own
+semver ranges — none require a NestJS or Fastify major-version bump, and all five can very likely
+use the exact same low-risk technique (a targeted `pnpm-workspace.yaml` override, or in
+`nodemailer`'s case a plain in-range version bump) already proven safe in Phase 0's `multer` fix.
+**This was not caught in Phase 0** because Phase 0's own audit re-verification focused on the two
+*critical* findings and the one dependency explicitly named in the execution plan; it did not
+extend a full reachability classification to every remaining high-severity finding. This review
+closes that gap.
+
+None of these five is a **critical**, RCE-class, or unauthenticated-bypass finding — all are
+DoS/spoofing/validation-bypass class issues. None is severe enough to justify stopping and treating
+this as a "genuine critical or pilot-blocking vulnerability" under this review's own execution
+boundary (which instructs stopping *before* modifying code if one is found — no code was modified
+in producing this review, consistent with that boundary). They are real, they are classified
+**FIX BEFORE PILOT**, and they should be addressed as a short, scoped follow-up **before** Phase 1
+substantive work proceeds far enough that a pilot date gets set — but they do not block *starting*
+Phase 1's planning/hardening activities themselves.
+
+### Confirmation of Phase 0 changes (verified against the actual merged tree, not assumed)
+
+1. **Next.js patched version:** `apps/web/package.json` on `main` declares `"next": "16.3.6"`;
+   confirmed resolved in `pnpm-lock.yaml`. ✅
+2. **multer patched version:** `pnpm why multer` on `main` resolves `multer@2.4.0` (via the
+   `pnpm-workspace.yaml` override), not the vulnerable `2.2.0`. ✅
+3. **`@nestjs/platform-express` genuinely unused:** re-ran `grep -rln "FileInterceptor\|
+   FilesInterceptor\|@nestjs/platform-express\|NestExpressApplication\|multer" apps/api/src
+   apps/api/test` on the merged tree — zero matches, confirmed again, not assumed from the earlier
+   proposal. It is still present in the dependency tree (as Phase 0's own documentation already
+   disclosed — an optional peer of `@nestjs/core`/`@nestjs/testing` that pnpm's `auto-install-peers`
+   re-adds regardless), which is exactly why `qs` and one `multer` low-severity finding still show
+   up as transitive-but-unreachable in this review's classification above — consistent with, not a
+   contradiction of, Phase 0's own documented findings. ✅
+4. **Keycloak brute-force protection and password policy actually present:** confirmed twice —
+   (a) `infra/keycloak/lis-realm.json` on `main` contains `bruteForceProtected: true`,
+   `failureFactor: 30`, `passwordPolicy: "length(8) and notUsername(undefined)"`, etc.; (b) **the
+   real `deploy-staging.yml` workflow ran successfully against this exact merge commit**
+   (`gh run list --workflow=deploy-staging.yml`: `cb380ef` → `success`, 2026-09-23T23:29:46Z) —
+   and that workflow's own deploy step unconditionally does `docker compose rm -f -s keycloak`
+   before `docker compose up -d valkey keycloak`, meaning the container is destroyed and recreated
+   fresh on every deploy, forcing a real re-import of the updated realm JSON on the actual staging
+   droplet, not just a config-file change sitting in git. This is E4 (environment-proven) evidence,
+   not merely "the file says so." ✅
+5. **No auth/session/login/refresh/authorization regression:** the full API e2e suite's
+   auth-related specs (`auth.e2e-spec.ts`, `tenant-context.e2e-spec.ts`,
+   `capability-check.e2e-spec.ts`, `capability-check-production-gate.e2e-spec.ts`) all passed
+   against the hardened realm, both in this session's local verification and in PR #829's own CI
+   run; the real seeded `test-user` credential still authenticates successfully post-hardening
+   (re-confirmed via a live token-endpoint call in the Phase 0 session). ✅
+6. **CI remains green:** `gh api repos/.../commits/cb380ef.../check-runs` — all 5 PR-check jobs
+   (`build-and-test`, `rls-isolation-check`, `storybook-a11y`, `web-e2e`, `check-invariants`) show
+   `success` on the actual merge commit, and the subsequent `deploy-staging.yml` run on that same
+   commit also completed `success`. ✅
+7. **Sentry blocker still accurately documented, not falsely marked complete:** confirmed by
+   direct inspection of this document's own §4.F and Priority Matrix rows — both still read
+   "Wired, unconfirmed" / "Confirm Sentry is actually receiving events" as an open P1 action, and
+   the Revision History's Phase 0 entry explicitly states "BLOCKED, documented rather than
+   claimed." No text in this document claims Sentry verification occurred. ✅
+
+### Conclusion
+
+**SECURITY CLOSURE: CLEAR TO PROCEED TO PHASE 1**
+
+No critical, RCE-class, or unauthenticated-bypass finding remains. Five genuinely production-
+reachable high/moderate findings were identified that Phase 0 did not close (`find-my-way`,
+`fast-uri`, `fastify`, `nodemailer`, and the unused `@fastify/static`) — none of them rises to the
+level of blocking Phase 1 from *starting*, but all five are recommended as a short, scoped
+follow-up PR to complete **before** a real pilot date is set (i.e., before Gate 3 in §6's maturity
+path), using the same low-risk, no-architecture-change techniques already proven safe in Phase 0.
+This follow-up is not itself "Phase 1 work" in the sense of this plan's own Phase 1 scope (backup/
+restore verification, independent security review, uptime monitoring) — it is a direct continuation
+of Phase 0's own unfinished dependency-hardening scope, and should be sequenced immediately
+alongside or just ahead of Phase 1, at Mathew's discretion.
+
+
 
 - 2026-09-24: Initial version, authored against `world-class-assessment-2026-09-fresh.md`
   (2026-09-23 baseline), with this session's own re-verification (§0) including two new findings

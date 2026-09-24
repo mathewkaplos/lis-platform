@@ -19,6 +19,31 @@ overrides:
   # vulnerable range) -- to a patched version. Zero runtime risk: this
   # code path is never exercised by any app in this workspace.
   multer: 2.4.0
+  # Phase 0 Security Closure Review (world-class-execution-plan-8-2026-09.md):
+  # `@nestjs/platform-fastify@11.1.28` pins `fastify` at exactly `5.10.0`
+  # (not a range -- confirmed via `npm view @nestjs/platform-fastify@11.1.28
+  # dependencies`), which is the real production runtime instance (every
+  # app bootstraps via NestFastifyApplication). fastify@5.10.0 has two real
+  # moderate advisories (schema-validation-bypass, X-Forwarded-* spoofing);
+  # 5.12.5 is the latest patch on the same 5.x line (no NestJS/Fastify
+  # major bump). fastify's own `find-my-way`/`@fastify/ajv-compiler`
+  # dependencies are declared as caret ranges already permitting the
+  # patched versions below, but overriding them explicitly here keeps
+  # resolution deterministic rather than depending on pnpm happening to
+  # pick the newest satisfying version.
+  fastify: 5.12.5
+  # find-my-way (Fastify's own HTTP router -- every request in production
+  # is routed through this): 9.6.0 vulnerable (DDoS via HTTP2), patched
+  # 9.6.1+, already within fastify's own declared `^9.6.0` range.
+  find-my-way: 9.9.0
+  # fast-uri (used by @fastify/ajv-compiler, Fastify's schema-validation
+  # path, on every schema-validated request): 3.1.4 vulnerable (host-
+  # confusion/SSRF-class findings), patched 3.1.6+, already within
+  # @fastify/ajv-compiler's own declared `^3.0.0` range -- deliberately
+  # staying on the 3.x line rather than jumping to fast-uri 4.x, which
+  # would need a matching @fastify/ajv-compiler major bump this review
+  # found no evidence is needed.
+  fast-uri: 3.1.8
 allowBuilds:
   '@parcel/watcher': true
   '@scarf/scarf': false

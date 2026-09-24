@@ -911,3 +911,83 @@ ACCEPT/TOLERATE when reachability is genuinely zero and the fix cost exceeds the
 one finding that could not be "fixed" in the literal sense (`@fastify/static`) was investigated to
 the point of proving both non-reachability and the real cost of forcing a fix, and is accepted with
 full evidence — not silently dropped and not force-fixed to make a count smaller.
+
+---
+
+## Phase 1 Execution — Workstream 4: Independent Security Assurance Preparation
+
+**Date:** 2026-09-24. **Deliverable:** `docs/security-review-scope-2026-09.md` — a 15-area scope
+document (authentication, authorization/RBAC, tenant isolation, RLS, API exposure, patient-data
+handling, audit trail, report integrity, file handling, dependency security, Keycloak, deployment/
+network exposure, secrets, backup/restore, observability) organizing what internal evidence already
+exists per area and exactly what an external reviewer would still need to independently check.
+
+**No independent review has occurred.** This document does not claim one did. Its own explicit
+summary table identifies backup/restore and observability (Sentry) verification as the two
+highest-priority open items for an external reviewer — the same two items this plan's own
+Workstreams 2 and 3 found genuinely blocked on production/droplet access this session (see below).
+Commissioning an actual external review is a Mathew decision (procurement, cost, timing) per the
+execution plan's own Workstream/autonomy split — this deliverable exists so that decision, once
+made, can move immediately into a scoped engagement rather than starting from zero.
+
+---
+
+## Phase 1 Execution — Workstream 5: Production Deployment Credibility
+
+**Date:** 2026-09-24. Verified against real evidence, not redesigned.
+
+| Question | Evidence | Level |
+|---|---|---|
+| Is the exact source commit deployed traceable? | `deploy-staging.yml` tags images with the real git SHA (`ghcr.io/.../lis-platform-api:${{ github.sha }}`); `gh run list --workflow=deploy-staging.yml` shows the head SHA of every past deploy | **E4** |
+| Is the deploy repeatable? | Last 10 `deploy-staging.yml` runs (spanning 2026-09-06 to 2026-09-23) are all `success` | **E4** |
+| Is there a real rollback procedure? | `rollback-staging.yml` — a real `workflow_dispatch` that pulls a specific git-SHA-tagged image and redeploys it, **actually exercised** on 2026-08-11 (4 failed attempts, then a real success — genuine iteration, not a theoretical script) | **E4** (rollback of application code) |
+| Does rollback cover database migrations? | **No, deliberately** — the workflow's own header comment states it "deliberately never touches the database... rolling back across a breaking migration is out of scope." A real, documented, product-level limitation, not an oversight — worth flagging to Mathew as a known gap if a pilot-blocking migration issue ever occurs, not something to silently redesign under this plan's own "do not rewrite architecture" boundary. | **E1** (known limitation, correctly scoped, not fixed) |
+| Are health checks real? | `deploy-staging.yml`'s own smoke-test steps hit the real API `/health` endpoint and Keycloak's `.well-known/openid-configuration` over the real Tailscale HTTPS path before declaring success | **E4** |
+| Is secrets handling sound? | Deploy-time injection only, `docker-build-placeholder-not-a-real-secret` as the deliberate build-time placeholder (confirmed in the workflow file), per-tenant SMTP passwords encrypted at rest | **E3-E4** |
+| Is Keycloak deployment itself repeatable? | The Keycloak container is destroyed and recreated (`docker compose rm -f -s keycloak`) on every single deploy, forcing a fresh realm re-import every time — this is also how Phase 0's hardened realm config was confirmed to have actually reached the real droplet (§ Phase 0 Security Closure Review, confirmation 4) | **E4** |
+| Is database availability handled? | Postgres readiness is polled (`pg_isready`) before migrations run; migrations run via a dedicated, memory-capped migrator container, separate from the app containers | **E3-E4** |
+| What happens on deployment failure? | The smoke-test steps fail the whole workflow run (visible in `gh run list`) rather than silently leaving a broken deploy marked green — confirmed by the workflow's own structure, not directly observed failing this session (no real failed deploy occurred to observe) | **E2** (verified by reading the failure-handling logic, not by triggering a real failure) |
+
+**Conclusion:** the deployment path is genuinely repeatable and has real rollback capability for
+application code (proven by actual past use, not just existence), with one clearly-documented,
+correctly-scoped limitation (no migration rollback). This is stronger evidence than most projects at
+this stage have, and required no new access or architecture change to establish — it was already
+sitting in the repo's own CI history, just not previously assembled into one place.
+
+---
+
+## Phase 1 — Workstreams 2, 3, 6: Blocked on Production/Droplet Access
+
+**Status: BLOCKED**, not attempted-and-failed, not faked. Per this session's own explicit stop
+condition ("production credential/access requirements"), and consistent with how the Phase 0
+Sentry blocker was handled (documented, not worked around):
+
+- **Workstream 2 (production backup/restore proof):** requires SSH access to the real
+  `lis-staging` droplet. Re-confirmed this session: `docs/pilot-remote-access.md`'s own status is
+  unchanged since it was last written — an SSH keypair was generated specifically for this, its
+  public half was never added to the droplet, and the user does not currently have DigitalOcean
+  console access to add it. **No restore drill was attempted against real production data.**
+  What *is* known, from the config alone (not proof): `infra/scripts/backup-staging-db.sh` and
+  `infra/scripts/restore-drill.sh` are both real, non-trivial scripts (the restore drill spins up
+  an isolated scratch Postgres, restores the latest backup into it, and never touches the real
+  database) — but per `infra/scripts/README.md`'s own text, installing their cron entries is a
+  manual, one-time step nobody has confirmed was ever actually performed on the real droplet.
+  **This remains exactly the gap the baseline assessment and Phase 0 plan both already named as the
+  single highest-priority item — unchanged, not newly discovered, not resolved.**
+- **Workstream 3 (Sentry production-event verification):** requires either direct access to the
+  real Sentry project or droplet SSH access to trigger and observe a controlled test event.
+  Re-confirmed this session: no such access exists. Health-endpoint/deployment-log visibility (the
+  other half of this workstream) **is** covered — see Workstream 5's table above (E4 evidence via
+  the deploy workflow's own smoke tests) and there is no separate uptime-monitoring service beyond
+  what CI's own deploy-time checks provide.
+- **Workstream 6 (incident/recovery drill):** the task's own instructions require this to be a
+  *controlled, safe* drill, explicitly not against real production data, and against staging only
+  if a real production drill is unsafe. Since this session has no access to *either* environment
+  (production or the staging droplet itself — only to local Docker containers), no drill against a
+  real deployed environment was possible. **Not attempted, not faked.** A local-only drill (e.g.,
+  killing a local Docker container and observing recovery) would not produce evidence about the
+  real deployment's own behavior and was judged not worth performing under a misleading label.
+
+**These three items require the same one thing:** droplet access. Per this plan's own §17
+(autonomous vs. Mathew-required work), granting that access is explicitly listed as Mathew's action,
+not something resolvable through further engineering effort in this session.

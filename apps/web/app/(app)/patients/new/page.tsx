@@ -1,8 +1,9 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import Link from 'next/link';
 import { Button, Card, CardContent, CardHeader, CardTitle } from '@lis/ui';
+import { useUnsavedChangesGuard } from '@/lib/use-unsaved-changes-guard';
 import { PatientFormFields } from '../_lib/patient-form-fields';
 import { registerPatient } from './actions';
 import { registerPatientInitialState } from './types';
@@ -23,6 +24,10 @@ export default function NewPatientPage() {
     registerPatientInitialState,
   );
   const values = state.submittedValues;
+  // Uncontrolled fields, so any edit marks the form dirty via the form-level
+  // onChange below (docs/plans/task-unsaved-form-guard.md).
+  const [edited, setEdited] = useState(false);
+  const bypassUnsavedGuard = useUnsavedChangesGuard(state.status !== 'created' && edited);
 
   if (state.status === 'created') {
     return (
@@ -97,7 +102,15 @@ export default function NewPatientPage() {
               <Button type="submit" variant="destructive" size="sm" disabled={pending}>
                 Register anyway
               </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => location.reload()}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  bypassUnsavedGuard();
+                  location.reload();
+                }}
+              >
                 Cancel
               </Button>
             </form>
@@ -110,7 +123,7 @@ export default function NewPatientPage() {
           </p>
         ) : null}
 
-        <form action={formAction} className="flex flex-col gap-4">
+        <form action={formAction} onChange={() => setEdited(true)} className="flex flex-col gap-4">
           <PatientFormFields values={values} fieldErrors={state.fieldErrors} />
           <Button type="submit" disabled={pending}>
             {pending ? 'Saving…' : 'Save & register'}

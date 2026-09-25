@@ -5,6 +5,13 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    # ADR-0056: MinIO's own quay.io images stopped being pullable anonymously
+    # (confirmed 2026-09-25); this job now pulls our own re-hosted mirror
+    # from GHCR instead (see the `docker login ghcr.io` step below), which
+    # needs read access to a private package.
+    permissions:
+      contents: read
+      packages: read
     services:
       postgres:
         image: postgres:16
@@ -85,11 +92,17 @@ jobs:
       # created by the app's own ImageAttachmentModule.onModuleInit()
       # (ensureBucketExists(), object-storage.client.ts), same as local dev
       # -- no separate CI provisioning step needed.
+      #
+      # ADR-0056: `quay.io/minio/minio` stopped being pullable anonymously
+      # (confirmed 2026-09-25, every tag -- MinIO's open-source distribution
+      # is archived upstream). Pulling our own re-hosted, content-identical
+      # copy from GHCR instead -- a private package, hence the login.
+      - run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
       - run: |
           docker run -d --name minio -p 9000:9000 -p 9001:9001 \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
-            quay.io/minio/minio:latest server /data --console-address :9001
+            ghcr.io/mathewkaplos/lis-platform-minio:latest server /data --console-address :9001
       - run: pnpm install --frozen-lockfile
       # TASK-030 (FEAT-008): apps/api is the first-ever consumer of a
       # workspace package's real exports (@lis/db) — packages/domain/@lis/ui
@@ -313,6 +326,11 @@ jobs:
   # there -- `web-verify` Skill), so the plain install works cleanly here.
   web-e2e:
     runs-on: ubuntu-latest
+    # ADR-0056: see build-and-test's identical note -- this job also pulls
+    # our own re-hosted MinIO mirror from GHCR (a private package).
+    permissions:
+      contents: read
+      packages: read
     services:
       postgres:
         image: postgres:16
@@ -374,11 +392,13 @@ jobs:
             -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
             -v "${{ github.workspace }}/infra/keycloak/lis-realm.json:/opt/keycloak/data/import/lis-realm.json" \
             quay.io/keycloak/keycloak:26.0 start-dev --import-realm
+      # ADR-0056: same GHCR-mirror substitution as build-and-test above.
+      - run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
       - run: |
           docker run -d --name minio -p 9000:9000 -p 9001:9001 \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
-            quay.io/minio/minio:latest server /data --console-address :9001
+            ghcr.io/mathewkaplos/lis-platform-minio:latest server /data --console-address :9001
       - run: docker run -d --name mailhog -p 1025:1025 -p 8025:8025 mailhog/mailhog:latest
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @lis/db build

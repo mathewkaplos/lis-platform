@@ -27,11 +27,19 @@ services:
   # move to real cloud S3 is a config change, not a rewrite.
   # `minio/minio` on Docker Hub was removed/deprecated upstream (confirmed
   # 2026-09-23: `docker pull minio/minio:latest` -> "repository does not
-  # exist" on both a real CI runner and a local machine) -- MinIO's own
-  # current publish target is quay.io. Pull the exact same tag from there
-  # instead, no other change.
+  # exist" on both a real CI runner and a local machine) -- moved to quay.io.
+  # `quay.io/minio/minio` itself then stopped being pullable anonymously
+  # (confirmed 2026-09-25: every tag, not just `:latest`, returns
+  # `401 Unauthorized`; MinIO's own binary CDN, dl.min.io, separately
+  # confirms the open-source Server/Client/KES projects are archived and no
+  # longer maintained) -- see ADR-0056 for the full finding. This is now our
+  # own re-hosted copy of the exact last-known-good image (content-identical:
+  # all 9 RootFS layer digests match `quay.io/minio/minio@sha256:
+  # 14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e` byte
+  # for byte, confirmed by direct comparison), not a different MinIO version
+  # and not a different product -- a continuity stopgap, not an upgrade.
   minio:
-    image: quay.io/minio/minio:latest
+    image: ghcr.io/mathewkaplos/lis-platform-minio:latest
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: minioadmin

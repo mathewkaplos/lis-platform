@@ -956,38 +956,123 @@ sitting in the repo's own CI history, just not previously assembled into one pla
 
 ---
 
-## Phase 1 — Workstreams 2, 3, 6: Blocked on Production/Droplet Access
+## Phase 1 — Workstreams 2, 3, 6: Resolved 2026-09-25 (previously blocked)
 
-**Status: BLOCKED**, not attempted-and-failed, not faked. Per this session's own explicit stop
-condition ("production credential/access requirements"), and consistent with how the Phase 0
-Sentry blocker was handled (documented, not worked around):
+**Original status (2026-09-24, kept for history): BLOCKED**, not attempted-and-failed, not faked —
+droplet SSH access did not exist from this session. That blocker is now resolved: Mathew restored
+DigitalOcean Web Console access (destroying the droplet's Cloud Firewall, `lis-staging-fw`, fixed
+whatever was preventing console access — see `docs/pilot-remote-access.md`'s own 2026-09-25 update
+for the full security implication of that change) and added the already-generated SSH public key
+to the droplet. Real SSH access from this session to `root@157.230.10.221` was confirmed working,
+and all three workstreams below were completed against the **real production/staging droplet** —
+not simulated, not assumed from config.
 
-- **Workstream 2 (production backup/restore proof):** requires SSH access to the real
-  `lis-staging` droplet. Re-confirmed this session: `docs/pilot-remote-access.md`'s own status is
-  unchanged since it was last written — an SSH keypair was generated specifically for this, its
-  public half was never added to the droplet, and the user does not currently have DigitalOcean
-  console access to add it. **No restore drill was attempted against real production data.**
-  What *is* known, from the config alone (not proof): `infra/scripts/backup-staging-db.sh` and
-  `infra/scripts/restore-drill.sh` are both real, non-trivial scripts (the restore drill spins up
-  an isolated scratch Postgres, restores the latest backup into it, and never touches the real
-  database) — but per `infra/scripts/README.md`'s own text, installing their cron entries is a
-  manual, one-time step nobody has confirmed was ever actually performed on the real droplet.
-  **This remains exactly the gap the baseline assessment and Phase 0 plan both already named as the
-  single highest-priority item — unchanged, not newly discovered, not resolved.**
-- **Workstream 3 (Sentry production-event verification):** requires either direct access to the
-  real Sentry project or droplet SSH access to trigger and observe a controlled test event.
-  Re-confirmed this session: no such access exists. Health-endpoint/deployment-log visibility (the
-  other half of this workstream) **is** covered — see Workstream 5's table above (E4 evidence via
-  the deploy workflow's own smoke tests) and there is no separate uptime-monitoring service beyond
-  what CI's own deploy-time checks provide.
-- **Workstream 6 (incident/recovery drill):** the task's own instructions require this to be a
-  *controlled, safe* drill, explicitly not against real production data, and against staging only
-  if a real production drill is unsafe. Since this session has no access to *either* environment
-  (production or the staging droplet itself — only to local Docker containers), no drill against a
-  real deployed environment was possible. **Not attempted, not faked.** A local-only drill (e.g.,
-  killing a local Docker container and observing recovery) would not produce evidence about the
-  real deployment's own behavior and was judged not worth performing under a misleading label.
+### Workstream 2 — Backup/restore proof: **RESOLVED, genuinely strong evidence**
 
-**These three items require the same one thing:** droplet access. Per this plan's own §17
-(autonomous vs. Mathew-required work), granting that access is explicitly listed as Mathew's action,
-not something resolvable through further engineering effort in this session.
+**Finding, not previously known:** the backup and restore-drill cron jobs were **already installed
+and have been running automatically since 2026-08-11** — 46 days of continuous history at the time
+of this inspection. This directly closes what both the baseline assessment and the Phase 0 plan
+named as the single highest-priority open item; it turns out the gap was in *verification*, not in
+the mechanism actually existing.
+
+- `crontab -l` on the droplet: `0 3 * * * .../backup-staging-db.sh` and
+  `30 3 * * * .../restore-drill.sh`, both present.
+- `/mnt/volume_nyc1_1785507357628/backups/`: 8 real `.dump` files present (the script's own
+  7-day retention keeps a rolling window), each ~276-280KB, one per day, most recent
+  `lis-20260925-030001.dump` (today, 03:00 UTC).
+- `/var/log/lis-restore-drill.log`, read in full (not just tailed): the very first 4 runs
+  (2026-08-11 through 2026-08-14) show real `FAIL` results — a genuine bootstrapping bug
+  (`role "lis_scheduler" does not exist` during `pg_restore`, since cluster-level roles aren't
+  captured by a per-database `pg_dump`), fixed in the script itself (visible in its own committed
+  comments) by 2026-08-15. **Every single run since 2026-08-15 — 42 consecutive days — is `PASS`.**
+  This is a real, honest history including its own real early failure and fix, not a
+  cherry-picked success story.
+- **This session's own direct, live-observed run** (not just log-reading): triggered
+  `bash /opt/lis/scripts/restore-drill.sh` manually. Result:
+  ```
+  2026-09-25T06:10:29Z Starting restore drill against .../lis-20260925-030001.dump
+  2026-09-25T06:10:34Z PASS restore-drill: .../lis-20260925-030001.dump restored successfully
+    (test_definition=21 analyte=51 code_system_value=69)
+  ```
+  **Total duration: ~6 seconds** (script start to PASS). Confirmed the scratch container/volume/
+  network were fully torn down afterward (`docker ps -a` shows nothing named `restore-drill`), and
+  confirmed the real live `lis` database was completely untouched (`test_definition` count
+  unchanged at 21, all 6 production containers' uptimes unaffected).
+- **Restoration time:** ~5-6 seconds for a ~280KB backup (chemistry/haematology catalog data only —
+  this is a pre-launch environment with zero onboarded tenants/patients yet, confirmed directly by
+  the restore-drill script's own comments and by this session's own read of the live database).
+  This number will grow once real tenant/patient data exists; it is not yet a real-scale RTO
+  estimate, and should not be quoted as one.
+
+**Evidence level: E4 (environment-verified) for the mechanism, upgraded from a directly-observed
+E4 to genuinely operationally-proven-over-time (**approaching E5**) by the 42-day unbroken PASS
+history** — this is stronger than a single verification and should be recorded as such; not
+inflated further, since no failure/recovery scenario against a *real, size-representative* dataset
+has occurred yet.
+
+### Workstream 3 — Sentry verification: **RESOLVED for transport; dashboard confirmation still needs Mathew**
+
+- `SENTRY_DSN` confirmed present and real on the live `lis-api-1` container:
+  `https://...@o4510432735526912.ingest.de.sentry.io/4511802919944272` (EU ingest region).
+- The running API process's own logs confirm Sentry actually initialized at boot ("Initializing
+  Sentry", every integration installed) — this had never been directly observed before this
+  session; only the DSN's *presence* in the compose file was previously known.
+- **A real, clearly-labeled test event was sent and accepted by Sentry's ingest endpoint** —
+  triggered via `docker exec lis-api-1 node -e '...'`, explicitly re-initializing a Sentry client
+  with the container's own real `SENTRY_DSN`/`NODE_ENV` (necessary because `docker exec` starts a
+  *separate* process from the already-running app, which never calls `Sentry.init()` itself — a
+  real thing learned by testing, not assumed):
+  ```
+  Sentry.captureMessage("[Phase 1 verification] harmless manual test event, id=phase1-manual-test-1790316743543", "info")
+  Sentry.flush(8000) -> true
+  ```
+  `flush() === true` means the SDK successfully handed the event to Sentry's real network endpoint
+  and received a success response — this is real transport-level (**E3**) evidence, not a guess.
+- **What still needs Mathew:** confirming the event actually appears in the Sentry Issues stream,
+  under message text `[Phase 1 verification] harmless manual test event, id=phase1-manual-test-1790316743543`,
+  environment `staging`, around 2026-09-25T06:12 UTC. This session has no Sentry login and cannot
+  self-certify the dashboard side — per the explicit instruction not to fabricate this, it is
+  reported as **E3 (transport confirmed), not yet E4 (dashboard-confirmed)**, until Mathew looks.
+
+### Workstream 6 — Controlled recovery drill: **completed, and it found a real gap**
+
+**What was done:** killed the real `lis-api-1` container (`docker kill`, SIGKILL) on the live
+staging droplet, deliberately chosen as the smallest real recovery scenario, and measured whether
+its declared `restart: unless-stopped` policy would bring it back automatically.
+
+**What was observed, not expected:** it did **not** come back on its own. `docker inspect` showed
+`RestartCount=0` and `Status=exited` for over a minute; `journalctl -u docker` showed dockerd
+logging `"stopping restart-manager"` for the container at the moment of the kill, with no
+subsequent restart attempt logged anywhere. This is a real, reproducible finding: the assumed
+self-healing safety net for a crashed container did not fire in this test, on this Docker version
+(29.6.2). Root cause was not further investigated (out of this drill's scope — this is a "does the
+documented recovery procedure work" drill, not a Docker-internals debugging session), but is worth
+a dedicated follow-up.
+
+**Recovery performed:** `docker start lis-api-1` — real, manual, immediate. Confirmed healthy
+(`/health` returning 200 from inside the container) **11 seconds** after issuing the start command.
+All other 5 containers were unaffected throughout. No data was at risk (Postgres itself was never
+touched).
+
+**Evidence level: E4** for "a real recovery procedure exists and works when performed" (manual
+`docker start`, 11-second recovery) — but this **downgrades**, not upgrades, confidence in the
+*automatic* recovery story the `restart: unless-stopped` policy was assumed to provide. **This is
+the single most important finding from this Phase 1 session**: an assumption (crashed containers
+self-heal) was tested for the first time and found false. Recorded as a genuine "documentation gap
+discovered," per this workstream's own instructions, not smoothed over.
+
+**Recommended follow-up (not implemented — out of this drill's scope, and correctly so):**
+investigate why `restart: unless-stopped` didn't fire for a `SIGKILL`-induced exit on this Docker
+version, and separately, whether the same gap would appear for an actual OOM-kill (which also
+delivers SIGKILL) — this staging droplet's own known tight memory budget (§ elsewhere in this
+document) makes that scenario a real, not hypothetical, future occurrence.
+
+### Production security state — Cloud Firewall removal (documented in full in `docs/pilot-remote-access.md`)
+
+Summary here; full detail (exact `ss -ltnp` output, `sshd -T` findings, `ufw`/`fail2ban` status) is
+in `docs/pilot-remote-access.md`'s 2026-09-25 update, not duplicated here. **Net finding: the
+missing Cloud Firewall exposes only SSH (port 22) to the public internet — no application port is
+newly exposed — but SSH itself now relies solely on key-only auth with no cloud- or host-level
+rate-limiting (`fail2ban` inactive) and `PermitRootLogin yes`.** A real, bounded risk, not an
+emergency; **no firewall was recreated and no SSH hardening was changed in this session**, per the
+explicit instruction not to make that call unilaterally.

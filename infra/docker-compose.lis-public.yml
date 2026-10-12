@@ -1,0 +1,67 @@
+# Manual, OPT-IN overlay for persistent public-domain access to lis-staging.
+# NEVER used by .github/workflows/deploy-staging.yml -- apply and remove
+# entirely by hand, always with explicit `-f` flags:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.lis-public.yml up -d ...
+#
+# Deliberately NOT named docker-compose.override.yml -- Compose auto-merges
+# a file with that exact name into every bare `docker compose` invocation in
+# the same directory, which would silently contaminate deploy-staging.yml's
+# own automated deploys. This name is inert unless explicitly passed via -f.
+#
+# Supersedes the abandoned docs/pilot-remote-access.md / docker-compose.pilot.yml
+# approach (raw public IP, no real TLS) -- that hit a real, structural dead
+# end: Docker's own nftables rules for published ports only admit traffic
+# arriving from *outside* the bridge a container is on, so a container could
+# never reach its own public IP's published port (confirmed via packet
+# capture 2026-10-12; see docs/plans/task-persistent-public-domain-access-
+# lis-staging.md section 2 for the full trace). A real hostname fixes this,
+# because unlike an IP literal, a hostname *does* get resolved via
+# `extra_hosts`/`/etc/hosts` -- this file relies on exactly that.
+#
+# What it changes vs. the normal staging stack (docker-compose.yml in this
+# same directory on the droplet):
+#   - adds a single nginx entry point, reachable only from this droplet's
+#     `siamas-caddy-1` container (joined to this compose project's network,
+#     see the runbook) -- NOT published on any host port. Real public HTTPS
+#     is terminated by siamas-caddy's own, already-working Let's Encrypt
+#     setup, with a second site block for lis-staging.duckdns.org added to
+#     its Caddyfile. No NODE_ENV override needed here -- cookies stay
+#     Secure, since the browser's actual connection is real HTTPS.
+#   - routes web/api's own OIDC discovery calls (KEYCLOAK_ISSUER_URL is
+#     deliberately the public hostname, to match what KC_HOSTNAME stamps
+#     into the discovery doc) to siamas-caddy's own container IP on this
+#     network via `extra_hosts`, so the request reaches Caddy -- which
+#     presents the real cert and proxies to nginx -- entirely via direct
+#     container-to-container networking. No host-published-port hairpin
+#     involved at all (that's what made the raw-IP approach impossible).
+#     The IP below must be updated (`docker inspect siamas-caddy-1 --format
+#     '{{index .NetworkSettings.Networks "lis_staging_net" "IPAddress"}}'`)
+#     any time siamas-caddy-1 itself is recreated, since Compose doesn't
+#     guarantee a stable internal IP across recreations, and since it's
+#     joined to this network by a one-off `docker network connect` (not
+#     recorded in siamas's own compose file) that won't survive a `docker
+#     compose down` on the siamas project either -- re-run that command if
+#     this ever starts failing after a siamas-side change.
+#
+# Postgres/Valkey/MinIO are untouched by this file -- neither gains any new
+# exposure. See the runbook doc above for the full setup steps and how to
+# revert (stop/remove this nginx container, remove the Caddy site block --
+# docker-compose.staging.yml/deploy-staging.yml are never touched, so the
+# next normal CI deploy is unaffected either way).
+services:
+  web:
+    extra_hosts:
+      ["lis-staging.duckdns.org:172.18.0.8"]
+
+  api:
+    extra_hosts:
+      ["lis-staging.duckdns.org:172.18.0.8"]
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    mem_limit: 32m
+    volumes:
+      ["./nginx-public.conf:/etc/nginx/conf.d/default.conf:ro"]
+    depends_on: [web, keycloak]

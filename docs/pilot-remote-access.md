@@ -1,6 +1,44 @@
 # Temporary public-IP access for phone testing (lis-staging)
 
+**SUPERSEDED 2026-10-12 — this entire raw-IP approach is abandoned.** It hit a real, structural
+dead end: Docker's own nftables rules for published ports only admit traffic from *outside* the
+bridge a container is on, so `web`/`api` could never reach their own public IP's published port
+for OIDC self-discovery (confirmed via packet capture; see section 10-12 below for the full
+investigation). **Current live access is a real domain instead**:
+`https://lis-staging.duckdns.org`, via `infra/docker-compose.lis-public.yml`/
+`infra/nginx-public.conf` — see `docs/plans/task-persistent-public-domain-access-lis-staging.md`
+for the full design and `project-pilot-remote-access` memory for current status. Everything below
+is kept as institutional memory (why the raw-IP approach doesn't work, documented from direct
+investigation), not as a live runbook — do not follow section 4 of this document.
+
 Status: manual runbook, not automated. Not referenced by any CI workflow.
+
+## 2026-10-12 update — port 80 AND 8080 both conflict, moved to port 8081
+
+**Section 4 was first actually executed on 2026-10-12, and the original plan (nginx on port 80)
+does not work on this droplet.** `157.230.10.221:80` and `:443` are already owned by an entirely
+unrelated app sharing this box, `siamas-caddy-1` (8 days uptime at time of discovery) — confirmed
+via `docker ps` and the dockerd log: `Bind for 157.230.10.221:80 failed: port is already
+allocated`. `keycloak`/`api`/`web` had already been recreated with pilot config before this was
+caught; `nginx` itself never started (stuck in `Created`).
+
+**First fix attempt (port 8080) also failed** — not caught until actually tried: Keycloak's own
+container already publishes `127.0.0.1:8080` (pre-existing, unrelated to this overlay; see section
+11). `docker: Bind for 127.0.0.1:8080 failed: port is already allocated` on `lis-nginx-1` startup.
+
+**Resolution: the pilot nginx now binds host port 8081** (`infra/docker-compose.pilot.yml`
+`ports: ["8081:80"]`), confirmed free via `ss -ltnp` (only 22, 80, 443, 3000, 8080, and Tailscale's
+own ports were in use). This does not touch `siamas-caddy-1` or Keycloak's existing binding —
+zero risk to either. Every `<DROPLET_IP>` reference below now means `http://157.230.10.221:8081`,
+not the bare IP. Update `KEYCLOAK_PUBLIC_URL`/`KEYCLOAK_ISSUER_URL`/`PUBLIC_APP_URL` accordingly —
+they must include `:8081` or the Keycloak hairpin discovery check (section 9) will fail.
+
+**Also note**: a `.env.tailscale-backup` was made *after* `.env` had already been flipped to
+public values in an earlier, parallel attempt that same session — so it does not hold the
+original tailnet values. This is not fatal: `deploy-staging.yml` (lines ~227-283) regenerates
+`.env` from scratch from `MAGIC_DNS_NAME`/secrets on every normal CI deploy, so a plain `git push`
+to `main` (or manually re-running that workflow) is the reliable revert path, not restoring from
+this backup file.
 
 ## 2026-09-25 update — droplet access established, real firewall change in effect
 
@@ -77,8 +115,8 @@ available, add the public key above to `/root/.ssh/authorized_keys`, then
 either run the steps in section 4 by hand, or have Claude run them via
 `ssh -i ~/.ssh/lis_staging_pilot root@<DROPLET_IP>`.
 Purpose: let a phone browser on a different network reach the existing
-`lis-staging` droplet at `http://<DROPLET_IP>` and complete a real Keycloak
-login, for a short pilot/testing session.
+`lis-staging` droplet at `http://<DROPLET_IP>:8081` and complete a real
+Keycloak login, for a short pilot/testing session.
 
 **This intentionally changes lis-staging's security posture for as long as
 it's applied.** lis-staging is normally reachable only over Tailscale
@@ -150,7 +188,7 @@ It is not necessary for OIDC to function, and not used in this runbook.
 ## 3. Recommended architecture for this pilot
 
 ```
-Phone --HTTP--> droplet:80 (nginx, new)
+Phone --HTTP--> droplet:8081 (nginx, new)
                    |-- /realms/*, /resources/*  --> keycloak:8080 (internal)
                    \-- everything else           --> web:3000 (internal)
                                                         |
@@ -161,7 +199,8 @@ Phone --HTTP--> droplet:80 (nginx, new)
                                                      postgres (internal only)
 ```
 
-One new public entry point (port 80, already allowed by the firewall).
+One new public entry point (port 8081, already allowed by the firewall —
+see the 2026-10-12 update above for why not port 80 or 8080).
 Postgres/Valkey/MinIO/api gain zero new exposure. Keycloak's `/admin/*` is
 deliberately **not** proxied — admin access stays on the existing
 `127.0.0.1:8080` binding only, reachable by SSH tunnel if ever needed, never
@@ -195,9 +234,9 @@ ssh root@<DROPLET_IP>
 cd /opt/lis
 cp .env .env.tailscale-backup
 
-sed -i "s#^KEYCLOAK_PUBLIC_URL=.*#KEYCLOAK_PUBLIC_URL=http://<DROPLET_IP>#" .env
-sed -i "s#^KEYCLOAK_ISSUER_URL=.*#KEYCLOAK_ISSUER_URL=http://<DROPLET_IP>/realms/lis#" .env
-sed -i "s#^PUBLIC_APP_URL=.*#PUBLIC_APP_URL=http://<DROPLET_IP>#" .env
+sed -i "s#^KEYCLOAK_PUBLIC_URL=.*#KEYCLOAK_PUBLIC_URL=http://<DROPLET_IP>:8081#" .env
+sed -i "s#^KEYCLOAK_ISSUER_URL=.*#KEYCLOAK_ISSUER_URL=http://<DROPLET_IP>:8081/realms/lis#" .env
+sed -i "s#^PUBLIC_APP_URL=.*#PUBLIC_APP_URL=http://<DROPLET_IP>:8081#" .env
 
 # 3. Recreate exactly the containers that need the new config/image. This
 #    also re-imports lis-realm.json fresh (keycloak has no persisted
@@ -217,9 +256,9 @@ curl -sSf http://localhost/realms/lis/.well-known/openid-configuration \
 
 | Variable | Old (tailnet) value | New (pilot) value |
 |---|---|---|
-| `KEYCLOAK_PUBLIC_URL` | `https://<magicdns>:8443` | `http://<DROPLET_IP>` |
-| `KEYCLOAK_ISSUER_URL` | `https://<magicdns>:8443/realms/lis` | `http://<DROPLET_IP>/realms/lis` |
-| `PUBLIC_APP_URL` | `https://<magicdns>` | `http://<DROPLET_IP>` |
+| `KEYCLOAK_PUBLIC_URL` | `https://<magicdns>:8443` | `http://<DROPLET_IP>:8081` |
+| `KEYCLOAK_ISSUER_URL` | `https://<magicdns>:8443/realms/lis` | `http://<DROPLET_IP>:8081/realms/lis` |
+| `PUBLIC_APP_URL` | `https://<magicdns>` | `http://<DROPLET_IP>:8081` |
 | `web`'s `NODE_ENV` | `production` | `staging` (via the overlay file — disables `Secure` cookies) |
 
 Everything else (`APP_DATABASE_URL`, `SESSION_SECRET`, `SIGNING_SECRET`,
@@ -239,12 +278,12 @@ redirect URI edits are needed. `KC_HTTP_ENABLED=true` and
 
 None. Port 80 is already open in `infra/main.tf`. No new `digitalocean_
 firewall` rule, no Terraform apply needed. The only new Docker-side
-exposure is the new `nginx` container's `80:80` binding, added by the
+exposure is the new `nginx` container's `8081:80` binding, added by the
 overlay file.
 
 ## 8. The phone test
 
-Open `http://<DROPLET_IP>` in a phone browser **not** on the droplet's
+Open `http://<DROPLET_IP>:8081` in a phone browser **not** on the droplet's
 tailnet or the same LAN. Log in with `test-user` / `test-password`
 (tenant `00000000-0000-0000-0000-000000000001` — see
 `infra/keycloak/README.md`). Walk through: dashboard loads → patient list
@@ -261,14 +300,20 @@ request lines appear in real time.
 
 ## 9. Troubleshooting
 
-- **nginx container won't bind port 80**: something else on the droplet
-  already listens there. Check with `ss -ltnp | grep :80`.
+- **nginx container won't bind its host port**: something else on the droplet
+  already listens there. Check with `ss -ltnp | grep :8081`. Confirmed on
+  2026-10-12: ports 80 (`siamas-caddy-1`, an unrelated app) and 8080
+  (Keycloak's own pre-existing `127.0.0.1:8080` binding) are both
+  permanently unavailable on this droplet — which is why this overlay uses
+  8081. Don't switch to either of those without resolving the conflict
+  first; re-run `ss -ltnp` to pick a genuinely free port if 8081 ever
+  collides with something new.
 - **Login redirects to Keycloak but then fails / wrong-host error on
   callback**: `KEYCLOAK_ISSUER_URL`/`KEYCLOAK_PUBLIC_URL`/`PUBLIC_APP_URL`
   don't all agree, or `keycloak`/`web`/`api` weren't actually recreated —
   confirm with `docker compose exec web env | grep -E 'PUBLIC_APP_URL|KEYCLOAK'`.
 - **`web`/`api` container fails discovery against Keycloak
-  (`ECONNREFUSED`/timeout to `http://<DROPLET_IP>/realms/lis`)**: this is
+  (`ECONNREFUSED`/timeout to `http://<DROPLET_IP>:8081/realms/lis`)**: this is
   the one real unknown in this design — `KEYCLOAK_ISSUER_URL` is
   deliberately the *public* IP (not the internal `keycloak:8080` hostname)
   so it matches what `KC_HOSTNAME` stamps into the discovery document
@@ -278,8 +323,8 @@ request lines appear in real time.
   public IP is bound directly to its own interface, not behind a NAT/LB),
   and the existing tailnet setup already relies on the same trick, but
   verify with `docker compose exec web curl -sSf
-  http://<DROPLET_IP>/realms/lis/.well-known/openid-configuration` if login
-  hangs or 502s.
+  http://<DROPLET_IP>:8081/realms/lis/.well-known/openid-configuration` if
+  login hangs or 502s.
 - **Browser shows the login page but the session doesn't stick / bounces
   back to login**: `web`'s `NODE_ENV` didn't actually flip — confirm with
   `docker compose exec web env | grep NODE_ENV` (must be `staging`, not

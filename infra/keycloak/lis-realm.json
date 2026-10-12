@@ -171,11 +171,13 @@
       "serviceAccountsEnabled": false,
       "redirectUris": [
         "http://localhost:3000/*",
-        "https://lis-staging.taila0fbf9.ts.net/*"
+        "https://lis-staging.taila0fbf9.ts.net/*",
+        "https://lis-staging.duckdns.org/*"
       ],
       "webOrigins": [
         "http://localhost:3000",
-        "https://lis-staging.taila0fbf9.ts.net"
+        "https://lis-staging.taila0fbf9.ts.net",
+        "https://lis-staging.duckdns.org"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",

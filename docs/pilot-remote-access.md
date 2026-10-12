@@ -2,7 +2,56 @@
 
 Status: manual runbook, not automated. Not referenced by any CI workflow.
 
-## Current progress / where this was left off
+## 2026-09-25 update — droplet access established, real firewall change in effect
+
+**The DigitalOcean console/SSH blocker described below is resolved.** What actually happened,
+recorded here as fact, not narrated as if it were still the plan:
+
+1. The user did not have DigitalOcean console access. **Destroying the droplet's DigitalOcean
+   Cloud Firewall (`lis-staging-fw`, defined in `infra/main.tf`) restored Web Console access** —
+   the console had apparently been unreachable because of the firewall, not an account-login
+   problem. This was the user's own action, done before this session resumed work.
+2. **`lis-staging` is currently running with no DigitalOcean Cloud Firewall attached.** Do not
+   recreate it (e.g., via `terraform apply`) without a specific, documented reason — re-adding it
+   without first confirming what it was actually blocking risks reintroducing the Web Console
+   problem that motivated removing it.
+3. The SSH public key already documented below (`claude-pilot-access`) was added to
+   `/root/.ssh/authorized_keys` via the Web Console. **SSH access from this agent's local
+   environment to `root@157.230.10.221` is confirmed working** as of this session
+   (`ssh -i ~/.ssh/lis_staging_pilot root@157.230.10.221`).
+
+### Real security implication of the missing Cloud Firewall — inspected directly on the droplet
+
+This is not a guess; it was checked live:
+
+- **Host-level firewall (`ufw`) is inactive.** The DigitalOcean Cloud Firewall was, until it was
+  removed, the *only* network-layer access control in front of this droplet.
+- **Actual current exposure, read from `ss -ltnp` on the droplet itself:** only **SSH (port 22)** is
+  bound to `0.0.0.0` (all interfaces) and therefore reachable from the public internet. Every
+  application port (`web` on 3000, `keycloak` on 8080) is bound to `127.0.0.1` only; ports 443/8443
+  are bound only to the Tailscale interface. **Postgres, Valkey, MinIO, and the API (port 4000)
+  publish no host port at all.** Removing the Cloud Firewall did not expose the application stack —
+  it removed the one layer that would otherwise have rate-limited/filtered inbound connections to
+  port 22 specifically.
+- **SSH itself is reasonably hardened independent of the Cloud Firewall:** `PasswordAuthentication
+  no` (key-only login) is confirmed via `sshd -T`. `PermitRootLogin yes` is also confirmed —
+  root login over SSH is directly permitted, which is a real, if common, hardening gap now that
+  SSH is the one fully-public-facing port.
+- **`fail2ban` is not installed/active.** There is currently no automated banning of repeated
+  connection attempts against SSH. Combined with `PermitRootLogin yes` and no Cloud Firewall, this
+  is the one real, non-trivial residual risk from this change: an attacker can make unlimited
+  connection attempts against SSH with no cloud-level or host-level rate limiting, relying entirely
+  on key-based auth (which is not brute-forceable in practice) to hold the line.
+
+**Net assessment:** the missing Cloud Firewall does not expose any application data (nothing beyond
+SSH is publicly reachable), but it does remove a layer of defense specifically around SSH, on a box
+where root login is directly permitted and no intrusion-prevention tool is running. This is a real,
+bounded finding to act on when convenient (recreating a firewall rule permitting only SSH from known
+IPs, or installing `fail2ban`, or setting `PermitRootLogin no` with a dedicated non-root sudo user)
+— not an emergency, but not nothing either. No firewall was recreated and no SSH hardening was
+changed in this session, per the explicit instruction not to.
+
+## Original progress / where this was left off (superseded by the above, kept for history)
 
 An SSH keypair was generated locally (on the machine running Claude Code)
 specifically so Claude could apply this runbook directly against the
@@ -16,12 +65,12 @@ droplet instead of the user running each command by hand:
   ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDEhggdctJ4dOr1JKLrd2cenG/6QBLhhBSjXS66PX1JV claude-pilot-access
   ```
 
-**Blocked**: the user does not currently have access to the DigitalOcean
-console (needed to add the key via the recovery console, or to reset the
-root password) and has no other terminal open to the droplet right now.
-Nothing has been applied to the droplet yet — no `.env` changes, no
-container recreation, no file copies. `infra/docker-compose.pilot.yml` and
-`infra/nginx-pilot.conf` exist in the repo but are not yet on the droplet.
+**Historical note (resolved 2026-09-25, see above):** the user did not have DigitalOcean console
+access; destroying the Cloud Firewall fixed this. Nothing from this runbook's own §4 "DO THIS NOW"
+steps (the phone-access overlay itself) has been applied yet — only the backup/restore/Sentry/
+recovery-drill verification work in `docs/world-class-execution-plan-8-2026-09.md`'s Phase 1 section
+has used this newly-established access so far. `infra/docker-compose.pilot.yml` and
+`infra/nginx-pilot.conf` still exist in the repo but are still not on the droplet.
 
 **To resume**: once DO console access (or any other existing shell) is
 available, add the public key above to `/root/.ssh/authorized_keys`, then

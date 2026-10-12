@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react';
 import Link from 'next/link';
 import { Button, Card, CardContent, CardHeader, CardTitle, FormField, Input } from '@lis/ui';
+import { useUnsavedChangesGuard } from '@/lib/use-unsaved-changes-guard';
 import { createCase } from './actions';
 import { createCaseInitialState } from './types';
 
@@ -57,6 +58,10 @@ export function CaseAccessionForm({ orderId }: { orderId: string }) {
   const [state, formAction, pending] = useActionState(createCase, createCaseInitialState);
   const [rows, setRows] = useState<PartRow[]>([newRow()]);
   const [clientError, setClientError] = useState<string | undefined>(undefined);
+  useUnsavedChangesGuard(
+    state.status !== 'created' &&
+      rows.some((row) => row.specimenType.trim() !== '' || row.rejectionReason !== ''),
+  );
 
   if (state.status === 'created') {
     return (

@@ -15,6 +15,7 @@ import {
   Input,
   Label,
 } from '@lis/ui';
+import { useUnsavedChangesGuard } from '@/lib/use-unsaved-changes-guard';
 import { createOrder } from './actions';
 import { createOrderInitialState, type CreateOrderState } from './types';
 
@@ -59,6 +60,10 @@ export function OrderBuilderForm({
   const [selectedTestIds, setSelectedTestIds] = useState<Set<string>>(new Set());
   const [selectedPanelIds, setSelectedPanelIds] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState('');
+  // Set by the form-level onChange below for named fields only (priority,
+  // referring facility, requesting doctor) -- the unnamed catalog filter box
+  // holds nothing worth warning about.
+  const [fieldsEdited, setFieldsEdited] = useState(false);
 
   const testsById = useMemo(() => new Map(catalog.tests.map((t) => [t.id, t])), [catalog.tests]);
 
@@ -110,6 +115,11 @@ export function OrderBuilderForm({
     return ids;
   }, [selectedTestIds, selectedPanelIds, catalog.panels]);
 
+  useUnsavedChangesGuard(
+    state.status !== 'created' &&
+      (selectedTestIds.size > 0 || selectedPanelIds.size > 0 || fieldsEdited),
+  );
+
   if (state.status === 'created') {
     return (
       <Card className="mx-auto max-w-lg">
@@ -143,7 +153,13 @@ export function OrderBuilderForm({
   const catalogIsEmpty = catalog.tests.length === 0 && catalog.panels.length === 0;
 
   return (
-    <form action={formAction} className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
+    <form
+      action={formAction}
+      onChange={(e) => {
+        if (e.target instanceof Element && e.target.getAttribute('name')) setFieldsEdited(true);
+      }}
+      className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]"
+    >
       <input type="hidden" name="patientId" value={patientId} />
       <input type="hidden" name="testDefinitionIds" value={JSON.stringify([...selectedTestIds])} />
       <input type="hidden" name="panelIds" value={JSON.stringify([...selectedPanelIds])} />

@@ -50,16 +50,24 @@ export class KeycloakUserService {
     private readonly auth: KeycloakAdminAuthService,
   ) {}
 
-  private get issuerUrl(): string {
-    return (
-      process.env.KEYCLOAK_ISSUER_URL ?? 'http://localhost:8080/realms/lis'
-    );
-  }
-
   private get adminBaseUrl(): string {
-    // KEYCLOAK_ISSUER_URL is .../realms/lis -- the Admin REST API lives at
-    // .../admin/realms/lis, not under /realms/lis itself.
-    return this.issuerUrl.replace('/realms/', '/admin/realms/');
+    // Deliberately NOT derived from KEYCLOAK_ISSUER_URL (unlike
+    // KeycloakAdminAuthService's token-fetch path, which correctly reuses
+    // it) -- confirmed live 2026-10-14 against the real lis-staging
+    // droplet: once KEYCLOAK_ISSUER_URL became the public domain
+    // (docs/plans/task-persistent-public-domain-access-lis-staging.md),
+    // deriving .../admin/realms/lis from it sent every admin-API call out
+    // over the public internet, where infra/nginx-public.conf correctly
+    // refuses to proxy /admin/* to Keycloak (by design -- Keycloak's admin
+    // API must never be publicly reachable) and the request fell through to
+    // apps/web instead, which returned 405. The token endpoint itself
+    // (/realms/.../protocol/openid-connect/token) is unaffected by this --
+    // nginx-public.conf does proxy /realms/* -- so only this admin-API base
+    // needs an internal-only URL.
+    return (
+      process.env.KEYCLOAK_INTERNAL_ADMIN_URL ??
+      'http://localhost:8080/admin/realms/lis'
+    );
   }
 
   async createUser(input: CreateUserInput): Promise<CreatedUser> {

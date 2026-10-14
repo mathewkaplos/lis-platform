@@ -166,6 +166,14 @@ services:
       # even though api itself is never browser-facing -- it's a JWT
       # issuer-validation value, not a reachability one.
       KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL}
+      # task-fix-onboarding-keycloak-admin-url (2026-10-14): deliberately
+      # NOT derived from KEYCLOAK_ISSUER_URL above -- that's now a public
+      # domain, and apps/api/src/onboarding/keycloak-user.service.ts's admin
+      # API calls must stay internal-only (infra/nginx-public.conf
+      # deliberately never proxies /admin/* to Keycloak). Always the
+      # container-internal hostname, independent of whatever the browser-
+      # facing issuer is.
+      KEYCLOAK_INTERNAL_ADMIN_URL: http://keycloak:8080/admin/realms/lis
       # FEAT-059 (ADR-0051): packages/db/src/case-report-signature.ts reads
       # this at call time (case.controller.ts finalize()/amend()) -- same
       # secret-management convention as web's SESSION_SECRET below.

@@ -260,19 +260,26 @@ jobs:
           # before this deploy step will have a real value -- same
           # generate-and-store convention as POSTGRES_PASSWORD etc.
           MINIO_ROOT_PASSWORD=${{ secrets.MINIO_ROOT_PASSWORD }}
-          # #531: real values for two of the machine service-account clients
-          # infra/keycloak/lis-realm.json checks in only as dev-only
-          # placeholders (`dev-only-lis-<name>-secret`) -- that file is
-          # imported into this real staging Keycloak verbatim on every
-          # deploy (see the client-secret rotation block below), so without
-          # this, staging would authenticate these clients using a secret
-          # sitting in git. ONBOARDING_CLIENT_SECRET also gets read directly
-          # by apps/api's own KeycloakAdminAuthService (see api's
-          # environment: block in docker-compose.staging.yml) -- lis-gateway/
-          # lis-interop deliberately excluded, neither is deployed to
-          # staging yet (task-531 proposal §10).
-          ONBOARDING_CLIENT_SECRET=${{ secrets.ONBOARDING_CLIENT_SECRET }}
-          PLATFORM_ANALYTICS_CLIENT_SECRET=${{ secrets.PLATFORM_ANALYTICS_CLIENT_SECRET }}
+          # #531 (original) / task-fix-deploy-secret-rotation-put-noop
+          # (2026-10-14, current approach): two of the machine
+          # service-account clients (lis-onboarding, lis-platform-analytics)
+          # need a real secret, not infra/keycloak/lis-realm.json's checked-in
+          # dev-only placeholder (`dev-only-lis-<name>-secret`), which that
+          # file re-imports verbatim on every deploy. Originally this tried
+          # to *pin* a chosen GitHub-repo-secret value into Keycloak via a
+          # full-representation client PUT -- confirmed live, repeatedly,
+          # that this PUT silently does not update the credential Keycloak
+          # actually validates against (only the dedicated regenerate
+          # endpoint does), so both clients ran on the dev-only placeholder
+          # on every real deploy despite the PUT reporting success. Fixed by
+          # abandoning pinning entirely: the client-secret rotation block
+          # below regenerates each client's secret via that proven-working
+          # endpoint and appends the *real* resulting value to this same
+          # .env file directly -- Keycloak is now the source of truth each
+          # deploy, so the two can never silently disagree. Neither
+          # ONBOARDING_CLIENT_SECRET nor PLATFORM_ANALYTICS_CLIENT_SECRET is
+          # a GitHub repo secret anymore; lis-gateway/lis-interop remain
+          # deliberately excluded, neither deployed to staging yet.
           ENVEOF
           # Appended separately, not inside the quoted heredoc above -- these
           # need real bash variable expansion (computed this run, not a GH
@@ -459,48 +466,61 @@ jobs:
                   echo "WARNING: unmanagedAttributePolicy PUT failed -- api/web will still restart" >&2
               fi
 
-              # #531 (task-531 proposal): infra/keycloak/lis-realm.json's
-              # per-client `secret` field is a checked-in dev-only
-              # placeholder, imported into this real Keycloak verbatim by
-              # --import-realm above -- same must-reapply-every-deploy shape
-              # as unmanagedAttributePolicy just above (Keycloak has no
-              # persisted volume on this droplet, see the `docker compose
-              # rm -f -s keycloak` comment above; entry #8/#10,
-              # authentication Skill). Same GET/PUT idiom, different
-              # endpoint: fetch each client's real Keycloak UUID by its
-              # clientId, then PUT the full representation back with
-              # `secret` overridden to the real repo-secret value. Uses the
-              # full-representation PUT, not Keycloak's own
-              # POST .../client-secret regenerate endpoint -- that endpoint
-              # picks a random value server-side with no way to pin it to
-              # the exact value the consuming service's own env var also
-              # needs (ONBOARDING_CLIENT_SECRET, below). Non-fatal by
-              # design, same reasoning as unmanagedAttributePolicy above: a
-              # skipped rotation for one deploy leaves that one client on
-              # its prior secret (which api/web already have wired via
-              # their own environment: block), not a site outage.
-              for CLIENT_PAIR in "lis-onboarding:$ONBOARDING_CLIENT_SECRET" "lis-platform-analytics:$PLATFORM_ANALYTICS_CLIENT_SECRET"; do
+              # task-fix-deploy-secret-rotation-put-noop (2026-10-14):
+              # infra/keycloak/lis-realm.json's per-client `secret` field is
+              # a checked-in dev-only placeholder, imported into this real
+              # Keycloak verbatim by --import-realm above -- same
+              # must-reapply-every-deploy shape as unmanagedAttributePolicy
+              # just above (Keycloak has no persisted volume on this
+              # droplet, see the `docker compose rm -f -s keycloak` comment
+              # above; entry #8/#10, authentication Skill).
+              #
+              # Originally (#531) this tried to *pin* each client's secret
+              # to a chosen GitHub-repo-secret value via a full-
+              # representation GET/merge/PUT. Confirmed live, repeatedly,
+              # against the real droplet: that PUT returns 204 and even the
+              # GET-based client-secret-length endpoint reflects the new
+              # value, but the credential Keycloak actually validates
+              # against for client_credentials/password grants never
+              # changes -- both clients silently ran on the dev-only
+              # placeholder on every real deploy despite this step
+              # "succeeding." Only the dedicated regenerate endpoint below
+              # actually updates the auth-usable secret (confirmed the same
+              # way: an immediate, real token-endpoint 200 using the value
+              # it returns, where the PUT-based value got 401
+              # unauthorized_client moments before).
+              #
+              # Fix: stop pinning entirely. Regenerate each client's secret
+              # (Keycloak chooses the value -- no pinning needed since
+              # nothing elsewhere needs to predict it in advance) and
+              # append the *real* resulting value directly to this same
+              # .env file, so Keycloak and api's own env can never silently
+              # disagree. ONBOARDING_CLIENT_SECRET/PLATFORM_ANALYTICS_CLIENT_SECRET
+              # are no longer GitHub repo secrets -- this is their only
+              # source now. Non-fatal by design, same reasoning as
+              # unmanagedAttributePolicy above: a skipped regeneration for
+              # one deploy leaves that one client's env var missing this
+              # deploy (not a site outage -- only that one client's calls
+              # fail until the next successful deploy).
+              for CLIENT_PAIR in "lis-onboarding:ONBOARDING_CLIENT_SECRET" "lis-platform-analytics:PLATFORM_ANALYTICS_CLIENT_SECRET"; do
                 CLIENT_ID="${CLIENT_PAIR%%:*}"
-                NEW_SECRET="${CLIENT_PAIR#*:}"
+                ENV_VAR_NAME="${CLIENT_PAIR#*:}"
                 CLIENT_UUID=$(curl -sSf --connect-timeout 10 --max-time 10 \
                   "http://localhost:8080/admin/realms/lis/clients?clientId=$CLIENT_ID" \
                   -H "Authorization: Bearer $ADMIN_TOKEN" < /dev/null | jq -r '.[0].id // empty' || true)
                 if [ -z "$CLIENT_UUID" ]; then
-                  echo "WARNING: could not resolve Keycloak client UUID for $CLIENT_ID -- skipping its secret rotation this deploy" >&2
+                  echo "WARNING: could not resolve Keycloak client UUID for $CLIENT_ID -- skipping its secret regeneration this deploy, $ENV_VAR_NAME will be missing from .env" >&2
                   continue
                 fi
-                CLIENT_REPR=$(curl -sSf --connect-timeout 10 --max-time 10 \
-                  "http://localhost:8080/admin/realms/lis/clients/$CLIENT_UUID" \
-                  -H "Authorization: Bearer $ADMIN_TOKEN" < /dev/null || true)
-                if [ -z "$CLIENT_REPR" ]; then
-                  echo "WARNING: could not fetch Keycloak client representation for $CLIENT_ID -- skipping its secret rotation this deploy" >&2
+                NEW_SECRET=$(curl -sSf --connect-timeout 10 --max-time 10 -X POST \
+                  "http://localhost:8080/admin/realms/lis/clients/$CLIENT_UUID/client-secret" \
+                  -H "Authorization: Bearer $ADMIN_TOKEN" < /dev/null | jq -r '.value // empty' || true)
+                if [ -z "$NEW_SECRET" ]; then
+                  echo "WARNING: could not regenerate secret for $CLIENT_ID -- skipping, $ENV_VAR_NAME will be missing from .env this deploy" >&2
                   continue
                 fi
-                NEW_CLIENT_REPR=$(echo "$CLIENT_REPR" | jq --arg secret "$NEW_SECRET" '. + {secret: $secret}')
-                curl -sS --connect-timeout 10 --max-time 10 -X PUT "http://localhost:8080/admin/realms/lis/clients/$CLIENT_UUID" \
-                  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-                  -d "$NEW_CLIENT_REPR" -w "\n$CLIENT_ID secret PUT: HTTP %{http_code}\n" < /dev/null || \
-                  echo "WARNING: $CLIENT_ID secret PUT failed -- api/web will still restart" >&2
+                echo "${ENV_VAR_NAME}=${NEW_SECRET}" >> .env
+                echo "$CLIENT_ID secret regenerated and written to .env"
               done
             fi
           fi

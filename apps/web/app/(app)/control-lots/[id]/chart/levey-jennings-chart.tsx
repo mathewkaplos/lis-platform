@@ -1,6 +1,12 @@
 'use client';
 
-import { Badge, DataTable, type DataTableColumn } from '@lis/ui';
+import {
+  Badge,
+  DataTable,
+  PointMarker,
+  chartSeverityColor as severityColor,
+  type DataTableColumn,
+} from '@lis/ui';
 
 /**
  * TASK-069 (FEAT-019, Stitch §14.2/§14.4). Mirrors TASK-068's own
@@ -55,76 +61,6 @@ const PLOT_HEIGHT = CHART_HEIGHT - MARGIN.top - MARGIN.bottom;
 // vertical range extends a half-SD beyond the widest band actually needed,
 // so an out-of-range point is never clipped at the plot's own edge.
 const BAND_LIMIT = 3;
-
-// UI-009 (docs/ui-review/03-roadmap.md): found live while verifying this file's own shape fix
-// below -- `--color-brand`/`--color-warning`/`--color-danger` (the names used here before this
-// fix) are never actually emitted as real CSS custom properties. Tailwind v4's `@theme inline`
-// block (apps/web/app/globals.css) only uses those `--color-*` names to generate utility classes
-// (e.g. `.bg-brand`) -- it does not expose them for arbitrary `var()` use elsewhere, confirmed
-// directly: `getComputedStyle(document.documentElement).getPropertyValue('--color-brand')` is
-// empty, while `--accent` (the raw token, defined directly in :root/dark-mode blocks, not
-// through @theme inline) resolves correctly. Every marker on this chart has been rendering
-// black, in both themes, since this function was written -- not something this task introduced,
-// caught only because UI-009 added the first real rendered verification of this component.
-// UI-020 (docs/ui-review/03-roadmap.md): 'none' uses --chart-in-control, not --accent directly
-// -- --accent measures only ~2.85:1 against the dark-mode surface (fails WCAG's 3:1 non-text
-// minimum, confirmed by computation during UI-009's own verification); --chart-in-control is the
-// same value in light mode (still passes 6.29:1) but a lighter indigo in dark mode (~6.01:1).
-function severityColor(severity: 'none' | 'warning' | 'rejection'): string {
-  if (severity === 'rejection') return 'var(--danger)';
-  if (severity === 'warning') return 'var(--warning)';
-  return 'var(--chart-in-control)';
-}
-
-/**
- * UI-009 (docs/ui-review/03-roadmap.md): severity was previously color-only at the point level
- * (same radius for warning/rejection, only the fill color differed) -- the one flagged exception
- * to this app's "never color alone" rule (docs/design.md). Distinct shapes, not just color,
- * survive grayscale/color-blind viewing and a photocopied/printed chart: circle (in control,
- * unchanged), triangle (warning), diamond (rejection) -- a conventional severity-shape mapping,
- * not invented here. Legend below mirrors the same shapes.
- */
-function PointMarker({
-  severity,
-  cx,
-  cy,
-  r,
-}: {
-  severity: 'none' | 'warning' | 'rejection';
-  cx: number;
-  cy: number;
-  r: number;
-}) {
-  const fill = severityColor(severity);
-  const common = { fill, stroke: 'var(--surface)', strokeWidth: 1.5 };
-
-  if (severity === 'warning') {
-    // Upward triangle, roughly equal visual weight to the circle/diamond at the same r.
-    const points = [
-      [cx, cy - r * 1.15],
-      [cx - r, cy + r * 0.75],
-      [cx + r, cy + r * 0.75],
-    ]
-      .map(([x, y]) => `${x},${y}`)
-      .join(' ');
-    return <polygon points={points} {...common} />;
-  }
-
-  if (severity === 'rejection') {
-    // Diamond (rotated square).
-    const points = [
-      [cx, cy - r],
-      [cx + r, cy],
-      [cx, cy + r],
-      [cx - r, cy],
-    ]
-      .map(([x, y]) => `${x},${y}`)
-      .join(' ');
-    return <polygon points={points} {...common} />;
-  }
-
-  return <circle cx={cx} cy={cy} r={r} {...common} />;
-}
 
 /**
  * The classic Levey-Jennings plot: mean center line, shaded ±1/2/3 SD bands,

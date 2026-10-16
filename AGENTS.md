@@ -565,3 +565,46 @@ re-discovering it via a filesystem search each session. Confirmed 2026-08-18
   `reset --hard` (which this project's own guard hook correctly refuses
   regardless, per the 2026-07-26 data-loss incident above) — push the new
   branch and open the PR normally from there.
+- **Any command piped through `| tail`, `| head`, `| grep`, etc. for readability returns the
+  pipe's own exit code by default, not the real command's — always run verification commands
+  (builds, test runners, a11y/lint checks) with `set -o pipefail` in the shell, or capture the
+  real exit code explicitly via `${PIPESTATUS[0]}` before any pipe.** Confirmed costly
+  2026-10-16 (UI-002 Storybook/`packages/ui` verification session): `pnpm build-storybook |
+  tail -15; echo $?` printed `0` twice in a row while the real command had actually failed
+  outright both times (`pnpm: command not found`, a PATH-export mistake in the shell call) — the
+  `tail` pipe's own success masked it completely. Both times, a stale pre-fix build kept getting
+  tested against afterward, producing a misleading "2 suites failing" `storybook-a11y` result
+  that took real investigation (inspecting the actual built JS bundle's content, not just the
+  test runner's summary line) to trace back to "the rebuild never ran" rather than a genuine
+  accessibility regression. Never trust a trailing `echo $?`/`| tail` combination's apparent
+  success on its own — when in doubt, inspect the actual build output directly.
+- **A per-story axe/a11y rule override (`parameters.a11y.config.rules` or equivalent) requires
+  cited behavioural evidence in a comment next to the override, and must be flagged in that
+  unit's own report for explicit owner approval — never a global rule disable, and never an
+  override justified only by "this looks like a false positive."** Established 2026-10-16
+  (UI-014, `docs/ui-review/03-roadmap.md`): `dropdown-menu.stories.tsx`'s `Open` story disables
+  axe's `aria-hidden-focus` rule for itself, but only after a real Playwright run against that
+  exact story (focus the open menu, press Tab/Shift+Tab 5x each, log
+  `document.activeElement` after every press) empirically proved focus never reaches the
+  `aria-hidden` subtree axe was flagging — the override's own comment cites that test and its
+  result directly, not just an assertion that it's "probably fine." The same incident is why
+  `packages/ui/.storybook/test-runner.ts` reads each story's own `parameters.a11y.config.rules`
+  via `getStoryContext` rather than using one fixed global `axeOptions` for every story — a
+  global disable would have silenced the rule everywhere, not just for the one verified case.
+- **Each accepted unit is merged to `main` before the next branch is created — never branch the
+  next unit off an older `main` while prior units sit unmerged.** Established 2026-10-16 (the
+  UI-001/UI-002/UI-013/UI-014 roadmap units): branching UI-009 before UI-001 was merged meant
+  `levey-jennings-chart.tsx` still had the exact contrast bug UI-001 had already fixed elsewhere,
+  forcing a duplicate fix later removed during a rebase once UI-001 actually merged. Branching in
+  dependency order from a stale base doesn't avoid the dependency — it just defers the conflict
+  and duplicates the fix in the meantime.
+- **Once a unit is accepted, push its branch and open its PR — never push directly to `main`,
+  and never merge a PR; the repo owner merges on GitHub.** Established 2026-10-16: `gh` was
+  unauthenticated for several units' worth of this engagement, so earlier "accepted" units were
+  merged into *local* `main` only (`git merge --no-ff`), with `origin/main` never updated and no
+  PR ever opened — real work, correctly verified, but invisible to GitHub/CI and to anyone
+  reviewing there. Direct pushes to `main` are also rejected outright by this repo's branch
+  protection (confirmed via real push attempts, twice, in an earlier session) — a PR was never
+  optional, just temporarily blocked by missing `gh` auth. Each PR body states: summary, files
+  touched, verification results with real exit codes, evidence paths, and a link to the unit's
+  own section in `docs/ui-review/03-roadmap.md` (or equivalent for non-UI work).

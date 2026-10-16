@@ -56,10 +56,70 @@ const PLOT_HEIGHT = CHART_HEIGHT - MARGIN.top - MARGIN.bottom;
 // so an out-of-range point is never clipped at the plot's own edge.
 const BAND_LIMIT = 3;
 
+// UI-009 (docs/ui-review/03-roadmap.md): found live while verifying this file's own shape fix
+// below -- `--color-brand`/`--color-warning`/`--color-danger` (the names used here before this
+// fix) are never actually emitted as real CSS custom properties. Tailwind v4's `@theme inline`
+// block (apps/web/app/globals.css) only uses those `--color-*` names to generate utility classes
+// (e.g. `.bg-brand`) -- it does not expose them for arbitrary `var()` use elsewhere, confirmed
+// directly: `getComputedStyle(document.documentElement).getPropertyValue('--color-brand')` is
+// empty, while `--accent` (the raw token, defined directly in :root/dark-mode blocks, not
+// through @theme inline) resolves correctly. Every marker on this chart has been rendering
+// black, in both themes, since this function was written -- not something this task introduced,
+// caught only because UI-009 added the first real rendered verification of this component.
 function severityColor(severity: 'none' | 'warning' | 'rejection'): string {
-  if (severity === 'rejection') return 'var(--color-danger)';
-  if (severity === 'warning') return 'var(--color-warning)';
-  return 'var(--color-brand)';
+  if (severity === 'rejection') return 'var(--danger)';
+  if (severity === 'warning') return 'var(--warning)';
+  return 'var(--accent)';
+}
+
+/**
+ * UI-009 (docs/ui-review/03-roadmap.md): severity was previously color-only at the point level
+ * (same radius for warning/rejection, only the fill color differed) -- the one flagged exception
+ * to this app's "never color alone" rule (docs/design.md). Distinct shapes, not just color,
+ * survive grayscale/color-blind viewing and a photocopied/printed chart: circle (in control,
+ * unchanged), triangle (warning), diamond (rejection) -- a conventional severity-shape mapping,
+ * not invented here. Legend below mirrors the same shapes.
+ */
+function PointMarker({
+  severity,
+  cx,
+  cy,
+  r,
+}: {
+  severity: 'none' | 'warning' | 'rejection';
+  cx: number;
+  cy: number;
+  r: number;
+}) {
+  const fill = severityColor(severity);
+  const common = { fill, stroke: 'var(--surface)', strokeWidth: 1.5 };
+
+  if (severity === 'warning') {
+    // Upward triangle, roughly equal visual weight to the circle/diamond at the same r.
+    const points = [
+      [cx, cy - r * 1.15],
+      [cx - r, cy + r * 0.75],
+      [cx + r, cy + r * 0.75],
+    ]
+      .map(([x, y]) => `${x},${y}`)
+      .join(' ');
+    return <polygon points={points} {...common} />;
+  }
+
+  if (severity === 'rejection') {
+    // Diamond (rotated square).
+    const points = [
+      [cx, cy - r],
+      [cx + r, cy],
+      [cx, cy + r],
+      [cx - r, cy],
+    ]
+      .map(([x, y]) => `${x},${y}`)
+      .join(' ');
+    return <polygon points={points} {...common} />;
+  }
+
+  return <circle cx={cx} cy={cy} r={r} {...common} />;
 }
 
 /**
@@ -217,14 +277,7 @@ export function LeveyJenningsChart({ targetMean, targetSd, points }: LeveyJennin
             const cy = yForZ(point.zScore);
             return (
               <g key={point.id}>
-                <circle
-                  cx={cx}
-                  cy={cy}
-                  r={severity === 'none' ? 4 : 6}
-                  fill={severityColor(severity)}
-                  stroke="var(--surface)"
-                  strokeWidth={1.5}
-                />
+                <PointMarker severity={severity} cx={cx} cy={cy} r={severity === 'none' ? 4 : 6} />
                 {point.violations.length > 0 ? (
                   <text
                     x={cx}
@@ -243,15 +296,21 @@ export function LeveyJenningsChart({ targetMean, targetSd, points }: LeveyJennin
 
         <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-text-secondary">
           <span className="flex items-center gap-1.5">
-            <span className="inline-block size-2.5 rounded-full bg-brand" aria-hidden="true" />
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+              <PointMarker severity="none" cx={5} cy={5} r={4} />
+            </svg>
             In control
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block size-2.5 rounded-full bg-warning" aria-hidden="true" />
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+              <PointMarker severity="warning" cx={6} cy={6} r={5} />
+            </svg>
             Warning (1-2s)
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block size-2.5 rounded-full bg-danger" aria-hidden="true" />
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+              <PointMarker severity="rejection" cx={6} cy={6} r={5} />
+            </svg>
             Rejection
           </span>
         </div>

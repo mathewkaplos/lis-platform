@@ -565,3 +565,16 @@ re-discovering it via a filesystem search each session. Confirmed 2026-08-18
   `reset --hard` (which this project's own guard hook correctly refuses
   regardless, per the 2026-07-26 data-loss incident above) — push the new
   branch and open the PR normally from there.
+- **Any command piped through `| tail`, `| head`, `| grep`, etc. for readability returns the
+  pipe's own exit code by default, not the real command's — always run verification commands
+  (builds, test runners, a11y/lint checks) with `set -o pipefail` in the shell, or capture the
+  real exit code explicitly via `${PIPESTATUS[0]}` before any pipe.** Confirmed costly
+  2026-10-16 (UI-002 Storybook/`packages/ui` verification session): `pnpm build-storybook |
+  tail -15; echo $?` printed `0` twice in a row while the real command had actually failed
+  outright both times (`pnpm: command not found`, a PATH-export mistake in the shell call) — the
+  `tail` pipe's own success masked it completely. Both times, a stale pre-fix build kept getting
+  tested against afterward, producing a misleading "2 suites failing" `storybook-a11y` result
+  that took real investigation (inspecting the actual built JS bundle's content, not just the
+  test runner's summary line) to trace back to "the rebuild never ran" rather than a genuine
+  accessibility regression. Never trust a trailing `echo $?`/`| tail` combination's apparent
+  success on its own — when in doubt, inspect the actual build output directly.

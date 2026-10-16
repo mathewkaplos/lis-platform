@@ -17,7 +17,7 @@ export function CriticalAckForm({ notificationId }: { notificationId: string }) 
   );
 
   if (state.status === 'acknowledged') {
-    return <p className="text-sm text-success">Acknowledged.</p>;
+    return <p className="text-sm text-success-text">Acknowledged.</p>;
   }
 
   return (

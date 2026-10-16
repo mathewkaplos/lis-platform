@@ -94,7 +94,7 @@ export function SendInvoiceEmailForm({
         </p>
       ) : null}
       {justSent ? (
-        <p role="status" className="text-xs text-success">
+        <p role="status" className="text-xs text-success-text">
           Sent to {justSent}.
         </p>
       ) : null}

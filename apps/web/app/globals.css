@@ -14,7 +14,8 @@
   --border: #e7e9ee;
   --text-primary: #0f1729;
   --text-secondary: #5b6472;
-  --text-muted: #8a93a2;
+  /* Was #8a93a2 (~3.1:1) -- fails WCAG AA as text. See packages/ui/src/tokens.ts. */
+  --text-muted: #475569;
 
   --accent: #4f46e5;
   --accent-hover: #4338ca;
@@ -24,6 +25,17 @@
   --danger: #dc2626;
   --info: #2563eb;
   --ai: #7c3aed;
+  /* On-text-safe variants of --warning/--success above -- use these, never
+     the base token, for readable text. See packages/ui/src/tokens.ts and
+     docs/design.md. */
+  --warning-text: #92400e;
+  --success-text: #15803d;
+  /* Theme-invariant, same pattern --danger already follows -- never
+     redefined in the dark-mode blocks below. For a solid chip background
+     with white text, not for text-on-surface (that's --success-text,
+     which deliberately lightens in dark mode and would fail badly as a
+     white-text background there). */
+  --success-solid: #15803d;
 
   --radius-card: 8px;
   --radius-button: 8px;
@@ -73,6 +85,11 @@
     --border: #232a36;
     --text-primary: #e6e9ef;
     --text-secondary: #9aa4b2;
+    /* No dark override existed before -- the light value stayed in effect
+       against this near-black background (~2:1). New. */
+    --text-muted: #94a3b8;
+    --warning-text: #fbbf24;
+    --success-text: #4ade80;
 
     --secondary: var(--surface-raised);
     --muted: var(--surface-raised);
@@ -89,6 +106,9 @@
   --border: #232a36;
   --text-primary: #e6e9ef;
   --text-secondary: #9aa4b2;
+  --text-muted: #94a3b8;
+  --warning-text: #fbbf24;
+  --success-text: #4ade80;
 
   --secondary: var(--surface-raised);
   --muted: var(--surface-raised);
@@ -108,6 +128,9 @@
   --color-brand-hover: var(--accent-hover);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-success-text: var(--success-text);
+  --color-warning-text: var(--warning-text);
+  --color-success-solid: var(--success-solid);
   --color-danger: var(--danger);
   --color-info: var(--info);
   --color-ai: var(--ai);

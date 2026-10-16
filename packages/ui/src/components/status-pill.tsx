@@ -25,12 +25,14 @@ const FLAG_META: Record<
   H: {
     label: "High",
     icon: ArrowUp,
-    className: "border-warning/30 bg-warning/10 text-warning",
+    // UI-001: text-warning-text, not text-warning -- the base token measures
+    // ~3.0-3.2:1 as text color, below WCAG AA. See docs/design.md.
+    className: "border-warning/30 bg-warning/10 text-warning-text",
   },
   L: {
     label: "Low",
     icon: ArrowDown,
-    className: "border-warning/30 bg-warning/10 text-warning",
+    className: "border-warning/30 bg-warning/10 text-warning-text",
   },
   HH: {
     label: "Critical high",
@@ -45,7 +47,7 @@ const FLAG_META: Record<
   A: {
     label: "Abnormal",
     icon: AlertTriangle,
-    className: "border-warning/30 bg-warning/10 text-warning",
+    className: "border-warning/30 bg-warning/10 text-warning-text",
   },
   D: {
     label: "Delta",

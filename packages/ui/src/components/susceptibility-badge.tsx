@@ -23,7 +23,8 @@ const INTERPRETATION_META: Record<
   },
   I: {
     label: "Intermediate",
-    className: "border-warning/30 bg-warning/10 text-warning",
+    // UI-001: text-warning-text, not text-warning -- see status-pill.tsx.
+    className: "border-warning/30 bg-warning/10 text-warning-text",
   },
   R: {
     label: "Resistant",

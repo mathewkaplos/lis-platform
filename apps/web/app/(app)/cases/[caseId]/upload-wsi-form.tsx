@@ -18,7 +18,7 @@ export function UploadWsiForm({ slideId }: { slideId: string }) {
 
   if (state.status === 'done') {
     return state.resultStatus === 'ready' ? (
-      <p className="text-sm text-success">Upload complete.</p>
+      <p className="text-sm text-success-text">Upload complete.</p>
     ) : (
       <p role="alert" className="text-sm text-danger">
         Upload failed: {state.resultErrorMessage ?? 'unknown error'}

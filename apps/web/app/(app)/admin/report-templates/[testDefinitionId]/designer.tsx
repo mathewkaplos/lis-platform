@@ -231,7 +231,7 @@ export function ReportTemplateDesigner({
           </p>
         ) : null}
         {saveState.status === 'saved' ? (
-          <p role="status" className="text-sm text-success">
+          <p role="status" className="text-sm text-success-text">
             Saved as version {saveState.savedTemplate?.versions.at(-1)?.version ?? saveState.savedVersion?.version}.
           </p>
         ) : null}
@@ -241,7 +241,7 @@ export function ReportTemplateDesigner({
           </p>
         ) : null}
         {publishState.status === 'published' ? (
-          <p role="status" className="text-sm text-success">
+          <p role="status" className="text-sm text-success-text">
             Published version {publishState.publishedVersion?.version}.
           </p>
         ) : null}

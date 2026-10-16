@@ -141,7 +141,7 @@ export function LeveyJenningsChart({ targetMean, targetSd, points }: LeveyJennin
               <Badge
                 key={v.ruleCode}
                 variant={v.severity === 'rejection' ? 'destructive' : 'outline'}
-                className={v.severity === 'warning' ? 'border-warning/40 text-warning' : undefined}
+                className={v.severity === 'warning' ? 'border-warning/40 text-warning-text' : undefined}
               >
                 {RULE_LABELS[v.ruleCode]}
               </Badge>

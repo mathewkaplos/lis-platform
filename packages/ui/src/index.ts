@@ -15,6 +15,7 @@ export * from "./components/form-field";
 export * from "./components/badge";
 export * from "./components/button";
 export * from "./components/card";
+export * from "./components/chart-point-marker";
 export * from "./components/checkbox";
 export * from "./components/dropdown-menu";
 export * from "./components/input";

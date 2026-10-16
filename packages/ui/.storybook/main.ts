@@ -14,6 +14,9 @@ const config: StorybookConfig = {
     // segments entirely instead, confirmed working both in isolation and through a real
     // Storybook build.
     "../../../apps/web/**/control-lots/**/*.stories.tsx",
+    // UI-020 (docs/ui-review/03-roadmap.md): same reasoning and same **/ pattern as the
+    // control-lots entry above -- (portal) is a route-group folder name, not glob syntax.
+    "../../../apps/web/**/portal/results/*.stories.tsx",
   ],
   addons: ["@storybook/addon-a11y"],
   framework: {

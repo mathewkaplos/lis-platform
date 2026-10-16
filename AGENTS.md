@@ -598,3 +598,13 @@ re-discovering it via a filesystem search each session. Confirmed 2026-08-18
   forcing a duplicate fix later removed during a rebase once UI-001 actually merged. Branching in
   dependency order from a stale base doesn't avoid the dependency — it just defers the conflict
   and duplicates the fix in the meantime.
+- **Once a unit is accepted, push its branch and open its PR — never push directly to `main`,
+  and never merge a PR; the repo owner merges on GitHub.** Established 2026-10-16: `gh` was
+  unauthenticated for several units' worth of this engagement, so earlier "accepted" units were
+  merged into *local* `main` only (`git merge --no-ff`), with `origin/main` never updated and no
+  PR ever opened — real work, correctly verified, but invisible to GitHub/CI and to anyone
+  reviewing there. Direct pushes to `main` are also rejected outright by this repo's branch
+  protection (confirmed via real push attempts, twice, in an earlier session) — a PR was never
+  optional, just temporarily blocked by missing `gh` auth. Each PR body states: summary, files
+  touched, verification results with real exit codes, evidence paths, and a link to the unit's
+  own section in `docs/ui-review/03-roadmap.md` (or equivalent for non-UI work).

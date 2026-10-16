@@ -15,7 +15,7 @@ export function AmendCaseForm({ caseId }: { caseId: string }) {
   const [state, formAction, pending] = useActionState(amendCase, amendCaseInitialState);
 
   if (state.status === 'done') {
-    return <p className="text-sm text-success">Amendment submitted.</p>;
+    return <p className="text-sm text-success-text">Amendment submitted.</p>;
   }
 
   return (

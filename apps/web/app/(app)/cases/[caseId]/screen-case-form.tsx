@@ -14,7 +14,7 @@ export function ScreenCaseForm({ caseId }: { caseId: string }) {
   const [state, formAction, pending] = useActionState(screenCase, screenCaseInitialState);
 
   if (state.status === 'done') {
-    return <p className="text-sm text-success">Case screened.</p>;
+    return <p className="text-sm text-success-text">Case screened.</p>;
   }
 
   return (

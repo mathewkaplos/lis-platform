@@ -35,16 +35,19 @@ function StatCard({ label, value, delta, sparkline, className }: StatCardProps) 
             // contrast against white is ~3.29:1, below the 4.5:1 required (confirmed by
             // hand, matches the CI failure). --danger (#DC2626) is dark enough on its own
             // (~4.83:1) and reuses the exact `bg-danger text-white` treatment StatusPill's
-            // HH/LL already proved passes in this same CI run. --success has no
-            // AA-passing text/background use at this size as specified in Stitch §0 --
-            // #15803D below is a deliberately minimal, component-local darker shade for
-            // this one usage, not a change to the canonical --success token (docs/design.md
-            // unchanged; worth a broader look at whether other --success text usages need
-            // the same treatment, not done here).
+            // HH/LL already proved passes in this same CI run.
+            // UI-001: this used to be a component-local `bg-[#15803D]` hex bypass -- now
+            // the real `--success-solid` token (docs/design.md,
+            // packages/ui/src/tokens.ts). Deliberately NOT `--success-text`: that token
+            // lightens in dark mode so success-colored text stays readable against a dark
+            // surface, which would make white text on *this* solid chip fail badly
+            // (~1.7:1) if the two were conflated -- `--success-solid` stays the same dark
+            // shade in both themes, same as `--danger` already does for the chip beside
+            // it.
             <span
               className={cn(
                 "inline-flex w-fit items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-medium tabular-nums text-white",
-                tone === "positive" ? "bg-[#15803D]" : "bg-danger",
+                tone === "positive" ? "bg-success-solid" : "bg-danger",
               )}
             >
               {delta.direction === "up" ? (

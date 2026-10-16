@@ -1,0 +1,164 @@
+<!doctype html>
+<html data-theme="light">
+<head>
+<meta charset="utf-8" />
+<title>Direction B — Elevate</title>
+<style>
+  :root {
+    --background: #f7f8fa;
+    --surface: #ffffff;
+    --border: #e7e9ee;
+    --text-primary: #0f1729;
+    --text-secondary: #5b6472;
+    --text-muted-safe: #475569;
+    --accent: #4f46e5;
+    --accent-hover: #4338ca;
+    --success: #16a34a;
+    --success-text-safe: #15803d;
+    --warning: #d97706;
+    --warning-text-safe: #92400e;
+    --danger: #dc2626;
+    --info: #2563eb;
+    --radius-card: 8px;
+    --radius-button: 8px;
+    --radius-input: 6px;
+    --radius-chip: 6px;
+    --shadow-card: 0 1px 2px rgba(16,24,40,.06);
+    --shadow-raised: 0 2px 6px rgba(16,24,40,.08);
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--background); color:var(--text-primary); font-family: -apple-system, "Segoe UI", Inter, ui-sans-serif, sans-serif; font-size:14px; }
+  .shell { display:flex; min-height:100vh; }
+  .sidebar { width:224px; flex-shrink:0; border-right:1px solid var(--border); background:var(--surface); padding:16px; }
+  .sidebar .app-name { font-weight:700; font-size:14px; padding:0 8px 16px; }
+  .sidebar a { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px; color:var(--text-secondary); text-decoration:none; font-size:13px; }
+  .sidebar a.active { background:var(--border); color:var(--text-primary); font-weight:600; border-left:2px solid var(--accent); padding-left:6px; }
+  .sidebar .dot { width:6px; height:6px; border-radius:50%; background:currentColor; opacity:.5; flex-shrink:0; }
+  .main { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .topbar { height:56px; flex-shrink:0; border-bottom:1px solid var(--border); background:var(--surface); display:flex; align-items:center; justify-content:space-between; padding:0 16px; }
+  .topbar .search { border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:13px; color:var(--text-muted-safe); width:220px; }
+  .topbar .right { display:flex; align-items:center; gap:10px; }
+  .topbar .badge-org { border:1px solid var(--border); border-radius:6px; padding:4px 8px; font-size:12px; color:var(--text-secondary); }
+  .topbar .avatar { width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; }
+  .content { padding:24px; display:flex; flex-direction:column; gap:16px; }
+  h1 { font-size:22px; font-weight:700; margin:0; letter-spacing:-0.01em; }
+  .attention-band { display:flex; gap:10px; }
+  .attn-chip { display:flex; align-items:center; gap:8px; border-radius:var(--radius-card); padding:8px 14px; font-size:13px; font-weight:600; border:1px solid; }
+  .attn-chip .n { font-size:16px; font-weight:700; }
+  .attn-chip.stat { background:#fef2f2; color:#991b1b; border-color:#fecaca; }
+  .attn-chip.critical { background:#fef2f2; color:#991b1b; border-color:#fecaca; }
+  .attn-chip.breach { background:rgba(217,119,6,.08); color:var(--warning-text-safe); border-color:rgba(217,119,6,.3); }
+  .attn-chip.ok { background:rgba(22,163,74,.08); color:var(--success-text-safe); border-color:rgba(22,163,74,.25); }
+  .stat-row { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .statcard { background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--border); border-radius:var(--radius-card); box-shadow:var(--shadow-card); padding:14px 16px; }
+  .statcard.active { border-left:3px solid var(--accent); box-shadow:var(--shadow-raised); }
+  .statcard .label { font-size:12px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.04em; }
+  .statcard .value { font-size:26px; font-weight:700; margin-top:2px; }
+  .tabs { display:flex; gap:8px; }
+  .tab { border:1px solid var(--border); border-radius:6px; padding:6px 12px; font-size:13px; background:var(--surface); color:var(--text-secondary); }
+  .tab.active { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; }
+  .filters-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-card); box-shadow:var(--shadow-card); padding:16px; }
+  .filters-card .title { font-size:13px; font-weight:700; margin-bottom:10px; }
+  .filters-row { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; }
+  .field { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--text-secondary); }
+  .field select, .field input { height:34px; border:1px solid var(--border); border-radius:var(--radius-input); padding:0 10px; font-size:13px; background:transparent; color:var(--text-primary); }
+  .btn { height:34px; border-radius:var(--radius-button); padding:0 14px; font-size:13px; font-weight:600; border:1px solid var(--border); background:var(--surface); cursor:pointer; }
+  .btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-card); overflow:hidden; box-shadow:var(--shadow-raised); }
+  thead { background:#eef0f4; border-bottom:1px solid var(--border); position:sticky; top:0; }
+  th { text-align:left; font-size:12px; font-weight:700; color:var(--text-secondary); padding:10px 14px; text-transform:uppercase; letter-spacing:.03em; }
+  td { padding:10px 14px; font-size:13px; border-bottom:1px solid var(--border); }
+  tr:last-child td { border-bottom:none; }
+  tr.is-stat { box-shadow: inset 3px 0 0 var(--danger); }
+  .mrn { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size:12px; color:var(--text-muted-safe); }
+  .chip { display:inline-flex; align-items:center; border-radius:var(--radius-chip); padding:2px 8px; font-size:12px; font-weight:600; border:1px solid transparent; }
+  .chip.stat { background:#fef2f2; color:#991b1b; border-color:#fecaca; }
+  .chip.routine { border-color:var(--border); color:var(--text-secondary); }
+  .chip.in-process { background:var(--accent); color:#fff; }
+  .chip.received { border-color:var(--border); color:var(--text-secondary); }
+  .tat-overdue { color:#fff; background:var(--danger); border-radius:var(--radius-chip); padding:2px 8px; font-size:12px; font-weight:600; }
+  .tat-risk { color:var(--warning-text-safe); background:rgba(217,119,6,.1); border:1px solid rgba(217,119,6,.3); border-radius:var(--radius-chip); padding:2px 8px; font-size:12px; font-weight:600; }
+  .you-chip { background:var(--border); border-radius:var(--radius-chip); padding:2px 8px; font-size:12px; }
+  .dash { color:var(--text-muted-safe); }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar">
+    <div class="app-name">LIS Platform</div>
+    <a href="#" class="active"><span class="dot"></span>Dashboard</a>
+    <a href="#"><span class="dot"></span>Patients</a>
+    <a href="#"><span class="dot"></span>Orders</a>
+    <a href="#"><span class="dot"></span>Cases</a>
+    <a href="#"><span class="dot"></span>Reception</a>
+    <a href="#"><span class="dot"></span>Collection queue</a>
+    <a href="#"><span class="dot"></span>QC violations</a>
+    <a href="#"><span class="dot"></span>Critical notifications</a>
+    <a href="#"><span class="dot"></span>Culture reads</a>
+    <a href="#"><span class="dot"></span>Processing QC</a>
+    <a href="#"><span class="dot"></span>Invoices</a>
+    <a href="#"><span class="dot"></span>Facility statement</a>
+    <a href="#"><span class="dot"></span>Reference ranges</a>
+    <a href="#"><span class="dot"></span>Add test</a>
+    <a href="#"><span class="dot"></span>Referring facilities</a>
+    <a href="#"><span class="dot"></span>Instrument mappings</a>
+    <a href="#"><span class="dot"></span>Org settings</a>
+    <a href="#"><span class="dot"></span>Users</a>
+  </nav>
+  <div class="main">
+    <header class="topbar">
+      <div class="search">Search… (Ctrl K)</div>
+      <div class="right">
+        <span class="badge-org">Acme Reference Lab</span>
+        <span class="avatar">T</span>
+      </div>
+    </header>
+    <div class="content">
+      <h1>Dashboard</h1>
+      <div class="attention-band">
+        <div class="attn-chip stat"><span class="n">3</span> STAT pending</div>
+        <div class="attn-chip critical"><span class="n">1</span> critical unacknowledged</div>
+        <div class="attn-chip breach"><span class="n">2</span> TAT at risk</div>
+      </div>
+      <div class="stat-row">
+        <div class="statcard active"><div class="label">Pending</div><div class="value">18</div></div>
+        <div class="statcard"><div class="label">In progress</div><div class="value">7</div></div>
+        <div class="statcard"><div class="label">Verified</div><div class="value">142</div></div>
+      </div>
+      <div class="tabs">
+        <div class="tab active">All</div>
+        <div class="tab">Pending</div>
+        <div class="tab">In progress</div>
+        <div class="tab">Verified</div>
+      </div>
+      <div class="filters-card">
+        <div class="title">Filters</div>
+        <div class="filters-row">
+          <div class="field">Priority
+            <select><option>Any</option></select>
+          </div>
+          <div class="field">From
+            <input type="date" />
+          </div>
+          <div class="field">To
+            <input type="date" />
+          </div>
+          <button class="btn primary">Apply</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Patient</th><th>Test</th><th>Priority</th><th>Status</th><th>Assignee</th><th>TAT</th></tr></thead>
+        <tbody>
+          <tr class="is-stat"><td>Grace Mwangi <span class="mrn">MRN-00231</span></td><td>CBC with differential</td><td><span class="chip stat">stat</span></td><td><span class="chip in-process">in_process</span></td><td><span class="you-chip">You</span></td><td><span class="tat-overdue">18m overdue</span></td></tr>
+          <tr class="is-stat"><td>James Otieno <span class="mrn">MRN-00198</span></td><td>Comprehensive metabolic panel</td><td><span class="chip stat">stat</span></td><td><span class="chip received">received</span></td><td><span class="dash">—</span></td><td><span class="tat-risk">42m at risk</span></td></tr>
+          <tr><td>Amina Hassan <span class="mrn">MRN-00412</span></td><td>Urinalysis</td><td><span class="chip routine">routine</span></td><td><span class="chip in-process">in_process</span></td><td><span class="you-chip">You</span></td><td>1h 12m</td></tr>
+          <tr><td>Peter Kamau <span class="mrn">MRN-00055</span></td><td>Lipid panel</td><td><span class="chip routine">routine</span></td><td><span class="chip received">received</span></td><td><span class="dash">—</span></td><td>2h 03m</td></tr>
+          <tr class="is-stat"><td>Wanjiru Njoroge <span class="mrn">MRN-00390</span></td><td>Blood culture</td><td><span class="chip stat">stat</span></td><td><span class="chip in-process">in_process</span></td><td><span class="you-chip">You</span></td><td><span class="tat-risk">51m at risk</span></td></tr>
+          <tr><td>David Mutua <span class="mrn">MRN-00287</span></td><td>Thyroid panel</td><td><span class="chip routine">routine</span></td><td><span class="chip received">received</span></td><td><span class="dash">—</span></td><td>3h 40m</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</body>
+</html>

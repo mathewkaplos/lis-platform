@@ -1,4 +1,25 @@
 {
+  "permissions": {
+    "deny": [
+      "Edit(apps/api/**)", "Write(apps/api/**)",
+      "Edit(apps/gateway/**)", "Write(apps/gateway/**)",
+      "Edit(apps/interop/**)", "Write(apps/interop/**)",
+      "Edit(packages/domain/**)", "Write(packages/domain/**)",
+      "Edit(packages/sdk/**)", "Write(packages/sdk/**)",
+      "Edit(packages/config/**)", "Write(packages/config/**)",
+      "Edit(db/**)", "Write(db/**)",
+      "Edit(infra/**)", "Write(infra/**)",
+      "Edit(scripts/**)", "Write(scripts/**)",
+      "Edit(docker-compose.yml)", "Write(docker-compose.yml)",
+      "Edit(apps/web/auth/**)", "Write(apps/web/auth/**)",
+      "Edit(apps/web/app/api/**)", "Write(apps/web/app/api/**)",
+      "Edit(apps/web/proxy.ts)", "Write(apps/web/proxy.ts)",
+      "Edit(apps/web/lib/api-client.ts)", "Write(apps/web/lib/api-client.ts)",
+      "Edit(**/package.json)", "Write(**/package.json)",
+      "Edit(**/pnpm-lock.yaml)", "Write(**/pnpm-lock.yaml)",
+      "Edit(pnpm-workspace.yaml)", "Write(pnpm-workspace.yaml)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {

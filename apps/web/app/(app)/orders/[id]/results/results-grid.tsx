@@ -663,14 +663,14 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
                     </span>
                   ) : null}
                   {state.heldMessage && state.heldReason === 'qc_violation' ? (
-                    <span role="status" className="text-xs text-warning">
+                    <span role="status" className="text-xs text-warning-text">
                       Saved — held on a QC violation.{' '}
                       <Link href="/qc-violations" className="underline">
                         See QC violations →
                       </Link>
                     </span>
                   ) : state.heldMessage ? (
-                    <span role="status" className="text-xs text-warning">
+                    <span role="status" className="text-xs text-warning-text">
                       Saved — {state.heldMessage}
                     </span>
                   ) : null}
@@ -703,14 +703,14 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
                   </span>
                 ) : null}
                 {state.heldMessage && state.heldReason === 'qc_violation' ? (
-                  <span role="status" className="text-xs text-warning">
+                  <span role="status" className="text-xs text-warning-text">
                     Saved — held on a QC violation.{' '}
                     <Link href="/qc-violations" className="underline">
                       See QC violations →
                     </Link>
                   </span>
                 ) : state.heldMessage ? (
-                  <span role="status" className="text-xs text-warning">
+                  <span role="status" className="text-xs text-warning-text">
                     Saved — {state.heldMessage}
                   </span>
                 ) : null}
@@ -750,7 +750,7 @@ export function ResultsGrid({ rows, isVerifier }: { rows: ResultRow[]; isVerifie
             // own treatment -- previously fell through to `null`, per this
             // file's own now-superseded TASK-055 comment.
             if (state.observationStatus === 'verified') return <span className="text-sm text-info">Verified</span>;
-            if (state.observationStatus === 'preliminary') return <span className="text-sm text-success">Finalized</span>;
+            if (state.observationStatus === 'preliminary') return <span className="text-sm text-success-text">Finalized</span>;
             if (state.observationStatus === 'registered') return <span className="text-sm text-text-secondary">Draft</span>;
             return null;
           },

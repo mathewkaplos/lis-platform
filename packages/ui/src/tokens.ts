@@ -7,7 +7,17 @@ export const colorLight = {
   border: "#E7E9EE",
   textPrimary: "#0F1729",
   textSecondary: "#5B6472",
-  textMuted: "#8A93A2",
+  // Was #8A93A2 (~3.1:1 on this theme's background/surface) -- fails WCAG AA
+  // for real text at any size. Darkened to pass 4.5:1; see docs/design.md.
+  textMuted: "#475569",
+  // On-text-safe variants of colorSemantic.warning/success below (#D97706 /
+  // #16A34A measure ~3.0-3.3:1 as text color -- fine for borders/chip
+  // backgrounds/icons, which only need 3:1, but fail for readable text).
+  // Use these, never the base semantic token, whenever warning/success text
+  // actually needs to be read. See docs/design.md and
+  // docs/ui-review/01-audit.md §7 for the measured ratios.
+  warningText: "#92400E",
+  successText: "#15803D",
 } as const;
 
 export const colorDark = {
@@ -17,6 +27,14 @@ export const colorDark = {
   border: "#232A36",
   textPrimary: "#E6E9EF",
   textSecondary: "#9AA4B2",
+  // No dark-mode value existed for this before -- globals.css's dark block
+  // never overrode it, so the light value stayed in effect against a
+  // near-black background (~2:1, worse than the light-mode failure). New.
+  textMuted: "#94A3B8",
+  // Same reasoning as colorLight.warningText/successText above, lightened
+  // instead of darkened for legibility against the dark background/surface.
+  warningText: "#FBBF24",
+  successText: "#4ADE80",
 } as const;
 
 export const colorAccent = {
@@ -30,6 +48,15 @@ export const colorSemantic = {
   danger: "#DC2626",
   info: "#2563EB",
   ai: "#7C3AED",
+  // Theme-invariant (never overridden in dark mode), same pattern `danger`
+  // above already follows -- for a solid chip background with white text on
+  // top, e.g. StatCard's positive-delta chip. NOT the same thing as
+  // colorLight/colorDark.successText: that one deliberately lightens in dark
+  // mode so success-colored *text* stays readable against a dark surface,
+  // which would make white text on this *background* fail badly (~1.7:1,
+  // confirmed by hand) if the two were conflated under one token -- caught
+  // during UI-001's own verification screenshot, not theoretical.
+  successSolid: "#15803D",
 } as const;
 
 export const typography = {

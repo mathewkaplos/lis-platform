@@ -59,7 +59,7 @@ function SlaIndicator({ item }: { item: WorklistItem }) {
   }
   if (item.slaStatus === 'at_risk') {
     return (
-      <Badge variant="outline" className="border-warning/30 bg-warning/10 tabular-nums text-warning">
+      <Badge variant="outline" className="border-warning/30 bg-warning/10 tabular-nums text-warning-text">
         {duration} at risk
       </Badge>
     );
@@ -181,8 +181,8 @@ export function WorklistView({
           role="status"
           className={
             banner.tone === 'error'
-              ? 'rounded-md border border-warning/30 bg-warning/10 p-2 text-sm text-warning'
-              : 'rounded-md border border-success/30 bg-success/10 p-2 text-sm text-success'
+              ? 'rounded-md border border-warning/30 bg-warning/10 p-2 text-sm text-warning-text'
+              : 'rounded-md border border-success/30 bg-success/10 p-2 text-sm text-success-text'
           }
         >
           {banner.message}

@@ -66,10 +66,14 @@ const BAND_LIMIT = 3;
 // through @theme inline) resolves correctly. Every marker on this chart has been rendering
 // black, in both themes, since this function was written -- not something this task introduced,
 // caught only because UI-009 added the first real rendered verification of this component.
+// UI-020 (docs/ui-review/03-roadmap.md): 'none' uses --chart-in-control, not --accent directly
+// -- --accent measures only ~2.85:1 against the dark-mode surface (fails WCAG's 3:1 non-text
+// minimum, confirmed by computation during UI-009's own verification); --chart-in-control is the
+// same value in light mode (still passes 6.29:1) but a lighter indigo in dark mode (~6.01:1).
 function severityColor(severity: 'none' | 'warning' | 'rejection'): string {
   if (severity === 'rejection') return 'var(--danger)';
   if (severity === 'warning') return 'var(--warning)';
-  return 'var(--accent)';
+  return 'var(--chart-in-control)';
 }
 
 /**

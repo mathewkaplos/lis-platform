@@ -18,6 +18,12 @@ export const colorLight = {
   // docs/ui-review/01-audit.md §7 for the measured ratios.
   warningText: "#92400E",
   successText: "#15803D",
+  // UI-020 (docs/ui-review/03-roadmap.md): the "in control"/normal marker color on both chart
+  // components (Levey-Jennings, trend chart). Same value as colorAccent.DEFAULT in light mode
+  // (already passes 6.29:1 against this theme's --surface) -- a distinct token exists so dark
+  // mode can diverge (below) without touching the shared --accent brand color used everywhere
+  // else (buttons, links, focus rings).
+  chartInControl: "#4F46E5",
 } as const;
 
 export const colorDark = {
@@ -35,6 +41,11 @@ export const colorDark = {
   // instead of darkened for legibility against the dark background/surface.
   warningText: "#FBBF24",
   successText: "#4ADE80",
+  // UI-020: #4F46E5 (the light-mode value, same as --accent) measures only 2.85:1 against this
+  // theme's --surface (#131721) -- fails WCAG's 3:1 non-text minimum, confirmed by computation
+  // during UI-009's own verification. Lightened to indigo-400 (#818cf8, ~6.01:1), same hue
+  // family as the brand accent, not an arbitrary color swap.
+  chartInControl: "#818CF8",
 } as const;
 
 export const colorAccent = {

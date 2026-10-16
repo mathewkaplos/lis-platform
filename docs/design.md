@@ -60,6 +60,11 @@ below wherever warning/success text is actually meant to be read, never the base
   readable against a dark surface, which would make white text on a solid chip fail badly
   (~1.7:1, confirmed by hand) if the two were conflated -- caught during UI-001's own
   verification screenshot, not theoretical. |
+| `chart-in-control` | `#4F46E5` (same as `accent`) | `#818CF8` (indigo-400) | the "in
+  control"/normal marker color on the Levey-Jennings and trend charts. `accent`'s own value
+  measures only ~2.85:1 against the dark-mode surface -- fails WCAG's 3:1 non-text minimum,
+  confirmed by computation (UI-009/UI-020). `warning`/`danger` already pass 3:1 in both themes
+  unchanged; this is a narrow, one-state fix, not a broader token-value change. |
 
 **Non-negotiable per §0:** clinical result status is never color alone — always paired with a
 letter flag (N/H/L/HH/LL/A) and an icon. Normal = neutral text; H/L = amber text + subtle amber

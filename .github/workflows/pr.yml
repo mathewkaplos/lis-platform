@@ -479,12 +479,18 @@ jobs:
           path: /tmp/api.log
           retention-days: 7
 
-  # TASK-037: CI-enforcing a11y check on the 6 design-system primitives (packages/ui).
-  # Independent of build-and-test above -- no Postgres/Keycloak needed, this is
-  # packages/ui-only. Runs inside the official Playwright image specifically to avoid
-  # needing a manual `playwright install --with-deps` step (this repo's own local dev
-  # sandbox hit a missing-system-library wall trying that during TASK-034/035 -- the
-  # prebuilt image sidesteps it entirely on a GitHub-hosted runner too).
+  # TASK-037, updated UI-014 (docs/ui-review/03-roadmap.md): CI-enforcing a11y check on
+  # packages/ui's Storybook stories. Originally covered the 6 design-system primitives from
+  # TASK-035; that comment was already stale by the time UI-014 landed -- 13 of 17 components
+  # have their own direct .stories.tsx file (DataTable, FilterBar, FormField, SlideOver,
+  # StatCard, StatusPill, SusceptibilityBadge, Select, Textarea, Badge, Card, DropdownMenu,
+  # Popover), and the remaining 6 (Button, Checkbox, Input, Label, Sheet, Table) get transitive
+  # axe coverage as children rendered inside the 13 stories above, not zero coverage. Independent of
+  # build-and-test above -- no Postgres/Keycloak needed, this is packages/ui-only. Runs inside
+  # the official Playwright image specifically to avoid needing a manual
+  # `playwright install --with-deps` step (this repo's own local dev sandbox hit a
+  # missing-system-library wall trying that during TASK-034/035 -- the prebuilt image
+  # sidesteps it entirely on a GitHub-hosted runner too).
   storybook-a11y:
     runs-on: ubuntu-latest
     container:

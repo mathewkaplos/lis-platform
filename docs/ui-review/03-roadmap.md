@@ -674,6 +674,59 @@ has a story; trend-chart does not yet — adding one may be a reasonable, small,
 to actually verify this fix the same way UI-009 did, rather than relying on live-app verification
 that's still blocked).
 
+**Status:** done — see UI-020's own Phase 4 report. One honest gap flagged there, not silently
+met: `trend-chart.tsx` has no shape differentiation at the marker level (every severity renders
+as a plain circle) — out of UI-020's own scope (a color-token fix, not a shape redesign). Scoped
+separately below as UI-021.
+
+---
+
+### UI-021 — Apply UI-009's shape encoding to `trend-chart.tsx`
+
+**Problem/evidence:** `trend-chart.tsx`'s per-point severity (normal/warning/critical) is
+color-only at the marker level — every point renders as a plain `<circle>`, only the fill color
+(`--chart-in-control`/`--warning`/`--danger`, since UI-020) differs. This is the same "one flagged
+exception to the never-color-alone rule" UI-009 already fixed on `levey-jennings-chart.tsx`
+(circle/triangle/diamond), just not yet applied here — flagged explicitly in UI-020's own report
+as an honest scope gap, not fixed opportunistically there.
+
+**Proposed improvement:** Reuse UI-009's existing shape-rendering logic (`PointMarker`, currently
+defined locally inside `levey-jennings-chart.tsx`) rather than re-deriving it — either extract it
+to a small shared helper both charts import, or duplicate the same circle/triangle/diamond
+geometry directly in `trend-chart.tsx` if extraction turns out to be more disruptive than it's
+worth for two call sites. Map `trend-chart.tsx`'s existing severity states directly onto the same
+shapes UI-009 already established: normal → circle, `H`/`L` (warning tone) → triangle, `HH`/`LL`/
+`isCritical` (danger tone) → diamond. Update the chart's own implicit "legend" too — it currently
+has none (unlike the Levey-Jennings chart, which has an explicit shape+color legend below the
+SVG) — add one, matching the Levey-Jennings legend's own pattern (small inline SVG icon + text
+label per state).
+
+**Screens/components affected:** `apps/web/app/(portal)/portal/results/trend-chart.tsx` (and,
+if extracted, a new shared marker-rendering module both charts import).
+
+**User benefit:** patients and clinicians viewing the portal/clinician results trend chart get the
+same color-blind-safe, grayscale-survivable severity signal the Levey-Jennings QC chart already
+has — directly closing the one remaining "never color alone" gap this roadmap has found.
+
+**Responsiveness impact:** none — marker shape/legend change only.
+
+**Risk:** **Low.** Same proven shapes, same proven verification method (grayscale screenshot),
+applied to a second, simpler chart (`trend-chart.tsx` has no z-score/Westgard annotation
+complexity to work around).
+
+**Dependencies:** UI-009 (the shape logic to reuse) and UI-020 (the color tokens the shapes sit on
+top of) — both already merged to `main`.
+
+**Acceptance criteria:** severity (normal/warning/critical) distinguishable from the trend chart
+**alone**, via shape, in a `grayscale(100%)`-filtered screenshot — not just color; verified in
+**both** themes; a legend is present and its icons match the in-chart marker shapes exactly (same
+requirement UI-009 already held itself to for the Levey-Jennings chart).
+
+**Verification:** grayscale screenshot of the trend chart alone (no color information), both
+themes, same method UI-009/UI-020 used (a real `grayscale(100%)` CSS filter applied before
+capture, not assumed from a normal screenshot); `storybook-a11y` stays green on
+`trend-chart.stories.tsx` (already exists, from UI-020); before/after screenshots.
+
 ---
 
 ### UI-010 — Dashboard "attention band" + STAT emphasis (Direction B rollout) — **PARTIALLY BLOCKED, backend dependency found this revision**

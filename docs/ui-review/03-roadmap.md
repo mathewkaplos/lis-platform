@@ -362,9 +362,17 @@ few PRs rather than one, so a regression is easy to isolate.
 
 **Dependencies:** UI-002.
 
-**Acceptance criteria:** no behavior change on any of the 26 screens; before/after screenshots per
-screen at 1366×768 and one narrower viewport; print-specific CSS on the 2 billing tables
-(`print:` Tailwind variants) re-verified since those are easy to lose in a swap.
+**Acceptance criteria:** no behavior change on any of the 26 screens, with one known, expected
+exception confirmed during UI-002's own verification: below the `md` breakpoint (768px), migrated
+selects/textareas render at `text-base` (16px) instead of the raw elements' hardcoded `text-sm`
+(14px) — `Select`/`Textarea` mirror `Input`'s own `text-base md:text-sm` pattern, which exists
+specifically to keep form fields at ≥16px on narrow/mobile viewports and avoid iOS Safari's
+automatic focus-zoom on sub-16px inputs. This is intentional and should NOT be "fixed" to match
+the raw elements' old sub-16px size — note it in each affected screen's before/after screenshot
+pair as expected, not flag it as a regression; before/after screenshots per screen at 1366×768 and
+one narrower viewport (below 768px, to confirm this exact, expected size difference and nothing
+else changed); print-specific CSS on the 2 billing tables (`print:` Tailwind variants) re-verified
+since those are easy to lose in a swap.
 
 **Verification:** visual diff per file; manual print-preview check on the 2 billing screens;
 existing e2e specs (`billing.spec.ts`, `admin-crud.spec.ts`) still pass.

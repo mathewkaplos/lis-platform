@@ -30,5 +30,12 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    // UI-009 (docs/ui-review/03-roadmap.md): .stories.tsx files are only ever consumed by
+    // packages/ui's own Storybook build (its own Vite-based type resolution, @storybook/
+    // react-vite is only a devDependency there, not here) -- matches packages/ui/tsconfig.json's
+    // own identical exclusion for the same reason.
+    "**/*.stories.tsx"
+  ]
 }

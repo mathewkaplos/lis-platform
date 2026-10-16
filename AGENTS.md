@@ -565,3 +565,16 @@ re-discovering it via a filesystem search each session. Confirmed 2026-08-18
   `reset --hard` (which this project's own guard hook correctly refuses
   regardless, per the 2026-07-26 data-loss incident above) — push the new
   branch and open the PR normally from there.
+- **A per-story axe/a11y rule override (`parameters.a11y.config.rules` or equivalent) requires
+  cited behavioural evidence in a comment next to the override, and must be flagged in that
+  unit's own report for explicit owner approval — never a global rule disable, and never an
+  override justified only by "this looks like a false positive."** Established 2026-10-16
+  (UI-014, `docs/ui-review/03-roadmap.md`): `dropdown-menu.stories.tsx`'s `Open` story disables
+  axe's `aria-hidden-focus` rule for itself, but only after a real Playwright run against that
+  exact story (focus the open menu, press Tab/Shift+Tab 5x each, log
+  `document.activeElement` after every press) empirically proved focus never reaches the
+  `aria-hidden` subtree axe was flagging — the override's own comment cites that test and its
+  result directly, not just an assertion that it's "probably fine." The same incident is why
+  `packages/ui/.storybook/test-runner.ts` reads each story's own `parameters.a11y.config.rules`
+  via `getStoryContext` rather than using one fixed global `axeOptions` for every story — a
+  global disable would have silenced the rule everywhere, not just for the one verified case.

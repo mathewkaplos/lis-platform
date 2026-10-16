@@ -64,7 +64,7 @@ export function AddOrderedTestForm({
           {state.formError}
         </p>
       ) : null}
-      {justAdded ? <p className="text-sm text-success">Test added.</p> : null}
+      {justAdded ? <p className="text-sm text-success-text">Test added.</p> : null}
       <div className="flex items-center gap-2">
         <select
           name="testDefinitionId"

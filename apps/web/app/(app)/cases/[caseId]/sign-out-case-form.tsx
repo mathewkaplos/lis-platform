@@ -14,7 +14,7 @@ export function SignOutCaseForm({ caseId }: { caseId: string }) {
   const [state, formAction, pending] = useActionState(signOutCase, signOutCaseInitialState);
 
   if (state.status === 'done') {
-    return <p className="text-sm text-success">Case signed out.</p>;
+    return <p className="text-sm text-success-text">Case signed out.</p>;
   }
 
   return (

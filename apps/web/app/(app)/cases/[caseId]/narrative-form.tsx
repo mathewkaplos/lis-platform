@@ -55,7 +55,7 @@ export function NarrativeForm({
           {state.formError}
         </p>
       ) : null}
-      {justSaved ? <p className="text-sm text-success">Narrative saved.</p> : null}
+      {justSaved ? <p className="text-sm text-success-text">Narrative saved.</p> : null}
       <FormField id={`gross-description-${caseId}`} label="Gross description">
         <textarea
           name="grossDescription"

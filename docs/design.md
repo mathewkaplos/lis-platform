@@ -15,7 +15,7 @@ System). Every value below is transcribed from that spec, not independently rede
 | `border` | `#E7E9EE` | subtle borders |
 | `text-primary` | `#0F1729` | primary text |
 | `text-secondary` | `#5B6472` | secondary text |
-| `text-muted` | `#8A93A2` | muted text |
+| `text-muted` | `#475569` | muted text (corrected UI-001 -- was `#8A93A2`, ~3.1:1, failed WCAG AA) |
 
 ### Dark mode
 | Token | Value | Use |
@@ -26,6 +26,9 @@ System). Every value below is transcribed from that spec, not independently rede
 | `border` | `#232A36` | borders |
 | `text-primary` | `#E6E9EF` | primary text |
 | `text-secondary` | `#9AA4B2` | secondary text |
+| `text-muted` | `#94A3B8` | muted text (new, UI-001 -- no dark value existed before; the light
+  value stayed in effect against this near-black background, ~2:1, worse than the light-mode
+  failure it was already carrying) |
 
 ### Accent (same in both themes)
 | Token | Value |
@@ -42,13 +45,32 @@ System). Every value below is transcribed from that spec, not independently rede
 | `info` | `#2563EB` | informational |
 | `ai` | `#7C3AED` | AI/assistant surfaces |
 
+**`warning`/`success` as text color (added, UI-001):** `#D97706`/`#16A34A` measure ~3.0-3.3:1
+against both themes' background/surface -- fine for borders, chip backgrounds, and icon fills
+(only need to clear 3:1), but fail WCAG AA (4.5:1) as readable text. Use the on-text-safe variants
+below wherever warning/success text is actually meant to be read, never the base token:
+
+| Token | Light | Dark | Use |
+|---|---|---|---|
+| `warning-text` | `#92400E` | `#FBBF24` | H/L result-flag text, QC-hold/at-risk status copy |
+| `success-text` | `#15803D` | `#4ADE80` | confirmation text ("Finalized", "Saved", etc.) |
+| `success-solid` | `#15803D` | `#15803D` (same -- never overridden in dark mode, same pattern
+  as `danger`) | solid chip backgrounds with white text on top, e.g. `StatCard`'s positive-delta
+  chip. **Not interchangeable with `success-text`**: that one lightens in dark mode so text stays
+  readable against a dark surface, which would make white text on a solid chip fail badly
+  (~1.7:1, confirmed by hand) if the two were conflated -- caught during UI-001's own
+  verification screenshot, not theoretical. |
+
 **Non-negotiable per §0:** clinical result status is never color alone — always paired with a
 letter flag (N/H/L/HH/LL/A) and an icon. Normal = neutral text; H/L = amber text + subtle amber
 chip; HH/LL = red text + solid red chip + a small alert dot.
 
 ## Typography
 
-- UI font: Inter (clean geometric sans fallback stack).
+- UI font: Geist (clean geometric sans fallback stack). Corrected UI-001 -- this doc previously
+  said Inter, which the app hasn't actually loaded since `apps/web/app/layout.tsx` switched to
+  `next/font/google`'s Geist/Geist Mono; the doc had drifted from what's shipped, not the other
+  way around.
 - Monospace (tabular numerals, accession numbers, MRNs, barcodes): a monospace face with
   tabular/lining figures.
 - Type scale: `12 / 13 / 14 / 16 / 20 / 24 / 30` px.

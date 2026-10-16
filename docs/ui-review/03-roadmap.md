@@ -784,6 +784,30 @@ job's story count in its own log output increases by 4.
 
 ---
 
+## Pending live verification
+
+Work completed against Storybook/static builds only, still owed a real check once Docker/
+virtualization is available on this machine (same blocker documented throughout Phase 1):
+
+- **UI-001's 13 `apps/web` page-level call sites** (results grid, case forms, billing/admin
+  confirmation banners — the full list is in UI-001's own unit above) — verified correct at the
+  CSS-variable/token level and via Storybook for the 3 design-system components with stories
+  (`StatusPill`, `SusceptibilityBadge`, `StatCard`), but never seen rendered live in the real app.
+  Needs a real before/after screenshot pass, **both themes**, once the app runs.
+- **UI-014's Tab/Shift+Tab focus trace, repeated against the real top-bar user menu**
+  (`apps/web/app/(app)/_components/top-bar.tsx`) — the Playwright activeElement trace that
+  justified disabling `aria-hidden-focus` on `dropdown-menu.stories.tsx`'s `Open` story was run
+  against that isolated story, not the real app. Same Radix defaults, same expected result, but
+  unconfirmed outside Storybook's iframe context — re-run the identical trace against the live
+  top-bar menu before treating this as fully closed, not just scoped-and-documented.
+- **Units that cannot start at all until this is resolved**: UI-015 (visual regression needs a
+  real baseline, not a mock — stop-and-report if still blocked when it's reached), UI-003
+  (26-screen migration needs real before/after screenshots, not just component-level ones), UI-004
+  (DataTable/sidebar fix needs live viewport testing to confirm the clipping bug is actually
+  resolved, not just that the code changed).
+
+---
+
 **Approved**, with the amendments above incorporated. Beginning Phase 4 with **UI-001** on branch
 `ui/UI-001-status-text-tokens`, per explicit instruction — see the sequencing note on UI-016/017
 above for the one open tension worth a decision when convenient, not a blocker to starting now.

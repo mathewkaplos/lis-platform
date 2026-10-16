@@ -597,6 +597,83 @@ just the legend; existing rule-code annotations and legend untouched.
 **Verification:** screenshot before/after with both severities present in sample data; check at
 1366×768 and 1024×768.
 
+**Status:** done — see UI-009's own Phase 4 report. Found two unplanned bugs while verifying
+(both fixed in the same unit): `severityColor()` used `var(--color-*)` names that are never
+actually emitted as real CSS custom properties under Tailwind v4's `@theme inline` (every marker
+had rendered pure black, in both themes, since this function was written), and one of the three
+marker colors fails WCAG's 3:1 non-text contrast minimum against the dark-mode surface. The color
+fix for *this* chart landed as part of UI-009; the broader version of both findings — the same
+`var(--color-*)` bug in a second component, and a real token fix for the contrast failure — is
+scoped separately below as UI-020, not bundled into UI-009's own close-out.
+
+---
+
+### UI-020 — Fix `var(--color-*)` resolution bug + chart marker contrast (found during UI-009)
+
+**Problem/evidence:** UI-009's own verification found that `levey-jennings-chart.tsx`'s
+`severityColor()` used `var(--color-brand)`/`var(--color-warning)`/`var(--color-danger)` — names
+that are never emitted as real CSS custom properties. Tailwind v4's `@theme inline` block
+(`apps/web/app/globals.css`) only uses those `--color-*` names to generate utility classes (e.g.
+`.bg-brand`); it never exposes them for arbitrary `var()` use elsewhere. Confirmed directly:
+`getComputedStyle(document.documentElement).getPropertyValue('--color-brand')` is empty, while
+`--accent` (the raw token, defined directly in `:root`/dark-mode blocks) resolves correctly.
+A repo-wide grep for the same pattern found **6 more live instances, all in one file**,
+`apps/web/app/(portal)/portal/results/trend-chart.tsx:114,121,123,132,134,135`
+(`var(--color-border)`, `var(--color-brand)`, `var(--color-danger)`, `var(--color-warning)`) — used
+by **two** real screens: the patient portal's own results page and the clinician's
+patient-results page (`apps/web/app/(clinician)/clinician/patients/[patientId]/results/page.tsx`
+imports the same `TrendChart`). Every marker on both charts has almost certainly been rendering
+black (or invisible) in both themes since these components were written — not a regression, a
+long-standing, previously-unverified defect. Separately: UI-009 also measured real non-text
+contrast failures — the `accent` marker color (`#4F46E5`, the "in control"/normal state, the most
+common one) measures only **2.85:1** against the dark-mode surface (`#131721`), below WCAG's 3:1
+non-text minimum; `warning`/`danger` both pass in both themes.
+
+**Proposed improvement:** Two parts:
+1. Fix `trend-chart.tsx`'s 6 references the same way UI-009 already fixed
+   `levey-jennings-chart.tsx` — swap `var(--color-border)`/`var(--color-brand)`/
+   `var(--color-danger)`/`var(--color-warning)` for the raw token names
+   (`var(--border)`/`var(--accent)`/`var(--danger)`/`var(--warning)`).
+2. Add a new token, `--chart-in-control` (light: keep the current `--accent` value, `#4F46E5`,
+   which already passes 6.29:1 there; dark: a lighter indigo chosen to clear 3:1 against
+   `--surface`, e.g. in the `#818cf8`/indigo-400 family — exact value to be verified by
+   computation before landing, not guessed) and use it specifically for the "in control"/normal
+   marker on **both** charts, replacing the plain `--accent` reference there. `warning`/`danger`
+   keep their existing values (both already pass in both themes) — this is a narrow, one-state fix,
+   not a token-value change across the board.
+
+**Screens/components affected:** `packages/ui/src/tokens.ts`, `apps/web/app/globals.css`,
+`levey-jennings-chart.tsx` (swap its "in control" marker to the new token),
+`trend-chart.tsx` (fix all 6 broken references, including its own "in control" marker).
+
+**User benefit:** lab managers/QA reviewing either chart in dark mode get a genuinely visible,
+WCAG-conformant "in control" marker instead of one that's borderline-invisible against the card
+background; patients and clinicians viewing the portal's trend chart get working colors at all,
+in either theme, for the first time.
+
+**Responsiveness impact:** none — token/color-value change only.
+
+**Risk:** **Low.** Same proven pattern as UI-009's own fix, applied to one more file; the new
+token is additive, doesn't change any already-passing color.
+
+**Dependencies:** none technically, but directly follows from UI-009's own findings — do not
+start without re-reading UI-009's Phase 4 report for the exact verification method used there.
+
+**Acceptance criteria:** all three marker colors (`--chart-in-control`, `warning`, `danger`)
+measure ≥3:1 against `--surface` in **both** themes, computed and verified, not assumed; severity
+still distinguishable from each chart alone via shape (grayscale-verified, same method UI-009
+used — a `grayscale(100%)` CSS filter applied before the screenshot, not just eyeballing a normal
+screenshot); before/after screenshots of **both** charts (Levey-Jennings and trend chart), in
+both themes.
+
+**Verification:** `getComputedStyle` resolution check on all `var()` references touched (the exact
+method that caught UI-009's original bug — don't just trust that a CSS variable name "looks
+right"); contrast computation for the new `--chart-in-control` dark value before choosing it, not
+after; grayscale screenshot of both charts; `storybook-a11y` stays green (levey-jennings already
+has a story; trend-chart does not yet — adding one may be a reasonable, small, in-scope addition
+to actually verify this fix the same way UI-009 did, rather than relying on live-app verification
+that's still blocked).
+
 ---
 
 ### UI-010 — Dashboard "attention band" + STAT emphasis (Direction B rollout) — **PARTIALLY BLOCKED, backend dependency found this revision**
@@ -805,6 +882,28 @@ virtualization is available on this machine (same blocker documented throughout 
   (26-screen migration needs real before/after screenshots, not just component-level ones), UI-004
   (DataTable/sidebar fix needs live viewport testing to confirm the clipping bug is actually
   resolved, not just that the code changed).
+
+---
+
+## Non-UI follow-ups (found during UI work, out of this roadmap's own scope)
+
+Issues discovered while verifying a UI unit that aren't themselves UI/UX problems — reported for
+tracking, not proposed as roadmap units here.
+
+- **`apps/web/lib/format-currency.ts`'s `formatMoneyCents` passes no explicit locale to
+  `Intl.NumberFormat`** (`new Intl.NumberFormat(undefined, { style: 'currency', currency: code })`
+  — the first, locale, argument is `undefined`). This is very likely why `pnpm test` failed 15
+  tests in `format-currency.spec.ts` during the UI-001/002/013/014 merge verification on this
+  machine: `Intl.NumberFormat` falls back to the JS runtime's own default locale when none is
+  given, and that default (and the ICU currency-symbol data behind it) can legitimately differ
+  between environments — confirmed failures were e.g. `"US$10.50"` vs. the test's expected
+  `"$10.50"`, `"KES 1,500.00"` vs. expected `"KSh 1,500.00"`, consistent with a locale/ICU-data
+  mismatch between this Windows machine's Node build and whatever environment (presumably Linux
+  CI) the test's expected strings were originally written against — not a logic bug in the
+  function itself. Passing an explicit locale (e.g. `'en-US'`, or a real configurable one if this
+  app ever needs to support more than one) would make the output deterministic across
+  environments instead of depending on the runtime's own default. Not fixed here — report only,
+  per instruction; this is a backend/shared-lib correctness question, not a UI/UX one.
 
 ---
 

@@ -1,6 +1,13 @@
 'use client';
 
-import { DataTable, StatusPill, type DataTableColumn, type ResultFlag } from '@lis/ui';
+import {
+  DataTable,
+  PointMarker,
+  StatusPill,
+  type ChartSeverity,
+  type DataTableColumn,
+  type ResultFlag,
+} from '@lis/ui';
 
 export interface TrendPoint {
   observationId: string;
@@ -27,6 +34,15 @@ function flagTone(flags: string[]): 'default' | 'warning' | 'danger' {
   if (flags.includes('HH') || flags.includes('LL')) return 'danger';
   if (flags.includes('H') || flags.includes('L')) return 'warning';
   return 'default';
+}
+
+// UI-021 (docs/ui-review/03-roadmap.md): maps this component's own normal/H-L/HH-LL vocabulary
+// onto the shared circle/triangle/diamond severity encoding levey-jennings-chart.tsx already
+// established (UI-009) -- same reasoning: severity is never color alone (docs/design.md).
+function pointSeverity(point: TrendPoint): ChartSeverity {
+  if (point.isCritical) return 'rejection';
+  if (flagTone(point.flags) === 'warning') return 'warning';
+  return 'none';
 }
 
 /**
@@ -133,21 +149,35 @@ export function TrendChart({ analyteDisplay, points }: TrendChartProps) {
             definition). */}
         <path d={linePath} fill="none" stroke="var(--accent)" strokeWidth={2} />
         {points.map((p, i) => (
-          <circle
+          <PointMarker
             key={p.observationId}
+            severity={pointSeverity(p)}
             cx={xFor(i)}
             cy={yFor(Number(p.value))}
             r={4}
-            fill={
-              p.isCritical
-                ? 'var(--danger)'
-                : flagTone(p.flags) === 'warning'
-                  ? 'var(--warning)'
-                  : 'var(--chart-in-control)'
-            }
           />
         ))}
       </svg>
+      <div className="flex flex-wrap items-center gap-4 text-xs text-text-secondary">
+        <span className="flex items-center gap-1.5">
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+            <PointMarker severity="none" cx={5} cy={5} r={4} />
+          </svg>
+          Normal
+        </span>
+        <span className="flex items-center gap-1.5">
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+            <PointMarker severity="warning" cx={6} cy={6} r={5} />
+          </svg>
+          High/Low
+        </span>
+        <span className="flex items-center gap-1.5">
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+            <PointMarker severity="rejection" cx={6} cy={6} r={5} />
+          </svg>
+          Critical
+        </span>
+      </div>
       <DataTable
         columns={columns}
         data={points}

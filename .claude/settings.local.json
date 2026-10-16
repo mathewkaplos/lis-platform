@@ -1,0 +1,12 @@
+{
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "shadcn"
+  ],
+  "permissions": {
+    "allow": [
+      "Bash(gh pr *)",
+      "Bash(ssh -i ~/.ssh/lis_staging_pilot root@157.230.10.221:*)"
+    ]
+  }
+}

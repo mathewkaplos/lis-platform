@@ -111,16 +111,27 @@ export function TrendChart({ analyteDisplay, points }: TrendChartProps) {
           y1={MARGIN.top}
           x2={MARGIN.left}
           y2={CHART_HEIGHT - MARGIN.bottom}
-          stroke="var(--color-border)"
+          stroke="var(--border)"
         />
         <line
           x1={MARGIN.left}
           y1={CHART_HEIGHT - MARGIN.bottom}
           x2={CHART_WIDTH - MARGIN.right}
           y2={CHART_HEIGHT - MARGIN.bottom}
-          stroke="var(--color-border)"
+          stroke="var(--border)"
         />
-        <path d={linePath} fill="none" stroke="var(--color-brand)" strokeWidth={2} />
+        {/* UI-020 (docs/ui-review/03-roadmap.md): was var(--color-border)/var(--color-brand)/
+            var(--color-danger)/var(--color-warning) throughout this SVG -- those --color-*
+            names are never emitted as real CSS custom properties under Tailwind v4's
+            @theme inline (apps/web/app/globals.css); they only generate utility classes. Every
+            marker and line here had been rendering black (or invisible) in both themes since
+            this component was written, found via a repo-wide grep after UI-009 caught the
+            identical bug in levey-jennings-chart.tsx. Raw token names below resolve correctly;
+            the "in control" point color uses --chart-in-control specifically, not --accent
+            directly, since --accent alone fails WCAG's 3:1 non-text minimum against the
+            dark-mode surface (confirmed by computation, see --chart-in-control's own
+            definition). */}
+        <path d={linePath} fill="none" stroke="var(--accent)" strokeWidth={2} />
         {points.map((p, i) => (
           <circle
             key={p.observationId}
@@ -129,10 +140,10 @@ export function TrendChart({ analyteDisplay, points }: TrendChartProps) {
             r={4}
             fill={
               p.isCritical
-                ? 'var(--color-danger)'
+                ? 'var(--danger)'
                 : flagTone(p.flags) === 'warning'
-                  ? 'var(--color-warning)'
-                  : 'var(--color-brand)'
+                  ? 'var(--warning)'
+                  : 'var(--chart-in-control)'
             }
           />
         ))}

@@ -578,3 +578,10 @@ re-discovering it via a filesystem search each session. Confirmed 2026-08-18
   test runner's summary line) to trace back to "the rebuild never ran" rather than a genuine
   accessibility regression. Never trust a trailing `echo $?`/`| tail` combination's apparent
   success on its own — when in doubt, inspect the actual build output directly.
+- **Each accepted unit is merged to `main` before the next branch is created — never branch the
+  next unit off an older `main` while prior units sit unmerged.** Established 2026-10-16 (the
+  UI-001/UI-002/UI-013/UI-014 roadmap units): branching UI-009 before UI-001 was merged meant
+  `levey-jennings-chart.tsx` still had the exact contrast bug UI-001 had already fixed elsewhere,
+  forcing a duplicate fix later removed during a rebase once UI-001 actually merged. Branching in
+  dependency order from a stale base doesn't avoid the dependency — it just defers the conflict
+  and duplicates the fix in the meantime.

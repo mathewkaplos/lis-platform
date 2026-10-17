@@ -393,14 +393,23 @@ jobs:
       # check for this specific GitHub-side limit, so a clean actionlint run
       # does not guarantee a `run:` block is under it). Two separate SSH
       # invocations share the same droplet filesystem state (.env, the
-      # already-started containers) fine -- nothing here depends on shell
-      # state surviving between steps, only files and container state, both
-      # of which persist on the droplet itself.
+      # already-started containers) fine -- but NOT exported shell variables.
+      # Real bug, found on this exact task's first live deploy attempt after
+      # the split: `bash: KEYCLOAK_ADMIN_PASSWORD: unbound variable`, from
+      # the admin-token curl call below. The previous single-script version
+      # sourced `.env` (`set -a; . ./.env; set +a`) once, early, and every
+      # later line in that same bash process inherited it -- a completely
+      # separate `ssh ... bash -s` process here, even on the same droplet,
+      # starts with none of that. The `.env` *file* persists fine; only the
+      # already-sourced shell variables didn't carry over. Re-source it.
       - name: Keycloak post-import fixups, restart api/web/nginx
         run: |
           ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} bash -s <<'REMOTE'
           set -euo pipefail
           cd /opt/lis
+          set -a
+          . ./.env
+          set +a
 
           # #256: unmanagedAttributePolicy must be ENABLED on the realm's
           # User Profile for the custom tenant_id attribute to survive any

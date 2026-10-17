@@ -377,6 +377,27 @@ jobs:
           fi
 
           docker compose up -d valkey keycloak < /dev/null
+          REMOTE
+
+      # task-remove-tailscale-fix-onboarding-role-mapper (2026-10-17): split
+      # out of the "Pull and restart on droplet" step above -- adding the
+      # new role-grant block below pushed that one `run:` block's total text
+      # past GitHub Actions' own undocumented 21000-character expression-
+      # scan limit per step (confirmed live: `gh workflow run` failed
+      # outright with "Exceeded max expression length 21000", a distinct
+      # failure class from the literal-`${{ }}`-in-a-comment bug this file's
+      # own git history already documents elsewhere -- actionlint does not
+      # check for this specific GitHub-side limit, so a clean actionlint run
+      # does not guarantee a `run:` block is under it). Two separate SSH
+      # invocations share the same droplet filesystem state (.env, the
+      # already-started containers) fine -- nothing here depends on shell
+      # state surviving between steps, only files and container state, both
+      # of which persist on the droplet itself.
+      - name: Keycloak post-import fixups, restart api/web/nginx
+        run: |
+          ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} bash -s <<'REMOTE'
+          set -euo pipefail
+          cd /opt/lis
 
           # #256: unmanagedAttributePolicy must be ENABLED on the realm's
           # User Profile for the custom tenant_id attribute to survive any

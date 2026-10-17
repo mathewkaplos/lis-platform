@@ -123,7 +123,7 @@ jobs:
             /tmp/lis-realm.staging.json \
             root@${{ secrets.DEPLOY_HOST }}:/opt/lis/keycloak/lis-realm.json
           # task-remove-tailscale-fix-onboarding-role-mapper (2026-10-17):
-          # public-domain access (https://${{ vars.STAGING_PUBLIC_DOMAIN }},
+          # public-domain access (https://${{ secrets.STAGING_PUBLIC_DOMAIN }},
           # fronted by the siamas app's own Caddy container -- see
           # infra/docker-compose.lis-public.yml's own header comment for the
           # full design) used to be a manual, opt-in overlay, applied and
@@ -190,19 +190,22 @@ jobs:
           # removed along with every other Tailscale dependency in this
           # pipeline. The real public domain is fixed and already live
           # (infra/docker-compose.lis-public.yml, fronted by the siamas
-          # app's own Caddy container) -- a GitHub Actions repo *variable*,
-          # not a secret, since the hostname itself isn't sensitive.
+          # app's own Caddy container). Stored as a repo *secret* (not a
+          # variable, despite the hostname itself not being sensitive) --
+          # matches where it was actually added under repo Settings; GitHub
+          # Actions treats the two contexts identically here, this is a
+          # storage-location choice, not a functional one.
           #
           # Unlike the old Tailscale setup (a separate :8443 listener for
           # Keycloak via `tailscale serve`), Keycloak is reached under the
           # *same* domain/port as the app here -- infra/nginx-public.conf
           # routes /realms/ and /resources/ to keycloak:8080 on the one
           # public listener `web` also uses. No port distinction needed.
-          if [ -z "${{ vars.STAGING_PUBLIC_DOMAIN }}" ]; then
-            echo "vars.STAGING_PUBLIC_DOMAIN is not set -- add it under repo Settings -> Actions -> Variables (e.g. lis-staging.duckdns.org, no scheme)" >&2
+          if [ -z "${{ secrets.STAGING_PUBLIC_DOMAIN }}" ]; then
+            echo "secrets.STAGING_PUBLIC_DOMAIN is not set -- add it under repo Settings -> Secrets and variables -> Actions -> Secrets (e.g. lis-staging.duckdns.org, no scheme)" >&2
             exit 1
           fi
-          PUBLIC_APP_URL="https://${{ vars.STAGING_PUBLIC_DOMAIN }}"
+          PUBLIC_APP_URL="https://${{ secrets.STAGING_PUBLIC_DOMAIN }}"
           KEYCLOAK_PUBLIC_URL="$PUBLIC_APP_URL"
           KEYCLOAK_ISSUER_URL="${KEYCLOAK_PUBLIC_URL}/realms/lis"
           # apps/web's OIDC login/logout routes need this too -- self-hosted
@@ -618,7 +621,7 @@ jobs:
         run: |
           # task-remove-tailscale-fix-onboarding-role-mapper (2026-10-17):
           # checks the same public HTTPS paths a real browser would use --
-          # no hostname discovery needed anymore, vars.STAGING_PUBLIC_DOMAIN
+          # no hostname discovery needed anymore, secrets.STAGING_PUBLIC_DOMAIN
           # is fixed. A green step here is real evidence the overlay
           # (extra_hosts + nginx + siamas-caddy) and KEYCLOAK_ISSUER_URL
           # actually agree with each other, not just that the config looks
@@ -626,11 +629,11 @@ jobs:
           # now (infra/nginx-public.conf routes /realms/ to keycloak:8080 on
           # the one public listener) -- the old setup's separate :8443 check
           # no longer applies.
-          if [ -z "${{ vars.STAGING_PUBLIC_DOMAIN }}" ]; then
-            echo "vars.STAGING_PUBLIC_DOMAIN is not set" >&2
+          if [ -z "${{ secrets.STAGING_PUBLIC_DOMAIN }}" ]; then
+            echo "secrets.STAGING_PUBLIC_DOMAIN is not set" >&2
             exit 1
           fi
-          PUBLIC_DOMAIN="${{ vars.STAGING_PUBLIC_DOMAIN }}"
+          PUBLIC_DOMAIN="${{ secrets.STAGING_PUBLIC_DOMAIN }}"
           echo "Checking against https://${PUBLIC_DOMAIN}"
 
           # --connect-timeout/--max-time: without these, a curl that can't

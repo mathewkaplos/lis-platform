@@ -96,11 +96,11 @@ jobs:
 
       - name: Smoke test (web, real HTTPS over the public domain)
         run: |
-          if [ -z "${{ vars.STAGING_PUBLIC_DOMAIN }}" ]; then
-            echo "vars.STAGING_PUBLIC_DOMAIN is not set" >&2
+          if [ -z "${{ secrets.STAGING_PUBLIC_DOMAIN }}" ]; then
+            echo "secrets.STAGING_PUBLIC_DOMAIN is not set" >&2
             exit 1
           fi
-          PUBLIC_DOMAIN="${{ vars.STAGING_PUBLIC_DOMAIN }}"
+          PUBLIC_DOMAIN="${{ secrets.STAGING_PUBLIC_DOMAIN }}"
           echo "Checking against https://${PUBLIC_DOMAIN}"
           for i in $(seq 1 10); do
             if curl -sSf --connect-timeout 10 --max-time 10 "https://${PUBLIC_DOMAIN}/" > /dev/null; then

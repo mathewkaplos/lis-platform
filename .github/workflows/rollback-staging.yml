@@ -29,25 +29,6 @@ jobs:
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > deploy_key
           chmod 600 deploy_key
 
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@v4
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci-runner
-
-      - name: Wait for Tailscale connectivity to droplet
-        run: |
-          for i in $(seq 1 5); do
-            if tailscale ping -c 3 ${{ secrets.DEPLOY_HOST }}; then
-              exit 0
-            fi
-            echo "Tailscale ping attempt $i failed, retrying in 10s..."
-            sleep 10
-          done
-          echo "Tailscale ping did not succeed after 5 attempts"
-          exit 1
-
       - name: Roll back api/web on droplet
         env:
           ROLLBACK_SHA: ${{ inputs.sha }}
@@ -89,7 +70,13 @@ jobs:
           docker tag "$WEB_IMAGE_REF" "${WEB_IMAGE_BASE}:latest"
 
           docker compose stop api web < /dev/null
-          docker compose up -d api web < /dev/null
+          # task-remove-tailscale-fix-onboarding-role-mapper (2026-10-17):
+          # both -f flags required -- api/web's extra_hosts override (public-
+          # domain access) lives only in the overlay file, not the base
+          # compose file alone. See deploy-staging.yml's own comment on the
+          # identical line for the full reasoning.
+          docker compose -f docker-compose.yml -f docker-compose.lis-public.yml \
+            up -d --force-recreate api web < /dev/null
           REMOTE
 
       - name: Smoke test (api, internal)
@@ -107,18 +94,16 @@ jobs:
             exit 1
           '
 
-      - name: Smoke test (web, real HTTPS over the tailnet)
+      - name: Smoke test (web, real HTTPS over the public domain)
         run: |
-          MAGIC_DNS_NAME=$(ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} \
-            'if command -v jq >/dev/null 2>&1; then tailscale status --self --json | jq -r ".Self.DNSName"; else tailscale status --self --json | grep -oP "\"DNSName\":\s*\"\K[^\"]+" | head -1; fi' < /dev/null)
-          MAGIC_DNS_NAME=$(echo "$MAGIC_DNS_NAME" | sed 's/\.$//')
-          if [ -z "$MAGIC_DNS_NAME" ] || [ "$MAGIC_DNS_NAME" = "null" ]; then
-            echo "Could not discover the droplet's MagicDNS hostname" >&2
+          if [ -z "${{ vars.STAGING_PUBLIC_DOMAIN }}" ]; then
+            echo "vars.STAGING_PUBLIC_DOMAIN is not set" >&2
             exit 1
           fi
-          echo "Checking against https://${MAGIC_DNS_NAME}"
+          PUBLIC_DOMAIN="${{ vars.STAGING_PUBLIC_DOMAIN }}"
+          echo "Checking against https://${PUBLIC_DOMAIN}"
           for i in $(seq 1 10); do
-            if curl -sSf --connect-timeout 10 --max-time 10 "https://${MAGIC_DNS_NAME}/" > /dev/null; then
+            if curl -sSf --connect-timeout 10 --max-time 10 "https://${PUBLIC_DOMAIN}/" > /dev/null; then
               exit 0
             fi
             echo "web check attempt $i failed, retrying in 5s..."

@@ -102,35 +102,6 @@ jobs:
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > deploy_key
           chmod 600 deploy_key
 
-      # --- NEW: joins this runner onto your tailnet before any SSH/SCP happens ---
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@v4
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci-runner
-
-      # --- NEW: confirms the droplet is actually reachable before we depend on it ---
-      - name: Wait for Tailscale connectivity to droplet
-        run: |
-          # #197: a single `tailscale ping -c 3` failed once (run 30617856139)
-          # while the droplet itself was confirmed fully healthy via direct
-          # console access -- narrowed to a transient blip or a GH-Actions-
-          # side tailnet-join flake, not a droplet-side fault, and it has not
-          # recurred in 6 subsequent deploy runs. Retry with backoff instead
-          # of failing the whole run on a single transient miss, same pattern
-          # as the smoke-test hardening in #199.
-          for i in $(seq 1 5); do
-            if tailscale ping -c 3 ${{ secrets.DEPLOY_HOST }}; then
-              exit 0
-            fi
-            echo "Tailscale ping attempt $i failed, retrying in 10s..."
-            sleep 10
-          done
-          echo "Tailscale ping did not succeed after 5 attempts"
-          exit 1
-      # --- end new steps ---
-
       - name: Strip local/CI-only test user from the realm export for staging
         run: |
           # infra/keycloak/lis-realm.json is the single source of truth for
@@ -151,6 +122,24 @@ jobs:
           scp -i deploy_key -o StrictHostKeyChecking=no \
             /tmp/lis-realm.staging.json \
             root@${{ secrets.DEPLOY_HOST }}:/opt/lis/keycloak/lis-realm.json
+          # task-remove-tailscale-fix-onboarding-role-mapper (2026-10-17):
+          # public-domain access (https://${{ vars.STAGING_PUBLIC_DOMAIN }},
+          # fronted by the siamas app's own Caddy container -- see
+          # infra/docker-compose.lis-public.yml's own header comment for the
+          # full design) used to be a manual, opt-in overlay, applied and
+          # reapplied by hand after every deploy -- which is exactly what
+          # broke repeatedly: a normal deploy recreates keycloak/api/web from
+          # docker-compose.yml alone, silently dropping this overlay's
+          # extra_hosts entries until someone noticed the site was
+          # unreachable and reapplied it manually. Copied and reapplied
+          # automatically every deploy now, same as every other config file
+          # above.
+          scp -i deploy_key -o StrictHostKeyChecking=no \
+            infra/docker-compose.lis-public.yml \
+            root@${{ secrets.DEPLOY_HOST }}:/opt/lis/docker-compose.lis-public.yml
+          scp -i deploy_key -o StrictHostKeyChecking=no \
+            infra/nginx-public.conf \
+            root@${{ secrets.DEPLOY_HOST }}:/opt/lis/nginx-public.conf
           scp -i deploy_key -o StrictHostKeyChecking=no \
             db/seed/chemistry-catalog.sql \
             root@${{ secrets.DEPLOY_HOST }}:/opt/lis/seed/chemistry-catalog.sql
@@ -195,36 +184,26 @@ jobs:
           set -euo pipefail
           cd /opt/lis
 
-          # #188: the droplet's real MagicDNS hostname isn't knowable in
-          # advance (not a secret, not hardcodable -- it's assigned by
-          # Tailscale). Discovered fresh every deploy from tailscaled's own
-          # view of itself, same tool this droplet already runs for deploy
-          # access.
+          # task-remove-tailscale-fix-onboarding-role-mapper (2026-10-17):
+          # previously discovered fresh every deploy via `tailscale status
+          # --self --json` (the droplet's Tailscale MagicDNS hostname) --
+          # removed along with every other Tailscale dependency in this
+          # pipeline. The real public domain is fixed and already live
+          # (infra/docker-compose.lis-public.yml, fronted by the siamas
+          # app's own Caddy container) -- a GitHub Actions repo *variable*,
+          # not a secret, since the hostname itself isn't sensitive.
           #
-          # Real bug, found on this exact task's first live deploy attempt:
-          # `tailscale status --self --json | grep DNSName` (no anchor to
-          # the Self object specifically) matched every connected peer's
-          # DNSName too -- including the ephemeral CI runner, freshly
-          # joined as tag:ci-runner for this same deploy -- producing a
-          # multi-line value that corrupted .env ("`.env: line 7:
-          # github-runnervmvrwv9.taila0fbf9.ts.net:8443: command not
-          # found`" -- the runner's own hostname, not the droplet's, on its
-          # own broken line). jq -- if present -- resolves this
-          # unambiguously via the actual `.Self.DNSName` path; falls back
-          # to the same grep with `head -1` if jq isn't installed (Self
-          # appears before Peer in Tailscale's own JSON field order, but
-          # jq is the real fix here, not a guess about ordering).
-          if command -v jq >/dev/null 2>&1; then
-            MAGIC_DNS_NAME=$(tailscale status --self --json | jq -r '.Self.DNSName' | sed 's/\.$//')
-          else
-            MAGIC_DNS_NAME=$(tailscale status --self --json | grep -oP '"DNSName":\s*"\K[^"]+' | head -1 | sed 's/\.$//')
-          fi
-          if [ -z "$MAGIC_DNS_NAME" ] || [ "$MAGIC_DNS_NAME" = "null" ]; then
-            echo "Could not discover this droplet's MagicDNS hostname from 'tailscale status --self --json'" >&2
+          # Unlike the old Tailscale setup (a separate :8443 listener for
+          # Keycloak via `tailscale serve`), Keycloak is reached under the
+          # *same* domain/port as the app here -- infra/nginx-public.conf
+          # routes /realms/ and /resources/ to keycloak:8080 on the one
+          # public listener `web` also uses. No port distinction needed.
+          if [ -z "${{ vars.STAGING_PUBLIC_DOMAIN }}" ]; then
+            echo "vars.STAGING_PUBLIC_DOMAIN is not set -- add it under repo Settings -> Actions -> Variables (e.g. lis-staging.duckdns.org, no scheme)" >&2
             exit 1
           fi
-          echo "Discovered MagicDNS hostname: $MAGIC_DNS_NAME"
-          KEYCLOAK_PUBLIC_URL="https://${MAGIC_DNS_NAME}:8443"
+          PUBLIC_APP_URL="https://${{ vars.STAGING_PUBLIC_DOMAIN }}"
+          KEYCLOAK_PUBLIC_URL="$PUBLIC_APP_URL"
           KEYCLOAK_ISSUER_URL="${KEYCLOAK_PUBLIC_URL}/realms/lis"
           # apps/web's OIDC login/logout routes need this too -- self-hosted
           # Next.js standalone mode has no working way to trust the incoming
@@ -234,7 +213,6 @@ jobs:
           # request.nextUrl.origin resolves to the web container's own
           # Docker-assigned hostname instead of this real one -- broke the
           # OIDC redirect_uri, which Keycloak then rejected outright.
-          PUBLIC_APP_URL="https://${MAGIC_DNS_NAME}"
 
           cat > .env <<'ENVEOF'
           POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
@@ -466,6 +444,59 @@ jobs:
                   echo "WARNING: unmanagedAttributePolicy PUT failed -- api/web will still restart" >&2
               fi
 
+              # task-remove-tailscale-fix-onboarding-role-mapper (2026-10-17):
+              # service-account-lis-onboarding's role mapping (manage-users/
+              # view-realm on realm-management -- the narrowest grant that
+              # can create a real Keycloak user, ADR-0040) lives inside
+              # infra/keycloak/lis-realm.json's top-level `users` array in
+              # Keycloak's own realm-export format. The "Strip local/CI-only
+              # test user" step above deliberately deletes that whole array
+              # before --import-realm ever sees it (no baked-in test
+              # accounts on a network-reachable droplet) -- which also
+              # strips this service account's own role grant as
+              # unintended collateral damage. Confirmed live: even with the
+              # client-role protocol mapper fix (lis-realm.json's "roles"
+              # client scope), a fresh import's service account carries no
+              # realm-management roles at all, and every Admin API call it
+              # makes 403s. Re-granted here, every deploy, matching the
+              # non-fatal warn-don't-fail shape every other step in this
+              # block already uses -- a skipped re-grant breaks onboarding
+              # for this one deploy, not the whole site.
+              SA_USER_ID=$(curl -sSf --connect-timeout 10 --max-time 10 \
+                "http://localhost:8080/admin/realms/lis/clients?clientId=lis-onboarding" \
+                -H "Authorization: Bearer $ADMIN_TOKEN" < /dev/null | jq -r '.[0].id // empty' || true)
+              if [ -n "$SA_USER_ID" ]; then
+                SA_USER_ID=$(curl -sSf --connect-timeout 10 --max-time 10 \
+                  "http://localhost:8080/admin/realms/lis/clients/$SA_USER_ID/service-account-user" \
+                  -H "Authorization: Bearer $ADMIN_TOKEN" < /dev/null | jq -r '.id // empty' || true)
+              fi
+              REALM_MGMT_UUID=$(curl -sSf --connect-timeout 10 --max-time 10 \
+                "http://localhost:8080/admin/realms/lis/clients?clientId=realm-management" \
+                -H "Authorization: Bearer $ADMIN_TOKEN" < /dev/null | jq -r '.[0].id // empty' || true)
+              if [ -z "$SA_USER_ID" ] || [ -z "$REALM_MGMT_UUID" ]; then
+                echo "WARNING: could not resolve lis-onboarding's service-account user or the realm-management client -- skipping its role grant this deploy, POST /onboarding/signup will 403" >&2
+              else
+                ROLES_JSON="["
+                FIRST=true
+                for ROLE_NAME in manage-users view-realm; do
+                  ROLE_REP=$(curl -sSf --connect-timeout 10 --max-time 10 \
+                    "http://localhost:8080/admin/realms/lis/clients/$REALM_MGMT_UUID/roles/$ROLE_NAME" \
+                    -H "Authorization: Bearer $ADMIN_TOKEN" < /dev/null || true)
+                  if [ -z "$ROLE_REP" ]; then
+                    echo "WARNING: could not resolve realm-management role '$ROLE_NAME' -- its grant will be skipped this deploy" >&2
+                    continue
+                  fi
+                  if [ "$FIRST" = "true" ]; then FIRST=false; else ROLES_JSON="$ROLES_JSON,"; fi
+                  ROLES_JSON="$ROLES_JSON$ROLE_REP"
+                done
+                ROLES_JSON="$ROLES_JSON]"
+                curl -sS --connect-timeout 10 --max-time 10 -X POST \
+                  "http://localhost:8080/admin/realms/lis/users/$SA_USER_ID/role-mappings/clients/$REALM_MGMT_UUID" \
+                  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+                  -d "$ROLES_JSON" -w "\nlis-onboarding role grant: HTTP %{http_code}\n" < /dev/null || \
+                  echo "WARNING: lis-onboarding role grant POST failed -- POST /onboarding/signup will 403 this deploy" >&2
+              fi
+
               # task-fix-deploy-secret-rotation-put-noop (2026-10-14):
               # infra/keycloak/lis-realm.json's per-client `secret` field is
               # a checked-in dev-only placeholder, imported into this real
@@ -525,25 +556,21 @@ jobs:
             fi
           fi
 
-          docker compose up -d api web < /dev/null
-
-          # #188: TLS termination + hostname, via tailscale serve rather than
-          # a separate reverse-proxy container -- tailscaled is already
-          # running on this droplet (deploy access), so this adds zero new
-          # memory footprint on an already-tight box (§6 of the proposal),
-          # and cert issuance/renewal is automatic (unlike the lower-level
-          # `tailscale cert` command, which needs manual renewal every 90
-          # days). --bg persists the config across reboots/tailscaled
-          # restarts. Idempotent -- safe to re-run every deploy; re-running
-          # with the same args updates the existing config rather than
-          # erroring or duplicating it.
-          #
-          # This is genuinely the least-verified part of this change (flagged
-          # in the proposal's own risk section) -- if this exact invocation
-          # turns out wrong against the real tailnet, it's the first place to
-          # look, not the compose/env changes above.
-          tailscale serve --bg --https=443 http://localhost:3000 < /dev/null
-          tailscale serve --bg --https=8443 http://localhost:8080 < /dev/null
+          # task-remove-tailscale-fix-onboarding-role-mapper (2026-10-17):
+          # api/web get their extra_hosts override (routes their own
+          # server-side OIDC discovery calls to siamas-caddy's container IP
+          # -- see docker-compose.lis-public.yml's own header comment) from
+          # the overlay file, not the base compose file alone -- both -f
+          # flags are required here, not optional. nginx (the overlay's own
+          # new service, public-domain-only, no host port published) is
+          # force-recreated in the same call rather than left running from a
+          # prior deploy, matching keycloak's own full-rebuild policy above:
+          # picks up this deploy's freshly-copied nginx-public.conf instead
+          # of silently keeping a stale one if that file ever changes.
+          # Replaces the old `tailscale serve --bg` lines entirely -- TLS
+          # termination is siamas-caddy's job now, not this droplet's.
+          docker compose -f docker-compose.yml -f docker-compose.lis-public.yml \
+            up -d --force-recreate api web nginx < /dev/null
           REMOTE
 
       - name: Smoke test (api, internal)
@@ -566,30 +593,24 @@ jobs:
             exit 1
           '
 
-      - name: Smoke test (web + Keycloak, real HTTPS over the tailnet)
+      - name: Smoke test (web + Keycloak, real HTTPS over the public domain)
         run: |
-          # #188's actual point: check the same public HTTPS paths a real
-          # browser would use, from this runner (already tailnet-joined via
-          # the "Connect to Tailscale" step above) -- not just "is the
-          # container running" the way the old localhost check was. A green
-          # step here is real evidence tailscale serve + KC_HOSTNAME +
-          # KEYCLOAK_ISSUER_URL all actually agree with each other, not just
-          # that the config looks right.
-          # Same jq-with-grep-fallback fix as the "Pull and restart" step
-          # above -- the earlier plain-grep version matched every connected
-          # peer's DNSName, not just the droplet's own, and picked up the
-          # CI runner's ephemeral hostname on this task's first real deploy
-          # attempt. Single-quoted remote command this time (simpler than
-          # escaping through a double-quoted wrapper for no added benefit
-          # here -- no local variable needs interpolating into it).
-          MAGIC_DNS_NAME=$(ssh -i deploy_key -o StrictHostKeyChecking=no root@${{ secrets.DEPLOY_HOST }} \
-            'if command -v jq >/dev/null 2>&1; then tailscale status --self --json | jq -r ".Self.DNSName"; else tailscale status --self --json | grep -oP "\"DNSName\":\s*\"\K[^\"]+" | head -1; fi' < /dev/null)
-          MAGIC_DNS_NAME=$(echo "$MAGIC_DNS_NAME" | sed 's/\.$//')
-          if [ -z "$MAGIC_DNS_NAME" ] || [ "$MAGIC_DNS_NAME" = "null" ]; then
-            echo "Could not discover the droplet's MagicDNS hostname" >&2
+          # task-remove-tailscale-fix-onboarding-role-mapper (2026-10-17):
+          # checks the same public HTTPS paths a real browser would use --
+          # no hostname discovery needed anymore, vars.STAGING_PUBLIC_DOMAIN
+          # is fixed. A green step here is real evidence the overlay
+          # (extra_hosts + nginx + siamas-caddy) and KEYCLOAK_ISSUER_URL
+          # actually agree with each other, not just that the config looks
+          # right. Keycloak is checked on the *same* domain/port as the app
+          # now (infra/nginx-public.conf routes /realms/ to keycloak:8080 on
+          # the one public listener) -- the old setup's separate :8443 check
+          # no longer applies.
+          if [ -z "${{ vars.STAGING_PUBLIC_DOMAIN }}" ]; then
+            echo "vars.STAGING_PUBLIC_DOMAIN is not set" >&2
             exit 1
           fi
-          echo "Checking against https://${MAGIC_DNS_NAME}"
+          PUBLIC_DOMAIN="${{ vars.STAGING_PUBLIC_DOMAIN }}"
+          echo "Checking against https://${PUBLIC_DOMAIN}"
 
           # --connect-timeout/--max-time: without these, a curl that can't
           # get any response (as opposed to a fast rejection) hangs on the
@@ -597,8 +618,8 @@ jobs:
           # for real on this task's second live deploy attempt (run
           # 30684628865): each of the 10 web-check attempts took ~2m19s
           # instead of the intended ~5s, turning a should-be ~100s failure
-          # into a 23-minute one. 10s is generous for a same-tailnet HTTPS
-          # request; a real success should complete in well under 1s.
+          # into a 23-minute one. 10s is generous for a real HTTPS request;
+          # a real success should complete in well under 1s.
           #
           # -sS not -sf: plain -s silences curl's own error text along with
           # its progress meter, leaving nothing but a generic "attempt N
@@ -609,7 +630,7 @@ jobs:
           # "SSL certificate problem") visible on stderr while still
           # suppressing the progress meter.
           for i in $(seq 1 10); do
-            if curl -sSf --connect-timeout 10 --max-time 10 "https://${MAGIC_DNS_NAME}/" > /dev/null; then
+            if curl -sSf --connect-timeout 10 --max-time 10 "https://${PUBLIC_DOMAIN}/" > /dev/null; then
               break
             fi
             echo "web check attempt $i failed, retrying in 5s..."
@@ -633,7 +654,7 @@ jobs:
           # class of finding as #189's own smoke-test-timing fix elsewhere
           # in this file.
           for i in $(seq 1 40); do
-            if curl -sSf --connect-timeout 10 --max-time 10 "https://${MAGIC_DNS_NAME}:8443/realms/lis/.well-known/openid-configuration" > /dev/null; then
+            if curl -sSf --connect-timeout 10 --max-time 10 "https://${PUBLIC_DOMAIN}/realms/lis/.well-known/openid-configuration" > /dev/null; then
               exit 0
             fi
             echo "Keycloak check attempt $i failed, retrying in 5s..."
